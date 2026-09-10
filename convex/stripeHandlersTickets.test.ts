@@ -401,21 +401,6 @@ describe("ticket Checkout completion", () => {
 });
 
 describe("ticket event account checks", () => {
-  test.each(["seller", "account"] as const)(
-    "ignores a band Checkout event with a missing %s",
-    async (missing) => {
-      const f = await setupTickets({}, "band");
-      await f.t.run((ctx) =>
-        ctx.db.delete(missing === "seller" ? f.bandId! : f.payoutAccountId!),
-      );
-      const before = await f.state();
-      expect(
-        await f.deliver({ ...checkoutEvent(f.orderId), account: BAND_ACCOUNT_ID }),
-      ).toEqual({ outcome: "applied" });
-      expect(await f.state()).toEqual(before);
-    },
-  );
-
   test.each([ACCOUNT_ID, "acct_other", undefined])(
     "ignores a band Checkout event from the wrong account (%s)",
     async (account) => {

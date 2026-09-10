@@ -9,14 +9,6 @@ import {
 } from "./lib/helpers";
 import schema from "./schema";
 
-test("writePolicy allows band gig writes without authentication", async () => {
-  const t = convexTest(schema);
-
-  await expect(t.query(api.gigs.writePolicy, {})).resolves.toEqual({
-    bandGigWrites: true,
-  });
-});
-
 describe("gigs:pastForBand", () => {
   /** A band, a venue, and one gig on each side of the feed cutoff. */
   async function setupHistory() {

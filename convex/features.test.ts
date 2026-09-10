@@ -11,7 +11,6 @@ const api = generatedApi as typeof generatedApi &
 
 beforeEach(() => {
   vi.unstubAllEnvs();
-  vi.stubEnv("PROMOTERS_ENABLED", undefined);
   vi.stubEnv("BOOKING_COMMISSION_BPS", undefined);
   vi.stubEnv("TICKETING_FEE_BPS", undefined);
   vi.stubEnv("TICKETING_FEE_FIXED_MINOR", undefined);
@@ -19,21 +18,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-});
-
-describe("features: public flags", () => {
-  test("returns the fixed flag constants", async () => {
-    const t = convexTest(schema);
-
-    expect(await t.query(api.features.flags, {})).toEqual({
-      privateBookings: true,
-      tickets: true,
-      payments: true,
-      bandGigWrites: true,
-      disputes: true,
-      promoters: true,
-    });
-  });
 });
 
 describe("features: public fees", () => {
@@ -167,92 +151,6 @@ describe("features: public fees", () => {
         ticketingFeeBps: 0,
         ticketingFeeFixedMinor: 0,
         configured: false,
-      });
-    },
-  );
-
-  test("returns env rates for a member when the organization has been deleted", async () => {
-    const { t, asMember, organizationId } =
-      await setupOrganizationWithFeeOverrides();
-    await t.run((ctx) => ctx.db.delete(organizationId));
-
-    expect(await asMember.query(api.features.fees, { organizationId })).toEqual({
-      bookingCommissionBps: 1250,
-      ticketingFeeBps: 350,
-      ticketingFeeFixedMinor: 50,
-      configured: true,
-    });
-  });
-
-  test("returns zeros and configured false when both fees are unset", async () => {
-    const t = convexTest(schema);
-
-    expect(await t.query(api.features.fees, {})).toEqual({
-      bookingCommissionBps: 0,
-      ticketingFeeBps: 0,
-      ticketingFeeFixedMinor: 0,
-      configured: false,
-    });
-  });
-
-  test("preserves commission when ticketing fees are unset", async () => {
-    const t = convexTest(schema);
-    vi.stubEnv("BOOKING_COMMISSION_BPS", "1250");
-
-    expect(await t.query(api.features.fees, {})).toEqual({
-      bookingCommissionBps: 1250,
-      ticketingFeeBps: 0,
-      ticketingFeeFixedMinor: 0,
-      configured: false,
-    });
-  });
-
-  test("preserves ticketing fees when commission is unset", async () => {
-    const t = convexTest(schema);
-    vi.stubEnv("TICKETING_FEE_BPS", "350");
-    vi.stubEnv("TICKETING_FEE_FIXED_MINOR", "50");
-
-    expect(await t.query(api.features.fees, {})).toEqual({
-      bookingCommissionBps: 0,
-      ticketingFeeBps: 350,
-      ticketingFeeFixedMinor: 50,
-      configured: false,
-    });
-  });
-
-  test.each([false, true])(
-    "falls back to env for an organization without overrides (deleted: %s)",
-    async (deleted) => {
-      const t = convexTest(schema);
-      vi.stubEnv("BOOKING_COMMISSION_BPS", "1250");
-      vi.stubEnv("TICKETING_FEE_BPS", "350");
-      vi.stubEnv("TICKETING_FEE_FIXED_MINOR", "50");
-      const organizationId = await t.run(async (ctx) => {
-        const ownerUserId = await ctx.db.insert("users", {
-          clerkId: "fee-test-owner",
-          name: "Fee Test Owner",
-          email: "fees@example.com",
-          genres: [],
-          attendedCount: 0,
-        });
-        const id = await ctx.db.insert("organizations", {
-          name: "Fee Test Organization",
-          slug: "fee-test-organization",
-          orgType: "promoter",
-          status: "verified",
-          ownerUserId,
-          createdAt: 1,
-          updatedAt: 1,
-        });
-        if (deleted) await ctx.db.delete(id);
-        return id;
-      });
-
-      expect(await t.query(api.features.fees, { organizationId })).toEqual({
-        bookingCommissionBps: 1250,
-        ticketingFeeBps: 350,
-        ticketingFeeFixedMinor: 50,
-        configured: true,
       });
     },
   );

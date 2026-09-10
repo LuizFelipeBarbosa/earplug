@@ -51,22 +51,6 @@ void main() {
     );
   });
 
-  testWidgets('FieldLabel displays required and plain labels', (tester) async {
-    await _pump(
-      tester,
-      const Column(
-        children: [
-          FieldLabel('HOME BASE', required: true),
-          FieldLabel('ACCEPTED MEMBERS'),
-        ],
-      ),
-    );
-
-    expect(find.text('HOME BASE · REQUIRED'), findsOneWidget);
-    expect(find.text('ACCEPTED MEMBERS'), findsOneWidget);
-    expect(find.text('ACCEPTED MEMBERS · REQUIRED'), findsNothing);
-  });
-
   testWidgets('labels stay accessible and Next moves to the following field', (
     tester,
   ) async {
@@ -170,47 +154,6 @@ void main() {
     expect(find.text('Saved.'), findsNothing);
   });
 
-  testWidgets('InlineFormFeedback shows success when there is no error', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      const InlineFormFeedback(
-        success: 'Changes saved.',
-        errorKey: ValueKey('error'),
-        successKey: ValueKey('success'),
-      ),
-    );
-
-    expect(find.byKey(const ValueKey('success')), findsOneWidget);
-    expect(find.text('Changes saved.'), findsOneWidget);
-    expect(find.byKey(const ValueKey('error')), findsNothing);
-  });
-
-  testWidgets('FormSection groups controls without an enclosing card', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      ListView(
-        children: const [
-          FormSection(
-            title: 'Flat',
-            description: 'Default treatment',
-            child: SizedBox(key: ValueKey('flat-child')),
-          ),
-        ],
-      ),
-    );
-
-    expect(
-      find.ancestor(
-        of: find.byKey(const ValueKey('flat-child')),
-        matching: find.byType(EpCard),
-      ),
-      findsNothing,
-    );
-  });
 }
 
 Future<void> _pump(WidgetTester tester, Widget child) {

@@ -2,6 +2,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import type { Doc, Id } from "./_generated/dataModel";
+import { canTransition } from "./lib/bookingStatus";
 import {
   VENUE_CONSENT_TRANSITIONS,
   assertVenueConsentTransition,
@@ -11,6 +12,7 @@ import {
   type VenueConsentStatus,
 } from "./lib/venueConsentStatus";
 import schema from "./schema";
+import { expectStatusTransitions } from "./statusTransitions.test-helpers";
 
 const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 
@@ -25,34 +27,18 @@ const venueFields = {
   status: "verified" as const,
 };
 
-describe("Venue consent transitions", () => {
-  const expectedTransitions: Record<
-    VenueConsentStatus,
-    readonly VenueConsentStatus[]
-  > = {
+expectStatusTransitions({
+  entity: "Venue approval",
+  table: VENUE_CONSENT_TRANSITIONS,
+  canTransition,
+  assertTransition: assertVenueConsentTransition,
+  expected: {
     pending: ["granted", "declined", "withdrawn"],
     granted: ["revoked", "withdrawn"],
     declined: [],
     withdrawn: [],
     revoked: [],
-  };
-  const statuses = Object.keys(expectedTransitions) as VenueConsentStatus[];
-
-  test("exports the supported transition table", () => {
-    expect(VENUE_CONSENT_TRANSITIONS).toEqual(expectedTransitions);
-  });
-
-  describe.each(statuses)("from %s", (from) => {
-    test.each(statuses)("to %s", (to) => {
-      if (expectedTransitions[from].includes(to)) {
-        expect(() => assertVenueConsentTransition(from, to)).not.toThrow();
-      } else {
-        expect(() => assertVenueConsentTransition(from, to)).toThrowError(
-          new Error(`Venue approval cannot go from ${from} to ${to}`),
-        );
-      }
-    });
-  });
+  },
 });
 
 describe("consentRequiredFor", () => {

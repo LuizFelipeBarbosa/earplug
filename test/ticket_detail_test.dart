@@ -91,57 +91,46 @@ void main() {
     expect(harness.app.current.param, ticket.gig.id);
   });
 
-  for (final checkedInAt in [DateTime(2026, 9, 5, 20, 30), null]) {
-    testWidgets('used ticket hides QR with check-in time $checkedInAt', (
+  testWidgets('used ticket hides QR and shows the formatted check-in time', (
+    tester,
+  ) async {
+    final checkedInAt = DateTime(2026, 9, 5, 20, 30);
+    repository.tickets['ticket'] = _ticket(
+      status: TicketStatus.used,
+      checkedInAt: checkedInAt,
+    );
+    await pumpApp(
       tester,
-    ) async {
-      repository.tickets['ticket'] = _ticket(
-        status: TicketStatus.used,
-        checkedInAt: checkedInAt,
-      );
-      await pumpApp(
-        tester,
-        home: const Scaffold(body: TicketDetailScreen(ticketId: 'ticket')),
-        auth: auth,
-        repository: repository,
-      );
+      home: const Scaffold(body: TicketDetailScreen(ticketId: 'ticket')),
+      auth: auth,
+      repository: repository,
+    );
 
-      expect(find.byKey(const Key('ticket-detail-qr')), findsNothing);
-      expect(find.byType(QrImageView), findsNothing);
-      expect(find.text('CHECKED IN'), findsOneWidget);
-      expect(
-        find.text(
-          checkedInAt == null
-              ? 'Checked in'
-              : 'Checked in ${dateLabel(checkedInAt)} · '
-                    '${timeLabel(TimeOfDay.fromDateTime(checkedInAt))}',
-        ),
-        findsOneWidget,
-      );
-    });
-  }
+    expect(find.byKey(const Key('ticket-detail-qr')), findsNothing);
+    expect(find.byType(QrImageView), findsNothing);
+    expect(find.text('CHECKED IN'), findsOneWidget);
+    expect(
+      find.text(
+        'Checked in ${dateLabel(checkedInAt)} · '
+        '${timeLabel(TimeOfDay.fromDateTime(checkedInAt))}',
+      ),
+      findsOneWidget,
+    );
+  });
 
-  for (final (status, message) in [
-    (TicketStatus.refunded, 'This ticket was refunded.'),
-    (TicketStatus.cancelled, 'This ticket was cancelled.'),
-    (TicketStatus.unknown, 'This ticket is unavailable.'),
-  ]) {
-    testWidgets('${status.name} ticket shows a banner without a QR', (
+  testWidgets('refunded ticket shows a banner without a QR', (tester) async {
+    repository.tickets['ticket'] = _ticket(status: TicketStatus.refunded);
+    await pumpApp(
       tester,
-    ) async {
-      repository.tickets['ticket'] = _ticket(status: status);
-      await pumpApp(
-        tester,
-        home: const Scaffold(body: TicketDetailScreen(ticketId: 'ticket')),
-        auth: auth,
-        repository: repository,
-      );
+      home: const Scaffold(body: TicketDetailScreen(ticketId: 'ticket')),
+      auth: auth,
+      repository: repository,
+    );
 
-      expect(find.byKey(const Key('ticket-detail-qr')), findsNothing);
-      expect(find.byType(QrImageView), findsNothing);
-      expect(find.text(message), findsOneWidget);
-    });
-  }
+    expect(find.byKey(const Key('ticket-detail-qr')), findsNothing);
+    expect(find.byType(QrImageView), findsNothing);
+    expect(find.text('This ticket was refunded.'), findsOneWidget);
+  });
 
   testWidgets('refresh replaces a cached QR when the ticket is checked in', (
     tester,

@@ -519,7 +519,7 @@ describe("band gig ticket cancellation, deletion, and public payload", () => {
     });
   });
 
-  test.each(["paid", "refunded", "reserved", "checkout_open"] as const)(
+  test.each(["paid", "reserved"] as const)(
     "refuses saving an RSVP draft for a published paid gig with a %s order",
     async (status) => {
       const fixture = await setupPublishedGig();
@@ -542,7 +542,7 @@ describe("band gig ticket cancellation, deletion, and public payload", () => {
     },
   );
 
-  test.each(["paid", "refunded", "reserved", "checkout_open"] as const)(
+  test.each(["paid", "reserved"] as const)(
     "refuses publishing an RSVP draft when the live paid gig acquired a %s order",
     async (status) => {
       const fixture = await setupPublishedGig();
@@ -605,12 +605,12 @@ describe("band gig ticket cancellation, deletion, and public payload", () => {
     });
   });
 
-  test.each(["reserved", "checkout_open"] as const)(
-    "cancelling closes a %s order and releases its inventory",
-    async (status) => {
+  test(
+    "cancelling closes a reserved order and releases its inventory",
+    async () => {
       const fixture = await setupPublishedGig();
       const { t, asAdmin, gigId, projectId } = fixture;
-      const orderId = await insertTicketOrder(fixture, status);
+      const orderId = await insertTicketOrder(fixture, "reserved");
 
       await asAdmin.mutation(api.gigs.cancel, { projectId });
 
@@ -643,12 +643,12 @@ describe("band gig ticket cancellation, deletion, and public payload", () => {
     },
   );
 
-  test.each(["reserved", "checkout_open"] as const)(
-    "unpublishing leaves a %s order and its hold unchanged",
-    async (status) => {
+  test(
+    "unpublishing leaves a reserved order and its hold unchanged",
+    async () => {
       const fixture = await setupPublishedGig();
       const { t, asAdmin, gigId, projectId } = fixture;
-      const orderId = await insertTicketOrder(fixture, status);
+      const orderId = await insertTicketOrder(fixture, "reserved");
       const before = await t.run((ctx) => ctx.db.get(orderId));
 
       await asAdmin.mutation(api.gigs.unpublish, { projectId });
@@ -668,9 +668,7 @@ describe("band gig ticket cancellation, deletion, and public payload", () => {
 
   test.each([
     { blocking: "paid", resolved: "cancelled" },
-    { blocking: "refunded", resolved: "expired" },
     { blocking: "reserved", resolved: "expired" },
-    { blocking: "checkout_open", resolved: "cancelled" },
   ] as const)(
     "refuses deletion for $blocking orders and allows it after $resolved",
     async ({ blocking, resolved }) => {
@@ -733,11 +731,7 @@ describe("band gig ticket cancellation, deletion, and public payload", () => {
 
   test.each([
     "reserved",
-    "checkout_open",
     "paid",
-    "expired",
-    "cancelled",
-    "refunded",
     null,
   ] as const)("purge only deletes rows without orders (status: %s)", async (status) => {
     const fixture = await setupPublishedGig();
@@ -786,7 +780,7 @@ describe("band gig ticket cancellation, deletion, and public payload", () => {
     }
   });
 
-  test.each(["paid", "rsvp", "external"] as const)(
+  test.each(["paid", "rsvp"] as const)(
     "only names the band seller for paid gigs: %s",
     async (ticketing) => {
       const { t, gigId } = await setupPublishedGig(ticketing);

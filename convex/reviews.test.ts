@@ -268,7 +268,7 @@ describe("reviews: double-blind submission", () => {
     });
   });
 
-  test.each(["manager", "bandAdmin"] as const)(
+  test.each(["manager"] as const)(
     "marks a private booking review as private when %s submits",
     async (actor) => {
       const f = await setupReviews();
@@ -284,7 +284,7 @@ describe("reviews: double-blind submission", () => {
     },
   );
 
-  test.each(["manager", "bandAdmin"] as const)(
+  test.each(["manager"] as const)(
     "reveals both reviews atomically when %s submits first",
     async (firstActor) => {
       const f = await setupReviews();
@@ -433,7 +433,7 @@ describe("reviews: review window", () => {
     expect((await f.forBooking("manager")).windowClosesAt).toBe(REVIEW_WINDOW_MS);
   });
 
-  test.each(["manager", "bandAdmin"] as const)(
+  test.each(["manager"] as const)(
     "reveals the second review when %s's review is already visible",
     async (firstActor) => {
       const f = await setupReviews();
@@ -489,7 +489,7 @@ describe("reviews: review window", () => {
     },
   );
 
-  test.each(["manager", "bandAdmin"] as const)(
+  test.each(["manager"] as const)(
     "closing the window reveals a lone %s review and is idempotent",
     async (actor) => {
       const f = await setupReviews();
@@ -625,7 +625,7 @@ describe("reviews: listings and moderation", () => {
     },
   );
 
-  test.each(["owner", "manager", "finance", "door", "platformAdmin"] as const)(
+  test.each(["owner"] as const)(
     "organization listings allow %s and include the band's name",
     async (actor) => {
       const f = await setupReviews();

@@ -124,7 +124,7 @@ void main() {
     }
   });
 
-  test('referral slugs are trimmed on any route with fragment fallback', () {
+  test('referral slugs and join tokens are trimmed with fragment fallback', () {
     expect(
       referralBandSlugFromUri(
         Uri.parse('https://earplug.app/g/some-gig?ref=static-bloom'),
@@ -162,6 +162,13 @@ void main() {
         referralBandSlugFromUri(Uri.parse('https://earplug.app/$path')),
         isNull,
       );
+    }
+
+    for (final (url, expected) in const [
+      ('https://earplug.app/join/secret-token', 'secret-token'),
+      ('https://earplug.app/#/join/secret-token', 'secret-token'),
+    ]) {
+      expect(joinTokenFromUri(Uri.parse(url)), expected);
     }
   });
 
@@ -779,20 +786,6 @@ void main() {
     app.loadMoreExploreBands();
     await flushAsyncWork();
     expect(repository.listBandsCalls, 2);
-  });
-
-  test('join token is preserved from a path-based web URL', () {
-    expect(
-      joinTokenFromUri(Uri.parse('https://earplug.app/join/secret-token')),
-      'secret-token',
-    );
-  });
-
-  test('join token is preserved from a hash-based fallback URL', () {
-    expect(
-      joinTokenFromUri(Uri.parse('https://earplug.app/#/join/secret-token')),
-      'secret-token',
-    );
   });
 
   test('ordinary app URLs do not enter the invitation flow', () {

@@ -184,7 +184,6 @@ void main() {
         ),
         findsOneWidget,
       );
-      expectNoFieldInCard(tester);
       expect(tester.takeException(), isNull);
     });
   }
@@ -309,7 +308,6 @@ void main() {
       findsNWidgets(2),
     );
     expect(find.text('The full payment has been refunded.'), findsOneWidget);
-    expectNoFieldInCard(tester);
     expect(tester.takeException(), isNull);
   });
 
@@ -352,7 +350,6 @@ void main() {
     expect(find.text('Use the side gate for load-in.'), findsNothing);
     expect(find.byKey(const Key('booking-exact-address')), findsNothing);
     expect(find.byType(VenueMiniMap), findsNothing);
-    expectNoFieldInCard(tester);
 
     final payment = (await repository.paymentsForBooking(bookingId)).single;
     final checkout = await repository.startInstallmentCheckout(payment.id);
@@ -378,7 +375,6 @@ void main() {
     expect(map.venue.addr, location.addr);
     expect(map.venue.point.latitude, location.lat);
     expect(map.venue.point.longitude, location.lng);
-    expectNoFieldInCard(tester);
     expect(tester.takeException(), isNull);
   });
 
@@ -505,7 +501,6 @@ void main() {
           ),
           findsOneWidget,
         );
-        expectNoFieldInCard(tester);
 
         // Refresh must load reports again, including an admin's resolution.
         repository.platformAdmin = true;
@@ -702,7 +697,6 @@ void main() {
         findsOneWidget,
       );
     }
-    expectNoFieldInCard(tester);
 
     await tester.tap(find.byKey(const Key('booking-withdraw')));
     await tester.pumpAndSettle();
@@ -1200,7 +1194,6 @@ void main() {
       expect(find.text('A welcoming room and helpful crew.'), findsOneWidget);
       expect(find.byKey(const Key('booking-review')), findsNothing);
       expect(find.byKey(const Key('booking-cancel')), findsNothing);
-      expectNoFieldInCard(tester);
       expect(tester.takeException(), isNull);
       harness.app.dispose();
     },

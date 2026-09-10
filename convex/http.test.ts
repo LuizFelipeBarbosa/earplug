@@ -190,23 +190,6 @@ describe("POST /clerk-webhook verification and routing", () => {
     expect(response.status).toBe(500);
     expect(await allUsers(t)).toHaveLength(0);
   });
-
-  test("returns 404 for an unrouted method or path", async () => {
-    const t = convexTest(schema);
-    expect((await t.fetch("/clerk-webhook", { method: "GET" })).status).toBe(
-      404,
-    );
-    expect((await t.fetch("/nope", { method: "POST" })).status).toBe(404);
-  });
-
-  test("acknowledges an unrelated valid event without writes", async () => {
-    const t = convexTest(schema);
-    const response = await postEvent(t, "session.created", {
-      id: "sess_ignored",
-    });
-    expect(response.status).toBe(200);
-    expect(await allUsers(t)).toHaveLength(0);
-  });
 });
 
 describe("Clerk user webhook synchronization", () => {
@@ -728,6 +711,15 @@ describe("Stripe webhook verification and recording", () => {
     expect(second.status).toBe(200);
     expect(await second.text()).toBe("duplicate");
     expect(await allStripeEvents(t)).toHaveLength(1);
+  });
+
+  test("acknowledges an unrelated valid event without writes", async () => {
+    const t = convexTest(schema);
+    const response = await postEvent(t, "session.created", {
+      id: "sess_ignored",
+    });
+    expect(response.status).toBe(200);
+    expect(await allUsers(t)).toHaveLength(0);
   });
 
   test("rejects a corrupted Stripe signature", async () => {

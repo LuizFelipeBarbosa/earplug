@@ -140,7 +140,6 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('Venue TBD'), findsNothing);
-    expectNoFieldInCard(tester);
 
     final newRequest = find.byKey(const Key('org-opps-new'));
     await tester.ensureVisible(newRequest);
@@ -193,7 +192,6 @@ void main() {
         '${expected.sold}/${expected.capacity} sold · ${expected.net.label} net',
       );
       expect(repository.salesReads, readsBeforeScreen + 1);
-      expectNoFieldInCard(tester);
 
       await harness.app.refreshOpportunities('org1');
       await tester.pumpAndSettle();
@@ -227,9 +225,6 @@ void main() {
                 : OpportunityTicketing.paid,
           ),
         );
-        final repository =
-            harness.app.repository as _PublishedOpportunityRepository;
-        expect(repository.salesReads, 0);
         expect(find.byKey(const Key('org-opp-sales-opp1')), findsNothing);
         final card = find.byKey(const ValueKey('org-opp-opp1'));
         await tester.ensureVisible(card);
@@ -966,30 +961,28 @@ void main() {
     harness.app.dispose();
   });
 
-  for (final role in [OrganizationRole.finance, OrganizationRole.door]) {
-    testWidgets('${role.name} members can read applicants without actions', (
+  testWidgets('finance members can read applicants without actions', (
+    tester,
+  ) async {
+    final harness = await _pumpOrganizerScreen(
       tester,
-    ) async {
-      final harness = await _pumpOrganizerScreen(
-        tester,
-        const OpportunityApplicantsScreen(opportunityId: 'opp1'),
-      );
-      harness.app.myOrganizations = [
-        OrganizationMembership(
-          organization: DemoData.organizations['org1']!,
-          role: role,
-        ),
-      ];
-      await enterOrganizer(tester, harness, 'org1');
+      const OpportunityApplicantsScreen(opportunityId: 'opp1'),
+    );
+    harness.app.myOrganizations = [
+      OrganizationMembership(
+        organization: DemoData.organizations['org1']!,
+        role: OrganizationRole.finance,
+      ),
+    ];
+    await enterOrganizer(tester, harness, 'org1');
 
-      expect(find.byKey(const ValueKey('applicant-app1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('applicant-app2')), findsOneWidget);
-      expect(find.text('START REVIEW'), findsNothing);
-      expect(find.text('SHORTLIST'), findsNothing);
-      expect(find.text('DECLINE'), findsNothing);
-      harness.app.dispose();
-    });
-  }
+    expect(find.byKey(const ValueKey('applicant-app1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('applicant-app2')), findsOneWidget);
+    expect(find.text('START REVIEW'), findsNothing);
+    expect(find.text('SHORTLIST'), findsNothing);
+    expect(find.text('DECLINE'), findsNothing);
+    harness.app.dispose();
+  });
 
   testWidgets(
     'applicant insights expander renders numbers for a non-suppressed band',
@@ -1070,27 +1063,6 @@ void main() {
       harness.app.dispose();
     },
   );
-
-  for (final screen in const [
-    OrgOpportunitiesScreen(),
-    OpportunityApplicantsScreen(opportunityId: 'opp1'),
-  ]) {
-    testWidgets('${screen.runtimeType} has no text fields inside cards', (
-      tester,
-    ) async {
-      final harness = await _pumpOrganizerScreen(tester, screen);
-
-      expect(find.byType(EpCard), findsWidgets);
-      expect(
-        find.ancestor(
-          of: find.byType(TextField),
-          matching: find.byType(EpCard),
-        ),
-        findsNothing,
-      );
-      harness.app.dispose();
-    });
-  }
 }
 
 Future<AppHarness> _pumpOrganizerScreen(

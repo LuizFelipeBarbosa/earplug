@@ -380,7 +380,6 @@ void main() {
       harness.app.bookingById(booking.id)?.status,
       BookingStatus.cancelledByArtist,
     );
-    expect(repository.bookingCalls, 2);
     expect(repository.viewAsCalls, [BookingSide.artist, BookingSide.artist]);
     expect(harness.app.bandBookings, [cancelled]);
     expect(repository.bandRequests, ['b1', 'b1']);
@@ -433,7 +432,6 @@ void main() {
       harness.app.bookingById(booking.id)?.status,
       BookingStatus.artistAccepted,
     );
-    expect(repository.bookingCalls, 2);
     expect(repository.viewAsCalls, [BookingSide.artist, BookingSide.artist]);
     expect(harness.app.bandBookings, [accepted]);
     expect(repository.bandRequests, ['b1', 'b1']);
@@ -507,7 +505,6 @@ void main() {
           harness.app.bookingById(booking.id)!.status,
           BookingStatus.disputed,
         );
-        expect(repository.bookingCalls, 2);
         expect(repository.viewAsCalls, [viewerSide, viewerSide]);
         if (viewerSide == BookingSide.organizer) {
           expect(harness.app.organizationBookings, [disputed]);

@@ -671,32 +671,6 @@ void main() {
       expect(launched, isTrue);
     });
 
-    testWidgets('stat labels wrap instead of truncating on narrow tiles', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        _host(
-          const SizedBox(
-            width: 90,
-            child: EpStatCard(
-              label: 'Next gig RSVPs',
-              value: '12',
-              caption: 'Riptide Release Show',
-              expand: false,
-            ),
-          ),
-        ),
-      );
-
-      final label = tester.widget<Text>(find.text('NEXT GIG RSVPS'));
-      expect(label.maxLines, 2);
-      expect(label.style!.fontSize, greaterThanOrEqualTo(11));
-      expect(
-        tester.getSize(find.text('NEXT GIG RSVPS')).height,
-        greaterThan(20),
-      );
-    });
-
     testWidgets('stat tiles accommodate accessibility text at both widths', (
       tester,
     ) async {

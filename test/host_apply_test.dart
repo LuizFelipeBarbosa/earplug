@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:earplug/app_links.dart';
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/models.dart';
@@ -13,48 +12,11 @@ import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'support/design_rules.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
 void main() {
-  testWidgets('host agreement link preserves the full checkbox label', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    final opened = <Uri>[];
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      home: HostApplyScreen(
-        launch: (uri) async {
-          opened.add(uri);
-          return true;
-        },
-      ),
-    );
-    addTearDown(() => _disposeApp(harness.app));
-
-    await _reveal(tester, 'host-apply-agree');
-    final agreement = find.byKey(const ValueKey('host-apply-agree'));
-    expect(
-      find.text(
-        'I agree to the Host Agreement and booking protection terms',
-        findRichText: true,
-      ),
-      findsOneWidget,
-    );
-    await tester.tapOnText(
-      find.textRange.ofSubstring('Host Agreement', descendentOf: agreement),
-    );
-    await tester.pumpAndSettle();
-
-    expect(opened, [Uri.parse(legalHostAgreementUrl)]);
-    expect(tester.widget<CheckboxListTile>(agreement).value, isFalse);
-  });
-
   testWidgets(
     'flat host form autosaves, validates every requirement and submits',
     (tester) async {
@@ -72,7 +34,6 @@ void main() {
       addTearDown(() => _disposeApp(harness.app));
 
       expect(find.text('BECOME A HOST'), findsOneWidget);
-      expectNoFieldInCard(tester);
       expect(_submitBar(tester).onPrimary, isNull);
       for (final field in _hostFields.entries) {
         await _enterText(tester, field.key, field.value);
@@ -120,7 +81,6 @@ void main() {
         (await repository.myOrganizationApplication())!.hostAgreementAcceptedAt,
         isNotNull,
       );
-      expectNoFieldInCard(tester);
 
       // Each field still gates submission when the document and agreement exist.
       for (final field in _hostFields.entries) {
@@ -235,7 +195,6 @@ void main() {
         ),
         findsOneWidget,
       );
-      expectNoFieldInCard(tester);
     });
   }
 

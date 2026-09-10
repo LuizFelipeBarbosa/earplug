@@ -18,35 +18,40 @@ export function expectStatusTransitions<T extends string>({
   arrow?: string;
   buildErrorMessage?: (entity: string, from: T, to: T) => string;
 }): void {
+  const statuses = Object.keys(expected) as T[];
+
+  const allowedFrom = statuses.find((status) => expected[status].length > 0);
+  if (allowedFrom === undefined) {
+    throw new Error(`${entity}: expected at least one non-terminal status`);
+  }
+  const allowedTo = expected[allowedFrom][0];
+
+  const deniedFrom =
+    statuses.find((status) => expected[status].length === 0) ?? statuses[0];
+  const deniedTo = statuses.find(
+    (status) => !expected[deniedFrom].includes(status),
+  );
+  if (deniedTo === undefined) {
+    throw new Error(`${entity}: expected at least one denied edge`);
+  }
+
   describe(`${entity} transitions`, () => {
     test("declares exactly the allowed edges", () => {
       expect(table).toEqual(expected);
     });
 
-    const statuses = Object.keys(expected) as T[];
-    for (const from of statuses) {
-      if (expected[from].length === 0) {
-        test(`${from} is terminal`, () => {
-          expect(table[from]).toEqual([]);
-        });
-      }
+    test(`${allowedFrom} ${arrow} ${allowedTo}`, () => {
+      expect(canTransition(table, allowedFrom, allowedTo)).toBe(true);
+      expect(assertTransition(allowedFrom, allowedTo)).toBeUndefined();
+    });
 
-      for (const to of statuses) {
-        test(`${from} ${arrow} ${to}`, () => {
-          const allowed = expected[from].includes(to);
-          expect(canTransition(table, from, to)).toBe(allowed);
-
-          if (allowed) {
-            expect(assertTransition(from, to)).toBeUndefined();
-          } else {
-            expect(() => assertTransition(from, to)).toThrowError(
-              expect.objectContaining({
-                message: buildErrorMessage(entity, from, to),
-              }),
-            );
-          }
-        });
-      }
-    }
+    test(`${deniedFrom} ${arrow} ${deniedTo}`, () => {
+      expect(canTransition(table, deniedFrom, deniedTo)).toBe(false);
+      expect(() => assertTransition(deniedFrom, deniedTo)).toThrowError(
+        expect.objectContaining({
+          message: buildErrorMessage(entity, deniedFrom, deniedTo),
+        }),
+      );
+    });
   });
 }

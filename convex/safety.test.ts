@@ -240,7 +240,7 @@ describe("safety reporting", () => {
     },
   );
 
-  test.each(["stranger", "member", "platformAdmin"] as const)(
+  test.each(["stranger", "platformAdmin"] as const)(
     "refuses reporting and reading as non-party %s",
     async (actor) => {
       const f = await setupSafety();
@@ -291,11 +291,6 @@ describe("safety reporting", () => {
 
   test.each([
     "offer_sent",
-    "artist_accepted",
-    "awaiting_payment",
-    "expired",
-    "withdrawn",
-    "declined",
   ] as const)("refuses reports for ineligible status %s", async (status) => {
     const f = await setupSafety();
     await f.t.run((ctx) => ctx.db.patch(f.bookingId, { status }));

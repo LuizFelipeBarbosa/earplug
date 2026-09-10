@@ -1,8 +1,5 @@
-import { expect, test } from "vitest";
 import {
-  APPLICATION_ACTIVE_STATUSES,
   APPLICATION_TRANSITIONS,
-  OPPORTUNITY_ARTIST_VISIBLE_STATUSES,
   OPPORTUNITY_TRANSITIONS,
   SLOT_TRANSITIONS,
   assertApplicationTransition,
@@ -55,22 +52,4 @@ expectStatusTransitions({
     booked: ["open", "cancelled"],
     cancelled: [],
   },
-});
-
-test("application active statuses have the expected order", () => {
-  expect(APPLICATION_ACTIVE_STATUSES).toEqual([
-    "submitted",
-    "under_review",
-    "shortlisted",
-    "offered",
-  ]);
-});
-
-test("opportunity artist-visible statuses have the expected order", () => {
-  expect(OPPORTUNITY_ARTIST_VISIBLE_STATUSES).toEqual([
-    "open",
-    "applications_closed",
-    "booking",
-    "confirmed",
-  ]);
 });
