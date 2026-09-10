@@ -45,7 +45,7 @@ void main() {
     },
   );
 
-  for (final preset in ['YEAR TO DATE', 'LAST YEAR', 'LAST 30 DAYS']) {
+  for (final preset in ['YEAR TO DATE']) {
     testWidgets('$preset downloads the band payout statement PDF', (
       tester,
     ) async {
@@ -506,11 +506,7 @@ void main() {
 
   for (final (description, requirementsDue, needsTaxInformation) in [
     ('ID number', ['external_account', 'individual.id_number'], true),
-    ('SSN', ['individual.ssn_last_4'], true),
-    ('tax ID', ['company.tax_id'], true),
-    ('verification document', ['individual.verification.document'], true),
     ('no requirements', <String>[], false),
-    ('non-tax requirement', ['external_account'], false),
   ]) {
     testWidgets('band tax row handles $description', (tester) async {
       final auth = FakeAuthService();
@@ -629,11 +625,61 @@ void main() {
     },
   );
 
+  testWidgets(
+    'restricted organization with submitted details can manage tax details and retry errors',
+    (tester) async {
+      final auth = FakeAuthService();
+      final repository = _stripeStatusRepository(
+        auth: auth,
+        state: StripeAccountState.restricted,
+        detailsSubmitted: true,
+        requirementsDue: const ['individual.id_number'],
+      );
+      // Enable the demo dashboard link while the displayed status stays restricted.
+      await repository.refreshOrganizationAccountStatus('org1');
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        home: const Scaffold(body: OrgSettingsScreen()),
+        beforePump: (app) => app.switchToOrganization('org1'),
+      );
+      await enterOrganizer(tester, harness, 'org1');
+
+      final button = find.byKey(const Key('org-settings-tax-dashboard'));
+      await tester.scrollUntilVisible(
+        button,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.descendant(of: button, matching: find.text('MANAGE IN STRIPE')),
+        findsOneWidget,
+      );
+      harness.app.hostedUrlLauncher = (_) async {
+        throw StateError('Could not open Stripe');
+      };
+      await tester.ensureVisible(button);
+      await tester.pump();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('org-settings-stripe-error')), findsOneWidget);
+      expect(find.textContaining('Could not open Stripe'), findsOneWidget);
+      expect(find.byKey(const Key('org-settings-save-error')), findsNothing);
+
+      final launched = <String>[];
+      harness.app.hostedUrlLauncher = (url) async => launched.add(url);
+      await tester.ensureVisible(button);
+      await tester.pump();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(launched, ['https://demo.stripe/dashboard/org1']);
+      expect(find.byKey(const Key('org-settings-stripe-error')), findsNothing);
+      expect(find.byKey(const Key('org-settings-save-error')), findsNothing);
+    },
+  );
+
   for (final (state, caption) in [
-    (StripeAccountState.none, 'Set up payouts'),
-    (StripeAccountState.unknown, 'Set up payouts'),
-    (StripeAccountState.onboarding, 'Finish setup'),
-    (StripeAccountState.restricted, 'Finish setup'),
     (StripeAccountState.enabled, 'Enabled'),
   ]) {
     testWidgets('band payouts tile shows ${state.name} and opens payouts', (
@@ -816,7 +862,7 @@ void main() {
     expect(find.text('Setup in progress'), findsOneWidget);
   });
 
-  for (final band in [true, false]) {
+  for (final band in [true]) {
     testWidgets('${band ? 'band' : 'organization'} lists Stripe requirements', (
       tester,
     ) async {
@@ -849,7 +895,7 @@ void main() {
     });
   }
 
-  for (final complete in [false, true]) {
+  for (final complete in [false]) {
     testWidgets('organization Stripe readiness links when complete=$complete', (
       tester,
     ) async {

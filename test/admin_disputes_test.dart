@@ -534,21 +534,4 @@ void main() {
     );
     expectNoFieldInCard(tester);
   });
-
-  testWidgets('non-admins cannot view disputes', (tester) async {
-    final auth = FakeAuthService();
-    final repository = DemoRepository(auth: auth);
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const AdminDisputesScreen(),
-    );
-    await harness.auth.signInDemo();
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('admin-not-authorized')), findsOneWidget);
-    expect(find.byKey(const Key('admin-disputes-more')), findsNothing);
-    expectNoFieldInCard(tester);
-  });
 }

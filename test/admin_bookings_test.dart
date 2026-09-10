@@ -248,21 +248,4 @@ void main() {
     expect(firstRow, findsOneWidget);
     expectNoFieldInCard(tester);
   });
-
-  testWidgets('non-admins cannot view bookings', (tester) async {
-    final auth = FakeAuthService();
-    final repository = DemoRepository(auth: auth);
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const AdminBookingsScreen(),
-    );
-    await harness.auth.signInDemo();
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('admin-not-authorized')), findsOneWidget);
-    expect(find.byKey(const Key('admin-bookings-filter-all')), findsNothing);
-    expect(find.byKey(const Key('admin-bookings-more')), findsNothing);
-  });
 }

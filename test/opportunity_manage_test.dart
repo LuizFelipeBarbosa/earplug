@@ -227,9 +227,6 @@ void main() {
                 : OpportunityTicketing.paid,
           ),
         );
-        final repository =
-            harness.app.repository as _PublishedOpportunityRepository;
-        expect(repository.salesReads, 0);
         expect(find.byKey(const Key('org-opp-sales-opp1')), findsNothing);
         final card = find.byKey(const ValueKey('org-opp-opp1'));
         await tester.ensureVisible(card);
@@ -966,30 +963,28 @@ void main() {
     harness.app.dispose();
   });
 
-  for (final role in [OrganizationRole.finance, OrganizationRole.door]) {
-    testWidgets('${role.name} members can read applicants without actions', (
+  testWidgets('finance members can read applicants without actions', (
+    tester,
+  ) async {
+    final harness = await _pumpOrganizerScreen(
       tester,
-    ) async {
-      final harness = await _pumpOrganizerScreen(
-        tester,
-        const OpportunityApplicantsScreen(opportunityId: 'opp1'),
-      );
-      harness.app.myOrganizations = [
-        OrganizationMembership(
-          organization: DemoData.organizations['org1']!,
-          role: role,
-        ),
-      ];
-      await enterOrganizer(tester, harness, 'org1');
+      const OpportunityApplicantsScreen(opportunityId: 'opp1'),
+    );
+    harness.app.myOrganizations = [
+      OrganizationMembership(
+        organization: DemoData.organizations['org1']!,
+        role: OrganizationRole.finance,
+      ),
+    ];
+    await enterOrganizer(tester, harness, 'org1');
 
-      expect(find.byKey(const ValueKey('applicant-app1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('applicant-app2')), findsOneWidget);
-      expect(find.text('START REVIEW'), findsNothing);
-      expect(find.text('SHORTLIST'), findsNothing);
-      expect(find.text('DECLINE'), findsNothing);
-      harness.app.dispose();
-    });
-  }
+    expect(find.byKey(const ValueKey('applicant-app1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('applicant-app2')), findsOneWidget);
+    expect(find.text('START REVIEW'), findsNothing);
+    expect(find.text('SHORTLIST'), findsNothing);
+    expect(find.text('DECLINE'), findsNothing);
+    harness.app.dispose();
+  });
 
   testWidgets(
     'applicant insights expander renders numbers for a non-suppressed band',

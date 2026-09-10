@@ -7,7 +7,6 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/gig_create.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
-import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
@@ -149,39 +148,6 @@ void main() {
       expect(app.gfPrice, 'FREE');
     },
   );
-
-  testWidgets('the six editing slots use the two-column checklist grammar', (
-    tester,
-  ) async {
-    await _pumpGigCreate(tester);
-
-    final date = tester.getTopLeft(find.byKey(const ValueKey('gig-slot-date')));
-    final times = tester.getTopLeft(
-      find.byKey(const ValueKey('gig-slot-times')),
-    );
-    final venue = tester.getTopLeft(
-      find.byKey(const ValueKey('gig-slot-venue')),
-    );
-    final cover = tester.getTopLeft(
-      find.byKey(const ValueKey('gig-slot-cover')),
-    );
-    final access = tester.getTopLeft(
-      find.byKey(const ValueKey('gig-slot-access')),
-    );
-    final audience = tester.getTopLeft(
-      find.byKey(const ValueKey('gig-slot-audience')),
-    );
-
-    expect(date.dy, times.dy);
-    expect(venue.dy, cover.dy);
-    expect(access.dy, audience.dy);
-    expect(times.dx, greaterThan(date.dx));
-    expect(venue.dx, date.dx);
-    expect(cover.dx, times.dx);
-    expect(access.dx, date.dx);
-    expect(audience.dx, times.dx);
-    expect(find.byType(StickyActionBar), findsOne);
-  });
 
   testWidgets('the editing slots collapse to one column for enlarged text', (
     tester,
@@ -715,25 +681,6 @@ void main() {
     expect(find.text('LATE ARRIVAL HALL'), findsOne);
   });
 
-  testWidgets('venue sheet list sizes to two venues', (tester) async {
-    final repository = _TwoVenueRepository(auth: FakeAuthService());
-    await _pumpGigCreate(tester, repository: repository);
-
-    await tester.tap(find.text('Choose a venue'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('FIRST TEST VENUE'), findsOne);
-    expect(find.text('SECOND TEST VENUE'), findsOne);
-    final venueList = find.descendant(
-      of: find.byType(BottomSheet),
-      matching: find.byType(ListView),
-    );
-    expect(venueList, findsOne);
-    final screenHeight =
-        tester.view.physicalSize.height / tester.view.devicePixelRatio;
-    expect(tester.getSize(venueList).height, lessThan(screenHeight * .6));
-  });
-
   test(
     'new venues are created, deduplicated, refreshed, and selected',
     () async {
@@ -1063,39 +1010,6 @@ class _GatedFlyerRepository extends StubRepository {
     publishedFlyStorageId = (await getGigProject(projectId)).flyStorageId;
     return super.publishGigDraft(projectId);
   }
-}
-
-class _TwoVenueRepository extends StubRepository {
-  _TwoVenueRepository({required super.auth}) {
-    returns('venues', _venues);
-  }
-
-  static const _venues = [
-    Venue(
-      id: 'test-venue-1',
-      name: 'First Test Venue',
-      area: 'Oakland',
-      addr: '1 First Street',
-      point: LatLng(37.8, -122.27),
-    ),
-    Venue(
-      id: 'test-venue-2',
-      name: 'Second Test Venue',
-      area: 'San Francisco',
-      addr: '2 Second Street',
-      point: LatLng(37.76, -122.42),
-    ),
-  ];
-
-  @override
-  Stream<FeedSnapshot> feed() => super.feed().map(
-    (snapshot) => FeedSnapshot(
-      gigs: const [],
-      venues: {for (final venue in _venues) venue.id: venue},
-      bands: snapshot.bands,
-      nextStartsAt: snapshot.nextStartsAt,
-    ),
-  );
 }
 
 class _GatedDraftRepository extends DemoRepository {

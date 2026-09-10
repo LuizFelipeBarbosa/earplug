@@ -2,6 +2,10 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/date_names.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/navigation.dart';
+import 'package:earplug/screens/admin_application.dart';
+import 'package:earplug/screens/admin_bookings.dart';
+import 'package:earplug/screens/admin_disputes.dart';
+import 'package:earplug/screens/admin_queue.dart';
 import 'package:earplug/screens/admin_safety.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:flutter/material.dart';
@@ -179,23 +183,39 @@ void main() {
     expect(oldest, findsOneWidget);
   });
 
-  testWidgets('non-admins cannot view safety reports', (tester) async {
-    final auth = FakeAuthService();
-    final repository = DemoRepository(auth: auth);
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const AdminSafetyScreen(),
-    );
-    await harness.auth.signInDemo();
-    await tester.pumpAndSettle();
+  for (final (label, screen, assertExtra)
+      in <(String, Widget, void Function(WidgetTester)?)>[
+        ('bookings', const AdminBookingsScreen(), (tester) {
+          expect(find.byKey(const Key('admin-bookings-filter-all')), findsNothing);
+          expect(find.byKey(const Key('admin-bookings-more')), findsNothing);
+        }),
+        ('disputes', const AdminDisputesScreen(), (tester) {
+          expect(find.byKey(const Key('admin-disputes-more')), findsNothing);
+          expectNoFieldInCard(tester);
+        }),
+        ('the admin queue', const AdminQueueScreen(), null),
+        (
+          'an admin application',
+          const AdminApplicationScreen(applicationId: 'application-review-1'),
+          null,
+        ),
+        ('safety reports', const AdminSafetyScreen(), (tester) {
+          expect(
+            find.text('Only platform admins can view safety reports.'),
+            findsOneWidget,
+          );
+          expect(find.byKey(const Key('admin-safety-more')), findsNothing);
+        }),
+      ]) {
+    testWidgets('non-admins cannot view $label', (tester) async {
+      final auth = FakeAuthService();
+      final repository = DemoRepository(auth: auth);
+      await pumpApp(tester, auth: auth, repository: repository, home: screen);
+      await auth.signInDemo();
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('admin-not-authorized')), findsOneWidget);
-    expect(
-      find.text('Only platform admins can view safety reports.'),
-      findsOneWidget,
-    );
-    expect(find.byKey(const Key('admin-safety-more')), findsNothing);
-  });
+      expect(find.byKey(const Key('admin-not-authorized')), findsOneWidget);
+      assertExtra?.call(tester);
+    });
+  }
 }
