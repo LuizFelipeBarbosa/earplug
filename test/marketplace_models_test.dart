@@ -1905,8 +1905,8 @@ void main() {
       expect(transaction.stripeRef, 'pi_1');
     });
 
-    test('TransactionsPage accepts both list keys and pagination fields', () {
-      for (final key in ['page', 'items']) {
+    test('TransactionsPage parses the page list and pagination fields', () {
+      for (final key in ['page']) {
         final page = TransactionsPage.fromJson({
           key: [transactionJson],
           'isDone': false,

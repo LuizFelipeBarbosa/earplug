@@ -3925,7 +3925,7 @@ class TransactionsPage {
   factory TransactionsPage.fromJson(Map<String, dynamic> json) =>
       TransactionsPage(
         items: [
-          for (final item in asFilteredMapList(json['page'] ?? json['items']))
+          for (final item in asFilteredMapList(json['page']))
             FinanceTransaction.fromJson(item),
         ],
         isDone: json['isDone'] == true,
