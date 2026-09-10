@@ -173,7 +173,7 @@ describe("private locations", () => {
     expect(await f.t.run((ctx) => ctx.db.get(f.locationId))).toEqual(before);
   });
 
-  test.each(["asOwner"] as const)(
+  test.each(["asOwner", "asManager"] as const)(
     "all operations allow %s with labels and notes at their limits",
     async (actor) => {
       const f = await setupPrivateHost();

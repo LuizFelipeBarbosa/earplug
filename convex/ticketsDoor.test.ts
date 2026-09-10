@@ -468,7 +468,7 @@ describe("ticketsDoor.checkIn", () => {
 });
 
 describe("door authorization", () => {
-  test.each(["fan"] as const)(
+  test.each(["fan", "finance"] as const)(
     "rejects %s on organization gigs for both endpoints",
     async (actor) => {
       const { as, gigId, readRows } = await setupDoor();

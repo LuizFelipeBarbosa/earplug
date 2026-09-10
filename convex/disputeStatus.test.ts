@@ -338,4 +338,12 @@ describe("Dispute transitions", () => {
       }),
     );
   });
+
+  test("resolved -> under_review is denied", () => {
+    expect(() => assertDisputeTransition("resolved", "under_review")).toThrowError(
+      expect.objectContaining({
+        message: "Dispute cannot go from resolved to under_review",
+      }),
+    );
+  });
 });
