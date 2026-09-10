@@ -264,6 +264,44 @@ void main() {
     );
   });
 
+  test('payment routes require exact non-empty segments and query values', () {
+    for (final (parser, path, query) in [
+      (checkoutSessionFromUri, 'checkout/return', 'session_id'),
+      (checkoutCancelBookingFromUri, 'checkout/cancel', 'booking'),
+      (ticketCheckoutSessionFromUri, 'tickets/return', 'session_id'),
+      (ticketCheckoutCancelOrderFromUri, 'tickets/cancel', 'order'),
+      (stripeReturnFromUri, 'band/stripe/return', 'band'),
+      (stripeReturnFromUri, 'band/stripe/refresh', 'band'),
+      (stripeReturnFromUri, 'org/stripe/return', 'org'),
+      (stripeReturnFromUri, 'org/stripe/refresh', 'org'),
+    ]) {
+      for (final suffix in [
+        path,
+        '$path?$query=',
+        '$path?$query=%20',
+        '$path?wrong=value',
+        'prefix/$path?$query=value',
+        '$path/extra?$query=value',
+        '${path}ing?$query=value',
+      ]) {
+        expect(
+          parser(Uri.parse('https://earplug.app/$suffix')),
+          isNull,
+          reason: suffix,
+        );
+        expect(
+          parser(Uri.parse('https://earplug.app/#/$suffix')),
+          isNull,
+          reason: 'fragment: $suffix',
+        );
+      }
+      expect(
+        parser(Uri.parse('https://earplug.app/$path/?$query=value')),
+        isNotNull,
+      );
+    }
+  });
+
   test('signed-out booking links resume after authentication', () async {
     final auth = FakeAuthService();
     final app = AppState.demo(auth: auth, initialBookingId: 'bk1');
@@ -566,6 +604,37 @@ void main() {
       expect(app.current.screen, expected);
     }
   });
+
+  test(
+    'blank ticket route parameters leave the home route unchanged',
+    () async {
+      final app = AppState.demo(
+        initialTicketId: ' ',
+        initialTicketCheckoutSessionId: ' ',
+        initialTicketCheckoutCancelOrderId: ' ',
+      );
+      addTearDown(app.dispose);
+      await flushAsyncWork();
+
+      expect(app.current.screen, Screen.home);
+      expect(app.myTicketsLoaded, isFalse);
+    },
+  );
+
+  test(
+    'blank payment return parameters leave the home route unchanged',
+    () async {
+      final app = AppState.demo(
+        initialCheckoutSessionId: ' ',
+        initialCheckoutCancelBookingId: ' ',
+        initialStripeReturn: ' ',
+      );
+      addTearDown(app.dispose);
+      await flushAsyncWork();
+
+      expect(app.current.screen, Screen.home);
+    },
+  );
 
   test(
     'Stripe return identities use the route instead of ambient context',

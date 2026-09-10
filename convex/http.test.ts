@@ -43,8 +43,9 @@ async function signed(
 async function signedStripe(
   body: string,
   secret: string = STRIPE_TEST_SECRET,
+  opts: { timestampSec?: number; corrupt?: boolean } = {},
 ): Promise<HeadersInit> {
-  const timestampSec = Math.floor(Date.now() / 1000);
+  const timestampSec = opts.timestampSec ?? Math.floor(Date.now() / 1000);
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -57,9 +58,11 @@ async function signedStripe(
     key,
     new TextEncoder().encode(`${timestampSec}.${body}`),
   );
-  const signature = Array.from(new Uint8Array(signatureBytes), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
+  const signature = opts.corrupt
+    ? "corrupt"
+    : Array.from(new Uint8Array(signatureBytes), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
   return {
     "content-type": "application/json",
     "stripe-signature": `t=${timestampSec},v1=${signature}`,
@@ -708,6 +711,51 @@ describe("Stripe webhook verification and recording", () => {
     expect(second.status).toBe(200);
     expect(await second.text()).toBe("duplicate");
     expect(await allStripeEvents(t)).toHaveLength(1);
+  });
+
+  test("acknowledges an unrelated valid event without writes", async () => {
+    const t = convexTest(schema);
+    const response = await postEvent(t, "session.created", {
+      id: "sess_ignored",
+    });
+    expect(response.status).toBe(200);
+    expect(await allUsers(t)).toHaveLength(0);
+  });
+
+  test("rejects a corrupted Stripe signature", async () => {
+    const t = convexTest(schema);
+    const body = JSON.stringify({
+      id: "evt_bad_signature",
+      type: "payment_intent.created",
+      livemode: false,
+    });
+    const response = await t.fetch("/stripe-webhook", {
+      method: "POST",
+      headers: await signedStripe(body, STRIPE_TEST_SECRET, { corrupt: true }),
+      body,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await allStripeEvents(t)).toHaveLength(0);
+  });
+
+  test("rejects a stale Stripe signature timestamp", async () => {
+    const t = convexTest(schema);
+    const body = JSON.stringify({
+      id: "evt_stale_signature",
+      type: "payment_intent.created",
+      livemode: false,
+    });
+    const response = await t.fetch("/stripe-webhook", {
+      method: "POST",
+      headers: await signedStripe(body, STRIPE_TEST_SECRET, {
+        timestampSec: Math.floor(Date.now() / 1000) - 301,
+      }),
+      body,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await allStripeEvents(t)).toHaveLength(0);
   });
 
   test("returns 500 when the platform Stripe secret is unset", async () => {
