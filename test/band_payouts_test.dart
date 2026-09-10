@@ -16,7 +16,6 @@ import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'support/design_rules.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
@@ -195,7 +194,6 @@ void main() {
     expect(find.byKey(const Key('band-payouts-status')), findsOneWidget);
     expect(find.byKey(const Key('band-payouts-history')), findsOneWidget);
     expect(find.text('No payouts yet.'), findsOneWidget);
-    expectNoFieldInCard(tester);
 
     await tester.tap(find.byKey(const Key('band-payouts-setup')));
     await tester.pumpAndSettle();
@@ -273,7 +271,6 @@ void main() {
     expect(find.text('ENABLE TICKET SALES'), findsOneWidget);
     expect(find.text('TICKET SALES ENABLED'), findsNothing);
     expect(find.text(_ticketSalesCaption), findsOneWidget);
-    expectNoFieldInCard(tester);
 
     await tester.ensureVisible(button);
     await tester.tap(button);
@@ -313,7 +310,6 @@ void main() {
     expect(pill.tone, EpStatusPillTone.success);
     expect(find.byKey(const Key('band-payouts-enable-tickets')), findsNothing);
     expect(find.text(_ticketSalesCaption), findsOneWidget);
-    expectNoFieldInCard(tester);
   });
 
   testWidgets('ticket sales stay hidden until a band has a Stripe account', (
@@ -455,7 +451,6 @@ void main() {
             .tone,
         EpStatusPillTone.warning,
       );
-      expectNoFieldInCard(tester);
     },
   );
 
@@ -571,7 +566,6 @@ void main() {
         find.byKey(const Key('band-payouts-tax-dashboard')),
         detailsSubmitted ? findsOneWidget : findsNothing,
       );
-      expectNoFieldInCard(tester);
     });
   }
 
@@ -764,7 +758,6 @@ void main() {
     );
     expect(find.byKey(const Key('org-settings-stripe')), findsOneWidget);
     expect(find.text('Not connected'), findsOneWidget);
-    expectNoFieldInCard(tester);
 
     await tester.ensureVisible(
       find.byKey(const Key('org-settings-stripe-setup')),

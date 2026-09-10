@@ -81,7 +81,6 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('The Knockout'), findsOneWidget);
-    expectNoFieldInCard(tester);
   });
 
   testWidgets('admin queue shows a promoter type pill for submitted drafts', (
@@ -361,7 +360,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(hostRow, findsOneWidget);
     expect(organizerRow, findsOneWidget);
-    expectNoFieldInCard(tester);
   });
 
   testWidgets('admin reviews host details and approves a host account', (

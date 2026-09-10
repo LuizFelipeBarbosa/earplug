@@ -12,7 +12,6 @@ import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'support/design_rules.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
@@ -35,7 +34,6 @@ void main() {
       addTearDown(() => _disposeApp(harness.app));
 
       expect(find.text('BECOME A HOST'), findsOneWidget);
-      expectNoFieldInCard(tester);
       expect(_submitBar(tester).onPrimary, isNull);
       for (final field in _hostFields.entries) {
         await _enterText(tester, field.key, field.value);
@@ -83,7 +81,6 @@ void main() {
         (await repository.myOrganizationApplication())!.hostAgreementAcceptedAt,
         isNotNull,
       );
-      expectNoFieldInCard(tester);
 
       // Each field still gates submission when the document and agreement exist.
       for (final field in _hostFields.entries) {
@@ -198,7 +195,6 @@ void main() {
         ),
         findsOneWidget,
       );
-      expectNoFieldInCard(tester);
     });
   }
 

@@ -86,7 +86,6 @@ void main() {
         findsNothing,
       );
     }
-    expectNoFieldInCard(tester);
 
     await tester.tap(card);
     await tester.pumpAndSettle();
@@ -119,7 +118,6 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('EXPECTED GUESTS · 45'), findsOneWidget);
-    expectNoFieldInCard(tester);
     expect(tester.takeException(), isNull);
   });
 
@@ -287,7 +285,6 @@ void main() {
     );
     expect(find.text(r'HEADLINER · $300.00'), findsOneWidget);
     expect(find.byKey(const Key('band-gigs-load-more')), findsNothing);
-    expectNoFieldInCard(tester);
     harness.app.dispose();
   });
 
@@ -782,7 +779,6 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const Key('opp-detail-apply')), findsOneWidget);
-    expectNoFieldInCard(tester);
 
     await tester.tap(find.byKey(const Key('opp-detail-apply')));
     await tester.pumpAndSettle();

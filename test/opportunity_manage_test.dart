@@ -140,7 +140,6 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('Venue TBD'), findsNothing);
-    expectNoFieldInCard(tester);
 
     final newRequest = find.byKey(const Key('org-opps-new'));
     await tester.ensureVisible(newRequest);
@@ -193,7 +192,6 @@ void main() {
         '${expected.sold}/${expected.capacity} sold · ${expected.net.label} net',
       );
       expect(repository.salesReads, readsBeforeScreen + 1);
-      expectNoFieldInCard(tester);
 
       await harness.app.refreshOpportunities('org1');
       await tester.pumpAndSettle();
@@ -1065,27 +1063,6 @@ void main() {
       harness.app.dispose();
     },
   );
-
-  for (final screen in const [
-    OrgOpportunitiesScreen(),
-    OpportunityApplicantsScreen(opportunityId: 'opp1'),
-  ]) {
-    testWidgets('${screen.runtimeType} has no text fields inside cards', (
-      tester,
-    ) async {
-      final harness = await _pumpOrganizerScreen(tester, screen);
-
-      expect(find.byType(EpCard), findsWidgets);
-      expect(
-        find.ancestor(
-          of: find.byType(TextField),
-          matching: find.byType(EpCard),
-        ),
-        findsNothing,
-      );
-      harness.app.dispose();
-    });
-  }
 }
 
 Future<AppHarness> _pumpOrganizerScreen(

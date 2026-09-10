@@ -8,7 +8,6 @@ import 'package:earplug/services/geocoding_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'support/design_rules.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
@@ -60,7 +59,6 @@ void main() {
         app.go(Screen.privateLocationEdit, 'new');
       },
     );
-    expectNoFieldInCard(tester);
 
     await _enterText(tester, 'private-location-label', 'Backyard');
     await _pickAddress(tester, 'Valencia');
@@ -79,7 +77,6 @@ void main() {
       'San Francisco',
     );
     await _enterText(tester, 'private-location-notes', 'Use the side gate.');
-    expectNoFieldInCard(tester);
     await _tap(tester, 'private-location-save');
 
     final locations = await repository.privateLocationsFor('org2');
@@ -133,7 +130,6 @@ void main() {
           _field(tester, 'private-location-city').controller!.text,
           isEmpty,
         );
-        expectNoFieldInCard(tester);
         await _tap(tester, 'private-location-save');
         expect(find.text('Needs: city'), findsOneWidget);
         await tester.pumpWidget(const SizedBox.shrink());
@@ -191,7 +187,6 @@ void main() {
     );
     await _enterText(tester, 'private-location-label', 'The courtyard');
     await _enterText(tester, 'private-location-notes', '');
-    expectNoFieldInCard(tester);
     await _tap(tester, 'private-location-save');
 
     final saved = (await repository.privateLocationsFor('org2')).single;

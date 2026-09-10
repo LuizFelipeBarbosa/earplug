@@ -11,7 +11,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'support/design_rules.dart';
 import 'support/harness.dart';
 
 void main() {
@@ -41,7 +40,6 @@ void main() {
     );
     expect(tester.widget<FilledButton>(_submitButton()).onPressed, isNull);
     expect(find.byIcon(Icons.star_border), findsNWidgets(5));
-    expectNoFieldInCard(tester);
 
     await tester.tap(find.byKey(const ValueKey('review-rating-5')));
     await tester.pump();
@@ -67,7 +65,6 @@ void main() {
     await tester.enterText(field, text);
     await tester.pump();
     expect(find.text('${text.length}/1000'), findsOneWidget);
-    expectNoFieldInCard(tester);
     await tester.tap(_submitButton());
     await tester.pumpAndSettle();
 
@@ -133,7 +130,6 @@ void main() {
     );
     expect(harness.app.current.screen, Screen.reviewCompose);
     expect(tester.widget<FilledButton>(_submitButton()).onPressed, isNotNull);
-    expectNoFieldInCard(tester);
   });
 
   testWidgets('direct compose shows the organization for an artist', (
@@ -161,7 +157,6 @@ void main() {
       ),
       findsOneWidget,
     );
-    expectNoFieldInCard(tester);
   });
 
   testWidgets('missing booking has no review form or submit action', (

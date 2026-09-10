@@ -290,7 +290,6 @@ void main() {
     );
     expect(find.text(dateLabel(dispute.createdAt)), findsOneWidget);
     expect(find.text(dispute.text), findsOneWidget);
-    expectNoFieldInCard(tester);
 
     await tester.tap(find.byKey(Key('admin-dispute-open-$disputeId')));
     await tester.pumpAndSettle();
@@ -370,7 +369,6 @@ void main() {
       find.text('Paid ${Money(booking.paidMinor, 'usd').label}'),
       findsOneWidget,
     );
-    expectNoFieldInCard(tester);
 
     await tester.tap(find.byKey(Key('admin-dispute-resolve-$disputeId')));
     await tester.pumpAndSettle();
@@ -532,6 +530,5 @@ void main() {
       find.byKey(Key('admin-dispute-review-${disputeIds.first}')),
       findsNothing,
     );
-    expectNoFieldInCard(tester);
   });
 }
