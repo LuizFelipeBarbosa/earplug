@@ -87,7 +87,11 @@ void main() {
             .map((item) => item.label),
         ['YEAR TO DATE', 'LAST YEAR', 'LAST 30 DAYS'],
       );
-      await tester.tap(find.text(preset));
+      await tester.tap(
+        find.textContaining(
+          RegExp('^${RegExp.escape(preset)}\$', caseSensitive: false),
+        ),
+      );
       await tester.pumpAndSettle();
 
       final range = repository.statementRange!;
@@ -139,7 +143,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(export);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('LAST 30 DAYS'));
+    await tester.tap(find.text('Last 30 days'));
     await tester.pumpAndSettle();
 
     expect(downloads, hasLength(1));
@@ -171,7 +175,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(export);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('LAST 30 DAYS'));
+    await tester.tap(find.text('Last 30 days'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('band-payouts-error')), findsOneWidget);

@@ -230,7 +230,7 @@ void main() {
         await tester.ensureVisible(card);
         await tester.tap(card);
         await tester.pumpAndSettle();
-        expect(find.text('DOOR'), published ? findsOneWidget : findsNothing);
+        expect(find.text('Door'), published ? findsOneWidget : findsNothing);
         harness.app.dispose();
       },
     );
@@ -393,9 +393,9 @@ void main() {
     await tester.ensureVisible(card);
     await tester.tap(card);
     await tester.pumpAndSettle();
-    expect(find.text('REOPEN'), findsOneWidget);
+    expect(find.text('Reopen'), findsOneWidget);
 
-    await tester.tap(find.text('REOPEN'));
+    await tester.tap(find.text('Reopen'));
     await tester.pumpAndSettle();
     expect(find.byType(DatePickerDialog), findsOneWidget);
     await tester.tap(find.text('OK'));
@@ -1257,7 +1257,11 @@ Future<void> _chooseOpportunityAction(
   await tester.ensureVisible(card);
   await tester.tap(card);
   await tester.pumpAndSettle();
-  await tester.tap(find.text(action));
+  await tester.tap(
+    find.textContaining(
+      RegExp('^${RegExp.escape(action)}\$', caseSensitive: false),
+    ),
+  );
   await tester.pumpAndSettle();
 }
 

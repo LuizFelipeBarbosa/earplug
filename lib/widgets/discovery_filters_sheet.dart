@@ -82,7 +82,7 @@ class _LocationSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _SheetFrame(
-      title: 'WHERE ARE YOU?',
+      title: 'Where are you?',
       child: ListView(
         children: [
           Text(
@@ -222,12 +222,26 @@ class _FiltersSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _SheetFrame(
-      title: 'FILTERS',
-      footer: _ResultsButton(
-        count: app.feed.length,
-        labelAsApply: labelConfirmationAsApply,
+      title: 'Filters',
+      footer: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ResultsButton(
+            count: app.feed.length,
+            labelAsApply: labelConfirmationAsApply,
+          ),
+          TextButton(
+            key: const Key('clear-discovery-filters'),
+            onPressed: app.activeFilterCount == 0
+                ? null
+                : app.clearDiscoveryFilters,
+            child: const Text('Clear all'),
+          ),
+        ],
       ),
       child: ListView(
+        key: const Key('discovery-filter-options'),
         children: [
           Row(
             children: [
@@ -343,37 +357,7 @@ class _FiltersSheet extends StatelessWidget {
                 ),
             ],
           ),
-          const _Divider(),
-          Row(
-            children: [
-              const Expanded(child: _FilterHeading('VENUE')),
-              if (app.fVenueId != null)
-                _TextAction(
-                  label: 'ANY VENUE',
-                  onTap: () => app.setVenueFilter(null),
-                ),
-            ],
-          ),
-          const SizedBox(height: 9),
-          _OptionTile(
-            title: 'Any venue',
-            selected: app.fVenueId == null,
-            onTap: () => app.setVenueFilter(null),
-          ),
-          for (final venue in app.venues)
-            _OptionTile(
-              title: venue.name,
-              subtitle: venue.area,
-              selected: app.fVenueId == venue.id,
-              onTap: () => app.setVenueFilter(venue.id),
-            ),
           const SizedBox(height: 16),
-          OutlinedButton(
-            onPressed: app.activeFilterCount == 0
-                ? null
-                : app.clearDiscoveryFilters,
-            child: Text('CLEAR ALL'),
-          ),
         ],
       ),
     );

@@ -170,7 +170,11 @@ void main() {
             .map((item) => item.label),
         ['LAST 30 DAYS', 'THIS MONTH', 'LAST MONTH', 'YEAR TO DATE'],
       );
-      await tester.tap(find.text(preset));
+      await tester.tap(
+        find.textContaining(
+          RegExp('^${RegExp.escape(preset)}\$', caseSensitive: false),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(downloads, isEmpty);
       expect(pdfDownloads, isEmpty);
@@ -225,7 +229,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(export);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('LAST 30 DAYS'));
+    await tester.tap(find.text('Last 30 days'));
     await tester.pumpAndSettle();
     expect(downloads, isEmpty);
     expect(pdfDownloads, isEmpty);
@@ -257,7 +261,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('org-finance-export')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('LAST 30 DAYS'));
+    await tester.tap(find.text('Last 30 days'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('org-finance-export-csv')));
     await tester.pumpAndSettle();

@@ -423,7 +423,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('org-team-member-demo-user')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('REMOVE'));
+    await tester.tap(find.text('Remove'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'REMOVE'));
     await tester.pumpAndSettle();

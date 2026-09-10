@@ -22,7 +22,7 @@ void main() {
       tester,
       side: BookingSide.organizer,
     );
-    expect(find.text('REQUEST A REFUND'), findsOneWidget);
+    expect(find.text('Request a refund'), findsOneWidget);
     _expectCategories(tester);
     final amount = find.byKey(const Key('dispute-amount'));
     expect(
@@ -100,7 +100,7 @@ void main() {
       tester,
       side: BookingSide.artist,
     );
-    expect(find.text('OPEN A DISPUTE'), findsOneWidget);
+    expect(find.text('Open a dispute'), findsOneWidget);
     expect(find.byKey(const Key('dispute-amount')), findsNothing);
     _expectCategories(tester);
     expect(

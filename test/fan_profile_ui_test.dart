@@ -257,16 +257,16 @@ void main() {
     await tester.tap(find.byKey(const Key('fan-avatar-preview-control')));
     await tester.pumpAndSettle();
     expect(find.text('PROFILE PHOTO'), findsOne);
-    expect(find.text('REMOVE PHOTO'), findsNothing);
+    expect(find.text('Remove photo'), findsNothing);
 
-    await tester.tap(find.text('CHANGE PHOTO'));
+    await tester.tap(find.text('Change photo'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('picked-fan-avatar-preview')), findsOne);
 
     await tester.tap(find.byKey(const Key('fan-avatar-edit-action')));
     await tester.pumpAndSettle();
-    expect(find.text('REMOVE PHOTO'), findsOne);
-    await tester.tap(find.text('REMOVE PHOTO'));
+    expect(find.text('Remove photo'), findsOne);
+    await tester.tap(find.text('Remove photo'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('picked-fan-avatar-preview')), findsNothing);
     expect(

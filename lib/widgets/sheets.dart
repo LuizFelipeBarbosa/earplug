@@ -8,6 +8,20 @@ import '../theme.dart';
 import 'common.dart';
 import 'ep_sheet.dart';
 
+// Keep popup copy readable without changing page or branding typography.
+String _sentenceCase(String value) {
+  if (value.isEmpty || value != value.toUpperCase()) return value;
+  const acronyms = {'RSVP', 'ID', 'URL', 'QR', 'CSV', 'PDF', 'VIP', 'USD'};
+  final words = value.toLowerCase().split(' ');
+  for (var i = 0; i < words.length; i++) {
+    if (acronyms.contains(words[i].toUpperCase())) {
+      words[i] = words[i].toUpperCase();
+    }
+  }
+  final result = words.join(' ');
+  return result[0].toUpperCase() + result.substring(1);
+}
+
 /// Shared visual chrome for bottom sheets presented by [showEpSheet].
 class EpSheetShell extends StatelessWidget {
   const EpSheetShell({
@@ -79,13 +93,16 @@ class EpSheetShell extends StatelessWidget {
           borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
           border: Border(top: BorderSide(color: borderColor ?? colors.border)),
         ),
-        child: scrollable ? SingleChildScrollView(child: content) : content,
+        child: Material(
+          type: MaterialType.transparency,
+          child: scrollable ? SingleChildScrollView(child: content) : content,
+        ),
       ),
     );
   }
 }
 
-/// Keyboard-aware chrome for a form sheet: an uppercase title with a Close
+/// Keyboard-aware chrome for a form sheet: a compact title with a Close
 /// button (or [trailing]) above [child]. Unlike [EpSheetShell] it has no drag
 /// handle and rises with the on-screen keyboard.
 class EpFormSheet extends StatelessWidget {
@@ -112,34 +129,45 @@ class EpFormSheet extends StatelessWidget {
         color: context.epColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(title.toUpperCase(), style: epDisplay(size: 15)),
-                ),
-                trailing ??
-                    IconButton(
-                      tooltip: 'Close',
-                      onPressed: () => Navigator.pop(context),
-                      icon: Icon(Icons.close),
-                    ),
-              ],
-            ),
-          ),
-          if (padBody)
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-              child: child,
-            )
-          else
-            Flexible(child: child),
-        ],
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _sentenceCase(title),
+                      style: Theme.of(context).textTheme.epBody.copyWith(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  trailing ??
+                      IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.pop(context),
+                        icon: Icon(Icons.close),
+                      ),
+                ],
+              ),
+            ),
+            if (padBody)
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  child: child,
+                ),
+              )
+            else
+              Flexible(child: child),
+          ],
+        ),
       ),
     );
   }
@@ -292,7 +320,7 @@ class _ActionSheetRow extends StatelessWidget {
               ],
               Expanded(
                 child: Text(
-                  item.label,
+                  _sentenceCase(item.label),
                   style: Theme.of(
                     context,
                   ).textTheme.epLabel.copyWith(color: color),
