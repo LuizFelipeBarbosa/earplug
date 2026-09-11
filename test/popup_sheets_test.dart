@@ -58,13 +58,9 @@ void main() {
       expect(clear.hitTestable(), findsOneWidget);
       expect(results.hitTestable(), findsOneWidget);
 
-      // Clear all also recovers a venue constraint from an older caller.
-      harness.app.setVenueFilter('v1');
-      await tester.pumpAndSettle();
       await tester.tap(clear);
       await tester.pumpAndSettle();
       expect(harness.app.activeFilterCount, 0);
-      expect(harness.app.fVenueId, isNull);
       await tester.tap(results);
       await tester.pumpAndSettle();
       expect(find.byType(EpSheetShell), findsNothing);
@@ -132,4 +128,67 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('padded popup forms keep their last control above the home '
+      'indicator', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(bottom: 34);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildEpTheme(),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showEpSheet(
+                context,
+                (context) => EpFormSheet(
+                  title: 'Confirm',
+                  child: FilledButton(
+                    onPressed: () {},
+                    child: const Text('Confirm'),
+                  ),
+                ),
+              ),
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getBottomLeft(find.byType(FilledButton)).dy,
+      lessThanOrEqualTo(844 - 34 - 24),
+    );
+  });
+
+  testWidgets('action sheet rows announce the label they draw', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildEpTheme(),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showEpActionSheet(
+                context,
+                header: 'Member',
+                items: [EpActionSheetItem(label: 'REMOVE', onPressed: () {})],
+              ),
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Remove'), findsOneWidget);
+    expect(find.bySemanticsLabel('Remove'), findsOneWidget);
+    expect(find.bySemanticsLabel('REMOVE'), findsNothing);
+  });
 }

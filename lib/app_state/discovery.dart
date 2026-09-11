@@ -30,7 +30,6 @@ mixin _DiscoveryState on _AppStateCore {
   bool get fFree => filters.price == PriceFilter.free;
   Set<String> get fGenres => filters.genres;
   PriceFilter get fPrice => filters.price;
-  String? get fVenueId => filters.venueId;
   double? get fMaxDistanceMiles => filters.maxDistanceMiles;
   bool get canFilterByDistance =>
       (discoveryLocation == DiscoveryLocation.current &&
@@ -377,9 +376,6 @@ mixin _DiscoveryState on _AppStateCore {
   void clearGenreFilters() =>
       _set(() => filters = filters.copyWith(genres: const {}));
 
-  void setVenueFilter(String? venueId) =>
-      _set(() => filters = filters.copyWith(venueId: venueId));
-
   void setDistanceFilter(double? miles) => _set(() {
     filters = filters.copyWith(
       maxDistanceMiles: canFilterByDistance ? miles : null,
@@ -492,9 +488,6 @@ mixin _DiscoveryState on _AppStateCore {
         if (filters.genres.isNotEmpty &&
             !gig.genres.any(filters.genres.contains)) {
           return false;
-        }
-        if (filters.venueId case final String venueId) {
-          if (gig.venueId != venueId) return false;
         }
         if (filters.maxDistanceMiles case final double maxMiles) {
           final distance = discoveryLocation == DiscoveryLocation.home

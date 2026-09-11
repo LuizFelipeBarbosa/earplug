@@ -104,7 +104,9 @@ class EpSheetShell extends StatelessWidget {
 
 /// Keyboard-aware chrome for a form sheet: a compact title with a Close
 /// button (or [trailing]) above [child]. Unlike [EpSheetShell] it has no drag
-/// handle and rises with the on-screen keyboard.
+/// handle and rises with the on-screen keyboard. A padded body also clears the
+/// bottom system inset so its last control stays out of the home-indicator
+/// gesture zone.
 class EpFormSheet extends StatelessWidget {
   final String title;
   final Widget? trailing;
@@ -160,7 +162,12 @@ class EpFormSheet extends StatelessWidget {
             if (padBody)
               Flexible(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    0,
+                    16,
+                    24 + MediaQuery.paddingOf(context).bottom,
+                  ),
                   child: child,
                 ),
               )
@@ -297,10 +304,11 @@ class _ActionSheetRow extends StatelessWidget {
     final color = item.destructive
         ? context.epColors.destructive
         : context.epColors.ink;
+    final label = _sentenceCase(item.label);
     return Semantics(
       button: true,
       enabled: item.onPressed != null,
-      label: item.label,
+      label: label,
       excludeSemantics: true,
       child: InkWell(
         onTap: item.onPressed == null
@@ -320,7 +328,7 @@ class _ActionSheetRow extends StatelessWidget {
               ],
               Expanded(
                 child: Text(
-                  _sentenceCase(item.label),
+                  label,
                   style: Theme.of(
                     context,
                   ).textTheme.epLabel.copyWith(color: color),

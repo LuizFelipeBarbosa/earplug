@@ -1,5 +1,5 @@
-/// The fan-facing discovery filter model: date, price, genre, venue and
-/// distance choices, plus where discovery is centred.
+/// The fan-facing discovery filter model: date, price, genre and distance
+/// choices, plus where discovery is centred.
 library;
 
 import 'package:flutter/foundation.dart' show setEquals;
@@ -25,7 +25,6 @@ class DiscoveryFilters {
     this.dateRange,
     this.genres = const {},
     this.price = PriceFilter.any,
-    this.venueId,
     this.maxDistanceMiles,
   });
 
@@ -33,7 +32,6 @@ class DiscoveryFilters {
   final DateTimeRange? dateRange;
   final Set<String> genres;
   final PriceFilter price;
-  final String? venueId;
   final double? maxDistanceMiles;
 
   static const _unset = Object();
@@ -43,7 +41,6 @@ class DiscoveryFilters {
     Object? dateRange = _unset,
     Set<String>? genres,
     PriceFilter? price,
-    Object? venueId = _unset,
     Object? maxDistanceMiles = _unset,
   }) {
     return DiscoveryFilters(
@@ -53,7 +50,6 @@ class DiscoveryFilters {
           : dateRange as DateTimeRange?,
       genres: genres == null ? this.genres : Set.unmodifiable(genres),
       price: price ?? this.price,
-      venueId: identical(venueId, _unset) ? this.venueId : venueId as String?,
       maxDistanceMiles: identical(maxDistanceMiles, _unset)
           ? this.maxDistanceMiles
           : maxDistanceMiles as double?,
@@ -64,7 +60,6 @@ class DiscoveryFilters {
       (date == DateFilter.all ? 0 : 1) +
       (genres.isEmpty ? 0 : 1) +
       (price == PriceFilter.any ? 0 : 1) +
-      (venueId == null ? 0 : 1) +
       (maxDistanceMiles == null ? 0 : 1);
 
   @override
@@ -74,7 +69,6 @@ class DiscoveryFilters {
       other.dateRange == dateRange &&
       setEquals(other.genres, genres) &&
       other.price == price &&
-      other.venueId == venueId &&
       other.maxDistanceMiles == maxDistanceMiles;
 
   @override
@@ -83,7 +77,6 @@ class DiscoveryFilters {
     dateRange,
     Object.hashAllUnordered(genres),
     price,
-    venueId,
     maxDistanceMiles,
   );
 }

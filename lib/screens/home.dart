@@ -100,7 +100,6 @@ class _Header extends StatelessWidget {
                       : 'FILTERS · ${filters.activeCount}',
                   active:
                       filters.genres.isNotEmpty ||
-                      filters.venueId != null ||
                       filters.maxDistanceMiles != null ||
                       filters.price == PriceFilter.paid ||
                       filters.date == DateFilter.custom,
@@ -465,14 +464,6 @@ class _DiscoveryEmptyState extends StatelessWidget {
         _RecoveryButton(
           label: 'ANY PRICE',
           onTap: () => app.setPriceFilter(PriceFilter.any),
-        ),
-      );
-    }
-    if (filters.venueId != null) {
-      actions.add(
-        _RecoveryButton(
-          label: 'ANY VENUE',
-          onTap: () => app.setVenueFilter(null),
         ),
       );
     }
