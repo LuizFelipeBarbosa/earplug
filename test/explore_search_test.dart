@@ -186,6 +186,7 @@ void main() {
       'DATE',
       'GENRES · CHOOSE ANY',
       'DISTANCE',
+      'PRICE',
       'PUNK',
       'GARAGE',
       'NOISE',
@@ -198,12 +199,6 @@ void main() {
     await tester.pump();
     expect(harness.app.fGenres, {'punk'});
     expect(harness.app.query, isEmpty);
-    await tester.scrollUntilVisible(
-      find.text('PRICE'),
-      200,
-      scrollable: find.byType(Scrollable).last,
-    );
-    expect(find.text('PRICE'), findsOne);
     expect(find.text('VENUE'), findsNothing);
     expect(find.text('Any venue'), findsNothing);
     expect(

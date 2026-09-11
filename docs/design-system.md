@@ -33,17 +33,20 @@ shared theme defaults. Prefer these defaults over page-specific styling.
 
 ## Popup sheets
 
-Use `EpSheetShell` and `EpFormSheet` for popup surfaces. Form sheet titles use
-sentence case and regular Archivo; long bodies scroll above the keyboard while
-the close control remains at the top. Keep page typography and creation flows
+Use `EpSheetShell` and `EpFormSheet` for popup surfaces. Sheet titles use the
+`epSheetTitle` role (20px semibold Archivo). Pass titles and action-sheet
+labels already in sentence case; the widgets render them verbatim. Form bodies
+scroll above the keyboard and clear the bottom safe area while the close
+control remains at the top. Keep page typography and creation flows
 independent of popup styling.
 
 Discovery filters show genres directly as chips, including the existing
 "Any genre · I'm open" reset. Do not add a nested genre picker or a venue
 selector to these filters: the discovery venue list is not a complete directory.
-Keep the results action and Clear all in the footer so both remain reachable
-while scrolling. Date, genre, distance and price filters retain their existing
-live application behavior.
+Keep the results action in the footer and Clear all in the header so both
+remain reachable while scrolling without taking height from the options. Date,
+genre, distance and price filters retain their existing live application
+behavior.
 
 ## Input forms
 

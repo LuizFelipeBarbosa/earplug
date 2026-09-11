@@ -8,20 +8,6 @@ import '../theme.dart';
 import 'common.dart';
 import 'ep_sheet.dart';
 
-// Keep popup copy readable without changing page or branding typography.
-String _sentenceCase(String value) {
-  if (value.isEmpty || value != value.toUpperCase()) return value;
-  const acronyms = {'RSVP', 'ID', 'URL', 'QR', 'CSV', 'PDF', 'VIP', 'USD'};
-  final words = value.toLowerCase().split(' ');
-  for (var i = 0; i < words.length; i++) {
-    if (acronyms.contains(words[i].toUpperCase())) {
-      words[i] = words[i].toUpperCase();
-    }
-  }
-  final result = words.join(' ');
-  return result[0].toUpperCase() + result.substring(1);
-}
-
 /// Shared visual chrome for bottom sheets presented by [showEpSheet].
 class EpSheetShell extends StatelessWidget {
   const EpSheetShell({
@@ -93,6 +79,8 @@ class EpSheetShell extends StatelessWidget {
           borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
           border: Border(top: BorderSide(color: borderColor ?? colors.border)),
         ),
+        // The shell paints an opaque surface above BottomSheet's Material, so
+        // ink from rows needs its own transparent Material to show through.
         child: Material(
           type: MaterialType.transparency,
           child: scrollable ? SingleChildScrollView(child: content) : content,
@@ -102,11 +90,11 @@ class EpSheetShell extends StatelessWidget {
   }
 }
 
-/// Keyboard-aware chrome for a form sheet: a compact title with a Close
-/// button (or [trailing]) above [child]. Unlike [EpSheetShell] it has no drag
-/// handle and rises with the on-screen keyboard. A padded body also clears the
-/// bottom system inset so its last control stays out of the home-indicator
-/// gesture zone.
+/// Keyboard-aware chrome for a form sheet: a sentence-case [title] with a
+/// Close button (or [trailing]) above [child]. Unlike [EpSheetShell] it has no
+/// drag handle and rises with the on-screen keyboard. By default the body
+/// scrolls and clears the bottom system inset so its last control stays out of
+/// the home-indicator gesture zone.
 class EpFormSheet extends StatelessWidget {
   final String title;
   final Widget? trailing;
@@ -131,6 +119,8 @@ class EpFormSheet extends StatelessWidget {
         color: context.epColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
+      // Same as EpSheetShell: the surface above sits over BottomSheet's
+      // Material, so list tiles and rows need this Material for their ink.
       child: Material(
         type: MaterialType.transparency,
         child: Column(
@@ -143,11 +133,8 @@ class EpFormSheet extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      _sentenceCase(title),
-                      style: Theme.of(context).textTheme.epBody.copyWith(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      title,
+                      style: Theme.of(context).textTheme.epSheetTitle,
                     ),
                   ),
                   trailing ??
@@ -304,11 +291,10 @@ class _ActionSheetRow extends StatelessWidget {
     final color = item.destructive
         ? context.epColors.destructive
         : context.epColors.ink;
-    final label = _sentenceCase(item.label);
     return Semantics(
       button: true,
       enabled: item.onPressed != null,
-      label: label,
+      label: item.label,
       excludeSemantics: true,
       child: InkWell(
         onTap: item.onPressed == null
@@ -328,7 +314,7 @@ class _ActionSheetRow extends StatelessWidget {
               ],
               Expanded(
                 child: Text(
-                  label,
+                  item.label,
                   style: Theme.of(
                     context,
                   ).textTheme.epLabel.copyWith(color: color),

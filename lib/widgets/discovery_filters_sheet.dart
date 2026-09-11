@@ -35,10 +35,19 @@ void showDiscoveryFiltersSheet(
 }
 
 class _SheetFrame extends StatelessWidget {
-  const _SheetFrame({required this.title, required this.child, this.footer});
+  const _SheetFrame({
+    required this.title,
+    required this.child,
+    this.action,
+    this.footer,
+  });
 
   final String title;
   final Widget child;
+
+  /// Sits beside Close in the pinned header, so it stays reachable while the
+  /// body scrolls without taking height from it.
+  final Widget? action;
   final Widget? footer;
 
   @override
@@ -50,11 +59,9 @@ class _SheetFrame extends StatelessWidget {
       header: Row(
         children: [
           Expanded(
-            child: Text(
-              title,
-              style: Theme.of(context).textTheme.epSectionHeading,
-            ),
+            child: Text(title, style: Theme.of(context).textTheme.epSheetTitle),
           ),
+          ?action,
           IconButton(
             tooltip: 'Close',
             onPressed: () => Navigator.pop(context),
@@ -223,22 +230,16 @@ class _FiltersSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return _SheetFrame(
       title: 'Filters',
-      footer: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _ResultsButton(
-            count: app.feed.length,
-            labelAsApply: labelConfirmationAsApply,
-          ),
-          TextButton(
-            key: const Key('clear-discovery-filters'),
-            onPressed: app.activeFilterCount == 0
-                ? null
-                : app.clearDiscoveryFilters,
-            child: const Text('Clear all'),
-          ),
-        ],
+      action: TextButton(
+        key: const Key('clear-discovery-filters'),
+        onPressed: app.activeFilterCount == 0
+            ? null
+            : app.clearDiscoveryFilters,
+        child: const Text('Clear all'),
+      ),
+      footer: _ResultsButton(
+        count: app.feed.length,
+        labelAsApply: labelConfirmationAsApply,
       ),
       child: ListView(
         key: const Key('discovery-filter-options'),

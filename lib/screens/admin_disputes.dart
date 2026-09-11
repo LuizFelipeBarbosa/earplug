@@ -487,66 +487,60 @@ class _ResolveSheetState extends State<_ResolveSheet> {
   @override
   Widget build(BuildContext context) {
     return EpFormSheet(
-      title: 'RESOLVE DISPUTE',
-      padBody: false,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final (resolution, label) in _resolutions)
-                  EpChip(
-                    key: Key(
-                      'admin-dispute-resolution-${resolution.wireValue}',
-                    ),
-                    label: label,
-                    active: _resolution == resolution,
-                    onTap: _submitting
-                        ? null
-                        : () => setState(() {
-                            _resolution = resolution;
-                            _error = null;
-                          }),
-                  ),
-              ],
-            ),
-            if (_resolution == DisputeResolution.refundedPartial) ...[
-              const SizedBox(height: 16),
-              EpLabeledField(
-                label: 'AMOUNT (\$)',
-                hint: '0.00',
-                controller: _amount,
-                fieldKey: const Key('admin-dispute-amount'),
-                keyboardType: TextInputType.number,
-                enabled: !_submitting,
-              ),
+      title: 'Resolve dispute',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final (resolution, label) in _resolutions)
+                EpChip(
+                  key: Key('admin-dispute-resolution-${resolution.wireValue}'),
+                  label: label,
+                  active: _resolution == resolution,
+                  onTap: _submitting
+                      ? null
+                      : () => setState(() {
+                          _resolution = resolution;
+                          _error = null;
+                        }),
+                ),
             ],
+          ),
+          if (_resolution == DisputeResolution.refundedPartial) ...[
             const SizedBox(height: 16),
             EpLabeledField(
-              label: 'ADMIN NOTE',
-              hint: 'Add a note (optional)',
-              controller: _note,
-              fieldKey: const Key('admin-dispute-note'),
+              label: 'AMOUNT (\$)',
+              hint: '0.00',
+              controller: _amount,
+              fieldKey: const Key('admin-dispute-amount'),
+              keyboardType: TextInputType.number,
               enabled: !_submitting,
-              minLines: 3,
-              maxLines: 5,
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              InlineFormFeedback(error: _error),
-            ],
-            const SizedBox(height: 14),
-            EpButton(
-              'CONFIRM',
-              key: const Key('admin-dispute-confirm'),
-              onTap: _submitting ? null : _confirm,
             ),
           ],
-        ),
+          const SizedBox(height: 16),
+          EpLabeledField(
+            label: 'ADMIN NOTE',
+            hint: 'Add a note (optional)',
+            controller: _note,
+            fieldKey: const Key('admin-dispute-note'),
+            enabled: !_submitting,
+            minLines: 3,
+            maxLines: 5,
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            InlineFormFeedback(error: _error),
+          ],
+          const SizedBox(height: 14),
+          EpButton(
+            'CONFIRM',
+            key: const Key('admin-dispute-confirm'),
+            onTap: _submitting ? null : _confirm,
+          ),
+        ],
       ),
     );
   }

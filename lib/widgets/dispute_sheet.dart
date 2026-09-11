@@ -91,75 +91,71 @@ class _DisputeSheetState extends State<DisputeSheet> {
   @override
   Widget build(BuildContext context) {
     return EpFormSheet(
-      title: _organizer ? 'REQUEST A REFUND' : 'OPEN A DISPUTE',
-      padBody: false,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const FieldLabel('CATEGORY'),
-            Wrap(
-              spacing: 7,
-              runSpacing: 7,
-              children: [
-                for (final category in const [
-                  DisputeCategory.noShow,
-                  DisputeCategory.lateOrShortSet,
-                  DisputeCategory.misrepresentation,
-                  DisputeCategory.payment,
-                  DisputeCategory.safety,
-                  DisputeCategory.other,
-                ])
-                  EpChip(
-                    key: ValueKey('dispute-category-${category.wireValue}'),
-                    label: category.label.toUpperCase(),
-                    active: _category == category,
-                    onTap: _submitting
-                        ? null
-                        : () => setState(() => _category = category),
-                  ),
-              ],
-            ),
+      title: _organizer ? 'Request a refund' : 'Open a dispute',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const FieldLabel('CATEGORY'),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (final category in const [
+                DisputeCategory.noShow,
+                DisputeCategory.lateOrShortSet,
+                DisputeCategory.misrepresentation,
+                DisputeCategory.payment,
+                DisputeCategory.safety,
+                DisputeCategory.other,
+              ])
+                EpChip(
+                  key: ValueKey('dispute-category-${category.wireValue}'),
+                  label: category.label.toUpperCase(),
+                  active: _category == category,
+                  onTap: _submitting
+                      ? null
+                      : () => setState(() => _category = category),
+                ),
+            ],
+          ),
+          const SizedBox(height: EpLayout.fieldGap),
+          EpLabeledField(
+            fieldKey: const Key('dispute-text'),
+            label: 'WHAT HAPPENED',
+            hint: 'Tell us what happened',
+            controller: _text,
+            required: true,
+            minLines: 3,
+            maxLines: 8,
+            maxLength: 2000,
+            enabled: !_submitting,
+          ),
+          if (_organizer) ...[
             const SizedBox(height: EpLayout.fieldGap),
             EpLabeledField(
-              fieldKey: const Key('dispute-text'),
-              label: 'WHAT HAPPENED',
-              hint: 'Tell us what happened',
-              controller: _text,
+              fieldKey: const Key('dispute-amount'),
+              label: 'AMOUNT TO REFUND (\$)',
+              hint: '0.00',
+              controller: _amount,
               required: true,
-              minLines: 3,
-              maxLines: 8,
-              maxLength: 2000,
+              keyboardType: TextInputType.number,
               enabled: !_submitting,
             ),
-            if (_organizer) ...[
-              const SizedBox(height: EpLayout.fieldGap),
-              EpLabeledField(
-                fieldKey: const Key('dispute-amount'),
-                label: 'AMOUNT TO REFUND (\$)',
-                hint: '0.00',
-                controller: _amount,
-                required: true,
-                keyboardType: TextInputType.number,
-                enabled: !_submitting,
-              ),
-            ],
-            const SizedBox(height: 14),
-            Text(
-              'EarPlug reviews every dispute. Payouts are held until it is resolved.',
-              style: Theme.of(context).textTheme.epCaption,
-            ),
-            const SizedBox(height: 14),
-            InlineFormFeedback(error: _error),
-            const SizedBox(height: 14),
-            EpButton(
-              'SUBMIT',
-              key: const Key('dispute-submit'),
-              onTap: _submitting ? null : _submit,
-            ),
           ],
-        ),
+          const SizedBox(height: 14),
+          Text(
+            'EarPlug reviews every dispute. Payouts are held until it is resolved.',
+            style: Theme.of(context).textTheme.epCaption,
+          ),
+          const SizedBox(height: 14),
+          InlineFormFeedback(error: _error),
+          const SizedBox(height: 14),
+          EpButton(
+            'SUBMIT',
+            key: const Key('dispute-submit'),
+            onTap: _submitting ? null : _submit,
+          ),
+        ],
       ),
     );
   }

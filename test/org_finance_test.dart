@@ -145,10 +145,10 @@ void main() {
   });
 
   for (final preset in [
-    'LAST 30 DAYS',
-    'THIS MONTH',
-    'LAST MONTH',
-    'YEAR TO DATE',
+    'Last 30 days',
+    'This month',
+    'Last month',
+    'Year to date',
   ]) {
     testWidgets('$preset exports the selected date range and downloads CSV', (
       tester,
@@ -168,13 +168,9 @@ void main() {
             .widget<EpActionSheet>(find.byType(EpActionSheet))
             .items
             .map((item) => item.label),
-        ['LAST 30 DAYS', 'THIS MONTH', 'LAST MONTH', 'YEAR TO DATE'],
+        ['Last 30 days', 'This month', 'Last month', 'Year to date'],
       );
-      await tester.tap(
-        find.textContaining(
-          RegExp('^${RegExp.escape(preset)}\$', caseSensitive: false),
-        ),
-      );
+      await tester.tap(find.text(preset));
       await tester.pumpAndSettle();
       expect(downloads, isEmpty);
       expect(pdfDownloads, isEmpty);
@@ -183,11 +179,11 @@ void main() {
 
       final range = repository.statementRange!;
       switch (preset) {
-        case 'LAST 30 DAYS':
+        case 'Last 30 days':
           expect(range.to.difference(range.from), const Duration(days: 30));
-        case 'THIS MONTH':
+        case 'This month':
           expect(range.from, DateTime(range.to.year, range.to.month));
-        case 'LAST MONTH':
+        case 'Last month':
           expect(range.from, DateTime(before.year, before.month - 1));
           expect(
             range.to,
@@ -196,10 +192,10 @@ void main() {
               before.month,
             ).subtract(const Duration(milliseconds: 1)),
           );
-        case 'YEAR TO DATE':
+        case 'Year to date':
           expect(range.from, DateTime(range.to.year));
       }
-      if (preset != 'LAST MONTH') {
+      if (preset != 'Last month') {
         expect(range.to.isBefore(before), isFalse);
         expect(range.to.isAfter(after), isFalse);
       }

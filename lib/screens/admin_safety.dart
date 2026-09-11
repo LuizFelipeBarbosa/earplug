@@ -333,7 +333,7 @@ class _ResolveSheetState extends State<_ResolveSheet> {
   @override
   Widget build(BuildContext context) {
     return EpFormSheet(
-      title: 'RESOLVE REPORT',
+      title: 'Resolve report',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

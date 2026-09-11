@@ -16,14 +16,13 @@ void main() {
     testWidgets('filter actions stay reachable at $size with $textScale text', (
       tester,
     ) async {
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       final harness = await pumpApp(
         tester,
         home: const Scaffold(body: HomeScreen()),
+        size: size,
       );
-      tester.view.physicalSize = size;
-      tester.platformDispatcher.textScaleFactorTestValue = textScale;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      await tester.pumpAndSettle();
       await tester.tap(find.text('FILTERS'));
       await tester.pumpAndSettle();
 
@@ -44,9 +43,6 @@ void main() {
       await tester.tap(find.text('PUNK'));
       await tester.pumpAndSettle();
       expect(harness.app.fGenres, {'punk'});
-      expect(find.byType(EpSheetShell), findsOneWidget);
-      expect(find.text('VENUE'), findsNothing);
-      expect(find.byType(TextField), findsNothing);
 
       await tester.scrollUntilVisible(
         find.text('PAID'),
@@ -57,16 +53,34 @@ void main() {
       expect(tester.getRect(results), resultsPosition);
       expect(clear.hitTestable(), findsOneWidget);
       expect(results.hitTestable(), findsOneWidget);
-
-      await tester.tap(clear);
-      await tester.pumpAndSettle();
-      expect(harness.app.activeFilterCount, 0);
-      await tester.tap(results);
-      await tester.pumpAndSettle();
-      expect(find.byType(EpSheetShell), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('Clear all resets the filters and results closes the sheet', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: HomeScreen()),
+    );
+    await tester.tap(find.text('FILTERS'));
+    await tester.pumpAndSettle();
+    expect(find.byType(EpSheetShell), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+
+    await tester.tap(find.text('PUNK'));
+    await tester.pumpAndSettle();
+    expect(harness.app.activeFilterCount, 1);
+    await tester.tap(find.byKey(const Key('clear-discovery-filters')));
+    await tester.pumpAndSettle();
+    expect(harness.app.activeFilterCount, 0);
+
+    await tester.tap(find.byKey(const Key('show-filter-results')));
+    await tester.pumpAndSettle();
+    expect(find.byType(EpSheetShell), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'long popup forms scroll above the keyboard without losing input',
@@ -164,31 +178,5 @@ void main() {
       tester.getBottomLeft(find.byType(FilledButton)).dy,
       lessThanOrEqualTo(844 - 34 - 24),
     );
-  });
-
-  testWidgets('action sheet rows announce the label they draw', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildEpTheme(),
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => showEpActionSheet(
-                context,
-                header: 'Member',
-                items: [EpActionSheetItem(label: 'REMOVE', onPressed: () {})],
-              ),
-              child: const Text('Open'),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.tap(find.text('Open'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Remove'), findsOneWidget);
-    expect(find.bySemanticsLabel('Remove'), findsOneWidget);
-    expect(find.bySemanticsLabel('REMOVE'), findsNothing);
   });
 }

@@ -51,13 +51,13 @@ class _BandPayoutsScreenState extends State<BandPayoutsScreen> {
   void _showExportSheet() {
     final now = DateTime.now();
     final presets = [
-      ('YEAR TO DATE', DateTime(now.year), now),
+      ('Year to date', DateTime(now.year), now),
       (
-        'LAST YEAR',
+        'Last year',
         DateTime(now.year - 1),
         DateTime(now.year).subtract(const Duration(milliseconds: 1)),
       ),
-      ('LAST 30 DAYS', now.subtract(const Duration(days: 30)), now),
+      ('Last 30 days', now.subtract(const Duration(days: 30)), now),
     ];
     unawaited(
       showEpActionSheet(

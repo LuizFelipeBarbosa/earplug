@@ -44,7 +44,7 @@ void main() {
     },
   );
 
-  for (final preset in ['YEAR TO DATE']) {
+  for (final preset in ['Year to date']) {
     testWidgets('$preset downloads the band payout statement PDF', (
       tester,
     ) async {
@@ -85,30 +85,26 @@ void main() {
             .widget<EpActionSheet>(find.byType(EpActionSheet))
             .items
             .map((item) => item.label),
-        ['YEAR TO DATE', 'LAST YEAR', 'LAST 30 DAYS'],
+        ['Year to date', 'Last year', 'Last 30 days'],
       );
-      await tester.tap(
-        find.textContaining(
-          RegExp('^${RegExp.escape(preset)}\$', caseSensitive: false),
-        ),
-      );
+      await tester.tap(find.text(preset));
       await tester.pumpAndSettle();
 
       final range = repository.statementRange!;
       expect(range.bandId, 'b1');
       switch (preset) {
-        case 'YEAR TO DATE':
+        case 'Year to date':
           expect(range.from, DateTime(range.to.year));
-        case 'LAST YEAR':
+        case 'Last year':
           expect(range.from, DateTime(before.year - 1));
           expect(
             range.to,
             DateTime(before.year).subtract(const Duration(milliseconds: 1)),
           );
-        case 'LAST 30 DAYS':
+        case 'Last 30 days':
           expect(range.to.difference(range.from), const Duration(days: 30));
       }
-      if (preset != 'LAST YEAR') {
+      if (preset != 'Last year') {
         expect(range.to.isBefore(before), isFalse);
         expect(range.to.isAfter(after), isFalse);
       }
@@ -661,7 +657,10 @@ void main() {
       await tester.pump();
       await tester.tap(button);
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('org-settings-stripe-error')), findsOneWidget);
+      expect(
+        find.byKey(const Key('org-settings-stripe-error')),
+        findsOneWidget,
+      );
       expect(find.textContaining('Could not open Stripe'), findsOneWidget);
       expect(find.byKey(const Key('org-settings-save-error')), findsNothing);
 
@@ -677,9 +676,7 @@ void main() {
     },
   );
 
-  for (final (state, caption) in [
-    (StripeAccountState.enabled, 'Enabled'),
-  ]) {
+  for (final (state, caption) in [(StripeAccountState.enabled, 'Enabled')]) {
     testWidgets('band payouts tile shows ${state.name} and opens payouts', (
       tester,
     ) async {
@@ -690,8 +687,9 @@ void main() {
         repository: _stripeStatusRepository(
           auth: auth,
           state: state,
-          cardPaymentsStatus:
-              state == StripeAccountState.enabled ? 'active' : null,
+          cardPaymentsStatus: state == StripeAccountState.enabled
+              ? 'active'
+              : null,
         ),
         home: const Scaffold(body: BandDashScreen()),
         beforePump: (app) => app.switchToBand('b1'),
