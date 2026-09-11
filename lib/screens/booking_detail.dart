@@ -861,57 +861,53 @@ class _SafetyReportSheetState extends State<_SafetyReportSheet> {
   @override
   Widget build(BuildContext context) {
     return EpFormSheet(
-      title: 'REPORT A SAFETY CONCERN',
-      padBody: false,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const FieldLabel('CATEGORY'),
-            Wrap(
-              spacing: 7,
-              runSpacing: 7,
-              children: [
-                for (final category in const [
-                  SafetyCategory.safety,
-                  SafetyCategory.harassment,
-                  SafetyCategory.misrepresentation,
-                  SafetyCategory.other,
-                ])
-                  EpChip(
-                    key: ValueKey(
-                      'booking-safety-category-${category.wireValue}',
-                    ),
-                    label: category.wireValue.toUpperCase(),
-                    active: _category == category,
-                    onTap: _submitting
-                        ? null
-                        : () => setState(() => _category = category),
+      title: 'Report a safety concern',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const FieldLabel('CATEGORY'),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (final category in const [
+                SafetyCategory.safety,
+                SafetyCategory.harassment,
+                SafetyCategory.misrepresentation,
+                SafetyCategory.other,
+              ])
+                EpChip(
+                  key: ValueKey(
+                    'booking-safety-category-${category.wireValue}',
                   ),
-              ],
-            ),
-            const SizedBox(height: EpLayout.fieldGap),
-            EpLabeledField(
-              label: 'CONCERN',
-              hint: 'Tell us what happened',
-              controller: _text,
-              fieldKey: const Key('booking-safety-text'),
-              required: true,
-              minLines: 3,
-              maxLines: 6,
-              enabled: !_submitting,
-            ),
-            const SizedBox(height: 14),
-            InlineFormFeedback(error: _error),
-            const SizedBox(height: 14),
-            EpButton(
-              'SEND REPORT',
-              key: const Key('booking-safety-submit'),
-              onTap: _submitting ? null : _submit,
-            ),
-          ],
-        ),
+                  label: category.wireValue.toUpperCase(),
+                  active: _category == category,
+                  onTap: _submitting
+                      ? null
+                      : () => setState(() => _category = category),
+                ),
+            ],
+          ),
+          const SizedBox(height: EpLayout.fieldGap),
+          EpLabeledField(
+            label: 'CONCERN',
+            hint: 'Tell us what happened',
+            controller: _text,
+            fieldKey: const Key('booking-safety-text'),
+            required: true,
+            minLines: 3,
+            maxLines: 6,
+            enabled: !_submitting,
+          ),
+          const SizedBox(height: 14),
+          InlineFormFeedback(error: _error),
+          const SizedBox(height: 14),
+          EpButton(
+            'SEND REPORT',
+            key: const Key('booking-safety-submit'),
+            onTap: _submitting ? null : _submit,
+          ),
+        ],
       ),
     );
   }
@@ -1328,94 +1324,84 @@ class _CancelBookingSheetState extends State<_CancelBookingSheet> {
   @override
   Widget build(BuildContext context) {
     return EpFormSheet(
-      title: 'CANCEL BOOKING',
-      padBody: false,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (widget.booking.viewerSide == BookingSide.artist) ...[
-              Material(
-                type: MaterialType.transparency,
-                child: CheckboxListTile(
-                  key: const Key('booking-cancel-safety'),
-                  contentPadding: EdgeInsets.zero,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  title: const Text("I don't feel safe"),
-                  subtitle: const Text(
-                    'Safety cancellations carry no penalty and refund the host in full.',
-                  ),
-                  value: _safety,
-                  onChanged: _submitting
-                      ? null
-                      : (value) => setState(() {
-                          _safety = value == true;
-                          _error = null;
-                        }),
-                ),
+      title: 'Cancel booking',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.booking.viewerSide == BookingSide.artist) ...[
+            CheckboxListTile(
+              key: const Key('booking-cancel-safety'),
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: const Text("I don't feel safe"),
+              subtitle: const Text(
+                'Safety cancellations carry no penalty and refund the host in full.',
               ),
-              const SizedBox(height: 14),
-            ],
-            FutureBuilder<RefundPreview?>(
-              future: _preview,
-              builder: (context, snapshot) {
-                final preview = snapshot.data;
-                if (preview == null || preview.paidMinor == 0) {
-                  return const SizedBox.shrink();
-                }
-                final currency = widget.booking.fee.currency;
-                final recipient =
-                    widget.booking.viewerSide == BookingSide.artist
-                    ? 'You would receive'
-                    : 'The artist receives';
-                final refundMinor = _safety
-                    ? preview.paidMinor
-                    : preview.refundMinor;
-                final forfeitedMinor = _safety ? 0 : preview.forfeitedMinor;
-                final artistPayoutMinor = _safety
-                    ? 0
-                    : preview.artistPayoutMinor;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Refund: ${Money(refundMinor, currency).label} · Forfeited: ${Money(forfeitedMinor, currency).label}',
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '$recipient ${Money(artistPayoutMinor, currency).label}',
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            EpLabeledField(
-              label: 'REASON',
-              hint: 'Explain why you need to cancel',
-              controller: _reason,
-              fieldKey: const Key('booking-cancel-reason'),
-              required: !_safety,
-              minLines: 2,
-              maxLines: 5,
-              enabled: !_submitting,
+              value: _safety,
+              onChanged: _submitting
+                  ? null
+                  : (value) => setState(() {
+                      _safety = value == true;
+                      _error = null;
+                    }),
             ),
             const SizedBox(height: 14),
-            InlineFormFeedback(
-              error: _error,
-              errorKey: const Key('booking-feedback'),
-            ),
-            const SizedBox(height: 14),
-            EpButton(
-              'CONFIRM',
-              key: const Key('booking-cancel-confirm'),
-              onTap: _submitting ? null : _confirm,
-            ),
           ],
-        ),
+          FutureBuilder<RefundPreview?>(
+            future: _preview,
+            builder: (context, snapshot) {
+              final preview = snapshot.data;
+              if (preview == null || preview.paidMinor == 0) {
+                return const SizedBox.shrink();
+              }
+              final currency = widget.booking.fee.currency;
+              final recipient = widget.booking.viewerSide == BookingSide.artist
+                  ? 'You would receive'
+                  : 'The artist receives';
+              final refundMinor = _safety
+                  ? preview.paidMinor
+                  : preview.refundMinor;
+              final forfeitedMinor = _safety ? 0 : preview.forfeitedMinor;
+              final artistPayoutMinor = _safety ? 0 : preview.artistPayoutMinor;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Refund: ${Money(refundMinor, currency).label} · Forfeited: ${Money(forfeitedMinor, currency).label}',
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '$recipient ${Money(artistPayoutMinor, currency).label}',
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          EpLabeledField(
+            label: 'REASON',
+            hint: 'Explain why you need to cancel',
+            controller: _reason,
+            fieldKey: const Key('booking-cancel-reason'),
+            required: !_safety,
+            minLines: 2,
+            maxLines: 5,
+            enabled: !_submitting,
+          ),
+          const SizedBox(height: 14),
+          InlineFormFeedback(
+            error: _error,
+            errorKey: const Key('booking-feedback'),
+          ),
+          const SizedBox(height: 14),
+          EpButton(
+            'CONFIRM',
+            key: const Key('booking-cancel-confirm'),
+            onTap: _submitting ? null : _confirm,
+          ),
+        ],
       ),
     );
   }

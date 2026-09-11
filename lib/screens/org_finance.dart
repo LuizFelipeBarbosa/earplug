@@ -57,14 +57,14 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
     final now = DateTime.now();
     final monthStart = DateTime(now.year, now.month);
     final presets = [
-      ('LAST 30 DAYS', now.subtract(const Duration(days: 30)), now),
-      ('THIS MONTH', monthStart, now),
+      ('Last 30 days', now.subtract(const Duration(days: 30)), now),
+      ('This month', monthStart, now),
       (
-        'LAST MONTH',
+        'Last month',
         DateTime(now.year, now.month - 1),
         monthStart.subtract(const Duration(milliseconds: 1)),
       ),
-      ('YEAR TO DATE', DateTime(now.year), now),
+      ('Year to date', DateTime(now.year), now),
     ];
     unawaited(
       showEpActionSheet(

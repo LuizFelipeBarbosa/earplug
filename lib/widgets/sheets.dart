@@ -79,15 +79,22 @@ class EpSheetShell extends StatelessWidget {
           borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
           border: Border(top: BorderSide(color: borderColor ?? colors.border)),
         ),
-        child: scrollable ? SingleChildScrollView(child: content) : content,
+        // The shell paints an opaque surface above BottomSheet's Material, so
+        // ink from rows needs its own transparent Material to show through.
+        child: Material(
+          type: MaterialType.transparency,
+          child: scrollable ? SingleChildScrollView(child: content) : content,
+        ),
       ),
     );
   }
 }
 
-/// Keyboard-aware chrome for a form sheet: an uppercase title with a Close
-/// button (or [trailing]) above [child]. Unlike [EpSheetShell] it has no drag
-/// handle and rises with the on-screen keyboard.
+/// Keyboard-aware chrome for a form sheet: a sentence-case [title] with a
+/// Close button (or [trailing]) above [child]. Unlike [EpSheetShell] it has no
+/// drag handle and rises with the on-screen keyboard. By default the body
+/// scrolls and clears the bottom system inset so its last control stays out of
+/// the home-indicator gesture zone.
 class EpFormSheet extends StatelessWidget {
   final String title;
   final Widget? trailing;
@@ -112,34 +119,49 @@ class EpFormSheet extends StatelessWidget {
         color: context.epColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(title.toUpperCase(), style: epDisplay(size: 15)),
-                ),
-                trailing ??
-                    IconButton(
-                      tooltip: 'Close',
-                      onPressed: () => Navigator.pop(context),
-                      icon: Icon(Icons.close),
-                    ),
-              ],
-            ),
-          ),
-          if (padBody)
+      // Same as EpSheetShell: the surface above sits over BottomSheet's
+      // Material, so list tiles and rows need this Material for their ink.
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-              child: child,
-            )
-          else
-            Flexible(child: child),
-        ],
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.epSheetTitle,
+                    ),
+                  ),
+                  trailing ??
+                      IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.pop(context),
+                        icon: Icon(Icons.close),
+                      ),
+                ],
+              ),
+            ),
+            if (padBody)
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    0,
+                    16,
+                    24 + MediaQuery.paddingOf(context).bottom,
+                  ),
+                  child: child,
+                ),
+              )
+            else
+              Flexible(child: child),
+          ],
+        ),
       ),
     );
   }

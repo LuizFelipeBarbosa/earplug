@@ -430,14 +430,7 @@ const _presetCaps = ['No cap', '50', '100', '150'];
 void showTicketsSheet(BuildContext context) {
   showEpSheet(
     context,
-    (_) => const EpFormSheet(
-      title: 'Tickets',
-      padBody: false,
-      child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(16, 0, 16, 40),
-        child: _TicketsBody(),
-      ),
-    ),
+    (_) => const EpFormSheet(title: 'Tickets', child: _TicketsBody()),
   );
 }
 

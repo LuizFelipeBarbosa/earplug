@@ -166,13 +166,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       header: 'Profile photo',
       items: [
         EpActionSheetItem(
-          label: 'CHANGE PHOTO',
+          label: 'Change photo',
           icon: Icons.photo_library_outlined,
           onPressed: _pickAvatar,
         ),
         if (hasPhoto)
           EpActionSheetItem(
-            label: 'REMOVE PHOTO',
+            label: 'Remove photo',
             icon: Icons.delete_outline,
             destructive: true,
             onPressed: () => setState(() {

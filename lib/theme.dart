@@ -254,6 +254,7 @@ extension EpTextTheme on TextTheme {
   TextStyle get epDisplay => displayLarge!;
   TextStyle get epPageHeading => headlineLarge!;
   TextStyle get epPosterTitle => headlineMedium!;
+  TextStyle get epSheetTitle => headlineSmall!;
   TextStyle get epSectionHeading => titleLarge!;
   TextStyle get epSection => titleMedium!;
   TextStyle get epBody => bodyMedium!;
@@ -320,6 +321,13 @@ TextTheme _epTextTheme(EpPalette palette) {
       fontSize: 22,
       color: palette.contentPrimary,
       height: 1.18,
+    ),
+    headlineSmall: TextStyle(
+      fontFamily: 'Archivo',
+      fontSize: 20,
+      fontWeight: FontWeight.w600,
+      color: palette.contentPrimary,
+      height: 1.2,
     ),
     titleLarge: TextStyle(
       fontFamily: 'Archivo',

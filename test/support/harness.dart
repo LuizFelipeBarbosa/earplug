@@ -49,9 +49,11 @@ class AppHarness {
 /// [beforePump] runs against the wired-up state before the first frame — use it
 /// for whatever the screen expects to already be in flight. [pumpFor] advances
 /// a fixed duration instead of settling, for screens that hold a timer open.
+/// [size] is the logical surface; the default is the phone the design targets.
 Future<AppHarness> pumpApp(
   WidgetTester tester, {
   required Widget home,
+  Size size = const Size(402, 900),
   FakeAuthService? auth,
   EarplugRepository? repository,
   MediaUploadService? uploader,
@@ -62,8 +64,8 @@ Future<AppHarness> pumpApp(
   FutureOr<void> Function(AppState app)? beforePump,
   Duration? pumpFor,
 }) async {
-  // A phone-sized surface: the design targets 402x874.
-  tester.view.physicalSize = const Size(402, 900);
+  // A phone-sized surface by default: the design targets 402x874.
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
 

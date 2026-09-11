@@ -199,18 +199,12 @@ void main() {
     await tester.pump();
     expect(harness.app.fGenres, {'punk'});
     expect(harness.app.query, isEmpty);
-    await tester.scrollUntilVisible(
-      find.text('VENUE'),
-      280,
-      scrollable: find.byType(Scrollable).last,
+    expect(find.text('VENUE'), findsNothing);
+    expect(find.text('Any venue'), findsNothing);
+    expect(
+      find.byKey(const Key('clear-discovery-filters')).hitTestable(),
+      findsOne,
     );
-    expect(find.text('VENUE'), findsOne);
-    await tester.scrollUntilVisible(
-      find.text('CLEAR ALL'),
-      280,
-      scrollable: find.byType(Scrollable).last,
-    );
-    expect(find.text('CLEAR ALL'), findsOne);
     await tester.tap(find.byKey(const Key('show-filter-results')));
     await tester.pumpAndSettle();
 
@@ -221,12 +215,7 @@ void main() {
 
     await tester.tap(button);
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('CLEAR ALL'),
-      280,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.tap(find.text('CLEAR ALL'));
+    await tester.tap(find.byKey(const Key('clear-discovery-filters')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('show-filter-results')));
     await tester.pumpAndSettle();
@@ -331,7 +320,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('explore-filter-button')));
     await tester.pumpAndSettle();
-    expect(find.text('FILTERS'), findsOne);
+    expect(find.text('Filters'), findsOne);
   });
 
   testWidgets('search results construct off-screen rows lazily', (
@@ -577,7 +566,8 @@ class _RetryDirectoryRepository {
     : stub = StubRepository(auth: auth)
         ..returnsStream(
           'feed',
-          () => Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
+          () =>
+              Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
         )
         ..failOnce('venues', Exception('venue directory failed'))
         ..returns('venues', const [_directoryOnlyVenue]);

@@ -48,7 +48,7 @@ void main() {
       // When sheet — pick a day from the rolling calendar.
       await tester.tap(find.text('Choose a date'));
       await tester.pumpAndSettle();
-      expect(find.text('WHEN IS IT'), findsOne);
+      expect(find.text('When is it'), findsOne);
       expect(find.text('DOORS 8PM'), findsOne);
       // Tomorrow, not "the 1st" — on the last day of a month tomorrow falls in
       // the next one, and the calendar shows four months at once, so a bare day
@@ -81,7 +81,7 @@ void main() {
       // Venue sheet.
       await tester.tap(find.text('Choose a venue'));
       await tester.pumpAndSettle();
-      expect(find.text('WHERE IS IT'), findsOne);
+      expect(find.text('Where is it'), findsOne);
       await tester.tap(find.text('THE FOGHORN CLUB'));
       await tester.pumpAndSettle();
       expect(app.gfVenueId, 'v1');
@@ -95,7 +95,7 @@ void main() {
       await _scrollTo(tester, priceSlot);
       await tester.tap(priceSlot);
       await tester.pumpAndSettle();
-      expect(find.text('COVER'), findsWidgets);
+      expect(find.text('Cover'), findsOne);
       await tester.enterText(
         find.widgetWithText(TextField, 'Other amount'),
         '7',
@@ -526,7 +526,7 @@ void main() {
       );
       await tester.tap(coverSlot);
       await tester.pumpAndSettle();
-      expect(find.text('TICKETS'), findsOne);
+      expect(find.text('Tickets'), findsOne);
       expect(tester.widget<TextField>(priceField).controller!.text, '12');
       expect(tester.widget<TextField>(capacityField).controller!.text, '80');
 

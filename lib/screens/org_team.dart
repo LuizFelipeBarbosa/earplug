@@ -91,12 +91,12 @@ class _OrgTeamScreenState extends State<OrgTeamScreen> {
       header: member.name,
       items: [
         EpActionSheetItem(
-          label: 'CHANGE ROLE',
+          label: 'Change role',
           icon: Icons.manage_accounts_outlined,
           onPressed: () => _showRoleSheet(member),
         ),
         EpActionSheetItem(
-          label: 'REMOVE',
+          label: 'Remove',
           icon: Icons.person_remove_outlined,
           destructive: true,
           onPressed: () => _confirmRemove(member),
@@ -112,7 +112,7 @@ class _OrgTeamScreenState extends State<OrgTeamScreen> {
       items: [
         for (final role in OrganizationRole.values)
           EpActionSheetItem(
-            label: _roleLabel(role).toUpperCase(),
+            label: _roleLabel(role),
             icon: role == member.role
                 ? Icons.check_circle_outline
                 : Icons.circle_outlined,

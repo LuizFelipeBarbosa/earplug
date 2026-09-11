@@ -161,7 +161,7 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
         items: [
           if (gig != null)
             EpActionSheetItem(
-              label: 'DOOR',
+              label: 'Door',
               icon: Icons.sensor_door_outlined,
               onPressed: () => unawaited(
                 showOrganizerDoorMode(
@@ -183,18 +183,18 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
               ),
             ),
           EpActionSheetItem(
-            label: 'EDIT',
+            label: 'Edit',
             icon: Icons.edit,
             onPressed: () => app.openOpportunityEditor(opportunity.id),
           ),
           if (opportunity.status != OpportunityStatus.draft)
             EpActionSheetItem(
-              label: 'VIEW APPLICANTS',
+              label: 'View applicants',
               icon: Icons.people_outline,
               onPressed: () => app.openOpportunityApplicants(opportunity.id),
             ),
           EpActionSheetItem(
-            label: 'DUPLICATE',
+            label: 'Duplicate',
             icon: Icons.copy,
             onPressed: () => unawaited(
               _runAction(app, opportunity, _OpportunityAction.duplicate),
@@ -202,7 +202,7 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
           ),
           if (opportunity.status == OpportunityStatus.open)
             EpActionSheetItem(
-              label: 'CLOSE APPLICATIONS',
+              label: 'Close applications',
               icon: Icons.lock_outline,
               onPressed: () => unawaited(
                 _runAction(app, opportunity, _OpportunityAction.close),
@@ -211,7 +211,7 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
           if (opportunity.status == OpportunityStatus.applicationsClosed ||
               opportunity.status == OpportunityStatus.booking)
             EpActionSheetItem(
-              label: 'REOPEN',
+              label: 'Reopen',
               icon: Icons.lock_open,
               onPressed: () => unawaited(
                 _runAction(app, opportunity, _OpportunityAction.reopen),
@@ -220,7 +220,7 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
           if (opportunity.status != OpportunityStatus.cancelled &&
               opportunity.status != OpportunityStatus.completed)
             EpActionSheetItem(
-              label: 'CANCEL…',
+              label: 'Cancel…',
               icon: Icons.block,
               onPressed: () => unawaited(
                 _runAction(app, opportunity, _OpportunityAction.cancel),
@@ -228,7 +228,7 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
             ),
           if (opportunity.status == OpportunityStatus.draft)
             EpActionSheetItem(
-              label: 'DELETE DRAFT',
+              label: 'Delete draft',
               icon: Icons.delete_outline,
               destructive: true,
               onPressed: () => unawaited(

@@ -314,36 +314,32 @@ class _VenueConsentNoteSheetState extends State<_VenueConsentNoteSheet> {
   @override
   Widget build(BuildContext context) {
     return EpFormSheet(
-      title: widget.revoke ? 'REVOKE APPROVAL' : 'DECLINE REQUEST',
-      padBody: false,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (widget.revoke) ...[
-              const Text(
-                'Revoking cancels the event if it is already open. After a confirmed booking, contact EarPlug support.',
-              ),
-              const SizedBox(height: 14),
-            ],
-            EpLabeledField(
-              label: 'NOTE (OPTIONAL)',
-              hint: 'Add a note for the organizer',
-              fieldKey: const Key('venue-request-note'),
-              controller: _note,
-              enabled: !_submitting,
-              minLines: 2,
-              maxLines: 4,
+      title: widget.revoke ? 'Revoke approval' : 'Decline request',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.revoke) ...[
+            const Text(
+              'Revoking cancels the event if it is already open. After a confirmed booking, contact EarPlug support.',
             ),
-            const SizedBox(height: 16),
-            EpButton(
-              widget.revoke ? 'REVOKE' : 'DECLINE',
-              key: const Key('venue-request-note-submit'),
-              onTap: _submitting ? null : _submit,
-            ),
+            const SizedBox(height: 14),
           ],
-        ),
+          EpLabeledField(
+            label: 'NOTE (OPTIONAL)',
+            hint: 'Add a note for the organizer',
+            fieldKey: const Key('venue-request-note'),
+            controller: _note,
+            enabled: !_submitting,
+            minLines: 2,
+            maxLines: 4,
+          ),
+          const SizedBox(height: 16),
+          EpButton(
+            widget.revoke ? 'REVOKE' : 'DECLINE',
+            key: const Key('venue-request-note-submit'),
+            onTap: _submitting ? null : _submit,
+          ),
+        ],
       ),
     );
   }

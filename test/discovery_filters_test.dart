@@ -270,7 +270,6 @@ void main() {
       app.setDateRange(DateTimeRange(start: show.startsAt, end: show.startsAt));
       app.toggleGenre('surf');
       app.setPriceFilter(PriceFilter.paid);
-      app.setVenueFilter(venue.id);
       app.setDistanceFilter(1);
 
       expect(app.feed.map((gig) => gig.id), ['g2']);
@@ -343,7 +342,6 @@ void main() {
         app.toggleDateFilter(DateFilter.tonight);
         app.toggleGenre('punk');
         app.setPriceFilter(PriceFilter.paid);
-        app.setVenueFilter('v1');
         app.setDistanceFilter(5);
 
         app.clearDiscoveryFilters();
@@ -374,18 +372,17 @@ Future<AppState> _app({
   final app = AppState.demo(
     repository: nextFeedStartsAt == null && feedGigs == null
         ? DemoRepository(auth: auth)
-        : (StubRepository(auth: auth)
-            ..returnsStream(
-              'feed',
-              () => Stream.value(
-                FeedSnapshot(
-                  gigs: feedGigs ?? DemoData.gigs,
-                  venues: DemoData.venues,
-                  bands: DemoData.bands,
-                  nextStartsAt: nextFeedStartsAt,
-                ),
+        : (StubRepository(auth: auth)..returnsStream(
+            'feed',
+            () => Stream.value(
+              FeedSnapshot(
+                gigs: feedGigs ?? DemoData.gigs,
+                venues: DemoData.venues,
+                bands: DemoData.bands,
+                nextStartsAt: nextFeedStartsAt,
               ),
-            )),
+            ),
+          )),
     auth: auth,
     locationService: locationService,
   );

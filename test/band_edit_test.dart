@@ -116,18 +116,18 @@ void main() {
       harness.picker.nextPhoto = photoFixture(filename: 'new_banner.png');
       await tester.tap(find.byKey(const ValueKey('band-header-image-control')));
       await tester.pumpAndSettle();
-      expect(find.text('REPLACE'), findsOne);
-      expect(find.text('USE INITIALS INSTEAD'), findsNothing);
-      await tester.tap(find.text('REPLACE'));
+      expect(find.text('Replace'), findsOne);
+      expect(find.text('Use initials instead'), findsNothing);
+      await tester.tap(find.text('Replace'));
       await tester.pumpAndSettle();
       harness.picker.nextPhoto = photoFixture(filename: 'new_avatar.png');
       await tester.tap(
         find.byKey(const ValueKey('band-profile-image-control')),
       );
       await tester.pumpAndSettle();
-      expect(find.text('REPLACE'), findsOne);
-      expect(find.text('USE INITIALS INSTEAD'), findsNothing);
-      await tester.tap(find.text('REPLACE'));
+      expect(find.text('Replace'), findsOne);
+      expect(find.text('Use initials instead'), findsNothing);
+      await tester.tap(find.text('Replace'));
       await tester.pumpAndSettle();
 
       final photos = harness.media.photosFor('b1');
@@ -160,17 +160,17 @@ void main() {
     final avatar = find.byKey(const ValueKey('band-profile-image-control'));
     await tester.tap(avatar);
     await tester.pumpAndSettle();
-    expect(find.text('REPLACE'), findsOne);
-    expect(find.text('USE INITIALS INSTEAD'), findsNothing);
+    expect(find.text('Replace'), findsOne);
+    expect(find.text('Use initials instead'), findsNothing);
 
-    await tester.tap(find.text('REPLACE'));
+    await tester.tap(find.text('Replace'));
     await tester.pumpAndSettle();
     await tester.tap(avatar);
     await tester.pumpAndSettle();
-    expect(find.text('REPLACE'), findsOne);
-    expect(find.text('USE INITIALS INSTEAD'), findsOne);
+    expect(find.text('Replace'), findsOne);
+    expect(find.text('Use initials instead'), findsOne);
 
-    await tester.tap(find.text('USE INITIALS INSTEAD'));
+    await tester.tap(find.text('Use initials instead'));
     await tester.pumpAndSettle();
     expect(repository.clearAvatarCalls, 1);
     expect(harness.app.myBand!.profileImageUrl, isNull);
@@ -194,7 +194,7 @@ void main() {
     final avatar = find.byKey(const ValueKey('band-profile-image-control'));
     await tester.tap(avatar);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('REPLACE'));
+    await tester.tap(find.text('Replace'));
     await tester.pumpAndSettle();
 
     final avatarFrame = find.byKey(const ValueKey('band-profile-avatar-frame'));

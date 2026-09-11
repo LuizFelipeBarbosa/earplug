@@ -209,13 +209,13 @@ class _AdminApplicationScreenState extends State<AdminApplicationScreen> {
               onStart: _startReview,
               onRequestInfo: () => _showNoteDecision(
                 decision: ApplicationDecision.needsInfo,
-                title: 'REQUEST INFO',
+                title: 'Request info',
                 successMessage: 'Requested more information.',
               ),
               onApprove: _showApproval,
               onReject: () => _showNoteDecision(
                 decision: ApplicationDecision.rejected,
-                title: 'REJECT APPLICATION',
+                title: 'Reject application',
                 successMessage: 'Application rejected.',
               ),
             ),
@@ -804,7 +804,7 @@ class _ApprovalSheetState extends State<_ApprovalSheet> {
   @override
   Widget build(BuildContext context) {
     return EpFormSheet(
-      title: 'APPROVE APPLICATION',
+      title: 'Approve application',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

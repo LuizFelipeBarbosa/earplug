@@ -691,13 +691,10 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
       context,
       (_) => EpFormSheet(
         title: 'Invite bands',
-        child: Material(
-          color: Colors.transparent,
-          child: _InviteBandSearch(
-            repository: repository,
-            invitedIds: Set.of(_invitedIds),
-            onSelected: _inviteBand,
-          ),
+        child: _InviteBandSearch(
+          repository: repository,
+          invitedIds: Set.of(_invitedIds),
+          onSelected: _inviteBand,
         ),
       ),
     );
@@ -1433,7 +1430,7 @@ class _VenueApprovalRequestSheetState
   @override
   Widget build(BuildContext context) {
     return EpFormSheet(
-      title: 'REQUEST VENUE APPROVAL',
+      title: 'Request venue approval',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

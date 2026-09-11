@@ -196,7 +196,7 @@ void main() {
       await harness.app.refreshOpportunities('org1');
       await tester.pumpAndSettle();
       expect(repository.salesReads, readsBeforeScreen + 1);
-      await _chooseOpportunityAction(tester, 'opp1', 'DOOR');
+      await _chooseOpportunityAction(tester, 'opp1', 'Door');
       expect(find.byType(DoorModeScreen), findsOneWidget);
       expect(
         tester.widget<DoorModeScreen>(find.byType(DoorModeScreen)).launch.gigId,
@@ -230,7 +230,7 @@ void main() {
         await tester.ensureVisible(card);
         await tester.tap(card);
         await tester.pumpAndSettle();
-        expect(find.text('DOOR'), published ? findsOneWidget : findsNothing);
+        expect(find.text('Door'), published ? findsOneWidget : findsNothing);
         harness.app.dispose();
       },
     );
@@ -260,7 +260,7 @@ void main() {
       const OrgOpportunitiesScreen(),
     );
 
-    await _chooseOpportunityAction(tester, 'opp1', 'CLOSE APPLICATIONS');
+    await _chooseOpportunityAction(tester, 'opp1', 'Close applications');
 
     final card = find.byKey(const ValueKey('org-opp-opp1'));
     await tester.ensureVisible(card);
@@ -299,7 +299,7 @@ void main() {
       const OrgOpportunitiesScreen(),
     );
 
-    await _chooseOpportunityAction(tester, 'opp2', 'DELETE DRAFT');
+    await _chooseOpportunityAction(tester, 'opp2', 'Delete draft');
 
     expect(find.byKey(const ValueKey('org-opp-opp2')), findsNothing);
     expect(find.byType(AlertDialog), findsNothing);
@@ -315,7 +315,7 @@ void main() {
       const OrgOpportunitiesScreen(),
     );
 
-    await _chooseOpportunityAction(tester, 'opp1', 'DUPLICATE');
+    await _chooseOpportunityAction(tester, 'opp1', 'Duplicate');
 
     final duplicate = harness.app
         .opportunitiesFor('org1')
@@ -335,7 +335,7 @@ void main() {
       const OrgOpportunitiesScreen(),
     );
 
-    await _chooseOpportunityAction(tester, 'opp1', 'CANCEL…');
+    await _chooseOpportunityAction(tester, 'opp1', 'Cancel…');
     expect(find.text('Cancel opportunity?'), findsOneWidget);
     expect(
       (await harness.app.repository.opportunity('opp1'))!.status,
@@ -358,9 +358,9 @@ void main() {
       tester,
       const OrgOpportunitiesScreen(),
     );
-    await _chooseOpportunityAction(tester, 'opp1', 'CLOSE APPLICATIONS');
+    await _chooseOpportunityAction(tester, 'opp1', 'Close applications');
 
-    await _chooseOpportunityAction(tester, 'opp1', 'REOPEN');
+    await _chooseOpportunityAction(tester, 'opp1', 'Reopen');
     expect(find.byType(DatePickerDialog), findsOneWidget);
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
@@ -381,21 +381,22 @@ void main() {
     final harness = await _pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
-      repositoryBuilder: (auth) => StubRepository(auth: auth)
-        ..wraps<List<Opportunity>>('manageOpportunities', (opportunities) {
-          return opportunities.map((opportunity) {
-            if (opportunity.id != 'opp1') return opportunity;
-            return opportunity.copyWith(status: OpportunityStatus.booking);
-          }).toList();
-        }),
+      repositoryBuilder: (auth) =>
+          StubRepository(auth: auth)
+            ..wraps<List<Opportunity>>('manageOpportunities', (opportunities) {
+              return opportunities.map((opportunity) {
+                if (opportunity.id != 'opp1') return opportunity;
+                return opportunity.copyWith(status: OpportunityStatus.booking);
+              }).toList();
+            }),
     );
     final card = find.byKey(const ValueKey('org-opp-opp1'));
     await tester.ensureVisible(card);
     await tester.tap(card);
     await tester.pumpAndSettle();
-    expect(find.text('REOPEN'), findsOneWidget);
+    expect(find.text('Reopen'), findsOneWidget);
 
-    await tester.tap(find.text('REOPEN'));
+    await tester.tap(find.text('Reopen'));
     await tester.pumpAndSettle();
     expect(find.byType(DatePickerDialog), findsOneWidget);
     await tester.tap(find.text('OK'));

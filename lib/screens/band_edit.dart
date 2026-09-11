@@ -239,13 +239,13 @@ class _BandEditScreenState extends State<BandEditScreen> {
           : 'Header image',
       items: [
         EpActionSheetItem(
-          label: 'REPLACE',
+          label: 'Replace',
           icon: Icons.photo_library_outlined,
           onPressed: () => _changeArtwork(role),
         ),
         if (hasArtwork)
           EpActionSheetItem(
-            label: 'USE INITIALS INSTEAD',
+            label: 'Use initials instead',
             icon: Icons.delete_outline,
             destructive: true,
             onPressed: () => _clearArtwork(role),
