@@ -5,8 +5,8 @@ import '../app_state.dart';
 import '../models.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
-import '../widgets/common.dart';
-import '../widgets/form_bits.dart';
+import '../widgets/ep_rows.dart';
+import '../widgets/ep_text.dart';
 import 'door_mode.dart';
 import 'gig_detail.dart';
 
@@ -104,124 +104,102 @@ Gig _draftGigFrom(AppState app) {
 
 /// The celebration shown once the gig is live, with its share actions.
 class GigPublishedView extends StatelessWidget {
-  const GigPublishedView({super.key, required this.poster});
-
-  /// The gig's poster, scaled in as the view appears.
-  final Widget poster;
+  const GigPublishedView({super.key});
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    final gig = _draftGigFrom(app);
+    final venue = app.gfVenueId == null ? null : app.venue(app.gfVenueId!);
+    final publicGigId = app.gfProject?.publicGigId;
     return ColoredBox(
       color: context.epColors.background,
       child: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'PUBLISHED',
-                style: epText(
-                  size: 11,
-                  weight: FontWeight.w900,
-                  letterSpacing: 2,
-                  color: context.epColors.accent,
+          padding: const EdgeInsets.symmetric(
+            horizontal: EpLayout.gutter,
+            vertical: 32,
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const EpEyebrow.accent('Published'),
+                const SizedBox(height: 12),
+                const EpDisplay("It's live.", size: 36),
+                const SizedBox(height: 20),
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: .9, end: 1),
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeOutBack,
+                  builder: (_, scale, child) =>
+                      Transform.scale(scale: scale, child: child),
+                  child: EpGigRow(
+                    date: gig.startsAt,
+                    title: gig.title,
+                    meta: venue == null
+                        ? gig.dateLine
+                        : '${gig.dateLine} · ${venue.name}',
+                    sub: app.gigUrl,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              TweenAnimationBuilder<double>(
-                tween: Tween(begin: .9, end: 1),
-                duration: const Duration(milliseconds: 350),
-                curve: Curves.easeOutBack,
-                builder: (_, scale, child) =>
-                    Transform.scale(scale: scale, child: child),
-                child: poster,
-              ),
-              const SizedBox(height: 16),
-              Text("IT'S LIVE.", style: epDisplay(size: 20)),
-              const SizedBox(height: 4),
-              Text(
-                app.gigUrl,
-                style: epText(
-                  size: 12,
-                  color: context.epColors.contentSecondary,
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: 300,
-                child: Row(
+                const SizedBox(height: 24),
+                if (publicGigId != null) ...[
+                  EpPill(
+                    label: 'Open public gig',
+                    variant: EpPillVariant.primary,
+                    size: EpPillSize.large,
+                    expand: true,
+                    onPressed: () => app.openGig(publicGigId),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  runSpacing: 4,
                   children: [
-                    Expanded(
-                      child: EpButton(
-                        'SHARE LINK',
-                        fontSize: 11.5,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        onTap: () => copyForUser(
-                          context,
-                          'https://${app.gigUrl}',
-                          successMessage: 'Link copied: ${app.gigUrl}',
-                        ),
+                    TextButton(
+                      onPressed: () => copyForUser(
+                        context,
+                        'https://${app.gigUrl}',
+                        successMessage: 'Link copied: ${app.gigUrl}',
                       ),
+                      child: const EpMonoText('Share link'),
                     ),
-                    if (app.gfProject?.ticketing == Ticketing.rsvp) ...[
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: EpButton(
-                          'DOOR MODE',
-                          kind: EpButtonKind.ghost,
-                          fontSize: 11.5,
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          onTap: () => showDoorMode(
-                            context,
-                            DoorModeLaunch(
-                              projectId: app.gfProject!.id,
-                              gigTitle: app.gfName.trim().isEmpty
-                                  ? 'Untitled gig'
-                                  : app.gfName,
-                              venueName: app.gfVenueId == null
-                                  ? 'Venue TBD'
-                                  : app.venue(app.gfVenueId!).name,
-                              doorsTime: app.gfDoorsLabel,
-                            ),
+                    if (app.gfProject?.ticketing == Ticketing.rsvp)
+                      TextButton(
+                        onPressed: () => showDoorMode(
+                          context,
+                          DoorModeLaunch(
+                            projectId: app.gfProject!.id,
+                            gigTitle: app.gfName.trim().isEmpty
+                                ? 'Untitled gig'
+                                : app.gfName,
+                            venueName: venue?.name ?? 'Venue TBD',
+                            doorsTime: app.gfDoorsLabel,
                           ),
                         ),
+                        child: const EpMonoText('Door mode'),
                       ),
-                    ],
+                    TextButton(
+                      onPressed: app.editPublishedGig,
+                      child: const EpMonoText('Keep editing'),
+                    ),
+                    TextButton(
+                      onPressed: app.makeAnotherGig,
+                      child: const EpMonoText('Make another'),
+                    ),
+                    TextButton(
+                      onPressed: app.closeGigCreate,
+                      child: const EpMonoText('Back to gigs'),
+                    ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  TextAction(
-                    'KEEP EDITING',
-                    onTap: app.editPublishedGig,
-                    color: context.epColors.contentSecondary,
-                    size: 11,
-                    letterSpacing: .6,
-                  ),
-                  TextAction(
-                    'MAKE ANOTHER',
-                    onTap: app.makeAnotherGig,
-                    size: 11,
-                    letterSpacing: .6,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              TextAction(
-                'BACK TO GIGS',
-                onTap: app.closeGigCreate,
-                color: context.epColors.contentDisabled,
-                size: 11,
-                letterSpacing: .6,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

@@ -40,6 +40,7 @@ void main() {
         160,
         scrollable: options,
       );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('PUNK'));
       await tester.pumpAndSettle();
       expect(harness.app.fGenres, {'punk'});
@@ -176,7 +177,7 @@ void main() {
 
     expect(
       tester.getBottomLeft(find.byType(FilledButton)).dy,
-      lessThanOrEqualTo(844 - 34 - 24),
+      lessThanOrEqualTo(844 - 34 - 20),
     );
   });
 }

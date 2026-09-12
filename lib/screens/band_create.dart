@@ -141,7 +141,7 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                 name: app.nbName,
                 area: app.nbArea ?? '',
                 initials: bandInitialsFor(app.nbName),
-                color: Ep.brand,
+                color: context.epColors.accent,
                 avatarBytes: app.nbPhoto?.bytes,
                 bannerBytes: app.nbBanner?.bytes,
                 onAvatarTap: () => _pickArtwork(_CreateArtworkRole.avatar),
@@ -249,14 +249,18 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                 title: 'Credits',
                 description:
                     'Acknowledge producers, artists, labels, and collaborators.',
-                child: EpLabeledField(
-                  fieldKey: const ValueKey('create-credits'),
-                  label: 'CREDITS',
-                  hint: 'Who helped make the work',
-                  controller: _credits,
-                  minLines: 3,
-                  maxLines: 6,
-                  onChanged: app.setNbCredits,
+                // A lone field in a section otherwise merges its label into
+                // the section heading's semantics node.
+                child: MergeSemantics(
+                  child: EpLabeledField(
+                    fieldKey: const ValueKey('create-credits'),
+                    label: 'CREDITS',
+                    hint: 'Who helped make the work',
+                    controller: _credits,
+                    minLines: 3,
+                    maxLines: 6,
+                    onChanged: app.setNbCredits,
+                  ),
                 ),
               ),
               _PostCreateRow(
@@ -300,11 +304,11 @@ class _PostCreateRow extends StatelessWidget {
       child: Material(
         color: context.epColors.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(EpLayout.cardRadius),
           side: BorderSide(color: context.epColors.border),
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(EpLayout.cardRadius),
           onTap: enabled ? onTap : () => app.say(disabledMessage),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 56),
@@ -315,7 +319,7 @@ class _PostCreateRow extends StatelessWidget {
                   Icon(
                     icon,
                     color: enabled
-                        ? context.epColors.volt
+                        ? context.epColors.accent
                         : context.epColors.contentDisabled,
                   ),
                   const SizedBox(width: 10),
@@ -376,9 +380,7 @@ class _CreateBar extends StatelessWidget {
                 ? 'Your band is live. Save to publish these updates.'
                 : 'Ready. Images, about, and links can be added any time.',
             textAlign: TextAlign.center,
-            style: epText(
-              size: 11,
-              weight: FontWeight.w700,
+            style: Theme.of(context).textTheme.epChipLabel.copyWith(
               color: missing.isEmpty
                   ? context.epColors.accent
                   : context.epColors.contentSecondary,
@@ -419,10 +421,7 @@ class _CreatedView extends StatelessWidget {
             children: [
               Text(
                 "YOU'RE LIVE",
-                style: epText(
-                  size: 10.5,
-                  weight: FontWeight.w900,
-                  letterSpacing: 2,
+                style: Theme.of(context).textTheme.epSection.copyWith(
                   color: context.epColors.accent,
                 ),
               ),
@@ -431,7 +430,7 @@ class _CreatedView extends StatelessWidget {
                 name: app.nbName,
                 area: app.nbArea ?? '',
                 initials: bandInitialsFor(app.nbName),
-                color: Ep.brand,
+                color: context.epColors.accent,
                 avatarBytes: app.nbPhoto?.bytes,
                 bannerBytes: app.nbBanner?.bytes,
               ),
@@ -448,14 +447,16 @@ class _CreatedView extends StatelessWidget {
                   onRetry: app.retryNbBanner,
                 ),
               const SizedBox(height: 18),
-              Text("You're on the map.", style: epDisplay(size: 20)),
+              Text(
+                "You're on the map.",
+                style: Theme.of(context).textTheme.epDisplayAt(20),
+              ),
               const SizedBox(height: 4),
               Text(
                 profileUrl,
-                style: epText(
-                  size: 12,
-                  color: context.epColors.contentSecondary,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.epCaption.copyWith(fontSize: 12),
               ),
               const SizedBox(height: 18),
               SizedBox(
@@ -538,7 +539,7 @@ class _UploadRecovery extends StatelessWidget {
       child: uploading
           ? Text(
               'ADDING $label…',
-              style: epText(size: 11, weight: FontWeight.w800),
+              style: Theme.of(context).textTheme.epChipLabel,
             )
           : TextAction(
               'RETRY $label',

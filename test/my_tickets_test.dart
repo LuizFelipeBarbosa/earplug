@@ -2,7 +2,7 @@ import 'package:earplug/app_state.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/my_gigs.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_rows.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -41,25 +41,22 @@ void main() {
     expect(harness.app.myTicketsLoaded, isTrue);
     expect(repository.walletLoads, 1);
     expect(harness.app.myTickets, hasLength(2));
-    final section = find.byWidgetPredicate(
-      (widget) => widget is SectionBar && widget.label == 'TICKETS',
-    );
-    expect(tester.widget<SectionBar>(section).count, 2);
-    expect(
-      tester.getTopLeft(section).dy,
-      lessThan(tester.getTopLeft(find.textContaining('UPCOMING RSVPS')).dy),
-    );
+    await _selectTickets(tester, count: 2);
     for (final ticket in harness.app.myTickets) {
       final card = find.byKey(ValueKey('ticket-${ticket.id}'));
-      expect(tester.widget(card), isA<EpCard>());
-      for (final label in [ticket.gig.title, ticket.gig.venueName, 'VALID']) {
+      expect(tester.widget(card), isA<EpGigRow>());
+      for (final label in [
+        ticket.gig.title.toUpperCase(),
+        ticket.gig.venueName.toUpperCase(),
+        'VALID',
+      ]) {
         expect(
           find.descendant(of: card, matching: find.text(label)),
           findsOneWidget,
         );
       }
       expect(
-        find.descendant(of: card, matching: find.byType(DateBlock)),
+        find.descendant(of: card, matching: find.byType(EpDateBlock)),
         findsOneWidget,
       );
     }
@@ -86,16 +83,11 @@ void main() {
 
     expect(harness.app.myTicketsLoaded, isTrue);
     expect(repository.walletLoads, 1);
+    await _selectTickets(tester, count: 0);
     expect(
       find.text('No tickets yet · paid shows list them here'),
       findsOneWidget,
     );
-    final section = tester.widget<SectionBar>(
-      find.byWidgetPredicate(
-        (widget) => widget is SectionBar && widget.label == 'TICKETS',
-      ),
-    );
-    expect(section.count, 0);
   });
 
   testWidgets('wallet includes only upcoming valid and checked-in tickets', (
@@ -122,6 +114,8 @@ void main() {
     tester.view.physicalSize = const Size(402, 3000);
     await tester.pumpAndSettle();
 
+    await _selectTickets(tester, count: 2);
+
     expect(find.byKey(const ValueKey('ticket-valid')), findsOneWidget);
     final used = find.byKey(const ValueKey('ticket-used'));
     expect(used, findsOneWidget);
@@ -138,13 +132,17 @@ void main() {
     ]) {
       expect(find.byKey(ValueKey('ticket-$id')), findsNothing);
     }
-    final section = tester.widget<SectionBar>(
-      find.byWidgetPredicate(
-        (widget) => widget is SectionBar && widget.label == 'TICKETS',
-      ),
-    );
-    expect(section.count, 2);
   });
+}
+
+Future<void> _selectTickets(WidgetTester tester, {required int count}) async {
+  final tabs = tester.widget<EpSegmentTabs>(find.byType(EpSegmentTabs));
+  expect(tabs.labels[1], 'Tickets · $count');
+  final segment = find.text('TICKETS · $count');
+  await tester.ensureVisible(segment);
+  await tester.tap(segment);
+  await tester.pumpAndSettle();
+  expect(tester.widget<EpSegmentTabs>(find.byType(EpSegmentTabs)).selected, 1);
 }
 
 TicketSummary _ticket(String id, TicketStatus status, DateTime startsAt) =>

@@ -10,6 +10,7 @@ import '../data/repository.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 
 /// Display data already known by the screen that launches Door Mode.
@@ -83,7 +84,7 @@ enum _DoorTone {
           background: context.epColors.successTint,
         ),
         warning => (
-          foreground: context.epColors.volt,
+          foreground: context.epColors.warning,
           background: context.epColors.warningTint,
         ),
         failure => (
@@ -404,9 +405,9 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
         if (!didPop) unawaited(_closeScanner());
       },
       child: Scaffold(
-        backgroundColor: context.epColors.dark,
+        backgroundColor: context.epColors.background,
         appBar: AppBar(
-          backgroundColor: context.epColors.dark,
+          backgroundColor: context.epColors.background,
           leading: CircleIconButton(
             tooltip: _scannerOpen ? 'Back to door overview' : 'Close Door Mode',
             onTap: _scannerOpen
@@ -489,23 +490,11 @@ class _Viewer extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
       children: [
-        Text(
-          'DOOR MODE · ${launch.venueName.toUpperCase()}',
-          style: Theme.of(context).textTheme.epSection.copyWith(
-            color: context.epColors.volt,
-            fontSize: 11,
-          ),
-        ),
+        EpEyebrow('DOOR MODE · ${launch.venueName}'),
         const SizedBox(height: 8),
-        Text(launch.gigTitle, style: Theme.of(context).textTheme.epPosterTitle),
+        EpDisplay(launch.gigTitle, size: 30, maxLines: 3),
         const SizedBox(height: 8),
-        Text(
-          'DOORS ${launch.doorsTime.toUpperCase()}',
-          style: Theme.of(context).textTheme.epMeta.copyWith(
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1,
-          ),
-        ),
+        EpMonoText('DOORS ${launch.doorsTime}', color: context.epColors.muted),
         const SizedBox(height: 28),
         if (roster?.secondaryLabel != null)
           Text(
@@ -515,13 +504,10 @@ class _Viewer extends StatelessWidget {
             key: const Key('door-organizer-roster'),
             style: Theme.of(
               context,
-            ).textTheme.epLabel.copyWith(color: context.epColors.volt),
+            ).textTheme.epLabel.copyWith(color: context.epColors.ink),
           )
         else ...[
-          Text(
-            'CHECKED IN',
-            style: Theme.of(context).textTheme.epSection.copyWith(fontSize: 11),
-          ),
+          const EpEyebrow('CHECKED IN'),
           const SizedBox(height: 6),
           Semantics(
             label: roster == null
@@ -535,17 +521,15 @@ class _Viewer extends StatelessWidget {
                 children: [
                   TextSpan(
                     text: '${roster?.primaryCheckedIn ?? '…'}',
-                    style: Theme.of(context).textTheme.epDisplay.copyWith(
-                      fontSize: 54,
-                      color: context.epColors.volt,
-                    ),
+                    style: Theme.of(context).textTheme
+                        .epDisplayAt(54)
+                        .copyWith(color: context.epColors.accent),
                   ),
                   TextSpan(
                     text: ' / $denominator',
-                    style: Theme.of(context).textTheme.epDisplay.copyWith(
-                      fontSize: roster?.truncated == true ? 17 : 28,
-                      color: context.epColors.mute,
-                    ),
+                    style: Theme.of(context).textTheme
+                        .epDisplayAt(roster?.truncated == true ? 17 : 28)
+                        .copyWith(color: context.epColors.contentDisabled),
                   ),
                 ],
               ),
@@ -558,18 +542,15 @@ class _Viewer extends StatelessWidget {
               key: const Key('door-roster-limited'),
               style: Theme.of(
                 context,
-              ).textTheme.epCaption.copyWith(color: context.epColors.volt),
+              ).textTheme.epCaption.copyWith(color: context.epColors.warning),
             ),
           ],
           const SizedBox(height: 18),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(99),
-            child: LinearProgressIndicator(
-              minHeight: 7,
-              value: progress,
-              backgroundColor: context.epColors.raised,
-              color: context.epColors.volt,
-            ),
+          LinearProgressIndicator(
+            minHeight: 4,
+            value: progress,
+            backgroundColor: context.epColors.panel,
+            color: context.epColors.accent,
           ),
         ],
         if (rosterFailure != null) ...[
@@ -730,7 +711,7 @@ class _ScannerView extends StatelessWidget {
               TextSpan(text: ' · '),
               TextSpan(
                 text: 'already checked in / wrong gig',
-                style: TextStyle(color: context.epColors.volt),
+                style: TextStyle(color: context.epColors.warning),
               ),
               TextSpan(text: ' · '),
               TextSpan(
@@ -752,27 +733,24 @@ class _ScannerFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
+    return ClipRect(
       child: Stack(
         fit: StackFit.expand,
         children: [
-          ColoredBox(color: context.epColors.surface, child: child),
+          ColoredBox(color: context.epColors.panel, child: child),
           IgnorePointer(
-            child: CustomPaint(painter: _ScannerPainter(context.epColors.volt)),
+            child: CustomPaint(
+              painter: _ScannerPainter(context.epColors.accent),
+            ),
           ),
           Positioned(
             left: 12,
             right: 12,
             bottom: 14,
-            child: Text(
-              "POINT AT A FAN'S QR — NO BUTTON NEEDED",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: context.epColors.contentSecondary,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: .7,
+            child: Center(
+              child: EpMonoText(
+                "POINT AT A FAN'S QR — NO BUTTON NEEDED",
+                color: context.epColors.muted,
               ),
             ),
           ),
@@ -824,14 +802,18 @@ class _CameraFallback extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: context.epColors.surface,
+      color: context.epColors.panel,
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(48),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.photo_camera, size: 46, color: context.epColors.mute),
+              Icon(
+                Icons.photo_camera,
+                size: 46,
+                color: context.epColors.contentDisabled,
+              ),
               const SizedBox(height: 16),
               Text(
                 message,
@@ -882,7 +864,6 @@ class _ResultBanner extends StatelessWidget {
         decoration: BoxDecoration(
           color: tone.background,
           border: Border.all(color: tone.foreground),
-          borderRadius: BorderRadius.circular(10),
         ),
         child: result.detail == null
             ? headline
@@ -922,7 +903,6 @@ class _FailureBanner extends StatelessWidget {
         decoration: BoxDecoration(
           color: context.epColors.destructiveTint,
           border: Border.all(color: context.epColors.destructive),
-          borderRadius: BorderRadius.circular(10),
         ),
         child: Text(
           message,
@@ -951,14 +931,13 @@ class _RosterRefreshFailureNotice extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: context.epColors.warningTint,
-          border: Border.all(color: context.epColors.volt),
-          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: context.epColors.warning),
         ),
         child: Text(
           'CHECK-IN RECORDED · COUNT COULD NOT REFRESH · DO NOT SCAN AGAIN',
           style: Theme.of(
             context,
-          ).textTheme.epLabel.copyWith(color: context.epColors.volt),
+          ).textTheme.epLabel.copyWith(color: context.epColors.warning),
         ),
       ),
     );

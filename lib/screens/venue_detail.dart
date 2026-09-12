@@ -6,7 +6,8 @@ import '../data/repository.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
-import '../widgets/fan_event_card.dart';
+import '../widgets/ep_rows.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/map_view.dart';
 
 class VenueDetailScreen extends StatefulWidget {
@@ -39,7 +40,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
 
     return Column(
       children: [
-        _Header(onBack: app.back),
+        _TopBar(onBack: app.back),
         Expanded(
           child: detail != null
               ? _VenueContent(detail: detail, app: app)
@@ -50,24 +51,26 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({required this.onBack});
+class _TopBar extends StatelessWidget {
+  const _TopBar({required this.onBack});
 
   final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
-    return ScreenHeader(
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        EpLayout.gutter,
+        headerTopPad(context),
+        EpLayout.gutter,
+        0,
+      ),
       child: Row(
         children: [
-          CircleIconButton(onTap: onBack),
-          const SizedBox(width: 10),
-          Text(
-            'VENUE',
-            style: Theme.of(context).textTheme.epLabel.copyWith(
-              letterSpacing: 1.4,
-              color: context.epColors.contentSecondary,
-            ),
+          EpIconPill(
+            icon: Icons.arrow_back,
+            semanticLabel: 'Back',
+            onPressed: onBack,
           ),
         ],
       ),
@@ -86,24 +89,24 @@ class _VenueState extends StatelessWidget {
     final error = app.venueDetailError(venueId);
     if (error != null) {
       return _CenteredState(
-        title: "COULDN'T LOAD THIS VENUE",
+        title: "Couldn't load this venue",
         message: 'The venue details are unavailable right now.',
-        action: EpButton(
-          'RETRY',
+        action: EpPill(
           key: const Key('venue-detail-retry'),
-          kind: EpButtonKind.outline,
-          onTap: () => app.retryVenueDetail(venueId),
+          label: 'Retry',
+          size: EpPillSize.regular,
+          onPressed: () => app.retryVenueDetail(venueId),
         ),
       );
     }
     if (app.venueDetailMissing(venueId)) {
       return const _CenteredState(
-        title: 'VENUE NOT FOUND',
+        title: 'Venue not found',
         message: 'This venue may have been removed.',
       );
     }
     return const _CenteredState(
-      title: 'LOADING VENUE…',
+      title: 'Loading venue…',
       message: 'Finding the next shows.',
       progress: true,
     );
@@ -137,25 +140,18 @@ class _CenteredState extends StatelessWidget {
                 height: 22,
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
             ],
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.epSectionHeading,
-            ),
-            const SizedBox(height: 7),
+            EpDisplay(title, size: 24, maxLines: 3, textAlign: TextAlign.center),
+            const SizedBox(height: 8),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.epBody.copyWith(
-                color: context.epColors.contentSecondary,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.epBody.copyWith(color: context.epColors.muted),
             ),
-            if (action != null) ...[
-              const SizedBox(height: 16),
-              SizedBox(width: 140, child: action),
-            ],
+            if (action != null) ...[const SizedBox(height: 20), action!],
           ],
         ),
       ),
@@ -209,227 +205,152 @@ class _VenueContentState extends State<_VenueContent> {
 
   @override
   Widget build(BuildContext context) {
-    final rows = <_VenueContentRow>[
-      const _VenueHeroRow(),
-      const _VenueMapRow(),
-      _VenueSectionRow('UPCOMING EVENTS', _gigs.length),
-      if (_gigs.isEmpty)
-        const _VenueEmptyEventsRow()
-      else
-        for (final gig in _gigs) _VenueGigRow(gig),
-      if (widget.detail.truncated) const _VenueTruncatedRow(),
-      _VenueSectionRow('PERFORMING BANDS', _performerIds.length),
-      if (_performerIds.isEmpty)
-        const _VenueEmptyPerformersRow()
-      else
-        for (final bandId in _performerIds) _VenuePerformerRow(bandId),
-    ];
-
-    return ListView.builder(
-      key: const Key('venue-detail-content'),
-      padding: const EdgeInsets.only(bottom: 40),
-      itemCount: rows.length,
-      itemBuilder: (context, index) => _buildRow(context, rows[index]),
-    );
-  }
-
-  Widget _buildRow(BuildContext context, _VenueContentRow row) {
     final detail = widget.detail;
     final app = widget.app;
-    return switch (row) {
-      _VenueHeroRow() => _VenueHero(
-        venue: detail.venue,
-        distance: app.distanceOf(detail.venue),
+    final venue = detail.venue;
+
+    return ListView(
+      key: const Key('venue-detail-content'),
+      padding: const EdgeInsets.fromLTRB(
+        EpLayout.gutter,
+        28,
+        EpLayout.gutter,
+        40,
       ),
-      _VenueMapRow() => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+      children: [
+        _VenueHeader(venue: venue),
+        const SizedBox(height: 20),
+        EpPanel(
+          height: 160,
           child: VenueMiniMap(
             key: const Key('venue-detail-map'),
-            venue: detail.venue,
-            approximate: detail.venue.exactAddress == null,
+            venue: venue,
+            approximate: venue.exactAddress == null,
           ),
         ),
-      ),
-      _VenueSectionRow(:final label, :final count) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: SectionBar(
-          label: label,
-          trailing: Text(
-            '$count',
-            style: Theme.of(context).textTheme.epCaption,
-          ),
-        ),
-      ),
-      _VenueEmptyEventsRow() => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: DashedBox(
-          child: Text(
-            'Nothing on the calendar right now.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.epBody.copyWith(
-              color: context.epColors.contentSecondary,
+        _VenueFacts(venue: venue, distance: app.distanceOf(venue)),
+        EpSectionHeader(label: 'Upcoming · ${_gigs.length}'),
+        if (_gigs.isEmpty)
+          const _QuietNote('Nothing on the calendar right now.')
+        else
+          for (final gig in _gigs)
+            EpGigRow(
+              key: ValueKey('fan-event-${gig.id}'),
+              date: gig.startsAt,
+              title: gig.title,
+              sub: _gigSubtitle(gig, detail.bands),
+              onTap: () => app.openGig(gig.id),
             ),
+        if (detail.truncated)
+          const _QuietNote(
+            'Showing the next 200 events.',
+            key: Key('venue-detail-truncated'),
           ),
-        ),
-      ),
-      _VenueGigRow(:final gig) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 9),
-        child: FanEventCard(gig: gig, app: app),
-      ),
-      _VenueTruncatedRow() => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        child: Text(
-          'Showing the next 200 events.',
-          key: const Key('venue-detail-truncated'),
-          style: Theme.of(context).textTheme.epCaption,
-        ),
-      ),
-      _VenueEmptyPerformersRow() => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Text(
-          'No performers announced yet.',
-          style: Theme.of(context).textTheme.epCaption,
-        ),
-      ),
-      _VenuePerformerRow(:final bandId) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 7),
-        child: _PerformerRow(band: detail.bands[bandId]!, app: app),
-      ),
-    };
+        EpSectionHeader(label: 'Performing bands · ${_performerIds.length}'),
+        if (_performerIds.isEmpty)
+          const _QuietNote('No performers announced yet.')
+        else
+          for (final bandId in _performerIds)
+            _PerformerRow(band: detail.bands[bandId]!, app: app),
+      ],
+    );
   }
 }
 
-sealed class _VenueContentRow {
-  const _VenueContentRow();
+/// "Doors 8PM · $10 · Foghorn Diet · Pigeon Court" for one upcoming show.
+String _gigSubtitle(Gig gig, Map<String, Band> bands) {
+  final doors = gig.doorsLabel.trim();
+  return [
+    if (doors.isNotEmpty) 'Doors $doors',
+    gig.free ? 'Free' : gig.priceLabel,
+    for (final bandId in gig.lineup)
+      if (bands[bandId] case final band?) band.name,
+  ].join(' · ');
 }
 
-class _VenueHeroRow extends _VenueContentRow {
-  const _VenueHeroRow();
+String _venueTypeLabel(VenueType type) => switch (type) {
+  VenueType.bar => 'Bar',
+  VenueType.club => 'Club',
+  VenueType.hall => 'Hall',
+  VenueType.house => 'House',
+  VenueType.outdoor => 'Outdoor',
+  VenueType.private => 'Private',
+  VenueType.other => 'Other',
+};
+
+class _VenueHeader extends StatelessWidget {
+  const _VenueHeader({required this.venue});
+
+  final Venue venue;
+
+  @override
+  Widget build(BuildContext context) {
+    final area = venue.area.trim();
+    final traits = [
+      if (venue.venueType case final type?) _venueTypeLabel(type),
+      if (venue.capacityPublic case final capacity?) 'Capacity $capacity',
+    ].join(' · ');
+    final description = [
+      ?venue.description?.trim(),
+      if (traits.isNotEmpty) '$traits.',
+    ].where((part) => part.isNotEmpty).join(' ');
+
+    return Column(
+      key: const Key('venue-detail-hero'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            EpEyebrow.accent(area.isEmpty ? 'Venue' : 'Venue · $area'),
+            if (venue.verified)
+              const EpBadge(
+                key: Key('venue-detail-verified'),
+                label: 'Verified',
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        EpDisplay(venue.name, size: 48, maxLines: 4),
+        if (description.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(
+            description,
+            style: Theme.of(
+              context,
+            ).textTheme.epBody.copyWith(color: context.epColors.muted),
+          ),
+        ],
+      ],
+    );
+  }
 }
 
-class _VenueMapRow extends _VenueContentRow {
-  const _VenueMapRow();
-}
-
-class _VenueSectionRow extends _VenueContentRow {
-  const _VenueSectionRow(this.label, this.count);
-
-  final String label;
-  final int count;
-}
-
-class _VenueEmptyEventsRow extends _VenueContentRow {
-  const _VenueEmptyEventsRow();
-}
-
-class _VenueGigRow extends _VenueContentRow {
-  const _VenueGigRow(this.gig);
-
-  final Gig gig;
-}
-
-class _VenueTruncatedRow extends _VenueContentRow {
-  const _VenueTruncatedRow();
-}
-
-class _VenueEmptyPerformersRow extends _VenueContentRow {
-  const _VenueEmptyPerformersRow();
-}
-
-class _VenuePerformerRow extends _VenueContentRow {
-  const _VenuePerformerRow(this.bandId);
-
-  final String bandId;
-}
-
-class _VenueHero extends StatelessWidget {
-  const _VenueHero({required this.venue, required this.distance});
+/// Address and distance. Approximate venues never render the exact address.
+class _VenueFacts extends StatelessWidget {
+  const _VenueFacts({required this.venue, required this.distance});
 
   final Venue venue;
   final String distance;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          key: const Key('venue-detail-hero'),
-          constraints: const BoxConstraints(minHeight: 150),
-          padding: const EdgeInsets.fromLTRB(16, 24, 16, 28),
-          decoration: BoxDecoration(
-            color: Ep.brand,
-            border: Border(
-              bottom: BorderSide(color: context.epColors.accent, width: 2),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              Text(
-                [
-                  'VENUE',
-                  if (venue.area.trim().isNotEmpty) venue.area.toUpperCase(),
-                ].join(' · '),
-                style: Theme.of(
-                  context,
-                ).textTheme.epSection.copyWith(color: Ep.ink),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                venue.name.toUpperCase(),
-                style: Theme.of(
-                  context,
-                ).textTheme.epPosterTitle.copyWith(color: Ep.ink),
-              ),
-              if (venue.verified) ...[
-                const SizedBox(height: 8),
-                const StatusPill(
-                  key: Key('venue-detail-verified'),
-                  label: 'VERIFIED',
-                ),
-              ],
-            ],
-          ),
+    final approximate = venue.exactAddress == null;
+    return EpFactGrid(
+      cells: [
+        EpFactCell(
+          key: approximate ? const Key('venue-detail-approx-note') : null,
+          label: 'Address',
+          value: approximate ? venue.approx.label : venue.exactAddress!,
+          sub: approximate ? 'Shared with ticket holders' : null,
+          display: false,
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          child: Transform.translate(
-            offset: const Offset(0, -12),
-            child: EpCard(
-              variant: EpCardVariant.raised,
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    venue.exactAddress ?? venue.approx.label,
-                    style: Theme.of(context).textTheme.epBody,
-                  ),
-                  if (venue.exactAddress == null) ...[
-                    const SizedBox(height: 5),
-                    Text(
-                      'Exact address is shared with booked artists and ticket holders',
-                      key: const Key('venue-detail-approx-note'),
-                      style: Theme.of(context).textTheme.epCaption,
-                    ),
-                  ],
-                  const SizedBox(height: 5),
-                  Text(
-                    [
-                      if (venue.area.trim().isNotEmpty) venue.area,
-                      venue.exactAddress == null ? '~$distance' : distance,
-                    ].join(' · '),
-                    key: const Key('venue-detail-distance'),
-                    style: Theme.of(context).textTheme.epCaption,
-                  ),
-                ],
-              ),
-            ),
-          ),
+        EpFactCell(
+          key: const Key('venue-detail-distance'),
+          label: 'From you',
+          value: approximate ? '~$distance' : distance,
         ),
       ],
     );
@@ -444,35 +365,36 @@ class _PerformerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return EpCard(
+    return EpEntityRow(
       key: ValueKey('venue-band-${band.id}'),
-      padding: const EdgeInsets.all(9),
+      leading: BandAvatar(band),
+      title: band.name,
+      sub: band.genreLine,
+      trailing: Icon(
+        Icons.chevron_right,
+        size: 16,
+        color: context.epColors.muted,
+      ),
       onTap: () => app.openBand(band.id),
-      child: Row(
-        children: [
-          BandAvatar(band, size: 38, radius: 8, fontSize: 12),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  band.name.toUpperCase(),
-                  style: Theme.of(context).textTheme.epLabel,
-                ),
-                Text(
-                  band.genreLine,
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-              ],
-            ),
-          ),
-          Icon(
-            Icons.chevron_right,
-            size: 18,
-            color: context.epColors.contentSecondary,
-          ),
-        ],
+    );
+  }
+}
+
+/// Muted aside used by the empty and truncated states.
+class _QuietNote extends StatelessWidget {
+  const _QuietNote(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Text(
+        text,
+        style: Theme.of(
+          context,
+        ).textTheme.epBody.copyWith(color: context.epColors.muted),
       ),
     );
   }

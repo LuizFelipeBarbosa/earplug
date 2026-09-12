@@ -7,6 +7,7 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/gig_create.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
@@ -21,34 +22,34 @@ void main() {
     (tester) async {
       final app = (await _pumpGigCreate(tester)).app;
 
-      // The editor keeps section labels while the six checklist tiles identify
-      // every picker without duplicate headings immediately above them.
+      // One checklist: the header counts the draft's readiness and every row
+      // labels its picker, so no picker needs a heading above it.
       expect(find.text('GIG DRAFT'), findsOne);
-      expect(find.text('DRAFT'), findsOne);
-      expect(find.text('SAVE DRAFT'), findsOne);
+      expect(find.text('DRAFT · 5 OF 8 DONE'), findsOne);
       expect(find.text('GIG NAME'), findsNothing);
-      expect(find.text('DATE'), findsOne);
+      expect(find.text('NAME · REQUIRED'), findsOne);
       expect(find.text('DOORS AND START TIME'), findsNothing);
+      expect(find.text('DATE · REQUIRED'), findsOne);
       expect(find.text('TIMES'), findsOne);
-      expect(find.text('VENUE'), findsOne);
+      expect(find.text('VENUE · REQUIRED'), findsOne);
       expect(find.text('COVER'), findsOne);
       expect(find.text('ACCESS'), findsOne);
       expect(find.text('AUDIENCE'), findsOne);
       expect(find.text('LINEUP · 1'), findsOne);
       expect(find.text('POSTER'), findsOne);
-      expect(find.text('Still needs a name + a date + a venue'), findsOne);
+      expect(find.text('STILL NEEDS A NAME + A DATE + A VENUE'), findsOne);
 
-      // Typing in the standard name card updates the decorative poster.
+      // Typing in the inline name row updates the docked poster.
       await tester.enterText(find.byType(TextField).first, 'Riptide Release');
       await tester.pump();
       expect(app.gfName, 'Riptide Release');
-      expect(find.text('GIG NAME · REQUIRED'), findsOne);
-      expect(find.text('Still needs a date + a venue'), findsOne);
+      expect(find.text('NAME'), findsOne);
+      expect(find.text('STILL NEEDS A DATE + A VENUE'), findsOne);
 
       // When sheet — pick a day from the rolling calendar.
       await tester.tap(find.text('Choose a date'));
       await tester.pumpAndSettle();
-      expect(find.text('When is it'), findsOne);
+      expect(find.text('WHEN IS IT'), findsOne);
       expect(find.text('DOORS 8PM'), findsOne);
       // Tomorrow, not "the 1st" — on the last day of a month tomorrow falls in
       // the next one, and the calendar shows four months at once, so a bare day
@@ -81,12 +82,12 @@ void main() {
       // Venue sheet.
       await tester.tap(find.text('Choose a venue'));
       await tester.pumpAndSettle();
-      expect(find.text('Where is it'), findsOne);
+      expect(find.text('WHERE IS IT'), findsOne);
       await tester.tap(find.text('THE FOGHORN CLUB'));
       await tester.pumpAndSettle();
       expect(app.gfVenueId, 'v1');
       expect(
-        find.text('Ready. Fans nearby see it as soon as you publish.'),
+        find.text('READY. FANS NEARBY SEE IT AS SOON AS YOU PUBLISH.'),
         findsOne,
       );
 
@@ -95,7 +96,8 @@ void main() {
       await _scrollTo(tester, priceSlot);
       await tester.tap(priceSlot);
       await tester.pumpAndSettle();
-      expect(find.text('Cover'), findsOne);
+      // The sheet title repeats the checklist row's label behind it.
+      expect(find.text('COVER'), findsNWidgets(2));
       await tester.enterText(
         find.widgetWithText(TextField, 'Other amount'),
         '7',
@@ -125,12 +127,16 @@ void main() {
       await tester.tap(find.text('DONE'));
       await tester.pumpAndSettle();
 
-      // Poster presets are a normal field later in the form.
-      final riso = find.byKey(const ValueKey('press-riso'));
-      await _scrollTo(tester, riso);
-      await tester.tap(riso);
+      // Poster presses sit beside the docked poster at the top of the list.
+      final press = find.byKey(const ValueKey('press-accent'));
+      await _scrollTo(tester, press, delta: -240);
+      await tester.tap(press);
       await tester.pump();
-      expect(app.gfFly, 'riso');
+      expect(app.gfFly, 'accent');
+
+      // Autosave aside, the draft can still be saved from the end of the list.
+      await _scrollTo(tester, find.text('SAVE DRAFT'));
+      expect(find.text('SAVE DRAFT'), findsOne);
 
       // Publish, then the live-flyer confirmation.
       await tester.tap(find.text('PUBLISH GIG'));
@@ -139,34 +145,38 @@ void main() {
       expect(find.text('PUBLISHED'), findsOne);
       expect(find.text("IT'S LIVE."), findsOne);
       expect(find.text('earplug.app/g/riptide-release'), findsOne);
+      expect(find.text('OPEN PUBLIC GIG'), findsOne);
+      expect(find.text('SHARE LINK'), findsOne);
       expect(app.allGigs.last.title, 'Riptide Release');
-      expect(app.allGigs.last.flyKey, 'riso');
+      expect(app.allGigs.last.flyKey, 'accent');
 
       await tester.tap(find.text('MAKE ANOTHER'));
       await tester.pumpAndSettle();
-      expect(find.text('GIG NAME · REQUIRED'), findsOne);
+      expect(find.text('NAME · REQUIRED'), findsOne);
       expect(app.gfPrice, 'FREE');
     },
   );
 
-  testWidgets('the editing slots collapse to one column for enlarged text', (
+  testWidgets('the editing slots stay in one column for enlarged text', (
     tester,
   ) async {
     tester.platformDispatcher.textScaleFactorTestValue = 1.5;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await _pumpGigCreate(tester);
 
-    final leftEdges = [
-      for (final key in const [
-        'gig-slot-date',
-        'gig-slot-times',
-        'gig-slot-venue',
-        'gig-slot-cover',
-        'gig-slot-access',
-        'gig-slot-audience',
-      ])
-        tester.getTopLeft(find.byKey(ValueKey(key))).dx,
-    ];
+    final leftEdges = <double>[];
+    for (final key in const [
+      'gig-slot-date',
+      'gig-slot-times',
+      'gig-slot-venue',
+      'gig-slot-cover',
+      'gig-slot-access',
+      'gig-slot-audience',
+    ]) {
+      final slot = find.byKey(ValueKey(key));
+      await _scrollTo(tester, slot);
+      leftEdges.add(tester.getTopLeft(slot).dx);
+    }
     expect(leftEdges.toSet(), hasLength(1));
     expect(tester.takeException(), isNull);
   });
@@ -176,37 +186,37 @@ void main() {
   ) async {
     final app = (await _pumpGigCreate(tester)).app;
     app.setGfTix(Ticketing.paid);
-    await _scrollTo(tester, find.text('YOUR GIG NAME'));
-    expect(find.text('TICKETS · SET A PRICE'), findsOne);
+    await tester.pump();
+    // The docked poster prints its unset details as one mono block.
+    expect(find.text('YOUR GIG NAME'), findsOne);
+    expect(find.textContaining('TICKETS · SET A PRICE'), findsOne);
 
     app.setGfTicketPriceMinor(1000);
     await tester.pump();
-    expect(find.text(r'TICKETS · $10.00'), findsOne);
-    expect(find.text('TICKETS · SET A PRICE'), findsNothing);
+    expect(find.textContaining(r'TICKETS · $10.00'), findsOne);
+    expect(find.textContaining('TICKETS · SET A PRICE'), findsNothing);
   });
 
   testWidgets(
     'uploaded art swaps the press for a drop slot and an overlay toggle',
     (tester) async {
       final app = (await _pumpGigCreate(tester)).app;
-      expect(find.text('Text overlay'), findsNothing);
+      expect(find.textContaining('TEXT OVERLAY'), findsNothing);
 
       final custom = find.byKey(const ValueKey('press-custom'));
       await _scrollTo(tester, custom);
       await tester.tap(custom);
       await tester.pump();
       expect(app.gfCustomFlyer, isTrue);
-      expect(find.text('CUSTOM FLYER PREVIEW'), findsOne);
+      expect(_artPlaceholder, findsOne);
       expect(find.text('ADD FLYER ART'), findsOne);
-      expect(find.text('Text overlay'), findsOne);
-      expect(
-        find.text('Your flyer art previews with listing details on top.'),
-        findsOne,
-      );
+      expect(find.text('TEXT OVERLAY · ON'), findsOne);
 
-      // Overlay off hides the printed details but keeps the slot cards.
-      await tester.tap(find.text('Text overlay'));
+      // Overlay off hides the printed details but keeps the checklist rows.
+      await tester.tap(find.text('TEXT OVERLAY · ON'));
       await tester.pump();
+      expect(find.text('TEXT OVERLAY · OFF'), findsOne);
+      expect(find.text('DATE · REQUIRED'), findsOne);
       expect(app.gfShowOverlay, isFalse);
       expect(app.gfDate, isNull);
       await app.saveGigDraft();
@@ -230,7 +240,7 @@ void main() {
     expect(harness.app.gfFlyerArt, isNotNull);
     expect(harness.app.gfFlyerStorageId, isNotNull);
     expect(find.byType(Image), findsOne);
-    expect(find.text('CUSTOM FLYER PREVIEW'), findsNothing);
+    expect(_artPlaceholder, findsNothing);
     await harness.app.saveGigDraft();
     await tester.pumpAndSettle();
   });
@@ -256,8 +266,8 @@ void main() {
 
     expect(app.gfFlyerUploading, isTrue);
     expect(app.gigMissing, contains('your flyer art'));
-    final disabledPublish = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'PUBLISH GIG'),
+    final disabledPublish = tester.widget<EpPill>(
+      find.widgetWithText(EpPill, 'PUBLISH GIG'),
     );
     expect(disabledPublish.onPressed, isNull);
     expect(repository.publishCalls, 0);
@@ -526,7 +536,7 @@ void main() {
       );
       await tester.tap(coverSlot);
       await tester.pumpAndSettle();
-      expect(find.text('Tickets'), findsOne);
+      expect(find.text('TICKETS'), findsOne);
       expect(tester.widget<TextField>(priceField).controller!.text, '12');
       expect(tester.widget<TextField>(capacityField).controller!.text, '80');
 
@@ -566,7 +576,7 @@ void main() {
     await tester.pump();
     expect(app.canPublishGig, isFalse);
     expect(app.gigMissing, ['ticket price and capacity']);
-    expect(find.text('Still needs ticket price and capacity'), findsOne);
+    expect(find.text('STILL NEEDS TICKET PRICE AND CAPACITY'), findsOne);
 
     final coverSlot = find.byKey(const ValueKey('gig-slot-cover'));
     await _scrollTo(tester, coverSlot);
@@ -861,8 +871,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(app.gfFlyerUrl, 'demo://flyer/stored-flyer');
-    await tester.drag(find.byType(ListView), const Offset(0, -650));
-    await tester.pumpAndSettle();
     final clearArt = find.byKey(const ValueKey('clear-flyer-art'));
     expect(clearArt, findsOne);
     await tester.ensureVisible(clearArt);
@@ -974,10 +982,17 @@ void main() {
   });
 }
 
-Future<void> _scrollTo(WidgetTester tester, Finder finder) async {
+/// The docked poster's empty custom-art slot, which draws no label of its own.
+final _artPlaceholder = find.byIcon(Icons.add_photo_alternate_outlined);
+
+Future<void> _scrollTo(
+  WidgetTester tester,
+  Finder finder, {
+  double delta = 240,
+}) async {
   await tester.scrollUntilVisible(
     finder,
-    240,
+    delta,
     scrollable: find.byType(Scrollable).first,
   );
   await tester.pumpAndSettle();

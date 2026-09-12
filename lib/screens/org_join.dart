@@ -175,12 +175,7 @@ class _JoinLoading extends StatelessWidget {
         const SizedBox(height: 16),
         Text(
           'CHECKING INVITATION…',
-          style: epText(
-            size: 11,
-            weight: FontWeight.w900,
-            letterSpacing: 1,
-            color: context.epColors.contentSecondary,
-          ),
+          style: Theme.of(context).textTheme.epMeta,
         ),
       ],
     );
@@ -216,16 +211,15 @@ class _JoinConfirmation extends StatelessWidget {
         Text(
           'Join ${resolution.organizationName} as ${_roleLabel(resolution.role)}',
           textAlign: TextAlign.center,
-          style: epDisplay(size: 23),
+          style: Theme.of(context).textTheme.epDisplayAt(23),
         ),
         const SizedBox(height: 9),
         Text(
           'This role gives you access to the organization\'s marketplace tools.',
           textAlign: TextAlign.center,
-          style: epText(
-            size: 13,
+          style: Theme.of(context).textTheme.epBody.copyWith(
+            fontSize: 13,
             color: context.epColors.contentSecondary,
-            height: 1.5,
           ),
         ),
         const SizedBox(height: 12),
@@ -234,10 +228,9 @@ class _JoinConfirmation extends StatelessWidget {
               ? 'You will only join after you confirm below.'
               : 'Sign in first, then return here to confirm. You will not join automatically.',
           textAlign: TextAlign.center,
-          style: epText(
-            size: 11,
+          style: Theme.of(context).textTheme.epCaption.copyWith(
+            fontSize: 11,
             color: context.epColors.contentDisabled,
-            height: 1.4,
           ),
         ),
         const SizedBox(height: 22),
@@ -279,13 +272,13 @@ class _JoinAccepted extends StatelessWidget {
               ? 'Organization joined.'
               : 'You joined ${resolution!.organizationName}.',
           textAlign: TextAlign.center,
-          style: epDisplay(size: 23),
+          style: Theme.of(context).textTheme.epDisplayAt(23),
         ),
         const SizedBox(height: 8),
         Text(
           'Your membership is active.',
           textAlign: TextAlign.center,
-          style: epText(size: 12.5, color: context.epColors.contentSecondary),
+          style: Theme.of(context).textTheme.epCaption.copyWith(fontSize: 12.5),
         ),
         const SizedBox(height: 22),
         EpButton('OPEN ORGANIZER DASHBOARD', onTap: onDashboard),
@@ -315,17 +308,13 @@ class _JoinError extends StatelessWidget {
         Text(
           'Invitation unavailable',
           textAlign: TextAlign.center,
-          style: epDisplay(size: 22),
+          style: Theme.of(context).textTheme.epDisplayAt(22),
         ),
         const SizedBox(height: 8),
         Text(
           message,
           textAlign: TextAlign.center,
-          style: epText(
-            size: 12.5,
-            color: context.epColors.contentSecondary,
-            height: 1.45,
-          ),
+          style: Theme.of(context).textTheme.epCaption.copyWith(fontSize: 12.5),
         ),
         const SizedBox(height: 20),
         EpButton('BACK TO EARPLUG', kind: EpButtonKind.outline, onTap: onBack),

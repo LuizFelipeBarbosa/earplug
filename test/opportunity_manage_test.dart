@@ -202,7 +202,11 @@ void main() {
         tester.widget<DoorModeScreen>(find.byType(DoorModeScreen)).launch.gigId,
         'g8',
       );
-      expect(find.text(DemoData.opportunities['opp1']!.title), findsOneWidget);
+      // Door mode renders the gig title in the uppercase display voice.
+      expect(
+        find.text(DemoData.opportunities['opp1']!.title.toUpperCase()),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
       harness.app.dispose();
     },
@@ -227,7 +231,7 @@ void main() {
         );
         expect(find.byKey(const Key('org-opp-sales-opp1')), findsNothing);
         final card = find.byKey(const ValueKey('org-opp-opp1'));
-        await tester.ensureVisible(card);
+        await _revealOpportunityCard(tester, card);
         await tester.tap(card);
         await tester.pumpAndSettle();
         expect(find.text('Door'), published ? findsOneWidget : findsNothing);
@@ -391,7 +395,7 @@ void main() {
             }),
     );
     final card = find.byKey(const ValueKey('org-opp-opp1'));
-    await tester.ensureVisible(card);
+    await _revealOpportunityCard(tester, card);
     await tester.tap(card);
     await tester.pumpAndSettle();
     expect(find.text('Reopen'), findsOneWidget);
@@ -735,8 +739,19 @@ void main() {
       find.byKey(const ValueKey('send-offer-notes')),
       '  Backline provided.  ',
     );
+    // The sheet's list is lazy and the message field sits below the fold.
     final message = find.byKey(const ValueKey('send-offer-message'));
-    await tester.ensureVisible(message);
+    await tester.scrollUntilVisible(
+      message,
+      200,
+      scrollable: find
+          .ancestor(
+            of: find.byKey(const ValueKey('send-offer-notes')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
     await tester.enterText(message, '  Looking forward to the show!  ');
     await tester.tap(find.byKey(const ValueKey('send-offer-submit')));
     await tester.pumpAndSettle();
@@ -1249,13 +1264,28 @@ class _PublishedOpportunityRepository extends StubRepository {
   );
 }
 
+/// Brings an opportunity card fully into view before it is tapped.
+///
+/// The list builds its rows lazily, so a single [WidgetTester.ensureVisible]
+/// can only scroll as far as the extent estimated from the rows laid out so
+/// far, and it leaves the render tree one frame behind the new offset. Pumping
+/// and repeating settles both.
+Future<void> _revealOpportunityCard(WidgetTester tester, Finder card) async {
+  for (var attempt = 0; attempt < 5; attempt++) {
+    await tester.ensureVisible(card);
+    await tester.pumpAndSettle();
+    final viewport = tester.getRect(find.byType(ListView).first);
+    if (viewport.contains(tester.getRect(card).center)) return;
+  }
+}
+
 Future<void> _chooseOpportunityAction(
   WidgetTester tester,
   String opportunityId,
   String action,
 ) async {
   final card = find.byKey(ValueKey('org-opp-$opportunityId'));
-  await tester.ensureVisible(card);
+  await _revealOpportunityCard(tester, card);
   await tester.tap(card);
   await tester.pumpAndSettle();
   await tester.tap(find.text(action));

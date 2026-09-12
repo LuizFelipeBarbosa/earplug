@@ -4,7 +4,6 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/analytics.dart';
 import 'package:earplug/screens/analytics_sheets.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -12,7 +11,7 @@ import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
 void main() {
-  testWidgets('answer board leads with the best-show takeaway', (tester) async {
+  testWidgets('fan insights presents the best-show takeaway', (tester) async {
     await pumpApp(tester, home: const Scaffold(body: AnalyticsScreen()));
 
     final takeaway = find.byKey(const Key('analytics-best-show'));
@@ -20,18 +19,21 @@ void main() {
     expect(
       find.descendant(
         of: takeaway,
-        matching: find.text('BEST SHOW THIS WINDOW'),
+        matching: find.text('BEST SHOW · 47% ABOVE AVERAGE'),
       ),
-      findsOne,
-    );
-    expect(
-      find.descendant(of: takeaway, matching: find.text('Summer Static')),
       findsOne,
     );
     expect(
       find.descendant(
         of: takeaway,
-        matching: find.text('The Knockout · 56 RSVPs · 47% above avg'),
+        matching: find.textContaining('SUMMER STATIC'),
+      ),
+      findsOne,
+    );
+    expect(
+      find.descendant(
+        of: takeaway,
+        matching: find.text('SUMMER STATIC · THE KNOCKOUT · 56 RSVPS'),
       ),
       findsOne,
     );
@@ -66,13 +68,7 @@ void main() {
       of: averageShow,
       matching: find.byType(Container),
     );
-    final averageLine = find.byWidgetPredicate(
-      (widget) =>
-          widget is Row &&
-          widget.children.any(
-            (child) => child is Expanded && child.child is Divider,
-          ),
-    );
+    final averageLine = find.byKey(const Key('analytics-average-line'));
 
     expect(averageBar, findsOne);
     expect(find.text('AVG 20'), findsOne);
@@ -94,22 +90,25 @@ void main() {
     final title = find.text('BEST NIGHTS', skipOffstage: false);
     expect(title, findsOne);
 
-    final card = find.ancestor(
-      of: title,
-      matching: find.byType(EpCard, skipOffstage: false),
+    final section = find.byKey(
+      const Key('analytics-best-nights'),
+      skipOffstage: false,
     );
-    expect(card, findsOne);
+    expect(section, findsOne);
     expect(
       find.descendant(
-        of: card,
-        matching: find.text('Not enough data yet', skipOffstage: false),
+        of: section,
+        matching: find.text(
+          'WITHHELD · NOT ENOUGH DATA YET',
+          skipOffstage: false,
+        ),
       ),
       findsOne,
     );
 
     final textWidgets = tester.widgetList<Text>(
       find.descendant(
-        of: card,
+        of: section,
         matching: find.byType(Text, skipOffstage: false),
       ),
     );
@@ -147,20 +146,20 @@ void main() {
 
       final takeaway = find.byKey(const Key('analytics-best-show'));
       expect(
+        find.descendant(of: takeaway, matching: find.text('2-WAY TIE')),
+        findsOne,
+      );
+      expect(
         find.descendant(
           of: takeaway,
-          matching: find.text('BEST SHOW THIS WINDOW · 2-WAY TIE'),
+          matching: find.text('NEWER ZERO SHOW · NEW ROOM · 0 RSVPS'),
         ),
         findsOne,
       );
       expect(
-        find.descendant(of: takeaway, matching: find.text('Newer Zero Show')),
-        findsOne,
-      );
-      expect(
         find.descendant(
           of: takeaway,
-          matching: find.text('New Room · 0 RSVPs · at window average'),
+          matching: find.text('BEST SHOW · AT WINDOW AVERAGE'),
         ),
         findsOne,
       );
@@ -312,7 +311,7 @@ void main() {
     expect(
       find.descendant(
         of: sheet,
-        matching: find.text('3 shows · 240 total RSVPs', skipOffstage: false),
+        matching: find.text('3 SHOWS · 240 TOTAL RSVPS', skipOffstage: false),
       ),
       findsOne,
     );

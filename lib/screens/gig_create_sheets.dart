@@ -10,6 +10,7 @@ import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
 
@@ -30,24 +31,29 @@ class _AgeBody extends StatelessWidget {
     final app = context.watch<AppState>();
     return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final requirement in AgeRequirement.values) ...[
-          EpOptionCard(
-            title: requirement.label,
-            subtitle: switch (requirement) {
-              AgeRequirement.allAges => 'Everyone is welcome',
-              AgeRequirement.eighteenPlus => 'Guests must be 18 or older',
-              AgeRequirement.twentyOnePlus => 'Guests must be 21 or older',
-            },
-            selected: app.gfAgeRequirement == requirement,
-            onTap: () {
-              app.setGfAgeRequirement(requirement);
-              Navigator.pop(context);
-            },
-          ),
-          if (requirement != AgeRequirement.twentyOnePlus)
-            const SizedBox(height: 8),
-        ],
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final requirement in AgeRequirement.values)
+              EpChip(
+                label: requirement.label,
+                active: app.gfAgeRequirement == requirement,
+                onTap: () {
+                  app.setGfAgeRequirement(requirement);
+                  Navigator.pop(context);
+                },
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(switch (app.gfAgeRequirement) {
+          AgeRequirement.allAges => 'Everyone is welcome',
+          AgeRequirement.eighteenPlus => 'Guests must be 18 or older',
+          AgeRequirement.twentyOnePlus => 'Guests must be 21 or older',
+        }, style: Theme.of(context).textTheme.epCaption),
       ],
     );
   }
@@ -93,26 +99,16 @@ class _WhenBody extends StatelessWidget {
             ),
           ),
         ),
-        Container(
+        const EpHairline(),
+        Padding(
           padding: const EdgeInsets.fromLTRB(16, 13, 16, 34),
-          decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: context.epColors.border)),
-          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'DOORS',
-                    style: epText(
-                      size: 11,
-                      weight: FontWeight.w800,
-                      letterSpacing: 1.3,
-                      color: context.epColors.contentSecondary,
-                    ),
-                  ),
+                  const EpEyebrow('Doors'),
                   OutlinedButton(
                     onPressed: () async {
                       final picked = await showTimePicker(
@@ -129,15 +125,7 @@ class _WhenBody extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'START',
-                    style: epText(
-                      size: 11,
-                      weight: FontWeight.w800,
-                      letterSpacing: 1.3,
-                      color: context.epColors.contentSecondary,
-                    ),
-                  ),
+                  const EpEyebrow('Start'),
                   OutlinedButton(
                     onPressed: () async {
                       final picked = await showTimePicker(
@@ -215,7 +203,7 @@ class _Month extends StatelessWidget {
               ? context.epColors.surfaceSelected
               : context.epColors.surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.zero,
             side: BorderSide(
               color: past
                   ? context.epColors.surfaceDisabled
@@ -227,7 +215,7 @@ class _Month extends StatelessWidget {
           child: InkWell(
             key: ValueKey('day-${date.year}-${date.month}-${date.day}'),
             onTap: past ? null : () => context.read<AppState>().setGfDate(date),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.zero,
             child: SizedBox(
               height: 48,
               child: Center(
@@ -260,26 +248,15 @@ class _Month extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          monthLabel(first).toUpperCase(),
-          style: epText(
-            size: 11,
-            weight: FontWeight.w900,
-            letterSpacing: 1.3,
-            color: context.epColors.contentDisabled,
-          ),
-        ),
+        EpEyebrow(monthLabel(first)),
         const SizedBox(height: 8),
         grid(
           0,
-          (slot) => Text(
-            const ['S', 'M', 'T', 'W', 'T', 'F', 'S'][slot],
-            textAlign: TextAlign.center,
-            style: epText(
+          (slot) => Center(
+            child: EpMonoText(
+              const ['S', 'M', 'T', 'W', 'T', 'F', 'S'][slot],
               size: 11,
-              weight: FontWeight.w900,
-              letterSpacing: .5,
-              color: context.epColors.contentDisabled,
+              color: context.epColors.muted,
             ),
           ),
         ),
@@ -317,11 +294,7 @@ void showVenueSheet(BuildContext context) {
                   return Text(
                     'Venues are shared records, so the address stays consistent across '
                     "every band's listings.",
-                    style: epText(
-                      size: 11,
-                      color: context.epColors.contentDisabled,
-                      height: 1.45,
-                    ),
+                    style: Theme.of(context).textTheme.epCaption,
                   );
                 }
 
@@ -412,11 +385,7 @@ class _PriceBodyState extends State<_PriceBody> {
         Text(
           'Free gigs get roughly twice the RSVPs. Sliding scale? Put the range '
           'in the gig name.',
-          style: epText(
-            size: 11,
-            color: context.epColors.contentDisabled,
-            height: 1.45,
-          ),
+          style: Theme.of(context).textTheme.epCaption,
         ),
       ],
     );
@@ -586,17 +555,16 @@ class _TicketsBodyState extends State<_TicketsBody> {
             children: [
               Text(
                 'Paid tickets',
-                style: epText(size: 12.5, weight: FontWeight.w800),
+                style: Theme.of(
+                  context,
+                ).textTheme.epBody.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 2),
               Text(
                 app.canSellTickets
                     ? 'Fans pay you directly through Stripe; EarPlug adds its fee at checkout.'
                     : 'Enable ticket sales in PAYOUTS',
-                style: epText(
-                  size: 11,
-                  color: context.epColors.contentSecondary,
-                ),
+                style: Theme.of(context).textTheme.epCaption,
               ),
             ],
           ),

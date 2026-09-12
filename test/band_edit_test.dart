@@ -35,7 +35,7 @@ void main() {
           .widget<TextField>(find.byKey(const ValueKey('edit-band-name')))
           .style
           ?.fontSize,
-      16,
+      18,
     );
     expect(find.text('GENRES · REQUIRED'), findsOne);
     expect(find.text('HOME BASE · REQUIRED'), findsOne);

@@ -10,6 +10,8 @@ import '../models.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/map_view.dart';
 import '../widgets/ticket_purchase_sheet.dart';
 
@@ -123,10 +125,11 @@ class GigDetailPresentation extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final venue = app.venue(gig.venueId);
+    final interactive = !isPreview;
     return Stack(
       children: [
         ListView(
-          padding: const EdgeInsets.only(bottom: 120),
+          padding: EdgeInsets.only(bottom: actionBarClearance(context)),
           children: [
             _Hero(
               gig: gig,
@@ -137,34 +140,18 @@ class GigDetailPresentation extends StatelessWidget {
               flyerBytes: flyerBytes,
             ),
             if (gig.lifecycle == GigLifecycle.cancelled)
-              Container(
-                margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: context.epColors.warning.withValues(alpha: .12),
-                  border: Border.all(color: context.epColors.warning),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'THIS GIG HAS BEEN CANCELLED',
-                  textAlign: TextAlign.center,
-                  style: epText(
-                    size: 12,
-                    weight: FontWeight.w900,
-                    letterSpacing: .8,
-                    color: context.epColors.warning,
-                  ),
-                ),
-              ),
+              const _CancelledBanner(),
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _InfoCards(
+                  _FactsSection(
                     gig: gig,
+                    app: app,
                     venue: venue,
-                    previewLabel: previewLabel,
+                    venueSet: venueSet,
+                    interactive: interactive,
                   ),
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 260),
@@ -176,7 +163,7 @@ class GigDetailPresentation extends StatelessWidget {
                       child: FadeTransition(opacity: animation, child: child),
                     ),
                     child:
-                        !isPreview &&
+                        interactive &&
                             gig.tix == Ticketing.rsvp &&
                             gig.lifecycle == GigLifecycle.published &&
                             app.hasConfirmedRsvp(gig.id)
@@ -194,30 +181,30 @@ class GigDetailPresentation extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   SectionBar(label: 'LINEUP', count: performers.length),
-                  for (final performer in performers) ...[
+                  for (final performer in performers)
                     _LineupRow(
                       performer: performer,
                       app: app,
-                      interactive: !isPreview,
+                      interactive: interactive,
                     ),
-                    const SizedBox(height: 8),
-                  ],
                   if (gig.desc.trim().isNotEmpty) ...[
                     const SectionBar(label: 'ABOUT'),
                     Text(
                       gig.desc,
-                      style: epText(
-                        size: 13.5,
-                        color: context.epColors.contentSecondary,
-                        height: 1.5,
+                      style: Theme.of(context).textTheme.epBody.copyWith(
+                        color: context.epColors.muted,
                       ),
                     ),
                   ],
-                  const SectionBar(label: 'VENUE'),
                   if (venueSet)
-                    _VenueCard(venue: venue, app: app, interactive: !isPreview)
-                  else
-                    const _MissingVenueCard(),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 20),
+                      child: _VenueMapSection(
+                        venue: venue,
+                        app: app,
+                        interactive: interactive,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -227,15 +214,35 @@ class GigDetailPresentation extends StatelessWidget {
           left: 0,
           right: 0,
           bottom: 0,
-          child: isPreview
-              ? _PreviewCtaBar(gig: gig)
-              : _GigCtaBar(gig: gig, app: app),
+          child: _GigCta(gig: gig, app: app, previewLabel: previewLabel),
         ),
       ],
     );
   }
 }
 
+class _CancelledBanner extends StatelessWidget {
+  const _CancelledBanner();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.fromLTRB(EpLayout.gutter, 16, EpLayout.gutter, 0),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: context.epColors.warning.withValues(alpha: .12),
+      border: Border.all(color: context.epColors.warning),
+    ),
+    child: Center(
+      child: EpMonoText(
+        'This gig has been cancelled',
+        color: context.epColors.warning,
+      ),
+    ),
+  );
+}
+
+/// The full-bleed flyer: artwork, the presenter eyebrow, the title and the
+/// lineup line, with the back / save / share pills floating over it.
 class _Hero extends StatelessWidget {
   final Gig gig;
   final AppState app;
@@ -253,189 +260,102 @@ class _Hero extends StatelessWidget {
     required this.flyerBytes,
   });
 
+  static const double _height = 360;
+
   @override
   Widget build(BuildContext context) {
     final fly = app.flyer(gig.flyKey);
-    final venue = app.venue(gig.venueId);
     final presenter = gig.createdByBand == null
         ? null
         : app.band(gig.createdByBand!);
     final lineupLine = performers
         .map((performer) => performer.name)
-        .join(' · ')
-        .toUpperCase();
-    final topPad = headerTopPad(context);
+        .join(' · ');
 
-    final content = Stack(
-      fit: StackFit.expand,
-      children: [
-        if (gig.flyKey == 'custom')
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.black54, Colors.transparent, Colors.black87],
-                stops: [0, .42, 1],
-              ),
-            ),
-          ),
-        Padding(
-          padding: EdgeInsets.fromLTRB(22, topPad + 8, 22, 20),
-          child: Stack(
-            key: const ValueKey('gig-detail-hero-content'),
-            clipBehavior: Clip.none,
+    final content = Padding(
+      padding: EdgeInsets.fromLTRB(22, headerTopPad(context) + 8, 22, 20),
+      child: Stack(
+        key: const ValueKey('gig-detail-hero-content'),
+        clipBehavior: Clip.none,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 40),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (presenter != null) ...[
-                          Text(
-                            '${presenter.name.toUpperCase()} PRESENTS',
-                            style: epText(
-                              size: 11,
-                              weight: FontWeight.w900,
-                              color: fly.fg,
-                              letterSpacing: 1.8,
-                            ),
-                          ),
-                          const SizedBox(height: 9),
-                        ],
-                        Text(
-                          gig.title.toUpperCase(),
-                          maxLines: 4,
-                          overflow: TextOverflow.ellipsis,
-                          style: epDisplay(
-                            size: 34,
-                            color: fly.fg,
-                            letterSpacing: -.5,
-                            height: .98,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Column(
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 40),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '${gig.dateShort} · ${venue.name.toUpperCase()}',
-                        style: epDisplay(size: 15, color: fly.fg),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        lineupLine,
-                        style: epText(
-                          size: 11,
-                          weight: FontWeight.w800,
-                          letterSpacing: 1.5,
-                          color: fly.fg.withValues(alpha: .75),
+                      if (presenter != null) ...[
+                        EpEyebrow.accent('${presenter.name} presents'),
+                        const SizedBox(height: 9),
+                      ],
+                      Flexible(
+                        child: EpDisplay(
+                          gig.title,
+                          size: 48,
+                          color: fly.fg,
+                          maxLines: 4,
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
-              Positioned(
-                left: -8,
-                top: -2,
-                child: CircleIconButton(
-                  tooltip: 'Back',
-                  onTap: onBack,
-                  background: Colors.black.withValues(alpha: .55),
-                  bordered: false,
                 ),
               ),
-              Positioned(
-                right: -8,
-                top: -2,
-                child: previewLabel == null
-                    ? Row(
-                        children: [
-                          _HeroAction(
-                            key: ValueKey('gig-detail-save-${gig.id}'),
-                            tooltip: app.saved.contains(gig.id)
-                                ? 'Remove saved event'
-                                : 'Save event',
-                            onTap: () => app.requestSave(gig.id),
-                            child: Icon(
-                              app.saved.contains(gig.id)
-                                  ? Icons.bookmark
-                                  : Icons.bookmark_border,
-                              size: 18,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          _HeroAction(
-                            key: ValueKey('gig-detail-share-${gig.id}'),
-                            tooltip: 'Share event',
-                            onTap: () => copyForUser(
-                              context,
-                              publicWebUrl('g/${gig.publicRef}'),
-                              successMessage:
-                                  'Link copied: ${publicWebDisplayUrl('g/${gig.publicRef}')}',
-                            ),
-                            child: Text(
-                              'SHARE ↗',
-                              style: epText(
-                                size: 11,
-                                weight: FontWeight.w800,
-                                letterSpacing: 1,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ],
-                      )
-                    : Container(
-                        key: const ValueKey('gig-draft-preview-status'),
-                        constraints: const BoxConstraints(minHeight: 32),
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: .72),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: .35),
-                          ),
-                          borderRadius: BorderRadius.circular(99),
-                        ),
-                        child: Text(
-                          previewLabel!,
-                          style: epText(
-                            size: 10.5,
-                            weight: FontWeight.w900,
-                            letterSpacing: .7,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-              ),
+              if (lineupLine.isNotEmpty)
+                EpMonoText(lineupLine, color: fly.fg.withValues(alpha: .85)),
             ],
           ),
-        ),
-      ],
+          Positioned(
+            left: -8,
+            top: -2,
+            child: EpIconPill(
+              icon: Icons.arrow_back,
+              semanticLabel: 'Back',
+              onPressed: onBack,
+              color: fly.fg,
+            ),
+          ),
+          Positioned(
+            right: -8,
+            top: -2,
+            child: previewLabel == null
+                ? _HeroActions(gig: gig, app: app, color: fly.fg)
+                : _PreviewStatusBadge(label: previewLabel!),
+          ),
+        ],
+      ),
     );
 
     final bytes = flyerBytes;
     if (bytes != null) {
       return RepaintBoundary(
         child: SizedBox(
-          height: 330,
+          height: _height,
           child: Stack(
             fit: StackFit.expand,
             children: [
               Image.memory(
                 bytes,
                 fit: BoxFit.cover,
-                cacheHeight: (330 * MediaQuery.devicePixelRatioOf(context))
+                cacheHeight: (_height * MediaQuery.devicePixelRatioOf(context))
                     .round(),
+              ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black54,
+                      Colors.transparent,
+                      Colors.black87,
+                    ],
+                    stops: [0, .42, 1],
+                  ),
+                ),
               ),
               content,
             ],
@@ -448,153 +368,161 @@ class _Hero extends StatelessWidget {
       child: GigFlyer(
         gig,
         fly,
-        height: 330,
+        height: _height,
         radius: 0,
         shadow: false,
+        scrim: gig.flyKey == 'custom',
         child: content,
       ),
     );
   }
 }
 
-class _HeroAction extends StatelessWidget {
-  const _HeroAction({
-    super.key,
-    required this.tooltip,
-    required this.onTap,
-    required this.child,
+class _HeroActions extends StatelessWidget {
+  const _HeroActions({
+    required this.gig,
+    required this.app,
+    required this.color,
   });
 
-  final String tooltip;
-  final VoidCallback onTap;
-  final Widget child;
+  final Gig gig;
+  final AppState app;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: tooltip,
-      child: Material(
-        color: Colors.black.withValues(alpha: .55),
-        borderRadius: BorderRadius.circular(99),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Container(
-            height: 48,
-            constraints: const BoxConstraints(minWidth: 48),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            alignment: Alignment.center,
-            child: child,
+    final saved = app.saved.contains(gig.id);
+    return Row(
+      children: [
+        EpIconPill(
+          key: ValueKey('gig-detail-save-${gig.id}'),
+          icon: saved ? Icons.favorite : Icons.favorite_border,
+          semanticLabel: saved ? 'Remove saved event' : 'Save',
+          onPressed: () => app.requestSave(gig.id),
+          color: color,
+        ),
+        const SizedBox(width: 6),
+        EpIconPill(
+          key: ValueKey('gig-detail-share-${gig.id}'),
+          icon: Icons.ios_share,
+          semanticLabel: 'Share',
+          color: color,
+          onPressed: () => copyForUser(
+            context,
+            publicWebUrl('g/${gig.publicRef}'),
+            successMessage:
+                'Link copied: ${publicWebDisplayUrl('g/${gig.publicRef}')}',
           ),
         ),
-      ),
+      ],
     );
   }
 }
 
-class _InfoCards extends StatelessWidget {
-  final Gig gig;
-  final Venue venue;
-  final String? previewLabel;
+/// The editor preview's lifecycle chip. Its 32px height is part of the
+/// preview contract, so it stays a plain container rather than a pill
+/// primitive.
+class _PreviewStatusBadge extends StatelessWidget {
+  const _PreviewStatusBadge({required this.label});
 
-  const _InfoCards({
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('gig-draft-preview-status'),
+    constraints: const BoxConstraints(minHeight: 32),
+    padding: const EdgeInsets.symmetric(horizontal: 10),
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: Colors.black.withValues(alpha: .72),
+      border: Border.all(color: Ep.whiteA(.35)),
+      borderRadius: BorderRadius.circular(99),
+    ),
+    child: Text(
+      label,
+      style: epText(
+        size: 10.5,
+        weight: FontWeight.w900,
+        letterSpacing: .7,
+        color: Ep.whiteA(1),
+      ),
+    ),
+  );
+}
+
+/// When / where on one hairline row, then cover / age / going on the next.
+class _FactsSection extends StatelessWidget {
+  const _FactsSection({
     required this.gig,
+    required this.app,
     required this.venue,
-    required this.previewLabel,
+    required this.venueSet,
+    required this.interactive,
   });
+
+  final Gig gig;
+  final AppState app;
+  final Venue venue;
+  final bool venueSet;
+  final bool interactive;
 
   @override
   Widget build(BuildContext context) {
-    Widget fact(IconData icon, String text) {
-      return Row(
-        children: [
-          Icon(icon, size: 18, color: context.epColors.accent),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              text,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.epLabel,
+    final area = venue.area.trim();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        EpFactGrid(
+          columns: 2,
+          cells: [
+            EpFactCell(
+              label: 'When',
+              value: gig.dateShort,
+              sub: 'Doors ${gig.doorsLabel} · Start ${_startLabel(gig.time)}',
             ),
-          ),
-        ],
-      );
-    }
-
-    Widget pill(String label, String value, {Color? valueColor}) {
-      return Container(
-        constraints: const BoxConstraints(minHeight: 48, minWidth: 72),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: context.epColors.surface,
-          border: Border.all(color: context.epColors.border),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              label,
-              style: Theme.of(context).textTheme.epCaption.copyWith(
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              value,
-              style: Theme.of(context).textTheme.epLabel.copyWith(
-                color: valueColor ?? context.epColors.contentPrimary,
+            InkWell(
+              onTap: interactive && venueSet
+                  ? () => app.openVenue(venue.id)
+                  : null,
+              child: EpFactCell(
+                label: 'Where',
+                value: venueSet ? venue.name : 'Venue not set',
+                sub: venueSet && area.isNotEmpty ? area : null,
               ),
             ),
           ],
         ),
-      );
-    }
-
-    return EpCard(
-      variant: EpCardVariant.raised,
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          fact(Icons.calendar_month, '${gig.dateShort} · DOORS ${gig.time}'),
-          const SizedBox(height: 11),
-          fact(
-            Icons.location_on,
-            [
-              venue.name,
-              if (venue.area.trim().isNotEmpty) venue.area,
-            ].join(' · '),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              pill(
-                'PRICE',
-                gig.priceLabel,
-                valueColor: gig.free
-                    ? context.epColors.accent
-                    : context.epColors.contentPrimary,
-              ),
-              pill('AGE', gig.ageRequirement.label),
-              if (previewLabel != null)
-                StatusPill(
-                  label: previewLabel!,
-                  tone: EpStatusPillTone.warning,
-                ),
-            ],
-          ),
-        ],
-      ),
+        EpFactGrid(
+          columns: 3,
+          cells: [
+            EpFactCell(label: 'Cover', value: gig.priceLabel),
+            EpFactCell(
+              label: 'Age',
+              value: gig.ageRequirement == AgeRequirement.allAges
+                  ? 'All'
+                  : gig.ageRequirement.label,
+            ),
+            if (gig.tix == Ticketing.rsvp)
+              EpFactCell(label: 'Going', value: '${app.rsvpCount(gig)}'),
+          ],
+        ),
+      ],
     );
   }
+}
+
+/// "8PM / 9PM" holds doors and start; [Gig.doorsLabel] owns the first half.
+String _startLabel(String time) {
+  final separator = time.indexOf(' / ');
+  return separator == -1 ? time : time.substring(separator + 3);
+}
+
+String _initialsFor(String name) {
+  final words = name.trim().split(RegExp(r'\s+'))
+    ..removeWhere((word) => word.isEmpty);
+  if (words.isEmpty) return '?';
+  if (words.length == 1) return words.first.substring(0, 1);
+  return '${words.first.substring(0, 1)}${words.last.substring(0, 1)}';
 }
 
 class _LineupRow extends StatelessWidget {
@@ -611,183 +539,89 @@ class _LineupRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final band = performer.bandId == null ? null : app.band(performer.bandId!);
-    return EpCard(
-      padding: const EdgeInsets.all(10),
-      onTap: !interactive || band == null ? null : () => app.openBand(band.id),
-      child: Row(
-        children: [
-          if (band != null)
-            BandAvatar(band)
-          else
-            const CircleAvatar(child: Icon(Icons.music_note, size: 18)),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  performer.name.toUpperCase(),
-                  style: epText(
-                    size: 13.5,
-                    weight: FontWeight.w800,
-                    letterSpacing: .3,
-                  ),
-                ),
-                Text(
-                  band?.genreLine ?? performer.role.name.toUpperCase(),
-                  style: epText(
-                    size: 11.5,
-                    color: context.epColors.contentSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (interactive && band != null) ...[
-            const SizedBox(width: 8),
-            OutlinedButton(
+    final role = switch (performer.role) {
+      GigPerformerRole.headliner => 'Headliner',
+      GigPerformerRole.support => 'Support',
+      GigPerformerRole.opener => 'Opener',
+    };
+    final genreLine = band?.genreLine ?? '';
+    return EpEntityRow(
+      leading: band == null
+          ? EpAvatarTile(initials: _initialsFor(performer.name))
+          : BandAvatar(band),
+      title: performer.name,
+      sub: genreLine.isEmpty ? role : '$role · $genreLine',
+      onTap: interactive && band != null ? () => app.openBand(band.id) : null,
+      trailing: !interactive || band == null
+          ? null
+          : EpPill(
               key: ValueKey('gig-lineup-follow-${band.id}'),
+              label: app.follows.contains(band.id) ? 'Following ✓' : 'Follow',
               onPressed: () => app.requestFollow(band.id),
-              style: const ButtonStyle(
-                minimumSize: WidgetStatePropertyAll(Size(48, 48)),
-                padding: WidgetStatePropertyAll(
-                  EdgeInsets.symmetric(horizontal: 10),
-                ),
-              ),
-              child: Text(
-                app.follows.contains(band.id) ? 'FOLLOWING ✓' : 'FOLLOW',
-              ),
             ),
-          ],
-        ],
-      ),
     );
   }
 }
 
-class _VenueCard extends StatelessWidget {
-  final Venue venue;
-  final AppState app;
-  final bool interactive;
-
-  const _VenueCard({
+/// The venue map, its verification badge and the address line under it.
+class _VenueMapSection extends StatelessWidget {
+  const _VenueMapSection({
     required this.venue,
     required this.app,
     required this.interactive,
   });
 
+  final Venue venue;
+  final AppState app;
+  final bool interactive;
+
   @override
-  Widget build(BuildContext context) {
-    return EpCard(
-      padding: EdgeInsets.zero,
-      child: Column(
-        children: [
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: interactive ? () => app.openVenue(venue.id) : null,
-              child: VenueMiniMap(
-                venue: venue,
-                approximate: venue.exactPoint == null,
-              ),
+  Widget build(BuildContext context) => SizedBox(
+    width: double.infinity,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: interactive ? () => app.openVenue(venue.id) : null,
+          child: EpPanel(
+            child: VenueMiniMap(
+              venue: venue,
+              approximate: venue.exactPoint == null,
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: interactive ? () => app.openVenue(venue.id) : null,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    venue.name.toUpperCase(),
-                                    style: epText(
-                                      size: 13.5,
-                                      weight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                                if (venue.verified) ...[
-                                  const SizedBox(width: 8),
-                                  const StatusPill(
-                                    key: Key('gig-venue-verified'),
-                                    label: 'VERIFIED',
-                                  ),
-                                ],
-                              ],
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              venue.exactAddress ??
-                                  '${venue.area} · Approx. area',
-                              style: epText(
-                                size: 11.5,
-                                color: context.epColors.contentSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            if (venue.verified) ...[
+              const EpBadge(key: Key('gig-venue-verified'), label: 'Verified'),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Text(
+                venue.exactAddress ?? '${venue.area} · Approx. area',
+                style: Theme.of(
+                  context,
+                ).textTheme.epBody.copyWith(color: context.epColors.muted),
+              ),
+            ),
+            if (interactive && venue.exactPoint != null) ...[
+              const SizedBox(width: 8),
+              EpPill(
+                key: const Key('gig-venue-directions'),
+                label: 'Directions ↗',
+                onPressed: () => openExternalForUser(
+                  context,
+                  'https://www.google.com/maps/search/?api=1&query='
+                  '${venue.point.latitude},${venue.point.longitude}',
                 ),
-                if (interactive && venue.exactPoint != null) ...[
-                  const SizedBox(width: 10),
-                  OutlinedButton(
-                    key: const Key('gig-venue-directions'),
-                    onPressed: () => openExternalForUser(
-                      context,
-                      'https://www.google.com/maps/search/?api=1&query='
-                      '${venue.point.latitude},${venue.point.longitude}',
-                    ),
-                    child: Text('DIRECTIONS ↗'),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MissingVenueCard extends StatelessWidget {
-  const _MissingVenueCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return EpCard(
-      padding: const EdgeInsets.all(14),
-      child: Row(
-        children: [
-          Icon(
-            Icons.location_off_outlined,
-            color: context.epColors.contentDisabled,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'VENUE NOT SET',
-              style: Theme.of(context).textTheme.epLabel.copyWith(
-                color: context.epColors.contentSecondary,
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+            ],
+          ],
+        ),
+      ],
+    ),
+  );
 }
 
 class _WhosGoing extends StatelessWidget {
@@ -809,7 +643,7 @@ class _WhosGoing extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$going+ GOING', style: epDisplay(size: 22)),
+          EpDisplay('$going+ GOING', size: 22),
           if (capacity != null && progress != null) ...[
             const SizedBox(height: 12),
             Semantics(
@@ -823,7 +657,7 @@ class _WhosGoing extends StatelessWidget {
                     Text(
                       '$going of $capacity $spotsLabel filled',
                       style: Theme.of(context).textTheme.epCaption.copyWith(
-                        color: context.epColors.contentSecondary,
+                        color: context.epColors.muted,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -836,8 +670,8 @@ class _WhosGoing extends StatelessWidget {
                         value: value,
                         minHeight: 8,
                         borderRadius: BorderRadius.circular(99),
-                        backgroundColor: context.epColors.border,
-                        color: context.epColors.volt,
+                        backgroundColor: context.epColors.line,
+                        color: context.epColors.accent,
                       ),
                     ),
                   ],
@@ -851,84 +685,70 @@ class _WhosGoing extends StatelessWidget {
   }
 }
 
-class _PreviewCtaBar extends StatelessWidget {
-  const _PreviewCtaBar({required this.gig});
+/// The one docked action: RSVP, tickets or the read-only preview stand-in.
+class _GigCta extends StatelessWidget {
+  const _GigCta({
+    required this.gig,
+    required this.app,
+    required this.previewLabel,
+  });
 
-  final Gig gig;
-
-  @override
-  Widget build(BuildContext context) {
-    final external = gig.tix == Ticketing.external;
-    final note = external
-        ? 'External ticketing · preview only'
-        : gig.free
-        ? 'Free RSVP · preview only'
-        : 'Pay at the door · preview only';
-    final label = external
-        ? 'GET TICKETS ↗'
-        : gig.free
-        ? 'RSVP — FREE'
-        : 'RSVP — ${gig.priceLabel} AT DOOR';
-
-    return _CtaBar(
-      note: note,
-      child: EpButton(label, kind: EpButtonKind.disabled, onTap: null),
-    );
-  }
-}
-
-class _GigCtaBar extends StatelessWidget {
   final Gig gig;
   final AppState app;
-
-  const _GigCtaBar({required this.gig, required this.app});
+  final String? previewLabel;
 
   @override
   Widget build(BuildContext context) {
+    if (previewLabel != null) return _preview();
     if (gig.lifecycle == GigLifecycle.cancelled) {
-      return Container(
-        padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
-        color: context.epColors.background,
-        child: EpButton(
-          'GIG CANCELLED',
-          kind: EpButtonKind.disabled,
-          onTap: null,
-        ),
-      );
+      return const EpBottomCta(child: _CtaPill(label: 'Gig cancelled'));
     }
-    if (gig.sellsTickets) {
-      final button = EpButton(
-        'BUY TICKETS · ${gig.priceLabel}',
-        key: const Key('gig-buy-tickets'),
-        fontSize: 14,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        onTap: app.authed
-            ? () => showTicketPurchaseSheet(context, gig)
-            : () => app.requestTickets(gig.id),
-      );
-      return _CtaBar(
-        note: gig.ticketSeller?.kind == TicketSellerKind.band
-            ? 'Tickets are sold by ${gig.ticketSeller!.name} · EarPlug fee added at checkout'
-            : 'Tickets are sold by the organizer · EarPlug fee added at checkout',
-        child: button,
-      );
-    }
-    final isRsvpd = app.rsvps.contains(gig.id);
+    if (gig.sellsTickets) return _tickets(context);
+    return _rsvp(context);
+  }
+
+  Widget _preview() {
+    final (hint, label) = gig.tix == Ticketing.external
+        ? ('External ticketing · preview only', 'Tickets ↗')
+        : gig.free
+        ? ('Free RSVP · preview only', 'RSVP')
+        : (
+            'Pay at the door · preview only',
+            'RSVP — ${gig.priceLabel} AT DOOR',
+          );
+    return EpBottomCta(
+      hint: hint,
+      child: _CtaPill(label: label),
+    );
+  }
+
+  Widget _tickets(BuildContext context) => EpBottomCta(
+    hint: gig.ticketSeller?.kind == TicketSellerKind.band
+        ? 'Tickets are sold by ${gig.ticketSeller!.name} · EarPlug fee added at checkout'
+        : 'Tickets are sold by the organizer · EarPlug fee added at checkout',
+    child: _CtaPill(
+      key: const Key('gig-buy-tickets'),
+      label: 'Buy tickets · ${gig.priceLabel}',
+      variant: EpPillVariant.primary,
+      onPressed: app.authed
+          ? () => showTicketPurchaseSheet(context, gig)
+          : () => app.requestTickets(gig.id),
+    ),
+  );
+
+  Widget _rsvp(BuildContext context) {
     final external = gig.tix == Ticketing.external;
-    final tixNote = external
+    final hint = external
         ? 'External ticketing'
         : gig.free
         ? 'Free. RSVP for headcount'
         : 'Pay at the door · RSVP holds nothing';
 
-    final Widget button;
+    final Widget pill;
     if (external) {
-      button = EpButton(
-        'GET TICKETS ↗',
-        kind: EpButtonKind.light,
-        fontSize: 14,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        onTap: () {
+      pill = _CtaPill(
+        label: 'Tickets ↗',
+        onPressed: () {
           final url = gig.externalUrl;
           if (url == null) {
             app.say('No ticket link listed for this gig.');
@@ -937,67 +757,44 @@ class _GigCtaBar extends StatelessWidget {
           }
         },
       );
-    } else if (isRsvpd) {
-      button = EpButton(
-        'GOING ✓',
-        kind: EpButtonKind.outline,
-        fontSize: 14,
-        onTap: () => app.toggleRsvp(gig.id),
+    } else if (app.rsvps.contains(gig.id)) {
+      pill = _CtaPill(
+        label: 'Going ✓',
+        selected: true,
+        onPressed: () => app.toggleRsvp(gig.id),
       );
     } else {
-      button = EpButton(
-        gig.free ? 'RSVP — FREE' : 'RSVP — ${gig.priceLabel} AT DOOR',
-        fontSize: 14,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        onTap: () => app.requestRsvp(gig.id),
+      pill = _CtaPill(
+        label: gig.free ? 'RSVP' : 'RSVP — ${gig.priceLabel} AT DOOR',
+        variant: EpPillVariant.primary,
+        onPressed: () => app.requestRsvp(gig.id),
       );
     }
-
-    return _CtaBar(note: tixNote, child: button);
+    return EpBottomCta(hint: hint, child: pill);
   }
 }
 
-/// The footer that fades up over the page and holds a ticketing note above
-/// the call to action.
-class _CtaBar extends StatelessWidget {
-  const _CtaBar({required this.note, required this.child});
+class _CtaPill extends StatelessWidget {
+  const _CtaPill({
+    super.key,
+    required this.label,
+    this.onPressed,
+    this.variant = EpPillVariant.outline,
+    this.selected = false,
+  });
 
-  final String note;
-  final Widget child;
+  final String label;
+  final VoidCallback? onPressed;
+  final EpPillVariant variant;
+  final bool selected;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.bottomCenter,
-          end: Alignment.topCenter,
-          stops: [0, .75, 1],
-          colors: [
-            context.epColors.background,
-            context.epColors.background,
-            Colors.transparent,
-          ],
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            note,
-            textAlign: TextAlign.center,
-            style: epText(
-              size: 11,
-              weight: FontWeight.w700,
-              letterSpacing: .5,
-              color: context.epColors.contentSecondary,
-            ),
-          ),
-          const SizedBox(height: 7),
-          child,
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => EpPill(
+    label: label,
+    onPressed: onPressed,
+    variant: variant,
+    selected: selected,
+    size: EpPillSize.large,
+    expand: true,
+  );
 }

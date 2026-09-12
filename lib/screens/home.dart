@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../date_names.dart';
 import '../memo.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/branding.dart';
 import '../widgets/common.dart';
 import '../widgets/discovery_filters_sheet.dart';
+import '../widgets/ep_rows.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/fan_event_card.dart';
 import '../widgets/map_view.dart';
 
@@ -17,195 +20,228 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mapMode = context.select<AppState, bool>((app) => app.mapMode);
-    return Column(
+    if (!mapMode) return const _FeedList();
+    return const Column(
       children: [
-        const _Header(),
+        ScreenHeader(bottomPadding: 20, child: _HomeHeader()),
         Expanded(
-          child: mapMode
-              ? const GigMapView(
-                  emptyState: _DiscoveryEmptyState(compact: true),
-                )
-              : const _FeedList(),
+          child: GigMapView(emptyState: _DiscoveryEmptyState(compact: true)),
         ),
       ],
     );
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header();
+/// Identity row, the "N shows near you" hero and the quick filters. Fixed above
+/// the map; the first thing the feed scrolls past in list mode.
+class _HomeHeader extends StatelessWidget {
+  const _HomeHeader();
 
   @override
   Widget build(BuildContext context) {
-    final app = context.read<AppState>();
-    final desktop = EpLayout.isDesktop(context);
-    final filters = context.select<AppState, DiscoveryFilters>(
-      (app) => app.filters,
+    final count = context.select<AppState, int>((app) => app.feed.length);
+    final hero = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _HeroEyebrow(),
+        const SizedBox(height: 12),
+        _HeroTitle(count: count),
+      ],
     );
-    return ScreenHeader(
-      child: Column(
+
+    if (EpLayout.isDesktop(context)) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              if (!desktop) ...[
-                const EpLogo.compact(key: ValueKey('home-logo'), height: 38),
-                const SizedBox(width: 9),
-              ],
-              Expanded(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: ExcludeSemantics(
-                    excluding: !desktop,
-                    child: Text(
-                      desktop ? 'Find your next show' : 'EARPLUG',
-                      key: const ValueKey('home-wordmark'),
-                      maxLines: 1,
-                      style: desktop
-                          ? Theme.of(context).textTheme.epPageHeading
-                          : epDisplay(size: 28, letterSpacing: 1.2, height: 1),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              const _SegmentedToggle(),
-            ],
+          Expanded(flex: 3, child: hero),
+          const SizedBox(width: 24),
+          Expanded(
+            flex: 2,
+            child: Align(
+              alignment: Alignment.bottomRight,
+              child: _QuickFilters(showViewControls: true),
+            ),
           ),
-          if (desktop) ...[
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Small rooms. Loud nights. Live music near you.',
-                style: Theme.of(context).textTheme.epBody.copyWith(
-                  color: context.epColors.contentSecondary,
-                ),
+        ],
+      );
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const EpLogo.compact(key: ValueKey('home-logo'), height: 28),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: _ViewControls(),
               ),
             ),
           ],
-          const SizedBox(height: 10),
-          const SizedBox(width: double.infinity, child: _CityPill()),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                EpChip(
-                  label: filters.activeCount == 0
-                      ? 'FILTERS'
-                      : 'FILTERS · ${filters.activeCount}',
-                  active:
-                      filters.genres.isNotEmpty ||
-                      filters.maxDistanceMiles != null ||
-                      filters.price == PriceFilter.paid ||
-                      filters.date == DateFilter.custom,
-                  onTap: () => showDiscoveryFiltersSheet(context),
-                ),
-                for (final chip in _shortcutChips(app, filters)) chip,
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 28),
+        hero,
+        const SizedBox(height: 20),
+        _QuickFilters(),
+      ],
     );
-  }
-
-  List<Widget> _shortcutChips(AppState app, DiscoveryFilters filters) {
-    return [
-      EpChip(
-        label: 'TONIGHT',
-        active: filters.date == DateFilter.tonight,
-        onTap: () => app.toggleDateFilter(DateFilter.tonight),
-      ),
-      EpChip(
-        label: 'THIS WEEK',
-        active: filters.date == DateFilter.week,
-        onTap: () => app.toggleDateFilter(DateFilter.week),
-      ),
-      EpChip(
-        label: 'FREE',
-        active: filters.price == PriceFilter.free,
-        onTap: app.toggleFree,
-      ),
-    ];
   }
 }
 
-class _SegmentedToggle extends StatelessWidget {
-  const _SegmentedToggle();
+/// "FRI 11 SEP · MISSION, SF" — the date, then the location picker.
+class _HeroEyebrow extends StatelessWidget {
+  const _HeroEyebrow();
+
+  @override
+  Widget build(BuildContext context) {
+    final today = context.read<AppState>().firstSelectableDiscoveryDate;
+    final locationLabel = context.select<AppState, String>(
+      (app) => app.locationLabel,
+    );
+    final palette = context.epColors;
+    return Wrap(
+      spacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        EpEyebrow.accent(
+          '${weekdayNames[today.weekday - 1]} ${today.day} '
+          '${monthNames[today.month - 1]} ·',
+        ),
+        Semantics(
+          button: true,
+          label: 'Change location, $locationLabel',
+          excludeSemantics: true,
+          child: InkWell(
+            key: const ValueKey('home-location-control'),
+            onTap: () => showDiscoveryLocationSheet(context),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: EpMonoText(locationLabel, color: palette.accent),
+                  ),
+                  Icon(Icons.expand_more, size: 16, color: palette.accent),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HeroTitle extends StatelessWidget {
+  const _HeroTitle({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.epColors;
+    final size = EpLayout.isDesktop(context)
+        ? 72.0
+        : MediaQuery.textScalerOf(context).scale(1) > 1.3
+        ? 32.0
+        : 44.0;
+    final label = '$count ${count == 1 ? 'show' : 'shows'} near you';
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: label.toUpperCase()),
+          TextSpan(
+            text: '.',
+            style: TextStyle(color: palette.accent),
+          ),
+        ],
+      ),
+      semanticsLabel: '$label.',
+      style: Theme.of(
+        context,
+      ).textTheme.epDisplayAt(size).copyWith(color: palette.ink),
+    );
+  }
+}
+
+/// Map toggle and the filter sheet, as the artboard's two header pills.
+class _ViewControls extends StatelessWidget {
+  const _ViewControls();
 
   @override
   Widget build(BuildContext context) {
     final app = context.read<AppState>();
-    final mapMode = context.select<AppState, bool>((app) => app.mapMode);
-    return SegmentedButton<bool>(
-      key: const ValueKey('home-view-toggle'),
-      segments: const [
-        ButtonSegment(value: false, label: Text('LIST')),
-        ButtonSegment(value: true, label: Text('MAP')),
+    final mapMode = context.select<AppState, bool>((value) => value.mapMode);
+    final filters = context.select<AppState, DiscoveryFilters>(
+      (value) => value.filters,
+    );
+    return Wrap(
+      alignment: WrapAlignment.end,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        EpPill(
+          key: const ValueKey('home-view-toggle'),
+          label: 'Map',
+          selected: mapMode,
+          semanticLabel: mapMode ? 'Switch to list' : 'Switch to map',
+          onPressed: () => app.setMapMode(!mapMode),
+        ),
+        EpPill(
+          label: filters.activeCount == 0
+              ? 'Filters'
+              : 'Filters · ${filters.activeCount}',
+          selected:
+              filters.genres.isNotEmpty ||
+              filters.maxDistanceMiles != null ||
+              filters.price == PriceFilter.paid ||
+              filters.date == DateFilter.custom,
+          onPressed: () => showDiscoveryFiltersSheet(context),
+        ),
       ],
-      selected: {mapMode},
-      showSelectedIcon: false,
-      onSelectionChanged: (selection) => app.setMapMode(selection.single),
-      style: ButtonStyle(
-        minimumSize: WidgetStatePropertyAll(Size(56, 48)),
-        padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 10)),
-        textStyle: WidgetStatePropertyAll(
-          Theme.of(context).textTheme.epLabel.copyWith(letterSpacing: .8),
-        ),
-        backgroundColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected)
-              ? context.epColors.surfaceSelected
-              : context.epColors.surface,
-        ),
-        foregroundColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected)
-              ? context.epColors.contentPrimary
-              : context.epColors.contentSecondary,
-        ),
-        side: WidgetStatePropertyAll(
-          BorderSide(color: context.epColors.border),
-        ),
-      ),
     );
   }
 }
 
-class _CityPill extends StatelessWidget {
-  const _CityPill();
+/// Tonight / This week / Free, plus the view controls where the header has no
+/// separate identity row (desktop).
+class _QuickFilters extends StatelessWidget {
+  const _QuickFilters({this.showViewControls = false});
+
+  final bool showViewControls;
 
   @override
   Widget build(BuildContext context) {
-    final locationLabel = context.select<AppState, String>(
-      (app) => app.locationLabel,
+    final app = context.read<AppState>();
+    final filters = context.select<AppState, DiscoveryFilters>(
+      (value) => value.filters,
     );
-    return OutlinedButton.icon(
-      key: const ValueKey('home-location-control'),
-      onPressed: () => showDiscoveryLocationSheet(context),
-      style: OutlinedButton.styleFrom(
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.symmetric(horizontal: 11),
-        foregroundColor: context.epColors.contentPrimary,
-      ),
-      icon: Icon(Icons.location_on, color: context.epColors.accent, size: 18),
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Flexible(
-            child: Text(
-              locationLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.epLabel,
-            ),
-          ),
-          Icon(Icons.arrow_drop_down, size: 18, color: context.epColors.accent),
-        ],
-      ),
+    return Wrap(
+      alignment: showViewControls ? WrapAlignment.end : WrapAlignment.start,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        EpPill(
+          label: 'Tonight',
+          selected: filters.date == DateFilter.tonight,
+          onPressed: () => app.toggleDateFilter(DateFilter.tonight),
+        ),
+        EpPill(
+          label: 'This week',
+          selected: filters.date == DateFilter.week,
+          onPressed: () => app.toggleDateFilter(DateFilter.week),
+        ),
+        EpPill(
+          label: 'Free',
+          selected: filters.price == PriceFilter.free,
+          onPressed: app.toggleFree,
+        ),
+        if (showViewControls) const _ViewControls(),
+      ],
     );
   }
 }
@@ -231,39 +267,29 @@ class _FeedListState extends State<_FeedList> {
       featuredBoosted: feed.isNotEmpty && app.isDiscoveryBoosted(feed.first),
     );
     return _rowsMemo(inputs, () {
-      final rows = <_FeedRow>[];
-      if (feed.isEmpty) {
-        rows.add(const _FeedEmptyRow());
-      } else {
-        rows.add(_FeedCountRow(feed.length));
+      if (feed.isEmpty) return const [_FeedEmptyRow()];
 
-        final featured = feed.first;
-        rows.add(const _FeedSectionRow(label: 'FEATURED NEAR YOU', count: 1));
-        if (inputs.featuredBoosted) {
-          rows.add(_FeedBoostRow(featured));
-        }
-        rows.add(_FeedCardRow(featured, featured: true));
+      final featured = feed.first;
+      final rows = <_FeedRow>[
+        _FeedSectionRow(
+          label: 'Featured · ${_sectionLabel(featured.when)}',
+          topLine: true,
+        ),
+        if (inputs.featuredBoosted) _FeedBoostRow(featured),
+        _FeedCardRow(featured, featured: true),
+      ];
 
-        final remaining = feed.skip(1);
-        for (final section in GigWhen.values) {
-          final gigs = remaining
-              .where((gig) => gig.when == section)
-              .toList(growable: false);
-          if (gigs.isEmpty) continue;
-
-          rows.add(
-            _FeedSectionRow(
-              label: switch (section) {
-                GigWhen.tonight => 'TONIGHT',
-                GigWhen.week => 'THIS WEEK',
-                GigWhen.later => 'LATER',
-              },
-              count: gigs.length,
-            ),
-          );
-          for (final gig in gigs) {
-            rows.add(_FeedCardRow(gig));
-          }
+      final remaining = feed.skip(1);
+      for (final section in GigWhen.values) {
+        final gigs = remaining
+            .where((gig) => gig.when == section)
+            .toList(growable: false);
+        if (gigs.isEmpty) continue;
+        rows.add(
+          _FeedSectionRow(label: '${_sectionLabel(section)} · ${gigs.length}'),
+        );
+        for (final gig in gigs) {
+          rows.add(_FeedCardRow(gig));
         }
       }
       return rows;
@@ -274,66 +300,91 @@ class _FeedListState extends State<_FeedList> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final rows = _feedRows(app);
+    if (EpLayout.isDesktop(context)) return _desktopFeed(context, app, rows);
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, tabBarClearance),
-      itemCount: rows.length,
-      itemBuilder: (context, index) => _buildRow(context, rows[index], app),
+      padding: EdgeInsets.fromLTRB(
+        EpLayout.gutter,
+        headerTopPad(context),
+        EpLayout.gutter,
+        tabBarClearance,
+      ),
+      itemCount: rows.length + 1,
+      itemBuilder: (context, index) => index == 0
+          ? const _HomeHeader()
+          : _buildRow(context, rows[index - 1], app),
+    );
+  }
+
+  /// Wide screens run the lead poster and the dated rows side by side, so the
+  /// row list is split at the featured card instead of stacked.
+  Widget _desktopFeed(BuildContext context, AppState app, List<_FeedRow> rows) {
+    final lead = rows.indexWhere((row) => row is _FeedCardRow && row.featured);
+    Widget column(Iterable<_FeedRow> source) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [for (final row in source) _buildRow(context, row, app)],
+    );
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 40),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _HomeHeader(),
+          const SizedBox(height: 32),
+          const EpHairline(),
+          if (lead == -1)
+            column(rows)
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: column(rows.take(lead + 1))),
+                const SizedBox(width: 40),
+                Expanded(child: column(rows.skip(lead + 1))),
+              ],
+            ),
+        ],
+      ),
     );
   }
 
   Widget _buildRow(BuildContext context, _FeedRow row, AppState app) {
     return switch (row) {
-      _FeedCountRow(:final count) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Text(
-          '$count ${count == 1 ? 'GIG' : 'GIGS'} NEAR YOU · LOCAL ORDER',
-          style: Theme.of(context).textTheme.epLabel.copyWith(
-            letterSpacing: 1.2,
-            color: context.epColors.contentSecondary,
-          ),
-        ),
-      ),
       _FeedEmptyRow() => const _DiscoveryEmptyState(),
-      _FeedSectionRow(:final label, :final count) => SectionBar(
-        label: label,
-        count: count,
+      _FeedSectionRow(:final label, :final topLine) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (topLine && !EpLayout.isDesktop(context)) const EpHairline(),
+          EpSectionHeader(label: label),
+        ],
       ),
       _FeedBoostRow(:final gig) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(
-          'DISCOVERY BOOST · COMPLETE LISTING',
+        padding: const EdgeInsets.only(bottom: 4),
+        child: EpEyebrow.accent(
+          'Discovery boost · complete listing',
           key: ValueKey('discovery-boost-${gig.id}'),
-          style: Theme.of(context).textTheme.epMeta.copyWith(
-            color: context.epColors.accent,
-            fontSize: 11,
-            fontWeight: FontWeight.w900,
-            letterSpacing: .45,
-          ),
         ),
       ),
-      _FeedCardRow(:final gig, :final featured) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: FanEventCard(
-          gig: gig,
-          app: app,
-          showDistance: true,
-          presentation: featured
-              ? FanEventCardPresentation.featured
-              : FanEventCardPresentation.compact,
-        ),
+      _FeedCardRow(:final gig, :final featured) => FanEventCard(
+        gig: gig,
+        app: app,
+        showDistance: true,
+        presentation: featured
+            ? FanEventCardPresentation.featured
+            : FanEventCardPresentation.compact,
       ),
     };
   }
 }
 
+String _sectionLabel(GigWhen when) => switch (when) {
+  GigWhen.tonight => 'Tonight',
+  GigWhen.week => 'This week',
+  GigWhen.later => 'Later',
+};
+
 sealed class _FeedRow {
   const _FeedRow();
-}
-
-class _FeedCountRow extends _FeedRow {
-  const _FeedCountRow(this.count);
-
-  final int count;
 }
 
 class _FeedEmptyRow extends _FeedRow {
@@ -341,10 +392,10 @@ class _FeedEmptyRow extends _FeedRow {
 }
 
 class _FeedSectionRow extends _FeedRow {
-  const _FeedSectionRow({required this.label, required this.count});
+  const _FeedSectionRow({required this.label, this.topLine = false});
 
   final String label;
-  final int count;
+  final bool topLine;
 }
 
 class _FeedBoostRow extends _FeedRow {
@@ -363,6 +414,7 @@ class _FeedCardRow extends _FeedRow {
 class _DiscoveryEmptyState extends StatelessWidget {
   const _DiscoveryEmptyState({this.compact = false});
 
+  /// The map overlay: a panel so the copy stays legible over the tiles.
   final bool compact;
 
   @override
@@ -372,43 +424,32 @@ class _DiscoveryEmptyState extends StatelessWidget {
         .select<AppState, ({bool noGigs, DiscoveryFilters filters})>(
           (app) => (noGigs: app.allGigs.isEmpty, filters: app.filters),
         );
-    return DashedBox(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 16 : 20,
-        vertical: compact ? 18 : 28,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '0 GIGS NEAR YOU · LOCAL ORDER',
-            style: Theme.of(context).textTheme.epLabel.copyWith(
-              letterSpacing: 1,
-              color: context.epColors.contentSecondary,
-            ),
+    final body = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          noGigs
+              ? 'No upcoming gigs yet.\nWhen a band books one, it shows up here.'
+              : 'Nothing matches those filters.\nLoosen them up and see what is out there.',
+          style: Theme.of(
+            context,
+          ).textTheme.epBody.copyWith(color: context.epColors.muted),
+        ),
+        if (!noGigs) ...[
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _recoveryActions(app, filters),
           ),
-          const SizedBox(height: 10),
-          Text(
-            noGigs
-                ? 'No upcoming gigs yet.\nWhen a band books one, it shows up here.'
-                : 'Nothing matches those filters.\nLoosen them up and see what is out there.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.epBody.copyWith(
-              color: context.epColors.contentSecondary,
-            ),
-          ),
-          if (!noGigs) ...[
-            const SizedBox(height: 14),
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 7,
-              runSpacing: 7,
-              children: _recoveryActions(app, filters),
-            ),
-          ],
         ],
-      ),
+      ],
     );
+    if (!compact) {
+      return Padding(padding: const EdgeInsets.only(top: 24), child: body);
+    }
+    return EpPanel(padding: const EdgeInsets.all(16), child: body);
   }
 
   List<Widget> _recoveryActions(AppState app, DiscoveryFilters filters) {
@@ -416,24 +457,21 @@ class _DiscoveryEmptyState extends StatelessWidget {
     switch (filters.date) {
       case DateFilter.tonight:
         actions.add(
-          _RecoveryButton(
-            label: 'SHOW THIS WEEK',
-            onTap: () => app.toggleDateFilter(DateFilter.week),
+          EpPill(
+            label: 'Show this week',
+            onPressed: () => app.toggleDateFilter(DateFilter.week),
           ),
         );
       case DateFilter.week:
         actions.add(
-          _RecoveryButton(label: 'SHOW ALL DATES', onTap: app.clearDateFilter),
+          EpPill(label: 'Show all dates', onPressed: app.clearDateFilter),
         );
       case DateFilter.custom:
         actions.add(
-          _RecoveryButton(
-            label: 'WIDEN DATE RANGE',
-            onTap: app.widenDateFilter,
-          ),
+          EpPill(label: 'Widen date range', onPressed: app.widenDateFilter),
         );
         actions.add(
-          _RecoveryButton(label: 'CLEAR DATES', onTap: app.clearDateFilter),
+          EpPill(label: 'Clear dates', onPressed: app.clearDateFilter),
         );
       case DateFilter.all:
         break;
@@ -446,60 +484,34 @@ class _DiscoveryEmptyState extends StatelessWidget {
           ? 25.0
           : null;
       actions.add(
-        _RecoveryButton(
+        EpPill(
           label: nextDistance == null
-              ? 'ANY DISTANCE'
-              : 'EXPAND TO ${nextDistance.toInt()} MI',
-          onTap: () => app.setDistanceFilter(nextDistance),
+              ? 'Any distance'
+              : 'Expand to ${nextDistance.toInt()} mi',
+          onPressed: () => app.setDistanceFilter(nextDistance),
         ),
       );
     }
     if (filters.genres.isNotEmpty) {
       actions.add(
-        _RecoveryButton(label: 'CLEAR GENRES', onTap: app.clearGenreFilters),
+        EpPill(label: 'Clear genres', onPressed: app.clearGenreFilters),
       );
     }
     if (filters.price != PriceFilter.any) {
       actions.add(
-        _RecoveryButton(
-          label: 'ANY PRICE',
-          onTap: () => app.setPriceFilter(PriceFilter.any),
+        EpPill(
+          label: 'Any price',
+          onPressed: () => app.setPriceFilter(PriceFilter.any),
         ),
       );
     }
     actions.add(
-      _RecoveryButton(
-        label: 'VIEW ALL NEARBY SHOWS',
-        primary: true,
-        onTap: app.clearDiscoveryFilters,
+      EpPill(
+        label: 'View all nearby shows',
+        variant: EpPillVariant.primary,
+        onPressed: app.clearDiscoveryFilters,
       ),
     );
     return actions;
-  }
-}
-
-class _RecoveryButton extends StatelessWidget {
-  const _RecoveryButton({
-    required this.label,
-    required this.onTap,
-    this.primary = false,
-  });
-
-  final String label;
-  final VoidCallback onTap;
-  final bool primary;
-
-  @override
-  Widget build(BuildContext context) {
-    final style = ButtonStyle(
-      minimumSize: WidgetStatePropertyAll(Size(48, 48)),
-      padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 11)),
-      textStyle: WidgetStatePropertyAll(
-        Theme.of(context).textTheme.epLabel.copyWith(letterSpacing: .4),
-      ),
-    );
-    return primary
-        ? FilledButton(onPressed: onTap, style: style, child: Text(label))
-        : OutlinedButton(onPressed: onTap, style: style, child: Text(label));
   }
 }

@@ -39,7 +39,7 @@ void main() {
         ),
         findsOne,
       );
-      expect(find.text('RSVP — FREE'), findsOne);
+      expect(find.text('RSVP'), findsOne);
 
       final heroContent = tester.widget<Stack>(
         find.byKey(const ValueKey('gig-detail-hero-content')),
@@ -97,7 +97,7 @@ void main() {
 
     expect(harness.app.gig('shared-gig'), isNotNull);
     expect(find.text('ABOUT'), findsNothing);
-    expect(find.text('VENUE'), findsOne);
+    expect(find.text('WHERE'), findsOne);
   });
 
   testWidgets(
@@ -122,7 +122,7 @@ void main() {
       expect(find.text("WHO'S GOING"), findsNothing);
       expect(find.text('23 GOING'), findsNothing);
 
-      await tester.tap(find.text('RSVP — FREE'));
+      await tester.tap(find.text('RSVP'));
       await tester.pump();
       expect(harness.app.rsvpCount(repository.gig), 24);
       expect(find.text("WHO'S GOING"), findsNothing);
@@ -196,7 +196,7 @@ void main() {
       beforePump: (app) => app.openGig('shared-gig'),
     );
 
-    await tester.tap(find.text('RSVP — FREE'));
+    await tester.tap(find.text('RSVP'));
     await tester.pump();
     expect(harness.app.rsvpCount(repository.gig), 8);
 
@@ -253,11 +253,11 @@ void main() {
     expect(find.byKey(const Key('gig-buy-tickets')), findsOne);
     expect(
       find.text(
-        'Tickets are sold by the organizer · EarPlug fee added at checkout',
+        'TICKETS ARE SOLD BY THE ORGANIZER · EARPLUG FEE ADDED AT CHECKOUT',
       ),
       findsOne,
     );
-    expect(find.text('RSVP — FREE'), findsNothing);
+    expect(find.text('RSVP'), findsNothing);
     expect(find.textContaining('AT DOOR'), findsNothing);
   });
 

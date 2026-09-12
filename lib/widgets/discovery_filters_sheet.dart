@@ -54,14 +54,18 @@ class _SheetFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     return EpSheetShell(
       heightFactor: .88,
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+      padding: const EdgeInsets.all(20),
       handleBottomSpacing: 12,
       header: Row(
         children: [
           Expanded(
-            child: Text(title, style: Theme.of(context).textTheme.epSheetTitle),
+            child: Text(
+              title.toUpperCase(),
+              semanticsLabel: title,
+              style: Theme.of(context).textTheme.epSheetTitle,
+            ),
           ),
-          ?action,
+          if (action != null) Flexible(child: action!),
           IconButton(
             tooltip: 'Close',
             onPressed: () => Navigator.pop(context),
@@ -114,7 +118,7 @@ class _LocationSheet extends StatelessWidget {
                 : Icon(
                     Icons.my_location,
                     color: context.epColors.accent,
-                    size: 20,
+                    size: 16,
                   ),
             onTap: app.locating
                 ? null
@@ -133,7 +137,7 @@ class _LocationSheet extends StatelessWidget {
                 title: homeCity.label,
                 subtitle: 'Saved home location',
                 selected: app.discoveryLocation == DiscoveryLocation.home,
-                leading: Icon(Icons.home_outlined, size: 20),
+                leading: Icon(Icons.home_outlined, size: 16),
                 onTap: () {
                   if (app.discoveryLocation != DiscoveryLocation.home) {
                     app.selectFanCity(homeCity);
@@ -145,7 +149,7 @@ class _LocationSheet extends StatelessWidget {
             title: 'Mission, SF',
             subtitle: 'San Francisco',
             selected: app.discoveryLocation == DiscoveryLocation.sf,
-            leading: Icon(Icons.location_on_outlined, size: 20),
+            leading: Icon(Icons.location_on_outlined, size: 16),
             onTap: () {
               app.setCity('sf');
               Navigator.pop(context);
@@ -155,7 +159,7 @@ class _LocationSheet extends StatelessWidget {
             title: 'Temescal, OAK',
             subtitle: 'Oakland',
             selected: app.discoveryLocation == DiscoveryLocation.oak,
-            leading: Icon(Icons.location_on_outlined, size: 20),
+            leading: Icon(Icons.location_on_outlined, size: 16),
             onTap: () {
               app.setCity('oak');
               Navigator.pop(context);
@@ -205,10 +209,7 @@ class _LocationFailureMessage extends StatelessWidget {
             const SizedBox(height: 4),
             TextButton(
               onPressed: app.openLocationRecoverySettings,
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-              ),
-              child: Text(action),
+              child: Text(action.toUpperCase(), semanticsLabel: action),
             ),
           ],
         ],
@@ -235,7 +236,7 @@ class _FiltersSheet extends StatelessWidget {
         onPressed: app.activeFilterCount == 0
             ? null
             : app.clearDiscoveryFilters,
-        child: const Text('Clear all'),
+        child: Text('Clear all'.toUpperCase(), semanticsLabel: 'Clear all'),
       ),
       footer: _ResultsButton(
         count: app.feed.length,
@@ -244,12 +245,11 @@ class _FiltersSheet extends StatelessWidget {
       child: ListView(
         key: const Key('discovery-filter-options'),
         children: [
-          Row(
-            children: [
-              const Expanded(child: _FilterHeading('DATE')),
-              if (app.fDate != DateFilter.all)
-                _TextAction(label: 'CLEAR DATE', onTap: app.clearDateFilter),
-            ],
+          SectionBar(
+            label: 'DATE',
+            trailing: app.fDate != DateFilter.all
+                ? _TextAction(label: 'CLEAR DATE', onTap: app.clearDateFilter)
+                : null,
           ),
           const SizedBox(height: 9),
           Wrap(
@@ -281,15 +281,14 @@ class _FiltersSheet extends StatelessWidget {
             ],
           ),
           const _Divider(),
-          Row(
-            children: [
-              const Expanded(child: _FilterHeading('GENRES · CHOOSE ANY')),
-              if (app.fGenres.isNotEmpty)
-                _TextAction(
-                  label: 'CLEAR GENRES',
-                  onTap: app.clearGenreFilters,
-                ),
-            ],
+          SectionBar(
+            label: 'GENRES · CHOOSE ANY',
+            trailing: app.fGenres.isNotEmpty
+                ? _TextAction(
+                    label: 'CLEAR GENRES',
+                    onTap: app.clearGenreFilters,
+                  )
+                : null,
           ),
           const SizedBox(height: 9),
           Wrap(
@@ -310,7 +309,7 @@ class _FiltersSheet extends StatelessWidget {
             ],
           ),
           const _Divider(),
-          const _FilterHeading('DISTANCE'),
+          const SectionBar(label: 'DISTANCE'),
           const SizedBox(height: 5),
           Text(switch (app.discoveryLocation) {
             DiscoveryLocation.current => 'Measured from your current location.',
@@ -340,7 +339,7 @@ class _FiltersSheet extends StatelessWidget {
             ],
           ),
           const _Divider(),
-          const _FilterHeading('PRICE'),
+          const SectionBar(label: 'PRICE'),
           const SizedBox(height: 9),
           Wrap(
             spacing: 7,
@@ -391,7 +390,7 @@ class _FiltersSheet extends StatelessWidget {
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
           colorScheme: Theme.of(context).colorScheme.copyWith(
-            primary: Ep.brand,
+            primary: context.epColors.accent,
             surface: context.epColors.surfaceRaised,
           ),
         ),
@@ -410,14 +409,13 @@ class _ResultsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final label =
+        '${labelAsApply ? 'APPLY FILTERS · ' : 'SHOW '}'
+        '$count ${count == 1 ? 'RESULT' : 'RESULTS'}';
     return FilledButton(
       key: const Key('show-filter-results'),
       onPressed: () => Navigator.pop(context),
-      child: Text(
-        '${labelAsApply ? 'APPLY FILTERS · ' : 'SHOW '}'
-        '$count ${count == 1 ? 'RESULT' : 'RESULTS'}',
-        style: Theme.of(context).textTheme.epLabel.copyWith(letterSpacing: .8),
-      ),
+      child: Text(label.toUpperCase(), semanticsLabel: label),
     );
   }
 }
@@ -440,56 +438,60 @@ class _OptionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: EpCard(
-        variant: onTap == null
-            ? EpCardVariant.disabled
-            : selected
-            ? EpCardVariant.selected
-            : EpCardVariant.standard,
-        // Passing a callback lets EpCard expose button semantics; the disabled
-        // variant still suppresses the actual InkWell and reports enabled=false.
-        onTap: onTap ?? () {},
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-        radius: 10,
-        child: Row(
-          children: [
-            if (leading != null) ...[leading!, const SizedBox(width: 10)],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.epBody.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: onTap == null
-                          ? context.epColors.contentDisabled
-                          : context.epColors.contentPrimary,
-                    ),
-                  ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 2),
+    final colors = context.epColors;
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: onTap != null,
+      selected: selected,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: colors.line)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: selected ? colors.accent : null,
+                  border: selected ? null : Border.all(color: colors.outline),
+                ),
+              ),
+              const SizedBox(width: 12),
+              if (leading != null) ...[leading!, const SizedBox(width: 12)],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      subtitle!,
-                      style: Theme.of(context).textTheme.epCaption.copyWith(
+                      title,
+                      style: Theme.of(context).textTheme.epBody.copyWith(
                         color: onTap == null
-                            ? context.epColors.contentDisabled
-                            : context.epColors.contentSecondary,
+                            ? colors.contentDisabled
+                            : colors.ink,
                       ),
                     ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        style: Theme.of(context).textTheme.epCaption.copyWith(
+                          color: onTap == null
+                              ? colors.contentDisabled
+                              : colors.muted,
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            if (selected)
-              Icon(
-                Icons.check_circle,
-                color: context.epColors.accent,
-                size: 19,
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -513,23 +515,6 @@ class _ChoiceChip extends StatelessWidget {
   }
 }
 
-class _FilterHeading extends StatelessWidget {
-  const _FilterHeading(this.label);
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      label,
-      style: Theme.of(context).textTheme.epLabel.copyWith(
-        letterSpacing: 1,
-        color: context.epColors.contentSecondary,
-      ),
-    );
-  }
-}
-
 class _TextAction extends StatelessWidget {
   const _TextAction({required this.label, required this.onTap});
 
@@ -540,10 +525,7 @@ class _TextAction extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextButton(
       onPressed: onTap,
-      style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-      ),
-      child: Text(label),
+      child: Text(label.toUpperCase(), semanticsLabel: label),
     );
   }
 }

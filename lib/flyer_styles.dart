@@ -2,76 +2,99 @@ import 'package:flutter/material.dart';
 
 import 'models.dart';
 
-/// The flyer presses a gig can be printed on. The first five keys are
-/// legacy styles that seeded gigs still reference; `flyerPicks` lists the
-/// presses a band chooses from when creating a gig.
+/// Flyer palettes and print textures. Legacy keys remain available for saved
+/// gigs; [flyerPicks] offers the ink, panel, and accent palettes for new flyers.
 const flyerStyles = <String, FlyerStyle>{
   'paper': FlyerStyle(
-    base: Color(0xFFF4F4F0),
-    patternColor: Color(0x0D000000),
-    fg: Color(0xFF111114),
+    base: Color(0xFFF2F2EF),
+    patternColor: Color(0x0A000000),
+    fg: Color(0xFF0A0A0B),
+    pitch: 8,
   ),
   'blue': FlyerStyle(
-    base: Color(0xFF1435F0),
-    patternColor: Color(0x1F000000),
-    fg: Color(0xFFFFFFFF),
+    base: Color(0xFF8B5CFF),
+    patternColor: Color(0x14000000),
+    fg: Color(0xFF050506),
+    pitch: 8,
   ),
   'black': FlyerStyle(
-    base: Color(0xFF141418),
-    patternColor: Color(0x0DFFFFFF),
-    fg: Color(0xFFF4F4F0),
+    base: Color(0xFF141416),
+    patternColor: Color(0x0AF2F2EF),
+    fg: Color(0xFFF2F2EF),
+    pitch: 8,
   ),
   'yellow': FlyerStyle(
-    base: Color(0xFFE4DC4A),
-    patternColor: Color(0x0F000000),
-    fg: Color(0xFF111114),
+    base: Color(0xFFF2F2EF),
+    patternColor: Color(0x0A000000),
+    fg: Color(0xFF0A0A0B),
+    pitch: 8,
   ),
   'bluetype': FlyerStyle(
-    base: Color(0xFFF4F4F0),
-    patternColor: Color(0x141435F0),
-    fg: Color(0xFF1435F0),
+    base: Color(0xFFF2F2EF),
+    patternColor: Color(0x148B5CFF),
+    fg: Color(0xFF6D3EF0),
+    pitch: 8,
   ),
-  // The five presses a band picks from when creating a gig.
+  // Legacy print textures, recolored to the current palette.
   'xerox': FlyerStyle(
-    base: Color(0xFFF4F4F0),
-    patternColor: Color(0x0E000000),
-    fg: Color(0xFF111114),
+    base: Color(0xFFF2F2EF),
+    patternColor: Color(0x0A000000),
+    fg: Color(0xFF0A0A0B),
+    pitch: 8,
   ),
   'riso': FlyerStyle(
-    base: Color(0xFFF4F4F0),
-    patternColor: Color(0x6BF0456B),
-    fg: Color(0xFF1435F0),
+    base: Color(0xFFF2F2EF),
+    patternColor: Color(0x338B5CFF),
+    fg: Color(0xFF6D3EF0),
     pattern: FlyerPattern.dots,
     pitch: 6,
   ),
   'marquee': FlyerStyle(
-    base: Color(0xFF141418),
-    patternColor: Color(0x80E4DC4A),
-    fg: Color(0xFFE4DC4A),
+    base: Color(0xFF141416),
+    patternColor: Color(0x338B5CFF),
+    fg: Color(0xFFF2F2EF),
     pattern: FlyerPattern.dots,
     pitch: 9,
   ),
   'blueprint': FlyerStyle(
-    base: Color(0xFF1435F0),
-    patternColor: Color(0x14FFFFFF),
-    fg: Color(0xFFF4F4F0),
+    base: Color(0xFF8B5CFF),
+    patternColor: Color(0x14000000),
+    fg: Color(0xFF050506),
     pattern: FlyerPattern.hatch,
     pitch: 14,
   ),
   'sunburst': FlyerStyle(
-    base: Color(0xFFF2EE9E),
-    patternColor: Color(0xFFE4DC4A),
-    fg: Color(0xFF111114),
+    base: Color(0xFFF2F2EF),
+    patternColor: Color(0x1A8B5CFF),
+    fg: Color(0xFF0A0A0B),
     pattern: FlyerPattern.rays,
     pitch: 18,
   ),
   // Band-supplied art: dark plate the uploaded image sits on.
   'custom': FlyerStyle(
-    base: Color(0xFF141418),
+    base: Color(0xFF141416),
     patternColor: Color(0x00000000),
-    fg: Color(0xFFF4F4F0),
+    fg: Color(0xFFF2F2EF),
+  ),
+  'ink': FlyerStyle(
+    base: Color(0xFFF2F2EF),
+    patternColor: Color(0x0A000000),
+    fg: Color(0xFF0A0A0B),
+    pitch: 8,
+  ),
+  'panel': FlyerStyle(
+    base: Color(0xFF141416),
+    patternColor: Color(0x0AF2F2EF),
+    fg: Color(0xFFF2F2EF),
+    pitch: 8,
+  ),
+  'accent': FlyerStyle(
+    base: Color(0xFF8B5CFF),
+    patternColor: Color(0x14000000),
+    fg: Color(0xFF050506),
+    pitch: 8,
   ),
 };
 
-/// Presses offered by the gig-create flyer picker, in swatch order.
-const flyerPicks = ['xerox', 'riso', 'marquee', 'blueprint', 'sunburst'];
+/// Palettes offered by the gig editor, in swatch order.
+const flyerPicks = ['ink', 'panel', 'accent'];

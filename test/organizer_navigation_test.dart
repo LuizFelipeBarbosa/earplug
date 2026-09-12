@@ -148,7 +148,7 @@ void main() {
     expect(find.byKey(const Key('organizer-tab-dash')), findsNothing);
     expect(find.text('GIGS'), findsOne);
     expect(find.text('EXPLORE'), findsOne);
-    expect(find.text('PROFILE'), findsOne);
+    expect(find.text('YOU'), findsOne);
     expect(harness.app.identity, isA<PersonalIdentity>());
   });
 

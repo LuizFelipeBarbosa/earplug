@@ -11,6 +11,7 @@ import '../theme.dart';
 import 'approx_area_map.dart';
 import 'common.dart';
 import 'ep_map.dart';
+import 'ep_text.dart';
 
 class _Pin extends StatelessWidget {
   final int count;
@@ -24,12 +25,12 @@ class _Pin extends StatelessWidget {
     final grouped = count > 1;
     return Container(
       decoration: BoxDecoration(
-        color: context.epColors.brand,
+        color: context.epColors.accent,
         shape: BoxShape.circle,
         border: Border.all(
           color: selected || emphasized
-              ? context.epColors.contentPrimary
-              : context.epColors.surface,
+              ? context.epColors.ink
+              : context.epColors.panel,
           width: selected ? 3 : 2,
         ),
       ),
@@ -37,9 +38,10 @@ class _Pin extends StatelessWidget {
           ? Center(
               child: Text(
                 '$count',
-                style: Theme.of(
-                  context,
-                ).textTheme.epLabel.copyWith(fontSize: 10, color: Colors.white),
+                style: Theme.of(context).textTheme.epLabel.copyWith(
+                  fontSize: 10,
+                  color: context.epColors.onAccent,
+                ),
               ),
             )
           : null,
@@ -127,16 +129,16 @@ class _UserPin extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: context.epColors.brand,
+        color: context.epColors.accent,
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 3),
+        border: Border.all(color: context.epColors.panel, width: 3),
       ),
       child: Center(
         child: SizedBox.square(
           dimension: 6,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: context.epColors.contentPrimary,
+              color: context.epColors.onAccent,
               shape: BoxShape.circle,
             ),
           ),
@@ -195,16 +197,16 @@ class _VenueMarkerLayer extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: context.epColors.brand,
+                  color: context.epColors.accent,
                   shape: BoxShape.circle,
-                  border: Border.all(color: context.epColors.surface, width: 2),
+                  border: Border.all(color: context.epColors.panel, width: 2),
                 ),
                 alignment: Alignment.center,
                 child: Text(
                   '${markers.length}',
                   style: Theme.of(context).textTheme.epLabel.copyWith(
                     fontSize: 10,
-                    color: Colors.white,
+                    color: context.epColors.onAccent,
                   ),
                 ),
               ),
@@ -477,8 +479,7 @@ class _MapGigCard extends StatelessWidget {
     return EpCard(
       key: ValueKey('map-gig-card-${gig.id}'),
       variant: EpCardVariant.raised,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      radius: 14,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       onTap: onOpen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -487,13 +488,9 @@ class _MapGigCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
+                  child: EpEyebrow(
                     '${position + 1} OF $total GIGS AT THIS VENUE',
                     key: const Key('map-gig-position'),
-                    style: Theme.of(context).textTheme.epCaption.copyWith(
-                      fontSize: 10,
-                      letterSpacing: .7,
-                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -512,19 +509,13 @@ class _MapGigCard extends StatelessWidget {
             ),
             const SizedBox(height: 7),
           ],
-          Text(
-            gig.title.toUpperCase(),
-            style: Theme.of(context).textTheme.epSectionHeading.copyWith(
-              fontSize: 15,
-              letterSpacing: .2,
-            ),
-          ),
-          const SizedBox(height: 3),
+          EpDisplay(gig.title, size: 20, maxLines: 2),
+          const SizedBox(height: 4),
           Text(
             '${venue.name} · $areaLabel · ${gig.dateLine}',
             style: Theme.of(context).textTheme.epCaption,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

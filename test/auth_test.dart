@@ -7,6 +7,7 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/auth.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/media_upload_service.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -470,7 +471,7 @@ void main() {
       );
 
       expect(find.byKey(const Key('auth-legal-consent')), findsNothing);
-      expect(find.textContaining('Terms of Service'), findsNothing);
+      expect(find.textContaining('Privacy Policy'), findsNothing);
     },
   );
 
@@ -491,9 +492,11 @@ void main() {
       pumpFor: const Duration(milliseconds: 100),
     );
 
-    expect(find.text('EMAIL'), findsOne);
-    expect(find.text('G · Continue with Google'), findsOne);
-    expect(find.text(' Continue with Apple'), findsNothing);
+    // The address is asked for inline, so the door is a single step.
+    expect(find.widgetWithText(TextField, 'you@example.com'), findsOne);
+    expect(find.text('SEND CODE'), findsOne);
+    expect(find.text('CONTINUE WITH GOOGLE'), findsOne);
+    expect(find.text('CONTINUE WITH APPLE'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -509,19 +512,22 @@ void main() {
       pumpFor: const Duration(milliseconds: 100),
     );
 
-    await tester.tap(find.text('EMAIL'));
-    await tester.pump();
-    await tester.enterText(find.byType(TextField).first, 'fan@example.com');
+    // The trailing pill of the one email row: 'Send code', then 'Verify'.
+    VoidCallback? submitAction(String label) => tester
+        .widget<EpPill>(
+          find.byWidgetPredicate(
+            (widget) => widget is EpPill && widget.label == label,
+          ),
+        )
+        .onPressed;
+
+    await tester.enterText(find.byType(TextField), 'fan@example.com');
+    await tester.ensureVisible(find.text('SEND CODE'));
     await tester.tap(find.text('SEND CODE'));
     await tester.pumpAndSettle();
 
     final codeField = find.widgetWithText(TextField, '6-digit code');
-    expect(
-      tester
-          .widget<FilledButton>(find.widgetWithText(FilledButton, 'VERIFY'))
-          .onPressed,
-      isNull,
-    );
+    expect(submitAction('Verify'), isNull);
     await tester.enterText(codeField, '12345');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
@@ -530,12 +536,8 @@ void main() {
 
     await tester.enterText(codeField, '424242');
     await tester.pump();
-    expect(
-      tester
-          .widget<FilledButton>(find.widgetWithText(FilledButton, 'VERIFY'))
-          .onPressed,
-      isNotNull,
-    );
+    expect(submitAction('Verify'), isNotNull);
+    await tester.ensureVisible(find.text('VERIFY'));
     await tester.tap(find.text('VERIFY'));
     await tester.pump();
     expect(auth.verifyCalls, 1);

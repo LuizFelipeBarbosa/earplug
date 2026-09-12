@@ -29,7 +29,7 @@ void main() {
 
     expect(find.byKey(const Key('door-viewer')), findsOne);
     expect(find.text('DOOR MODE · THE FOGHORN CLUB'), findsOne);
-    expect(find.text('Riptide Release Show'), findsOne);
+    expect(find.text('RIPTIDE RELEASE SHOW'), findsOne);
     expect(find.text('DOORS 8:00 PM'), findsOne);
     expect(find.text('41 / 87 loaded'), findsOne);
     expect(find.byKey(const Key('door-roster-limited')), findsOne);
@@ -258,7 +258,20 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       expect(find.text('RSVPs 0/0 · Tickets 1/1'), findsOne);
       expect(find.byType(LedgerRow), findsOne);
-      expect(find.text('Earplug Fan · $checkedInTime · door'), findsOne);
+      expect(
+        find.descendant(
+          of: find.byType(LedgerRow),
+          matching: find.text('Earplug Fan'),
+        ),
+        findsOne,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(LedgerRow),
+          matching: find.text('${checkedInTime.toUpperCase()} · DOOR'),
+        ),
+        findsOne,
+      );
     },
   );
 
@@ -297,7 +310,14 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(LedgerRow),
-        matching: find.textContaining('Earplug Fan · '),
+        matching: find.text('Earplug Fan'),
+      ),
+      findsOne,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(LedgerRow),
+        matching: find.textContaining(' · DOOR'),
       ),
       findsOne,
     );
@@ -369,7 +389,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(DoorModeScreen), findsOne);
-    expect(find.text('Organization Ticketed Show'), findsOne);
+    expect(find.text('ORGANIZATION TICKETED SHOW'), findsOne);
     expect(find.text('RSVPs 0/0 · Tickets 0/0'), findsOne);
 
     await tester.tap(find.byTooltip('Close Door Mode'));

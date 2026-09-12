@@ -169,26 +169,18 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
               key: const Key('org-finance-funds'),
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (!overview.stripeReady)
-                  EpCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          'Connect Stripe to see your balance.',
-                          style: textTheme.epBody,
-                        ),
-                        const SizedBox(height: 12),
-                        EpButton(
-                          'CONNECT STRIPE',
-                          key: const Key('org-finance-connect-stripe'),
-                          onTap: () =>
-                              _runAction(app.startOrganizationOnboarding),
-                        ),
-                      ],
-                    ),
-                  )
-                else if (overview.snapshot case final snapshot?) ...[
+                if (!overview.stripeReady) ...[
+                  Text(
+                    'Connect Stripe to see your balance.',
+                    style: textTheme.epBody,
+                  ),
+                  const SizedBox(height: 12),
+                  EpButton(
+                    'CONNECT STRIPE',
+                    key: const Key('org-finance-connect-stripe'),
+                    onTap: () => _runAction(app.startOrganizationOnboarding),
+                  ),
+                ] else if (overview.snapshot case final snapshot?) ...[
                   EpStatCard(
                     expand: false,
                     label: 'IN STRIPE',
@@ -206,8 +198,8 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                     ),
                   ],
                 ] else
-                  const EpCard(
-                    child: Text('Balance unavailable. Refresh to try again.'),
+                  const EmptyNote(
+                    message: 'Balance unavailable. Refresh to try again.',
                   ),
               ],
             ),
@@ -229,22 +221,8 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                 if (overview.pendingPayments.isEmpty)
                   const EmptyNote(message: 'No pending payments.')
                 else
-                  EpCard(
-                    child: Column(
-                      children: [
-                        for (
-                          var i = 0;
-                          i < overview.pendingPayments.length;
-                          i++
-                        ) ...[
-                          if (i > 0) const Divider(height: 1),
-                          _PendingPaymentRow(
-                            payment: overview.pendingPayments[i],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
+                  for (final payment in overview.pendingPayments)
+                    _PendingPaymentRow(payment: payment),
               ],
             ),
             const SectionBar(label: 'TICKETS'),

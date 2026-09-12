@@ -7,7 +7,10 @@ import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_profile.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/widgets/band_identity_editor.dart';
+import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/brand_icons.dart';
+import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -100,13 +103,13 @@ void main() {
     expect(find.text('CREDITS'), findsOne);
     expect(find.text('Recorded by Jo Rivera at Room Tone.'), findsOne);
     await tester.scrollUntilVisible(
-      find.text('Avery Stone'),
+      find.text('AVERY STONE'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('BAND MEMBERS'), findsOne);
-    expect(find.text('Avery Stone'), findsOne);
-    expect(find.text('Jo Rivera'), findsOne);
+    expect(find.text('AVERY STONE'), findsOne);
+    expect(find.text('JO RIVERA'), findsOne);
   });
 
   testWidgets('empty optional details leave no empty public sections', (
@@ -165,16 +168,16 @@ void main() {
     );
 
     expect(find.text('PUBLIC PROFILE PREVIEW'), findsOne);
-    expect(find.text('Edit profile'), findsOne);
-    expect(find.text('Return to band dashboard'), findsOne);
+    expect(find.text('EDIT PROFILE'), findsOne);
+    expect(find.text('RETURN TO BAND DASHBOARD'), findsOne);
 
-    await tester.tap(find.text('Edit profile'));
+    await tester.tap(find.text('EDIT PROFILE'));
     await tester.pump();
     expect(harness.app.current.screen, Screen.bandEdit);
 
     harness.app.go(Screen.bandPreview, 'b1');
     await tester.pump();
-    await tester.tap(find.text('Return to band dashboard'));
+    await tester.tap(find.text('RETURN TO BAND DASHBOARD'));
     await tester.pump();
     expect(harness.app.current.screen, Screen.bandDash);
   });
@@ -187,10 +190,13 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
-    expect(find.text('BAND'), findsOne);
+    expect(
+      find.text('BAND · ${DemoData.bands['b1']!.area.toUpperCase()}'),
+      findsOne,
+    );
     expect(find.text('PUBLIC PROFILE PREVIEW'), findsNothing);
-    expect(find.text('Return to band dashboard'), findsNothing);
-    expect(find.text('Edit profile'), findsNothing);
+    expect(find.text('RETURN TO BAND DASHBOARD'), findsNothing);
+    expect(find.text('EDIT PROFILE'), findsNothing);
   });
 
   testWidgets('press hero keeps follow as the sole primary profile action', (
@@ -202,8 +208,13 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('band-profile-hero-b1')), findsOne);
-    expect(find.textContaining('FOLLOW ·'), findsOne);
-    expect(find.byType(FilledButton), findsOne);
+    expect(find.text('FOLLOW'), findsOne);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is EpPill && widget.variant == EpPillVariant.primary,
+      ),
+      findsOne,
+    );
   });
 
   testWidgets('public profile keeps completion state private', (tester) async {
@@ -219,7 +230,7 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
     expect(find.byKey(const Key('profile-complete-badge')), findsNothing);
-    expect(find.text('486 followers'), findsOne);
+    expect(find.textContaining('486 FOLLOWERS'), findsOne);
 
     await tester.pumpWidget(const SizedBox.shrink());
     final incompleteAuth = FakeAuthService();
@@ -396,13 +407,19 @@ void main() {
     );
     final gradient = (scrim.decoration as BoxDecoration).gradient!;
     expect(gradient, isA<LinearGradient>());
-    expect(
-      (gradient as LinearGradient).colors.every((color) => color.a >= .58),
-      isTrue,
-    );
+    final linear = gradient as LinearGradient;
+    final hero = find.byKey(const ValueKey('band-profile-hero-b1'));
+    expect(linear.begin, Alignment.bottomCenter);
+    expect(linear.end, Alignment.topCenter);
+    expect(linear.stops, [0, .6]);
+    expect(linear.colors.first, tester.element(hero).epColors.background);
+    expect(linear.colors.last.a, 0);
     expect(find.byKey(const ValueKey('band-profile-avatar-frame')), findsOne);
-    expect(find.byType(BandIdentityHeader), findsOne);
-    expect(find.text('486 followers'), findsOne);
+    expect(find.descendant(of: hero, matching: find.byType(EpPanel)), findsOne);
+    final avatar = tester.widget<EpAvatarTile>(find.byType(EpAvatarTile));
+    expect(avatar.size, 56);
+    expect(avatar.accent, isTrue);
+    expect(find.textContaining('486 FOLLOWERS'), findsOne);
     expect(find.text('PROFILE COMPLETE'), findsNothing);
     final edit = find.byKey(const ValueKey('edit-band-profile-banner'));
     expect(edit, findsOne);
@@ -448,12 +465,12 @@ void main() {
     );
 
     expect(find.text('PUBLIC PROFILE PREVIEW'), findsOne);
-    expect(find.text('Edit profile'), findsNothing);
+    expect(find.text('EDIT PROFILE'), findsNothing);
     expect(
       find.byKey(const ValueKey('edit-band-profile-banner')),
       findsNothing,
     );
-    expect(find.text('Return to band dashboard'), findsOne);
+    expect(find.text('RETURN TO BAND DASHBOARD'), findsOne);
 
     harness.app.openBandEditor();
     expect(harness.app.current.screen, Screen.bandPreview);
@@ -463,16 +480,21 @@ void main() {
     await _pumpProfile(tester);
 
     await tester.scrollUntilVisible(
-      find.text('PHOTOS'),
+      find.text('THIS IS WHAT WE SOUND LIKE'),
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, -120));
-    await tester.pumpAndSettle();
+    expect(find.text('PHOTOS'), findsNothing);
     for (final photo in DemoData.b1Media.where(
       (media) => media.kind == MediaKind.photo,
     )) {
-      expect(find.byKey(ValueKey('band-photo-${photo.id}')), findsOne);
+      final tile = find.byKey(ValueKey('band-photo-${photo.id}'));
+      await tester.scrollUntilVisible(
+        tile,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(tile, findsOne);
     }
   });
 
@@ -525,8 +547,18 @@ void main() {
 
     for (final link in [instagram, bandcamp, youtube]) {
       final size = tester.getSize(link);
-      expect(size.height, greaterThanOrEqualTo(48));
-      expect(size.width, lessThanOrEqualTo(138));
+      expect(size.height, greaterThanOrEqualTo(36));
+      expect(size.width, lessThanOrEqualTo(170 - 2 * EpLayout.gutter));
+      final pill = tester.widget<EpPill>(
+        find.descendant(of: link, matching: find.byType(EpPill)),
+      );
+      expect(pill.variant, EpPillVariant.outline);
+      expect(pill.size, EpPillSize.chip);
+      expect(pill.onPressed, isNotNull);
+      expect(
+        find.descendant(of: link, matching: find.byType(BrandIcon)),
+        findsOne,
+      );
     }
     expect(
       tester.getTopLeft(bandcamp).dy,

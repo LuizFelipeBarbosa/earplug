@@ -498,11 +498,9 @@ class EarplugApp extends StatelessWidget {
                 : Banner(
                     message: label,
                     location: BannerLocation.topEnd,
-                    color: context.epColors.contentPrimary,
-                    textStyle: epText(
-                      size: 10,
-                      weight: FontWeight.w800,
-                      color: context.epColors.background,
+                    color: context.epColors.accent,
+                    textStyle: Theme.of(context).textTheme.epChipLabel.copyWith(
+                      color: context.epColors.onAccent,
                     ),
                     child: app,
                   );
@@ -617,7 +615,7 @@ class RootShell extends StatelessWidget {
     final body = switch (dataStatus) {
       DataStatus.connecting => ColoredBox(
         color: context.epColors.background,
-        child: const Center(child: EpLogo.full(width: 190)),
+        child: const Center(child: EpLogo.compact(height: 40)),
       ),
       DataStatus.error => ColoredBox(
         color: context.epColors.background,
@@ -681,10 +679,7 @@ class RootShell extends StatelessWidget {
             screen == Screen.gigCreate) &&
         !showOpportunityAsFanTab &&
         !organizerNavigation;
-    final page = ClipRRect(
-      borderRadius: BorderRadius.circular(desktop ? 20 : 0),
-      child: Scaffold(body: body),
-    );
+    final page = Scaffold(body: body);
 
     return PopScope(
       canPop: !canGoBack,
@@ -696,50 +691,49 @@ class RootShell extends StatelessWidget {
         child: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth: desktop ? EpLayout.workspaceWidth : 600,
+              maxWidth: desktop ? double.infinity : 600,
             ),
             // Keep the content in the same keyed subtree across breakpoints
             // so a resize preserves form controllers, focus, and unsaved edits.
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                vertical: desktop ? 20 : 0,
-                horizontal: desktop ? 16 : 0,
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (desktop) ...[
-                    EpDesktopSidebar(
-                      label: organizerNavigation
-                          ? 'ORGANIZER'
-                          : bandNavigation
-                          ? 'BAND WORKSPACE'
-                          : 'DISCOVER',
-                      navigation: organizerNavigation
-                          ? const OrganizerTabBar(vertical: true)
-                          : bandNavigation
-                          ? const BandTabBar(vertical: true)
-                          : const FanTabBar(vertical: true),
-                    ),
-                    const SizedBox(width: 32),
-                  ],
-                  Expanded(
-                    key: const ValueKey('workspace-content'),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(desktop ? 21 : 0),
-                        border: desktop
-                            ? Border.all(color: context.epColors.border)
-                            : null,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (desktop)
+                  EpDesktopSidebar(
+                    label: organizerNavigation
+                        ? 'ORGANIZER'
+                        : bandNavigation
+                        ? 'BAND WORKSPACE'
+                        : 'DISCOVER',
+                    navigation: organizerNavigation
+                        ? const OrganizerTabBar(vertical: true)
+                        : bandNavigation
+                        ? const BandTabBar(vertical: true)
+                        : const FanTabBar(vertical: true),
+                  ),
+                Expanded(
+                  key: const ValueKey('workspace-content'),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: desktop
+                            ? EpLayout.workspaceWidth
+                            : double.infinity,
                       ),
                       child: Padding(
-                        padding: EdgeInsets.all(desktop ? 1 : 0),
+                        padding: desktop
+                            ? const EdgeInsets.only(
+                                top: 28,
+                                left: 40,
+                                right: 40,
+                              )
+                            : EdgeInsets.zero,
                         child: page,
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),

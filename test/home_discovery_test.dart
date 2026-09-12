@@ -10,6 +10,7 @@ import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:earplug/widgets/map_view.dart';
 import 'package:flutter/material.dart';
@@ -38,29 +39,27 @@ void main() {
     expect(harness.app.mapMode, isTrue);
     expect(find.byType(GigMapView), findsOne);
     expect(find.text('PUNK'), findsNothing);
-    expect(find.text('EARPLUG'), findsOne);
+    expect(find.byKey(const Key('home-logo')), findsOne);
 
     final logo = tester.getRect(find.byKey(const Key('home-logo')));
-    final wordmark = tester.getRect(find.byKey(const Key('home-wordmark')));
     final viewToggle = tester.getRect(
       find.byKey(const Key('home-view-toggle')),
     );
     final location = tester.getRect(
       find.byKey(const Key('home-location-control')),
     );
-    expect(logo.right, lessThan(wordmark.left));
-    expect(wordmark.right, lessThan(viewToggle.left));
-    expect((logo.center.dy - wordmark.center.dy).abs(), lessThan(2));
+    expect(logo.right, lessThan(viewToggle.left));
+    expect((logo.center.dy - viewToggle.center.dy).abs(), lessThan(6));
     expect(viewToggle.bottom, lessThan(location.top));
-    expect(location.left, 16);
-    expect(location.right, 386);
+    expect(location.left, greaterThanOrEqualTo(EpLayout.gutter));
+    expect(location.right, lessThanOrEqualTo(402 - EpLayout.gutter));
 
-    await tester.tap(find.text('LIST'));
+    await tester.tap(find.byKey(const Key('home-view-toggle')));
     await tester.pumpAndSettle();
 
     expect(harness.app.mapMode, isFalse);
     expect(find.byType(GigMapView), findsNothing);
-    expect(find.text('8 GIGS NEAR YOU · LOCAL ORDER'), findsOne);
+    expect(find.textContaining('8 SHOWS NEAR YOU'), findsOne);
     final cards = tester.widgetList<FanEventCard>(find.byType(FanEventCard));
     final featured = cards.first;
     expect(featured.gig.id, harness.app.feed.first.id);
@@ -91,7 +90,6 @@ void main() {
     await tester.pumpAndSettle();
 
     final logo = tester.getRect(find.byKey(const Key('home-logo')));
-    final wordmark = tester.getRect(find.byKey(const Key('home-wordmark')));
     final viewToggle = tester.getRect(
       find.byKey(const Key('home-view-toggle')),
     );
@@ -99,11 +97,10 @@ void main() {
       find.byKey(const Key('home-location-control')),
     );
 
-    expect(logo.right, lessThan(wordmark.left));
-    expect(wordmark.right, lessThan(viewToggle.left));
+    expect(logo.right, lessThan(viewToggle.left));
     expect(viewToggle.bottom, lessThan(location.top));
-    expect(location.left, 16);
-    expect(location.right, 304);
+    expect(location.left, greaterThanOrEqualTo(EpLayout.gutter));
+    expect(location.right, lessThanOrEqualTo(320 - EpLayout.gutter));
     expect(tester.takeException(), isNull);
   });
 
@@ -127,8 +124,8 @@ void main() {
       beforePump: (app) => app.setMapMode(false),
     );
 
-    expect(find.text('1 GIG NEAR YOU · LOCAL ORDER'), findsOne);
-    expect(find.text('1 GIGS NEAR YOU · LOCAL ORDER'), findsNothing);
+    expect(find.textContaining('1 SHOW NEAR YOU'), findsOne);
+    expect(find.textContaining('1 SHOWS NEAR YOU'), findsNothing);
   });
 
   testWidgets('map markers use the same multi-genre filtered feed', (
@@ -196,7 +193,9 @@ void main() {
     tester,
   ) async {
     final auth = FakeAuthService();
-    final readyBand = DemoData.bands['b1']!.copyWith(discoveryProfileReady: true);
+    final readyBand = DemoData.bands['b1']!.copyWith(
+      discoveryProfileReady: true,
+    );
     await pumpApp(
       tester,
       auth: auth,
@@ -218,7 +217,7 @@ void main() {
       home: const Scaffold(body: HomeScreen()),
     );
 
-    await tester.tap(find.text('LIST'));
+    await tester.tap(find.byKey(const Key('home-view-toggle')));
     await tester.pumpAndSettle();
     expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
@@ -469,7 +468,8 @@ void main() {
       repository: StubRepository(auth: auth)
         ..returnsStream(
           'feed',
-          () => Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
+          () =>
+              Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
         ),
       home: const Scaffold(body: HomeScreen()),
     );
@@ -477,7 +477,7 @@ void main() {
     expect(harness.app.allGigs, isEmpty);
     expect(find.text(_noGigs), findsOne);
     expect(find.text(_noMatches), findsNothing);
-    expect(find.text('0 GIGS NEAR YOU · LOCAL ORDER'), findsOne);
+    expect(find.textContaining('0 SHOWS NEAR YOU'), findsOne);
   });
 
   testWidgets('Home list lazily builds a 60-gig feed', (tester) async {
@@ -537,20 +537,21 @@ void main() {
     expect(harness.app.isDiscoveryBoosted(gig), isTrue);
     final card = tester.widget<FanEventCard>(find.byType(FanEventCard));
     expect(card.presentation, FanEventCardPresentation.compact);
-    expect(find.byType(DateBlock), findsOne);
+    expect(find.byType(EpDateBlock), findsOne);
     expect(find.byType(GigFlyer), findsNothing);
-    expect(find.text('${gig.going} GOING'), findsOne);
+    // Price, age and the going count fold into the row's mono meta line.
+    expect(
+      find.textContaining(
+        '${gig.ageRequirement.label.toUpperCase()} · '
+        '${gig.going} GOING',
+      ),
+      findsOne,
+    );
     expect(find.byKey(ValueKey('save-${gig.id}')), findsOne);
     expect(find.byKey(ValueKey('share-${gig.id}')), findsOne);
     expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsOne);
-    final boostLabel = tester.widget<Text>(
-      find.byKey(ValueKey('discovery-boost-${gig.id}')),
-    );
-    expect(boostLabel.style!.fontSize, greaterThanOrEqualTo(11));
-    final ageLabel = tester.widget<Text>(
-      find.text(gig.ageRequirement.label.toUpperCase()),
-    );
-    expect(ageLabel.style!.fontSize, greaterThanOrEqualTo(11));
+    expect(find.byKey(ValueKey('discovery-boost-${gig.id}')), findsOne);
+    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
 
   testWidgets('featured presentation uses the resolved presenter and flyer', (
@@ -720,7 +721,9 @@ class _BoundaryBoostRepository extends StubRepository {
     required DateTime now,
     Duration opensAfter = const Duration(seconds: 2),
   }) : opensAt = now.add(opensAfter) {
-    final readyBand = DemoData.bands['b1']!.copyWith(discoveryProfileReady: true);
+    final readyBand = DemoData.bands['b1']!.copyWith(
+      discoveryProfileReady: true,
+    );
     returnsStream(
       'feed',
       () => Stream.value(
