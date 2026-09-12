@@ -292,12 +292,9 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
                     widget.bandName.toUpperCase(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: epText(
-                      size: 11,
-                      weight: FontWeight.w900,
-                      letterSpacing: 1.2,
-                      color: Colors.white,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epLabel.copyWith(color: Colors.white),
                   ),
                 ),
               ],
@@ -346,7 +343,7 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
                       child: FractionallySizedBox(
                         widthFactor: fraction,
                         heightFactor: 1,
-                        child: const ColoredBox(color: Ep.brand),
+                        child: const ColoredBox(color: Ep.accent),
                       ),
                     ),
                   ),
@@ -433,16 +430,17 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
                     widget.media.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: epText(
-                      size: 14,
-                      weight: FontWeight.w900,
+                    style: Theme.of(context).textTheme.epBody.copyWith(
                       color: Colors.white,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 5),
                   Text(
                     '${widget.media.viewsLabel} · ${widget.media.lenLabel}',
-                    style: epText(size: 11, color: Colors.white70),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epCaption.copyWith(color: Colors.white70),
                   ),
                 ],
               ),
@@ -459,13 +457,15 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
       children: [
         Center(
           child: _error == null
-              ? const CircularProgressIndicator(color: Ep.brand)
+              ? const CircularProgressIndicator(color: Ep.accent)
               : Padding(
                   padding: const EdgeInsets.all(32),
                   child: Text(
                     _error!,
                     textAlign: TextAlign.center,
-                    style: epText(size: 13, color: Colors.white70, height: 1.4),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epCaption.copyWith(color: Colors.white70),
                   ),
                 ),
         ),

@@ -212,7 +212,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               backgroundColor: WidgetStatePropertyAll(
                 dialogContext.epColors.destructive,
               ),
-              foregroundColor: const WidgetStatePropertyAll(Colors.white),
+              foregroundColor: WidgetStatePropertyAll(
+                dialogContext.epColors.onAccent,
+              ),
             ),
             onPressed: () => Navigator.pop(dialogContext, true),
             child: Text('DISCARD'),
@@ -798,7 +800,6 @@ class _FanIdentityPreview extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.epColors.surfaceRaised,
         border: Border.all(color: context.epColors.border),
-        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -824,7 +825,6 @@ class _FanIdentityPreview extends StatelessWidget {
                   color: Colors.transparent,
                   child: InkWell(
                     key: const Key('fan-avatar-preview-control'),
-                    borderRadius: BorderRadius.circular(24),
                     onTap: onEditAvatar,
                     child: Padding(
                       padding: const EdgeInsets.only(right: 4, bottom: 4),
@@ -927,21 +927,18 @@ class _AvatarPreview extends StatelessWidget {
     final photo = picked;
     final cacheSize = (88 * MediaQuery.devicePixelRatioOf(context)).round();
     final avatar = photo == null
-        ? EpFanAvatar(name: name, imageUrl: imageUrl, size: 88, radius: 24)
+        ? EpFanAvatar(name: name, imageUrl: imageUrl, size: 88)
         : Semantics(
             image: true,
             label: 'Selected profile photo',
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Image.memory(
-                photo.bytes,
-                key: const Key('picked-fan-avatar-preview'),
-                width: 88,
-                height: 88,
-                fit: BoxFit.cover,
-                cacheWidth: cacheSize,
-                cacheHeight: cacheSize,
-              ),
+            child: Image.memory(
+              photo.bytes,
+              key: const Key('picked-fan-avatar-preview'),
+              width: 88,
+              height: 88,
+              fit: BoxFit.cover,
+              cacheWidth: cacheSize,
+              cacheHeight: cacheSize,
             ),
           );
     return Stack(
@@ -956,14 +953,18 @@ class _AvatarPreview extends StatelessWidget {
               width: 28,
               height: 28,
               decoration: BoxDecoration(
-                color: context.epColors.volt,
+                color: context.epColors.accent,
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: context.epColors.background,
                   width: 3,
                 ),
               ),
-              child: Icon(Icons.edit, size: 14, color: context.epColors.dark),
+              child: Icon(
+                Icons.edit,
+                size: 14,
+                color: context.epColors.onAccent,
+              ),
             ),
           ),
         ),

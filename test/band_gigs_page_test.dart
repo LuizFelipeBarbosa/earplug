@@ -107,7 +107,7 @@ void main() {
     expect(find.textContaining('120 Demo Lane'), findsNothing);
     expect(find.byKey(const Key('opp-detail-apply')), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.text('EXPECTED GUESTS · 45'),
+      find.text('EXPECTED GUESTS'),
       300,
       scrollable: find
           .descendant(
@@ -117,7 +117,14 @@ void main() {
           .first,
     );
     await tester.pumpAndSettle();
-    expect(find.text('EXPECTED GUESTS · 45'), findsOneWidget);
+    expect(find.text('EXPECTED GUESTS'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.text('45'),
+        matching: find.widgetWithText(LedgerRow, 'EXPECTED GUESTS'),
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -222,7 +229,7 @@ void main() {
     await _signInNonAdminMember(tester, harness);
     expect(harness.app.isAdminOf('b2'), isFalse);
 
-    await tester.tap(find.byIcon(Icons.table_rows_outlined));
+    await tester.tap(find.byIcon(Icons.list));
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.gigMgr);
     for (final segment in ['open', 'applied', 'booked', 'past']) {

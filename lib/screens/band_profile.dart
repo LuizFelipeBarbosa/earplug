@@ -847,19 +847,71 @@ class _BandReviewsSectionState extends State<_BandReviewsSection> {
               style: Theme.of(context).textTheme.epBody,
             ),
             for (final review in reviews)
-              LedgerRow(
+              _ReviewRow(
                 key: ValueKey('band-review-${review.reviewId}'),
-                title: review.counterpartyName,
-                details: [
-                  '${review.rating} out of 5 stars',
-                  review.monthLabel,
-                  ...review.categories,
-                  review.text,
-                ],
+                review: review,
               ),
           ],
         );
       },
+    );
+  }
+}
+
+/// A public review as a hairline row: rating, who wrote it, and their words.
+class _ReviewRow extends StatelessWidget {
+  const _ReviewRow({super.key, required this.review});
+
+  final PublicReview review;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: context.epColors.line)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(
+            label: '${review.rating} out of 5 stars',
+            excludeSemantics: true,
+            child: Row(
+              children: [
+                for (var rating = 1; rating <= 5; rating++)
+                  Icon(
+                    rating <= review.rating ? Icons.star : Icons.star_border,
+                    size: 16,
+                    color: context.epColors.accent,
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(review.counterpartyName, style: textTheme.epBody),
+          Text(review.monthLabel, style: textTheme.epCaption),
+          if (review.categories.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final category in review.categories)
+                  EpChip(
+                    label: category,
+                    active: true,
+                    onTap: null,
+                    readOnly: true,
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 6),
+          Text(review.text, style: textTheme.epBody),
+        ],
+      ),
     );
   }
 }

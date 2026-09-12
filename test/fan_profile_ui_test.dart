@@ -118,7 +118,7 @@ void main() {
       final decoration = field.decoration!.applyDefaults(
         Theme.of(tester.element(find.byKey(key))).inputDecorationTheme,
       );
-      expect(decoration.enabledBorder, isA<OutlineInputBorder>());
+      expect(decoration.enabledBorder, isA<UnderlineInputBorder>());
     }
     semantics.dispose();
   });
@@ -334,6 +334,18 @@ void main() {
   testWidgets('profile leads with private identity and branded fan fallback', (
     tester,
   ) async {
+    // Sharing copies to the clipboard; without a handler the platform call
+    // never resolves and the confirmation never reaches the messenger.
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (_) async => null,
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
     final semantics = tester.ensureSemantics();
     final auth = FakeAuthService();
     await auth.signInDemo();

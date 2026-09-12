@@ -55,8 +55,8 @@ void main() {
       final decoration = field.decoration!.applyDefaults(
         Theme.of(tester.element(find.byKey(key))).inputDecorationTheme,
       );
-      expect(decoration.enabledBorder, isA<OutlineInputBorder>());
-      expect(field.style?.fontSize, 16);
+      expect(decoration.enabledBorder, isA<UnderlineInputBorder>());
+      expect(field.style?.fontSize, 18);
     }
 
     for (final key in const [

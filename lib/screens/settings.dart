@@ -83,7 +83,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     backgroundColor: WidgetStatePropertyAll(
                       context.epColors.destructive,
                     ),
-                    foregroundColor: WidgetStatePropertyAll(Colors.white),
+                    foregroundColor: WidgetStatePropertyAll(
+                      context.epColors.onAccent,
+                    ),
                   ),
                   child: Text('DELETE ACCOUNT'),
                 ),
@@ -154,7 +156,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final app = context.watch<AppState>();
     final appearance = context.watch<AppearanceController>();
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 32),
+      padding: EdgeInsets.fromLTRB(
+        EpLayout.gutter,
+        headerTopPad(context),
+        EpLayout.gutter,
+        32,
+      ),
       children: [
         Row(
           children: [
@@ -289,7 +296,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           decoration: BoxDecoration(
             color: context.epColors.destructive.withValues(alpha: .08),
             border: Border.all(color: context.epColors.destructive),
-            borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -313,7 +319,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   backgroundColor: WidgetStatePropertyAll(
                     context.epColors.destructive,
                   ),
-                  foregroundColor: WidgetStatePropertyAll(Colors.white),
+                  foregroundColor: WidgetStatePropertyAll(
+                    context.epColors.onAccent,
+                  ),
                 ),
                 child: Text(_deleting ? 'DELETING…' : 'DELETE ACCOUNT'),
               ),

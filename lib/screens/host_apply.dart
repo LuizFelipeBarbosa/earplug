@@ -700,8 +700,7 @@ class _DocumentTile extends StatelessWidget {
       child: Stack(
         children: [
           Positioned.fill(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+            child: ClipRect(
               child: _isImage
                   ? EpNetworkImage(
                       url: document.url,
@@ -745,7 +744,6 @@ class _AddDocumentTile extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: enabled ? onTap : null,
-          borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Row(

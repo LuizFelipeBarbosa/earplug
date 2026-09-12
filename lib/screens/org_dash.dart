@@ -130,11 +130,13 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
                 _DashboardStat(
                   key: const Key('org-dash-venue-requests'),
                   value: '${dashboard.venues.length}',
-                  label: 'Venues · '
+                  label:
+                      'Venues · '
                       '${dashboard.pendingVenueConsents > 0 ? '${dashboard.pendingVenueConsents} venue ${dashboard.pendingVenueConsents == 1 ? 'request' : 'requests'}' : 'managed profiles'}',
                 ),
               if (!app.currentIsHost)
                 _DashboardStat(
+                  key: const Key('org-dash-stat-members'),
                   value: '${dashboard.memberCount}',
                   label: 'Members',
                 ),
@@ -215,7 +217,11 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
                         size: 24,
                       ),
                       const SizedBox(width: 6),
-                      Icon(Icons.star, size: 16, color: context.epColors.accent),
+                      Icon(
+                        Icons.star,
+                        size: 16,
+                        color: context.epColors.accent,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -239,48 +245,11 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const EpSectionHeader(label: 'Reviews'),
-                for (final review in _reviews) ...[
-                  EpCard(
+                for (final review in _reviews)
+                  _ReviewRow(
                     key: ValueKey('org-dash-review-${review.reviewId}'),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          review.counterpartyName,
-                          style: Theme.of(context).textTheme.epBody,
-                        ),
-                        const SizedBox(height: 6),
-                        Semantics(
-                          label: '${review.rating} out of 5 stars',
-                          excludeSemantics: true,
-                          child: Row(
-                            children: [
-                              for (var rating = 1; rating <= 5; rating++)
-                                Icon(
-                                  rating <= review.rating
-                                      ? Icons.star
-                                      : Icons.star_border,
-                                  size: 18,
-                                  color: context.epColors.accent,
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          review.monthLabel,
-                          style: Theme.of(context).textTheme.epCaption,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          review.text,
-                          style: Theme.of(context).textTheme.epBody,
-                        ),
-                      ],
-                    ),
+                    review: review,
                   ),
-                  const SizedBox(height: 10),
-                ],
               ],
             ),
         ],
@@ -401,7 +370,8 @@ class _ReadinessSection extends StatelessWidget {
         ),
     ];
     final done = steps.where((step) => step.done).length;
-    final hint = steps.where((step) => !step.done).firstOrNull?.hint ?? 'All set';
+    final hint =
+        steps.where((step) => !step.done).firstOrNull?.hint ?? 'All set';
     final showDone = showAll || EpLayout.isDesktop(context);
 
     return Column(
@@ -410,10 +380,15 @@ class _ReadinessSection extends StatelessWidget {
       children: [
         Row(
           children: [
-            Expanded(child: EpEyebrow.accent('Readiness · $done of ${steps.length}')),
+            Expanded(
+              child: EpEyebrow.accent('Readiness · $done of ${steps.length}'),
+            ),
             const SizedBox(width: 12),
             Flexible(
-              child: Align(alignment: Alignment.centerRight, child: EpEyebrow(hint)),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: EpEyebrow(hint),
+              ),
             ),
           ],
         ),
@@ -517,6 +492,49 @@ class _DashboardStat extends StatelessWidget {
       EpEyebrow(label),
     ],
   );
+}
+
+/// A public review as a hairline row: who wrote it, their rating, their words.
+class _ReviewRow extends StatelessWidget {
+  const _ReviewRow({super.key, required this.review});
+
+  final PublicReview review;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: context.epColors.line)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(review.counterpartyName, style: textTheme.epBody),
+          const SizedBox(height: 6),
+          Semantics(
+            label: '${review.rating} out of 5 stars',
+            excludeSemantics: true,
+            child: Row(
+              children: [
+                for (var rating = 1; rating <= 5; rating++)
+                  Icon(
+                    rating <= review.rating ? Icons.star : Icons.star_border,
+                    size: 16,
+                    color: context.epColors.accent,
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(review.monthLabel, style: textTheme.epCaption),
+          const SizedBox(height: 6),
+          Text(review.text, style: textTheme.epBody),
+        ],
+      ),
+    );
+  }
 }
 
 class _LoadError extends StatelessWidget {

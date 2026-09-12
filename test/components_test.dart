@@ -815,9 +815,8 @@ void main() {
       app.dispose();
     });
 
-    testWidgets('venue hero foreground remains light in both themes', (
-      tester,
-    ) async {
+    testWidgets('venue hero pairs an accent eyebrow with theme ink in both '
+        'themes', (tester) async {
       final brightness = ValueNotifier(Brightness.light);
       addTearDown(brightness.dispose);
       await pumpApp(
@@ -831,21 +830,21 @@ void main() {
         ),
       );
 
-      void expectLightHeroText() {
+      void expectHeroTokens(EpPalette palette) {
         expect(
           tester.widget<Text>(find.textContaining('VENUE ·')).style!.color,
-          Ep.ink,
+          palette.accent,
         );
         expect(
           tester.widget<Text>(find.text('THE FOGHORN CLUB')).style!.color,
-          Ep.ink,
+          palette.ink,
         );
       }
 
-      expectLightHeroText();
+      expectHeroTokens(EpPalette.lightMode);
       brightness.value = Brightness.dark;
       await tester.pumpAndSettle();
-      expectLightHeroText();
+      expectHeroTokens(EpPalette.darkMode);
     });
   });
 }

@@ -883,6 +883,9 @@ void main() {
         fixture.startsAt.add(const Duration(days: 1)),
       );
       await _tapAction(tester, 'reopen');
+      // The form scrolls towards its feedback line, but the lazy list only
+      // reaches the extent it has laid out; finish the scroll before reading it.
+      await _reveal(tester, find.byKey(const ValueKey('opp-edit-feedback')));
       expect(find.text('Needs: deadline before start'), findsWidgets);
       expect(
         (await repository.opportunity('opp1'))!.status,

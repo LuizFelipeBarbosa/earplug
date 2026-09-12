@@ -47,7 +47,7 @@ void main() {
     );
     expect(find.byType(GhostDraftRow), findsOne);
     expect(
-      find.textContaining('finish name, date and times, venue, lineup'),
+      find.textContaining('FINISH NAME, DATE AND TIMES, VENUE, LINEUP'),
       findsOne,
     );
 
@@ -188,7 +188,7 @@ void main() {
       await tester.tap(find.byKey(const Key('gig-door-published-rsvp')));
       await tester.pumpAndSettle();
       expect(find.byType(DoorModeScreen), findsOne);
-      expect(find.text('Riptide Release Show'), findsOne);
+      expect(find.text('RIPTIDE RELEASE SHOW'), findsOne);
       expect(find.text('DOOR MODE · THE FOGHORN CLUB'), findsOne);
       expect(repository.organizerRosterRequests, ['g2']);
       expect(repository.projectRosterRequests, isEmpty);

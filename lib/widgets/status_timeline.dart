@@ -42,7 +42,7 @@ class StatusTimeline extends StatelessWidget {
                           Expanded(
                             child: Container(
                               width: 1.5,
-                              color: context.epColors.border,
+                              color: context.epColors.line,
                             ),
                           ),
                         ],
@@ -58,16 +58,13 @@ class StatusTimeline extends StatelessWidget {
                         children: [
                           Text(
                             steps[index].label,
-                            style: epText(size: 13, weight: FontWeight.w800),
+                            style: Theme.of(context).textTheme.epBody,
                           ),
                           if (steps[index].caption case final caption?) ...[
                             const SizedBox(height: 3),
                             Text(
                               caption,
-                              style: epText(
-                                size: 11,
-                                color: context.epColors.contentDisabled,
-                              ),
+                              style: Theme.of(context).textTheme.epCaption,
                             ),
                           ],
                         ],
@@ -121,7 +118,7 @@ class _TimelineIndicator extends StatelessWidget {
         height: 14,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: colors.border, width: 1.5),
+          border: Border.all(color: colors.outline),
         ),
       ),
       TimelineStepState.blocked => Container(

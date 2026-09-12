@@ -224,7 +224,7 @@ class _OrgApplicationStatusScreenState
                       child: Text(
                         'No organizer application found.',
                         textAlign: TextAlign.center,
-                        style: epText(color: context.epColors.contentSecondary),
+                        style: Theme.of(context).textTheme.epCaption,
                       ),
                     ),
                   )

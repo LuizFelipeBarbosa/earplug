@@ -7,6 +7,7 @@ import 'package:earplug/screens/gig_detail.dart';
 import 'package:earplug/screens/my_gigs.dart';
 import 'package:earplug/screens/venue_detail.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:earplug/widgets/map_view.dart';
 import 'package:flutter/material.dart';
@@ -38,14 +39,14 @@ void main() {
     expect(find.byKey(const Key('explore-result-tabs')), findsOne);
     // The event matches through its Foghorn Diet lineup relationship.
     expect(find.text('RIPTIDE RELEASE SHOW'), findsWidgets);
+    await _scrollResultsTo(tester, find.text('FOGHORN DIET'));
     expect(find.text('FOGHORN DIET'), findsWidgets);
 
     await tester.enterText(
       find.byKey(const Key('explore-search-field')),
       'unsubmitted draft',
     );
-    await tester.tap(find.byKey(const Key('explore-tab-bands')));
-    await tester.pump();
+    await _selectExploreTab(tester, 'BANDS');
 
     expect(harness.app.query, 'Foghorn');
     expect(harness.app.exploreResultType, ExploreResultType.bands);
@@ -56,11 +57,11 @@ void main() {
           .text,
       'unsubmitted draft',
     );
-    expect(find.text('EVENTS'), findsNothing);
+    // The scope tab keeps its label; only the events section goes away.
+    expect(find.textContaining('EVENTS ·'), findsNothing);
     expect(find.text('FOGHORN DIET'), findsOne);
 
-    await tester.tap(find.byKey(const Key('explore-tab-venues')));
-    await tester.pump();
+    await _selectExploreTab(tester, 'VENUES');
     expect(find.text('THE FOGHORN CLUB'), findsOne);
     expect(find.text('FOGHORN DIET'), findsNothing);
 
@@ -82,8 +83,7 @@ void main() {
     await tester.pumpAndSettle();
     harness.app.setQuery('Foghorn Club');
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('explore-tab-venues')));
-    await tester.pump();
+    await _selectExploreTab(tester, 'VENUES');
     await tester.tap(find.text('THE FOGHORN CLUB'));
     await tester.pump();
 
@@ -140,25 +140,20 @@ void main() {
     expect(find.byType(VenueMiniMap), findsOne);
     expect(find.textContaining('DOOR POLICY'), findsNothing);
     expect(find.textContaining('PAST EVENTS'), findsNothing);
-    expect(find.text('UPCOMING EVENTS'), findsOne);
-    final cards = tester
-        .widgetList<FanEventCard>(find.byType(FanEventCard))
-        .toList();
-    expect(cards, isNotEmpty);
-    expect(
-      cards.every(
-        (card) => card.presentation == FanEventCardPresentation.compact,
-      ),
-      isTrue,
-    );
-    final startsAt = cards.map((card) => card.gig.startsAt).toList();
+    expect(find.textContaining('UPCOMING ·'), findsOne);
+    // Events are hairline gig rows, not the stacked fan card.
+    expect(find.byType(FanEventCard), findsNothing);
+    final rows = tester.widgetList<EpGigRow>(find.byType(EpGigRow)).toList();
+    expect(rows, isNotEmpty);
+    expect(rows.every((row) => row.trailing == null), isTrue);
+    final startsAt = rows.map((row) => row.date).toList();
     expect(startsAt, orderedEquals([...startsAt]..sort()));
 
-    final firstGig = cards.first.gig;
-    await tester.tap(find.byKey(ValueKey('fan-event-${firstGig.id}')));
+    final firstGigId = _gigIdOf(find.byType(EpGigRow).first, tester);
+    await tester.tap(find.byKey(ValueKey('fan-event-$firstGigId')));
     await tester.pump();
     expect(harness.app.current.screen, Screen.gig);
-    expect(harness.app.current.param, firstGig.id);
+    expect(harness.app.current.param, firstGigId);
     harness.app.back();
     await tester.pump();
 
@@ -167,7 +162,7 @@ void main() {
       const Offset(0, -1200),
     );
     await tester.pumpAndSettle();
-    expect(find.text('PERFORMING BANDS'), findsOne);
+    expect(find.textContaining('PERFORMING BANDS ·'), findsOne);
     expect(find.byKey(const ValueKey('venue-band-b1')), findsOne);
     await tester.tap(find.byKey(const ValueKey('venue-band-b1')));
     expect(harness.app.current.screen, Screen.band);
@@ -247,11 +242,13 @@ void main() {
     );
 
     expect(find.text(gig.title.toUpperCase()), findsWidgets);
-    expect(find.text('FREE'), findsOne);
-    expect(find.text('18+'), findsOne);
+    // Doors, price and age share the row's mono meta line; the lineup is
+    // appended to the venue sub line.
     expect(find.textContaining('DOORS 8PM'), findsOne);
+    expect(find.textContaining('FREE'), findsOne);
+    expect(find.textContaining('18+'), findsOne);
     expect(
-      find.text('Mission Creep · Dial Tone Grief · Static Bloom'),
+      find.textContaining('Mission Creep · Dial Tone Grief · Static Bloom'),
       findsOne,
     );
 
@@ -355,6 +352,37 @@ void main() {
     expect(find.byTooltip('Show QR code'), findsNothing);
     expect(find.byKey(const ValueKey('show-qr-g4')), findsNothing);
   });
+}
+
+/// Explore's scope tabs are a shared [EpSegmentTabs]: no per-tab keys, so a
+/// tab is selected by the uppercase label it renders inside the tab strip.
+Future<void> _selectExploreTab(WidgetTester tester, String label) async {
+  await tester.tap(
+    find.descendant(
+      of: find.byKey(const Key('explore-result-tabs')),
+      matching: find.text(label),
+    ),
+  );
+  await tester.pump();
+}
+
+/// Result rows are tall enough that later sections start below the fold.
+Future<void> _scrollResultsTo(WidgetTester tester, Finder target) =>
+    tester.scrollUntilVisible(
+      target,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+
+/// Venue events are keyed `fan-event-<gigId>`; read the id back off the row.
+String _gigIdOf(Finder row, WidgetTester tester) {
+  final key = tester.widget<EpGigRow>(row).key! as ValueKey<String>;
+  return key.value.substring('fan-event-'.length);
 }
 
 // Wrap the stub to preserve the integer calls getter; StubRepository.calls is a map.

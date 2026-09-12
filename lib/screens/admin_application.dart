@@ -431,10 +431,7 @@ class _VenueSection extends StatelessWidget {
           const SizedBox(height: 12),
           const _MapCaption(text: 'Exact address — admin only'),
           const SizedBox(height: 7),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: VenueMiniMap(venue: exactVenue, approximate: false),
-          ),
+          VenueMiniMap(venue: exactVenue, approximate: false),
           const SizedBox(height: 16),
           const _MapCaption(text: 'What fans will see'),
           const SizedBox(height: 7),
@@ -455,15 +452,14 @@ class _DocumentsSection extends StatelessWidget {
     return _DetailSection(
       label: 'DOCUMENTS',
       child: documents.isEmpty
-          ? const DashedBox(
-              child: Text('No documents.', textAlign: TextAlign.center),
+          ? Text(
+              'No documents.',
+              style: Theme.of(context).textTheme.epCaption,
             )
           : Column(
               children: [
-                for (var index = 0; index < documents.length; index++) ...[
+                for (var index = 0; index < documents.length; index++)
                   _DocumentRow(document: documents[index], index: index),
-                  if (index < documents.length - 1) const SizedBox(height: 10),
-                ],
               ],
             ),
     );
@@ -481,34 +477,38 @@ class _DocumentRow extends StatelessWidget {
     final isImage = document.contentType?.startsWith('image/') == true;
     final url = document.url;
     if (isImage) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: SizedBox(
-          height: 150,
-          width: double.infinity,
-          child: EpNetworkImage(
-            url: url,
-            cacheWidth: 360,
-            cacheHeight: 150,
-            fallback: const ColoredBox(
-              color: Colors.black12,
-              child: Center(child: Icon(Icons.image_not_supported_outlined)),
+      return SizedBox(
+        height: 150,
+        width: double.infinity,
+        child: EpNetworkImage(
+          url: url,
+          cacheWidth: 360,
+          cacheHeight: 150,
+          fallback: ColoredBox(
+            color: context.epColors.panel,
+            child: const Center(
+              child: Icon(Icons.image_not_supported_outlined),
             ),
           ),
         ),
       );
     }
 
-    return EpCard(
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: context.epColors.line)),
+      ),
       child: Row(
         children: [
-          const Icon(Icons.description_outlined),
-          const SizedBox(width: 10),
+          const Icon(Icons.description_outlined, size: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               document.contentType ?? 'Document ${index + 1}',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.epBody,
             ),
           ),
           if (url != null && url.isNotEmpty)
@@ -581,7 +581,7 @@ class _DetailSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SectionBar(label: label),
-        EpCard(child: child),
+        Padding(padding: const EdgeInsets.only(top: 4, bottom: 8), child: child),
       ],
     );
   }

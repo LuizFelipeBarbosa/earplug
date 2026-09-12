@@ -705,7 +705,7 @@ class _DeactivateOrganizationDialogState
           onPressed: !matches || _working ? null : _deactivate,
           style: FilledButton.styleFrom(
             backgroundColor: context.epColors.destructive,
-            foregroundColor: context.epColors.dark,
+            foregroundColor: context.epColors.background,
           ),
           child: Text(_working ? 'DEACTIVATING…' : 'DEACTIVATE'),
         ),

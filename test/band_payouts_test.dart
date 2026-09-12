@@ -676,7 +676,7 @@ void main() {
     },
   );
 
-  for (final (state, caption) in [(StripeAccountState.enabled, 'Enabled')]) {
+  for (final (state, caption) in [(StripeAccountState.enabled, 'ENABLED')]) {
     testWidgets('band payouts tile shows ${state.name} and opens payouts', (
       tester,
     ) async {
@@ -940,8 +940,8 @@ void main() {
           await tester.pumpAndSettle();
         }
       }
-      expect(find.text('Stripe details'), findsOneWidget);
-      expect(find.text('Payouts enabled'), findsOneWidget);
+      expect(find.text('Add Stripe details'), findsOneWidget);
+      expect(find.text('Enable payouts'), findsOneWidget);
     });
   }
 }

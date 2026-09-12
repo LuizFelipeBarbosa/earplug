@@ -38,7 +38,7 @@ void main() {
   testWidgets('Explore remains usable at increased text scale', (tester) async {
     await pumpApp(tester, home: scaledScreen(const ExploreScreen()));
 
-    expect(find.text('Explore'), findsOne);
+    expect(find.text('EXPLORE'), findsOne);
     final filters = find.byKey(const Key('explore-filter-button'));
     expect(filters, findsOne);
     expect(tester.getSize(filters), const Size(48, 48));
