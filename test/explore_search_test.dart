@@ -7,6 +7,7 @@ import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,8 +36,8 @@ void main() {
     );
 
     expect(harness.app.exploreResultType.name, 'all');
-    for (final scope in const ['all', 'events', 'bands', 'venues']) {
-      expect(find.byKey(ValueKey('explore-tab-$scope')), findsOne);
+    for (final label in const ['ALL', 'EVENTS', 'BANDS', 'VENUES']) {
+      expect(_scopeTab(label), findsOne);
     }
     expect(find.byKey(const Key('explore-filter-button')), findsOne);
 
@@ -111,7 +112,7 @@ void main() {
     await tester.tap(find.byKey(const Key('explore-search-submit')));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('explore-tab-events')));
+    await tester.tap(_scopeTab('EVENTS'));
     await tester.pump();
 
     expect(find.byKey(const Key('explore-results-events')), findsOne);
@@ -182,15 +183,19 @@ void main() {
         .performAction(tester.getSemantics(button).id, SemanticsAction.tap);
     await tester.pumpAndSettle();
 
-    for (final label in const [
-      'DATE',
-      'GENRES · CHOOSE ANY',
-      'DISTANCE',
-      'PRICE',
-      'PUNK',
-      'GARAGE',
-      'NOISE',
-    ]) {
+    for (final label in const ['DATE', 'GENRES · CHOOSE ANY', 'DISTANCE']) {
+      expect(find.text(label), findsOne);
+    }
+    final filterScroll = find.descendant(
+      of: find.byKey(const Key('discovery-filter-options')),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.text('PRICE'),
+      300,
+      scrollable: filterScroll,
+    );
+    for (final label in const ['PRICE', 'PUNK', 'GARAGE', 'NOISE']) {
       expect(find.text(label), findsOne);
     }
     expect(find.textContaining('APPLY FILTERS ·'), findsOne);
@@ -267,7 +272,7 @@ void main() {
       harness.app.feed.map((gig) => gig.id),
       contains('tess-september-23'),
     );
-    await tester.tap(find.byKey(const ValueKey('explore-tab-events')));
+    await tester.tap(_scopeTab('EVENTS'));
     await tester.pump();
     final events = find.byKey(const ValueKey('explore-browse-events'));
     for (
@@ -282,7 +287,10 @@ void main() {
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('explore-event-tess-september-23')),
       300,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('explore-browse-events')),
+        matching: find.byType(Scrollable),
+      ),
     );
     expect(find.text('TESS'), findsOne);
 
@@ -309,18 +317,18 @@ void main() {
     expect(find.byKey(const Key('explore-toggle-bands')), findsOne);
     expect(find.byKey(const Key('explore-toggle-venues')), findsOne);
 
-    await tester.tap(find.byKey(const Key('explore-tab-bands')));
+    await tester.tap(_scopeTab('BANDS'));
     await tester.pump();
     expect(harness.app.exploreResultType.name, 'bands');
     expect(find.byKey(const Key('explore-event-g1')), findsNothing);
     expect(find.byKey(const Key('explore-toggle-bands')), findsOne);
     expect(find.byKey(const Key('explore-toggle-venues')), findsNothing);
 
-    await tester.tap(find.byKey(const Key('explore-tab-all')));
+    await tester.tap(_scopeTab('ALL'));
     await tester.pump();
     await tester.tap(find.byKey(const Key('explore-filter-button')));
     await tester.pumpAndSettle();
-    expect(find.text('Filters'), findsOne);
+    expect(find.text('FILTERS'), findsOne);
   });
 
   testWidgets('search results construct off-screen rows lazily', (
@@ -363,7 +371,8 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     final sectionRight =
-        tester.view.physicalSize.width / tester.view.devicePixelRatio - 16;
+        tester.view.physicalSize.width / tester.view.devicePixelRatio -
+        EpLayout.gutter;
     expect(tester.getTopRight(bandsToggle).dx, closeTo(sectionRight, .01));
     expect(find.text(DemoData.bands['b6']!.name.toUpperCase()), findsNothing);
 
@@ -376,7 +385,7 @@ void main() {
     );
     expect(
       tester.getTopLeft(secondBand).dy - tester.getBottomLeft(firstBand).dy,
-      7,
+      0,
     );
     expect(
       find.byKey(ValueKey('explore-follow-${previewBandIds.first}')),
@@ -388,13 +397,19 @@ void main() {
 
     expect(find.byKey(const Key('explore-all-bands')), findsOne);
     expect(find.text(DemoData.bands['b6']!.name.toUpperCase()), findsOne);
-    expect(find.text('SEE LESS BANDS'), findsOne);
+    expect(
+      find.descendant(of: bandsToggle, matching: find.text('SEE LESS')),
+      findsOne,
+    );
 
     await tester.tap(bandsToggle);
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('explore-band-preview')), findsOne);
-    expect(find.text('SEE ALL BANDS'), findsOne);
+    expect(
+      find.descendant(of: bandsToggle, matching: find.text('SEE ALL')),
+      findsOne,
+    );
 
     final venuesToggle = find.byKey(const Key('explore-toggle-venues'));
     await tester.scrollUntilVisible(
@@ -409,7 +424,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(DemoData.venues['v6']!.name.toUpperCase()), findsOne);
-    expect(find.text('SEE LESS VENUES'), findsOne);
+    expect(
+      find.descendant(of: venuesToggle, matching: find.text('SEE LESS')),
+      findsOne,
+    );
   });
 
   testWidgets('browse lists a venue absent from the feed', (tester) async {
@@ -421,7 +439,10 @@ void main() {
       home: const Scaffold(body: ExploreScreen()),
     );
 
-    expect(find.text('VENUES', skipOffstage: false), findsOne);
+    expect(
+      find.text('VENUES · ${DemoData.venues.length + 1}', skipOffstage: false),
+      findsOne,
+    );
     expect(
       find.text(_directoryOnlyVenue.name.toUpperCase(), skipOffstage: false),
       findsOne,
@@ -440,7 +461,7 @@ void main() {
     harness.app.setQuery(_directoryOnlyVenue.name);
     await tester.pumpAndSettle();
 
-    expect(find.text('VENUES'), findsOne);
+    expect(find.text('VENUES · 1'), findsOne);
     expect(find.text(_directoryOnlyVenue.name.toUpperCase()), findsOne);
     expect(find.text('No gigs found.'), findsOne);
   });
@@ -508,6 +529,11 @@ void main() {
     );
   });
 }
+
+Finder _scopeTab(String label) => find.descendant(
+  of: find.byKey(const Key('explore-result-tabs')),
+  matching: find.text(label),
+);
 
 Finder _allResultsScrollable() => find.descendant(
   of: find.byKey(const Key('explore-results-all')),

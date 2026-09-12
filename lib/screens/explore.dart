@@ -3,13 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../app_links.dart';
 import '../app_state.dart';
 import '../memo.dart';
 import '../models.dart';
+import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/discovery_filters_sheet.dart';
-import '../widgets/fan_event_card.dart';
+import '../widgets/ep_rows.dart';
+import '../widgets/ep_text.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -57,53 +60,59 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
     return Column(
       children: [
-        ScreenHeader(
-          bottomPadding: 12,
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            EpLayout.gutter,
+            MediaQuery.paddingOf(context).top + 22,
+            EpLayout.gutter,
+            0,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Explore', style: Theme.of(context).textTheme.epPageHeading),
-              const SizedBox(height: 10),
-              TextField(
-                key: const Key('explore-search-field'),
+              const EpDisplay('Explore', size: 44),
+              const SizedBox(height: 20),
+              EpUnderlineField(
+                fieldKey: const Key('explore-search-field'),
                 controller: _controller,
+                icon: Icons.search,
+                hint: 'Bands, venues, gigs…',
                 textInputAction: TextInputAction.search,
                 onSubmitted: (_) => _submitSearch(app),
-                style: Theme.of(context).textTheme.epInput,
-                decoration: epInputDecoration(context, 'Bands, venues, gigs…')
-                    .copyWith(
-                      suffixIcon: ValueListenableBuilder<TextEditingValue>(
-                        valueListenable: _controller,
-                        builder: (context, value, _) => Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              key: const Key('explore-search-submit'),
-                              tooltip: 'Search',
-                              onPressed: () => _submitSearch(app),
-                              icon: Icon(Icons.search),
-                            ),
-                            if (value.text.isNotEmpty || searching)
-                              IconButton(
-                                key: const Key('explore-search-clear'),
-                                tooltip: 'Clear search',
-                                onPressed: () => _clearSearch(app),
-                                icon: Icon(Icons.close),
-                              ),
-                          ],
-                        ),
+                trailing: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _controller,
+                  builder: (context, value, _) => Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        key: const Key('explore-search-submit'),
+                        tooltip: 'Search',
+                        onPressed: () => _submitSearch(app),
+                        color: context.epColors.muted,
+                        icon: const Icon(Icons.arrow_forward, size: 18),
                       ),
-                    ),
+                      if (value.text.isNotEmpty || searching)
+                        IconButton(
+                          key: const Key('explore-search-clear'),
+                          tooltip: 'Clear search',
+                          onPressed: () => _clearSearch(app),
+                          color: context.epColors.muted,
+                          icon: const Icon(Icons.close, size: 18),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              _SearchTypeTabs(
+                app: app,
+                onSelected: (type) => _selectScope(app, type),
+                onFilters: () => showDiscoveryFiltersSheet(
+                  context,
+                  labelConfirmationAsApply: true,
+                ),
               ),
             ],
-          ),
-        ),
-        _SearchTypeTabs(
-          app: app,
-          onSelected: (type) => _selectScope(app, type),
-          onFilters: () => showDiscoveryFiltersSheet(
-            context,
-            labelConfirmationAsApply: true,
           ),
         ),
         Expanded(
@@ -127,8 +136,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
               if (_showScopeFeedback)
                 Positioned(
                   top: 0,
-                  left: 16,
-                  right: 16,
+                  left: EpLayout.gutter,
+                  right: EpLayout.gutter,
                   child: Semantics(
                     liveRegion: true,
                     label: 'Updating search results',
@@ -214,7 +223,7 @@ class _SearchResults extends StatelessWidget {
     final rows = <_SearchResultRow>[];
 
     if (showEvents) {
-      rows.add(const _SearchSectionRow('EVENTS', bottomPadding: 8));
+      rows.add(_SearchSectionRow('Events · ${gigs.length}'));
       if (gigs.isEmpty) {
         rows.add(
           _SearchMessageRow(
@@ -228,13 +237,10 @@ class _SearchResults extends StatelessWidget {
           rows.add(_SearchGigRow(gig));
         }
       }
-      if (type == ExploreResultType.all) {
-        rows.add(const _SearchSpacerRow(8));
-      }
     }
 
     if (showBands) {
-      rows.add(const _SearchSectionRow('BANDS', bottomPadding: 6));
+      rows.add(_SearchSectionRow('Bands · ${bandIds.length}'));
       if (bandIds.isEmpty) {
         rows.add(const _SearchMessageRow('No bands found.'));
       } else {
@@ -242,13 +248,10 @@ class _SearchResults extends StatelessWidget {
           rows.add(_SearchBandRow(id));
         }
       }
-      if (type == ExploreResultType.all) {
-        rows.add(const _SearchSpacerRow(8));
-      }
     }
 
     if (showVenues) {
-      rows.add(const _SearchSectionRow('VENUES', bottomPadding: 6));
+      rows.add(_SearchSectionRow('Venues · ${venues.length}'));
       if (venues.isEmpty) {
         rows.add(const _SearchMessageRow('No venues found.'));
       } else {
@@ -260,35 +263,29 @@ class _SearchResults extends StatelessWidget {
 
     return ListView.builder(
       key: ValueKey('explore-results-${type.name}'),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, tabBarClearance),
-      itemCount: rows.length,
-      itemBuilder: (context, index) => _buildRow(context, rows[index]),
+      padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
+      itemCount: rows.length + 1,
+      itemBuilder: (context, index) => index == rows.length
+          ? const SizedBox(height: tabBarClearance)
+          : _buildRow(context, rows[index]),
     );
   }
 
   Widget _buildRow(BuildContext context, _SearchResultRow row) {
     return switch (row) {
-      _SearchSectionRow(:final label, :final bottomPadding) => Padding(
-        padding: EdgeInsets.only(bottom: bottomPadding),
-        child: SectionLabel(label),
-      ),
+      _SearchSectionRow(:final label) => EpSectionHeader(label: label),
       _SearchMessageRow(:final message) => Text(
         message,
-        style: Theme.of(context).textTheme.epCaption,
+        style: Theme.of(context).textTheme.epBody.copyWith(
+          color: context.epColors.muted,
+        ),
       ),
-      _SearchGigRow(:final gig) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: FanEventCard(gig: gig, app: app),
+      _SearchGigRow(:final gig) => KeyedSubtree(
+        key: ValueKey('fan-event-${gig.id}'),
+        child: _ExploreEventRow(gig: gig, app: app, showActions: true),
       ),
-      _SearchBandRow(:final bandId) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: _BandRow(bandId: bandId, app: app),
-      ),
-      _SearchVenueRow(:final venue) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: _VenueRow(venue: venue, app: app),
-      ),
-      _SearchSpacerRow(:final height) => SizedBox(height: height),
+      _SearchBandRow(:final bandId) => _BandRow(bandId: bandId, app: app),
+      _SearchVenueRow(:final venue) => _VenueRow(venue: venue, app: app),
     };
   }
 }
@@ -298,10 +295,9 @@ sealed class _SearchResultRow {
 }
 
 class _SearchSectionRow extends _SearchResultRow {
-  const _SearchSectionRow(this.label, {required this.bottomPadding});
+  const _SearchSectionRow(this.label);
 
   final String label;
-  final double bottomPadding;
 }
 
 class _SearchMessageRow extends _SearchResultRow {
@@ -328,12 +324,6 @@ class _SearchVenueRow extends _SearchResultRow {
   final Venue venue;
 }
 
-class _SearchSpacerRow extends _SearchResultRow {
-  const _SearchSpacerRow(this.height);
-
-  final double height;
-}
-
 class _SearchTypeTabs extends StatelessWidget {
   const _SearchTypeTabs({
     required this.app,
@@ -347,58 +337,36 @@ class _SearchTypeTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const labels = {
-      ExploreResultType.all: 'All',
-      ExploreResultType.events: 'Events',
-      ExploreResultType.bands: 'Bands',
-      ExploreResultType.venues: 'Venues',
-    };
-    return Container(
+    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+    final tabs = EpSegmentTabs(
+      labels: const ['All', 'Events', 'Bands', 'Venues'],
+      selected: ExploreResultType.values.indexOf(app.exploreResultType),
+      onSelect: (index) => onSelected(ExploreResultType.values[index]),
+      scrollable: largeText,
+    );
+    final filters = _ExploreFilterButton(
+      activeCount: app.activeFilterCount,
+      onPressed: onFilters,
+    );
+    return SizedBox(
       key: const Key('explore-result-tabs'),
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: context.epColors.border)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: SegmentedButton<ExploreResultType>(
-              segments: [
-                for (final entry in labels.entries)
-                  ButtonSegment(
-                    value: entry.key,
-                    label: Text(
-                      entry.value,
-                      key: ValueKey('explore-tab-${entry.key.name}'),
-                    ),
-                  ),
+      child: largeText
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                tabs,
+                Align(alignment: Alignment.centerRight, child: filters),
               ],
-              selected: {app.exploreResultType},
-              showSelectedIcon: false,
-              onSelectionChanged: (selection) {
-                onSelected(selection.single);
-              },
-              style: ButtonStyle(
-                minimumSize: WidgetStatePropertyAll(Size(48, 48)),
-                padding: WidgetStatePropertyAll(
-                  EdgeInsets.symmetric(horizontal: 6),
-                ),
-                textStyle: WidgetStatePropertyAll(
-                  Theme.of(
-                    context,
-                  ).textTheme.epLabel.copyWith(fontSize: 11, letterSpacing: .4),
-                ),
-              ),
+            )
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(child: tabs),
+                const SizedBox(width: 8),
+                filters,
+              ],
             ),
-          ),
-          const SizedBox(width: 8),
-          _ExploreFilterButton(
-            activeCount: app.activeFilterCount,
-            onPressed: onFilters,
-          ),
-        ],
-      ),
     );
   }
 }
@@ -427,22 +395,22 @@ class _ExploreFilterButton extends StatelessWidget {
         style: IconButton.styleFrom(
           fixedSize: const Size.square(48),
           minimumSize: const Size.square(48),
-          backgroundColor: active
-              ? context.epColors.selected
-              : context.epColors.surface,
+          backgroundColor: Colors.transparent,
           foregroundColor: active
               ? context.epColors.accent
               : context.epColors.contentSecondary,
-          side: BorderSide(
-            color: active ? context.epColors.accent : context.epColors.border,
-          ),
         ),
         icon: Badge(
           isLabelVisible: active,
-          label: Text('$activeCount'),
-          backgroundColor: context.epColors.highlight,
-          textColor: context.epColors.onHighlight,
-          child: Icon(Icons.tune),
+          label: Text(
+            '$activeCount',
+            style: Theme.of(context).textTheme.epChipLabel.copyWith(
+              color: context.epColors.onAccent,
+            ),
+          ),
+          backgroundColor: context.epColors.accent,
+          textColor: context.epColors.onAccent,
+          child: const Icon(Icons.tune, size: 18),
         ),
       ),
     );
@@ -459,49 +427,30 @@ class _BandRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final band = app.band(bandId);
     if (band == null) return const SizedBox.shrink();
-    return EpCard(
+    final following = app.follows.contains(bandId);
+    final imageUrl = band.profileImageUrl;
+    return EpEntityRow(
       key: ValueKey('explore-band-card-$bandId'),
-      padding: const EdgeInsets.all(9),
-      onTap: () => app.openBand(bandId),
-      child: Row(
-        children: [
-          BandAvatar(band, size: 36, radius: 8, fontSize: 12),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  band.name.toUpperCase(),
-                  style: Theme.of(context).textTheme.epLabel,
-                ),
-                Text(
-                  [
-                    band.genreLine,
-                    '${band.followersLabel} '
-                        '${band.followers == 1 ? 'fan' : 'fans'}',
-                  ].join(' · '),
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton(
-            key: ValueKey('explore-follow-$bandId'),
-            onPressed: () => app.requestFollow(bandId),
-            style: const ButtonStyle(
-              minimumSize: WidgetStatePropertyAll(Size(48, 48)),
-              padding: WidgetStatePropertyAll(
-                EdgeInsets.symmetric(horizontal: 10),
-              ),
-            ),
-            child: Text(
-              app.follows.contains(bandId) ? 'FOLLOWING ✓' : 'FOLLOW',
-            ),
-          ),
-        ],
+      leading: EpAvatarTile(
+        initials: band.initials,
+        image: imageUrl == null || imageUrl.isEmpty ? null : NetworkImage(imageUrl),
       ),
+      title: band.name,
+      sub: [
+        if (band.genreLine.isNotEmpty) band.genreLine,
+        '${band.followersLabel} ${band.followers == 1 ? 'fan' : 'fans'}',
+      ].join(' · '),
+      trailing: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 130),
+        child: EpPill(
+          key: ValueKey('explore-follow-$bandId'),
+          label: following ? 'Following' : 'Follow',
+          variant: EpPillVariant.outline,
+          selected: following,
+          onPressed: () => app.requestFollow(bandId),
+        ),
+      ),
+      onTap: () => app.openBand(bandId),
     );
   }
 }
@@ -594,9 +543,7 @@ class _BrowseRowsState extends State<_BrowseRows> {
       }
 
       if (inputs.venues case final venues?) {
-        rows.add(const _BrowseSpacerRow(10));
         rows.add(const _BrowseVenueHeadingRow());
-        rows.add(const _BrowseSpacerRow(8));
         if (venues.isEmpty) {
           rows.add(const _BrowseVenueStateRow());
         } else {
@@ -626,44 +573,36 @@ class _BrowseRowsState extends State<_BrowseRows> {
     final rows = _browseRows(app);
     return ListView.builder(
       key: ValueKey('explore-browse-${app.exploreResultType.name}'),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, tabBarClearance),
-      itemCount: rows.length,
-      itemBuilder: (context, index) => _buildRow(context, rows[index]),
+      padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
+      itemCount: rows.length + 1,
+      itemBuilder: (context, index) => index == rows.length
+          ? const SizedBox(height: tabBarClearance)
+          : _buildRow(context, rows[index]),
     );
   }
 
   Widget _buildRow(BuildContext context, _BrowseRow row) {
     final app = widget.app;
     return switch (row) {
-      _BrowseSectionRow(:final label, :final count) => SectionBar(
-        label: label,
-        count: count,
+      _BrowseSectionRow(:final label, :final count) => EpSectionHeader(
+        label: '$label · $count',
       ),
-      _BrowseEventRow(:final gig) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: _ExploreEventRow(gig: gig, app: app),
-      ),
+      _BrowseEventRow(:final gig) => _ExploreEventRow(gig: gig, app: app),
       _BrowseEmptyEventsRow() => Padding(
         padding: const EdgeInsets.only(top: 20),
         child: Text(
           'No nearby events in the loaded feed.',
-          style: Theme.of(context).textTheme.epCaption,
+          style: Theme.of(context).textTheme.epBody.copyWith(color: context.epColors.muted),
         ),
       ),
       _BrowseBandsRow() => _buildBandsBlock(),
-      _BrowseSpacerRow(:final height) => SizedBox(height: height),
       _BrowseVenueHeadingRow() => _SectionHeading(
-        label: 'VENUES',
-        actionLabel: widget.showAllVenues
-            ? 'SEE LESS VENUES'
-            : 'SEE ALL VENUES',
+        label: 'Venues · ${app.venues.length}',
+        actionLabel: widget.showAllVenues ? 'See less' : 'See all',
         actionKey: const Key('explore-toggle-venues'),
         onAction: widget.onToggleVenues,
       ),
-      _BrowseVenueRow(:final venue) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: _VenueRow(venue: venue, app: app),
-      ),
+      _BrowseVenueRow(:final venue) => _VenueRow(venue: venue, app: app),
       _BrowseVenueStateRow() => _buildVenueState(context),
     };
   }
@@ -678,21 +617,18 @@ class _BrowseRowsState extends State<_BrowseRows> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _SectionHeading(
-          label: 'BANDS ON EARPLUG',
-          actionLabel: showAllBands ? 'SEE LESS BANDS' : 'SEE ALL BANDS',
+          label: 'BANDS ON EarPlug · ${app.exploreBandIds.length}',
+          keepCase: true,
+          actionLabel: showAllBands ? 'See less' : 'See all',
           actionKey: const Key('explore-toggle-bands'),
           onAction: widget.onToggleBands,
         ),
-        const SizedBox(height: 8),
         Column(
           key: showAllBands
               ? const Key('explore-all-bands')
               : const Key('explore-band-preview'),
           children: [
-            for (final bandId in bandIds) ...[
-              _BandRow(bandId: bandId, app: app),
-              const SizedBox(height: 7),
-            ],
+            for (final bandId in bandIds) _BandRow(bandId: bandId, app: app),
             if (showAllBands) _BandPageStatus(app: app),
           ],
         ),
@@ -705,7 +641,7 @@ class _BrowseRowsState extends State<_BrowseRows> {
     if (app.venueStatus == DataStatus.connecting) {
       return Text(
         'Loading venues…',
-        style: Theme.of(context).textTheme.epCaption,
+        style: Theme.of(context).textTheme.epBody.copyWith(color: context.epColors.muted),
       );
     }
     if (app.venueStatus == DataStatus.error) {
@@ -714,24 +650,16 @@ class _BrowseRowsState extends State<_BrowseRows> {
         children: [
           Text(
             "Couldn't load venues.",
-            style: Theme.of(context).textTheme.epCaption,
+            style: Theme.of(context).textTheme.epBody.copyWith(color: context.epColors.muted),
           ),
           const SizedBox(height: 10),
-          SizedBox(
-            width: 120,
-            child: EpButton(
-              'RETRY',
-              kind: EpButtonKind.outline,
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              onTap: app.retryVenues,
-            ),
-          ),
+          EpPill(label: 'Retry', onPressed: app.retryVenues),
         ],
       );
     }
     return Text(
       'No venues listed yet.',
-      style: Theme.of(context).textTheme.epCaption,
+      style: Theme.of(context).textTheme.epBody.copyWith(color: context.epColors.muted),
     );
   }
 }
@@ -761,12 +689,6 @@ class _BrowseBandsRow extends _BrowseRow {
   const _BrowseBandsRow();
 }
 
-class _BrowseSpacerRow extends _BrowseRow {
-  const _BrowseSpacerRow(this.height);
-
-  final double height;
-}
-
 class _BrowseVenueHeadingRow extends _BrowseRow {
   const _BrowseVenueHeadingRow();
 }
@@ -782,49 +704,101 @@ class _BrowseVenueStateRow extends _BrowseRow {
 }
 
 class _ExploreEventRow extends StatelessWidget {
-  const _ExploreEventRow({required this.gig, required this.app});
+  const _ExploreEventRow({
+    required this.gig,
+    required this.app,
+    this.showActions = false,
+  });
+
+  final Gig gig;
+  final AppState app;
+  final bool showActions;
+
+  @override
+  Widget build(BuildContext context) {
+    final venue = app.venue(gig.venueId);
+    return EpGigRow(
+      key: ValueKey('explore-event-${gig.id}'),
+      date: gig.startsAt,
+      title: gig.title,
+      meta: showActions
+          ? [
+              if (app.isDiscoveryBoosted(gig))
+                'Discovery boost · Complete listing',
+              '${gig.dateShort} · Doors ${gig.doorsLabel}',
+              for (final bandId in gig.lineup)
+                if (app.band(bandId) case final Band band) band.name,
+              gig.ageRequirement.label,
+              if (gig.lifecycle == GigLifecycle.cancelled) 'Cancelled',
+            ].join(' · ')
+          : null,
+      sub: [
+        venue.name,
+        app.distanceOf(venue),
+        gig.priceLabel,
+        '${app.rsvpCount(gig)} going',
+      ].where((part) => part.isNotEmpty).join(' · '),
+      trailing: showActions ? _SearchEventActions(gig: gig, app: app) : null,
+      onTap: () => app.openGig(gig.id),
+    );
+  }
+}
+
+/// Search previously exposed these actions on its event cards. Keep them one
+/// tap away without crowding the date, title and venue in the shared gig row.
+class _SearchEventActions extends StatelessWidget {
+  const _SearchEventActions({required this.gig, required this.app});
 
   final Gig gig;
   final AppState app;
 
   @override
   Widget build(BuildContext context) {
-    final venue = app.venue(gig.venueId);
-    return EpCard(
-      key: ValueKey('explore-event-${gig.id}'),
-      padding: const EdgeInsets.all(10),
-      onTap: () => app.openGig(gig.id),
-      child: Row(
-        children: [
-          DateBlock.forDate(gig.startsAt, semanticLabel: gig.dateShort),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  gig.title.toUpperCase(),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.epLabel,
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  [venue.name, app.distanceOf(venue)].join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${gig.priceLabel} · ${app.rsvpCount(gig)} going',
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-              ],
-            ),
+    final saved = app.saved.contains(gig.id);
+    final external = gig.tix == Ticketing.external;
+    final going = app.rsvps.contains(gig.id);
+    return PopupMenuButton<VoidCallback>(
+      key: ValueKey('event-actions-${gig.id}'),
+      tooltip: 'Event actions',
+      color: context.epColors.panel,
+      shape: const RoundedRectangleBorder(),
+      icon: Icon(Icons.more_horiz, size: 18, color: context.epColors.muted),
+      onSelected: (action) => action(),
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          key: ValueKey('save-${gig.id}'),
+          value: () => app.requestSave(gig.id),
+          child: EpMonoText(saved ? 'Remove saved event' : 'Save event'),
+        ),
+        PopupMenuItem(
+          key: ValueKey('share-${gig.id}'),
+          value: () => copyForUser(
+            context,
+            publicWebUrl('g/${gig.publicRef}'),
+            successMessage: 'Link copied: ${publicWebDisplayUrl('g/${gig.publicRef}')}',
           ),
-        ],
-      ),
+          child: const EpMonoText('Share event'),
+        ),
+        if (gig.lifecycle != GigLifecycle.cancelled)
+          PopupMenuItem(
+            key: ValueKey('ticket-action-${gig.id}'),
+            value: () {
+              if (external) {
+                final url = gig.externalUrl;
+                if (url == null || url.isEmpty) {
+                  app.say('No ticket link listed for this gig.');
+                } else {
+                  openExternalForUser(context, url);
+                }
+              } else if (going) {
+                app.toggleRsvp(gig.id);
+              } else {
+                app.requestRsvp(gig.id);
+              }
+            },
+            child: EpMonoText(external ? 'Tickets ↗' : going ? 'Going ✓' : 'RSVP'),
+          ),
+      ],
     );
   }
 }
@@ -840,7 +814,7 @@ class _BandPageStatus extends StatelessWidget {
       return Text(
         'Loading bands…',
         key: const Key('explore-bands-loading'),
-        style: Theme.of(context).textTheme.epCaption,
+        style: Theme.of(context).textTheme.epBody.copyWith(color: context.epColors.muted),
       );
     }
     if (app.exploreBandsError != null) {
@@ -848,13 +822,13 @@ class _BandPageStatus extends StatelessWidget {
         children: [
           Text(
             "Couldn't load more bands.",
-            style: Theme.of(context).textTheme.epCaption,
+            style: Theme.of(context).textTheme.epBody.copyWith(color: context.epColors.muted),
           ),
           const SizedBox(height: 7),
           TextButton(
             key: const Key('explore-bands-retry'),
             onPressed: app.retryExploreBands,
-            child: Text('RETRY'),
+            child: const EpMonoText('Retry'),
           ),
         ],
       );
@@ -863,43 +837,54 @@ class _BandPageStatus extends StatelessWidget {
       return TextButton(
         key: const Key('explore-bands-load-more'),
         onPressed: app.loadMoreExploreBands,
-        child: Text('LOAD MORE BANDS'),
+        child: const EpMonoText('Load more bands'),
       );
     }
     return Text(
       'All bands loaded.',
       key: const Key('explore-bands-end'),
-      style: Theme.of(context).textTheme.epCaption,
+      style: Theme.of(context).textTheme.epBody.copyWith(color: context.epColors.muted),
     );
   }
 }
 
+/// The shared header has no action key or keepCase parameter. Compose its
+/// eyebrow and mono action locally to preserve both directory toggle contracts.
 class _SectionHeading extends StatelessWidget {
   const _SectionHeading({
     required this.label,
     required this.actionLabel,
     required this.actionKey,
     required this.onAction,
+    this.keepCase = false,
   });
 
   final String label;
   final String actionLabel;
   final Key actionKey;
   final VoidCallback onAction;
+  final bool keepCase;
 
   @override
-  Widget build(BuildContext context) {
-    return Row(
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 24, bottom: 4),
+    child: Row(
       children: [
-        Expanded(child: SectionLabel(label)),
-        SectionActionButton(
-          key: actionKey,
-          label: actionLabel,
-          onPressed: onAction,
+        Expanded(child: EpEyebrow(label, keepCase: keepCase)),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              key: actionKey,
+              onPressed: onAction,
+              child: EpMonoText(actionLabel),
+            ),
+          ),
         ),
       ],
-    );
-  }
+    ),
+  );
 }
 
 class _VenueRow extends StatelessWidget {
@@ -909,47 +894,27 @@ class _VenueRow extends StatelessWidget {
   final AppState app;
 
   @override
-  Widget build(BuildContext context) {
-    return EpCard(
-      padding: const EdgeInsets.all(9),
-      onTap: () => app.openVenue(venue.id),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        venue.name.toUpperCase(),
-                        style: Theme.of(context).textTheme.epLabel,
-                      ),
-                    ),
-                    if (venue.verified) ...[
-                      const SizedBox(width: 8),
-                      StatusPill(
-                        key: Key('explore-venue-verified-${venue.id}'),
-                        label: 'VERIFIED',
-                      ),
-                    ],
-                  ],
-                ),
-                Text(
-                  '${venue.addr} · ${venue.area}',
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-              ],
-            ),
+  Widget build(BuildContext context) => EpEntityRow(
+    leading: const SizedBox.shrink(),
+    title: venue.name,
+    sub: [venue.area, venue.addr].where((part) => part.isNotEmpty).join(', '),
+    // EpEntityRow accepts a string title, so verification sits beside the
+    // title in the trailing column, with distance immediately below it.
+    trailing: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (venue.verified) ...[
+          EpBadge(
+            key: Key('explore-venue-verified-${venue.id}'),
+            label: 'Verified',
+            variant: EpBadgeVariant.outline,
           ),
-          const SizedBox(width: 8),
-          Text(
-            app.distanceOf(venue),
-            style: Theme.of(context).textTheme.epCaption,
-          ),
+          const SizedBox(height: 4),
         ],
-      ),
-    );
-  }
+        EpMonoText(app.distanceOf(venue), color: context.epColors.muted),
+      ],
+    ),
+    onTap: () => app.openVenue(venue.id),
+  );
 }

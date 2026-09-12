@@ -7,7 +7,7 @@ class EpDateBlock extends StatelessWidget {
   const EpDateBlock({
     super.key,
     required this.date,
-    this.width = 40,
+    this.width = 44,
     this.daySize = 30,
   });
 
@@ -37,7 +37,12 @@ class EpDateBlock extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          EpDisplay('${date.day}', size: daySize),
+          EpDisplay(
+            '${date.day}',
+            size: daySize,
+            maxLines: 1,
+            overflow: TextOverflow.visible,
+          ),
           const SizedBox(height: 4),
           EpEyebrow(months[date.month - 1]),
         ],

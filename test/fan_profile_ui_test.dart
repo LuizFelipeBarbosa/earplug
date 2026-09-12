@@ -13,6 +13,8 @@ import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -112,7 +114,7 @@ void main() {
     }
     for (final key in const [Key('fan-name-field'), Key('fan-bio-field')]) {
       final field = tester.widget<TextField>(find.byKey(key));
-      expect(field.style!.fontFamily, 'Archivo');
+      expect(field.style!.fontFamily, 'PP Telegraf');
       final decoration = field.decoration!.applyDefaults(
         Theme.of(tester.element(find.byKey(key))).inputDecorationTheme,
       );
@@ -342,181 +344,142 @@ void main() {
       home: const Scaffold(body: MyGigsScreen()),
     );
 
-    expect(find.byKey(const Key('fan-profile-header')), findsOne);
-    expect(find.byKey(const Key('fan-profile-avatar')), findsOne);
-    expect(find.byType(EpFanAvatar), findsOne);
-    expect(find.text('EF'), findsOne);
-    expect(find.byKey(const Key('edit-profile-action')), findsOne);
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('fan-profile-header')),
-        matching: find.byKey(const Key('edit-profile-action')),
-      ),
-      findsOne,
+    final header = find.byKey(const Key('fan-profile-header'));
+    expect(header, findsOne);
+    final avatar = tester.widget<EpAvatarTile>(
+      find.byKey(const Key('fan-profile-avatar')),
     );
-    expect(find.byKey(const Key('share-fan-profile')), findsOne);
-    expect(find.byKey(const Key('profile-settings-action')), findsOne);
-    expect(find.byTooltip('Edit profile'), findsNothing);
-    expect(find.byTooltip('Share profile summary'), findsOne);
-    expect(find.byTooltip('Privacy and account settings'), findsOne);
-    expect(find.text('EDIT PROFILE'), findsOne);
-    expect(find.text('SHARE PROFILE'), findsNothing);
-    expect(find.byKey(const Key('fan-profile-incomplete-hint')), findsOne);
-    expect(find.textContaining('SCENE'), findsOne);
-    final profileHeader = tester.widget<Container>(
-      find.byKey(const Key('fan-profile-header')),
-    );
-    final headerDecoration = profileHeader.decoration! as BoxDecoration;
-    expect(headerDecoration.color, Ep.surfaceRaised);
-    expect(headerDecoration.gradient, isNull);
-    expect(headerDecoration.border!.top.color, Ep.border);
-    final profileName = tester.widget<Text>(
+    expect(avatar.initials, 'EF');
+    expect(avatar.size, 40);
+    final name = tester.widget<EpDisplay>(
       find.byKey(const Key('fan-profile-name')),
     );
-    final profileScene = tester.widget<Text>(
-      find.byKey(const Key('fan-profile-scene')),
-    );
-    expect(profileName.style!.color, Ep.contentPrimary);
-    expect(profileName.style!.fontSize, 22);
-    expect(profileScene.style!.color, Ep.contentSecondary);
-    expect(profileScene.style!.fontSize, 13);
-    final avatarFrame = tester.widget<Container>(
-      find.byKey(const Key('fan-profile-avatar-frame')),
-    );
-    expect((avatarFrame.decoration! as BoxDecoration).color, Ep.border);
-    final identityTop = tester
-        .getTopLeft(find.byKey(const Key('fan-profile-header')))
-        .dy;
+    expect(name.text, harness.app.profile!.name);
+    expect(name.keepCase, isTrue);
+    expect(name.size, 20);
+    expect(find.byKey(const Key('fan-profile-scene')), findsOne);
     for (final key in const [
-      Key('share-fan-profile'),
+      Key('edit-profile-action'),
       Key('profile-settings-action'),
     ]) {
       final action = find.byKey(key);
-      expect(tester.getSize(action), const Size(48, 48));
-      expect(tester.getBottomLeft(action).dy, lessThanOrEqualTo(identityTop));
+      expect(find.descendant(of: header, matching: action), findsOne);
+      expect(tester.getSize(action), const Size(44, 44));
     }
-    final followingValue = tester.widget<Text>(
-      find.descendant(
-        of: find.byKey(const Key('fan-following-stat')),
-        matching: find.text('${harness.app.follows.length}'),
-      ),
+    expect(find.byTooltip('Edit profile'), findsOne);
+    expect(find.byTooltip('Privacy and account settings'), findsOne);
+    expect(find.byTooltip('Share profile summary'), findsOne);
+    expect(find.byKey(const Key('fan-profile-incomplete-hint')), findsOne);
+    final stats = tester.widget<EpStatGrid>(find.byType(EpStatGrid));
+    expect(stats.topLine, isFalse);
+    expect(stats.stats.map((stat) => stat.label), [
+      'Following',
+      'Past RSVPs',
+      'Saved',
+    ]);
+    expect(stats.stats.map((stat) => stat.value), [
+      '${harness.app.follows.length}',
+      '${harness.app.history.length}',
+      '${harness.app.saved.length}',
+    ]);
+    await _tapProfileControl(
+      tester,
+      find.byKey(const Key('share-fan-profile')),
     );
-    final historyValue = tester.widget<Text>(
-      find.descendant(
-        of: find.byKey(const Key('fan-history-stat')),
-        matching: find.text('${harness.app.history.length}'),
-      ),
-    );
-    expect(followingValue.style!.color, Ep.contentPrimary);
-    expect(historyValue.style!.color, Ep.contentPrimary);
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('fan-following-stat')),
-        matching: find.text('${harness.app.follows.length}'),
-      ),
-      findsOne,
-    );
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('fan-history-stat')),
-        matching: find.text('${harness.app.history.length}'),
-      ),
-      findsOne,
-    );
-    expect(
-      find.bySemanticsLabel(
-        'Following, ${harness.app.follows.length} '
-        '${harness.app.follows.length == 1 ? 'band' : 'bands'}. '
-        'Open followed bands.',
-      ),
-      findsOne,
-    );
-    expect(
-      find.bySemanticsLabel(
-        'RSVP History, ${harness.app.history.length} past '
-        '${harness.app.history.length == 1 ? 'event' : 'events'}. '
-        'Open RSVP history.',
-      ),
-      findsOne,
-    );
+    expect(find.text('Profile summary copied.'), findsOne);
+    await tester.pump(const Duration(seconds: 3));
     semantics.dispose();
   });
 
-  testWidgets('profile sections stay in the required order', (tester) async {
+  testWidgets('profile places one segmented list below identity and stats', (
+    tester,
+  ) async {
     await pumpApp(tester, home: const Scaffold(body: MyGigsScreen()));
-
-    tester.view.physicalSize = const Size(402, 3000);
-    await tester.pumpAndSettle();
-    final positions = <Offset>[
-      tester.getTopLeft(find.byKey(const Key('fan-profile-header'))),
-    ];
-    for (final label in [
-      'UPCOMING RSVPS',
-      'SAVED SHOWS',
-      'UPCOMING SHOWS FROM FOLLOWED BANDS',
-      'SETTINGS',
-    ]) {
-      positions.add(tester.getTopLeft(find.textContaining(label)));
-    }
-
-    for (var index = 1; index < positions.length; index++) {
-      expect(positions[index].dy, greaterThan(positions[index - 1].dy));
-    }
-    expect(find.text('EVENT HISTORY'), findsNothing);
+    final header = find.byKey(const Key('fan-profile-header'));
+    final stats = find.byType(EpStatGrid);
+    final tabs = find.byType(EpSegmentTabs);
+    expect(
+      tester.getTopLeft(stats).dy,
+      greaterThan(tester.getTopLeft(header).dy),
+    );
+    expect(
+      tester.getTopLeft(tabs).dy,
+      greaterThan(tester.getTopLeft(stats).dy),
+    );
+    expect(tester.widget<EpSegmentTabs>(tabs).labels, [
+      'Going · 0',
+      'Tickets · 0',
+      'Saved · 0',
+      'Followed',
+      'Past',
+    ]);
+    expect(
+      find.text('Nothing saved. Bookmark a show to keep it handy.'),
+      findsNothing,
+    );
     expect(find.byKey(const Key('history-qualification')), findsNothing);
   });
 
   testWidgets(
-    'every empty profile section explains itself and offers a route',
+    'every empty profile segment explains itself and offers a route',
     (tester) async {
-      await pumpApp(tester, home: const Scaffold(body: MyGigsScreen()));
-
-      tester.view.physicalSize = const Size(402, 3000);
-      await tester.pumpAndSettle();
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: MyGigsScreen()),
+      );
       expect(
         find.text('No upcoming RSVPs. Pick a show you want to catch.'),
         findsOne,
       );
+      await _selectProfileList(tester, 'SAVED · 0');
       expect(
         find.text('Nothing saved. Bookmark a show to keep it handy.'),
         findsOne,
       );
+      await _tapProfileControl(tester, find.text('FIND A SHOW'));
+      expect(harness.app.current.screen, Screen.home);
+
+      await _selectProfileList(tester, 'FOLLOWED');
       expect(
         find.text('Follow a band to see its upcoming shows here.'),
         findsOne,
       );
-      expect(
-        find.text('Follow bands to keep their profiles close.'),
-        findsNothing,
+      expect(find.text('Follow bands to keep their profiles close.'), findsOne);
+      await _tapProfileControl(
+        tester,
+        find.byKey(const Key('fan-following-stat')),
       );
-      expect(
-        find.text('Past RSVPs will build your private event history.'),
-        findsNothing,
-      );
-      expect(find.text('FIND A SHOW'), findsNWidgets(2));
-      expect(find.text('EXPLORE BANDS'), findsOne);
-
-      await tester.tap(find.byKey(const Key('fan-following-stat')));
-      await tester.pumpAndSettle();
       expect(find.byKey(const Key('fan-following-sheet')), findsOne);
       expect(find.byKey(const Key('following-search-field')), findsNothing);
-      expect(find.text('Follow bands to keep their profiles close.'), findsOne);
-      expect(find.text('EXPLORE BANDS'), findsNWidgets(2));
       await tester.tap(find.byTooltip('Close Following'));
       await tester.pumpAndSettle();
+      await _tapProfileControl(tester, find.text('EXPLORE BANDS').first);
+      expect(harness.app.current.screen, Screen.explore);
 
-      await tester.tap(find.byKey(const Key('fan-history-stat')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('fan-history-sheet')), findsOne);
+      await _selectProfileList(tester, 'PAST');
       expect(
         find.text('Past RSVPs will build your private event history.'),
         findsOne,
       );
-      expect(find.text('FIND A SHOW'), findsNWidgets(3));
+      expect(find.byKey(const Key('history-qualification')), findsOne);
+      await _tapProfileControl(
+        tester,
+        find.byKey(const Key('fan-history-stat')),
+      );
+      expect(find.byKey(const Key('fan-history-sheet')), findsOne);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('fan-history-sheet')),
+          matching: find.text(
+            'Past RSVPs will build your private event history.',
+          ),
+        ),
+        findsOne,
+      );
     },
   );
 
-  testWidgets('header statistics open complete private profile views', (
+  testWidgets('profile links open complete private profile views', (
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
@@ -530,7 +493,10 @@ void main() {
     );
 
     expect(find.byKey(const Key('history-qualification')), findsNothing);
-    await tester.tap(find.byKey(const Key('fan-following-stat')));
+    await _tapProfileControl(
+      tester,
+      find.byKey(const Key('fan-following-stat')),
+    );
     await tester.pumpAndSettle();
 
     final followingSheet = find.byKey(const Key('fan-following-sheet'));
@@ -597,12 +563,12 @@ void main() {
 
     harness.app.back();
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('fan-history-stat')));
+    await _tapProfileControl(tester, find.byKey(const Key('fan-history-stat')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('fan-history-sheet')), findsOne);
     expect(find.text('RSVP RECORD — ATTENDANCE NOT VERIFIED'), findsOne);
     for (final item in harness.app.history) {
-      expect(find.text(item.title), findsOne);
+      expect(find.text(item.title.toUpperCase()), findsOne);
     }
     semantics.dispose();
   });
@@ -635,7 +601,10 @@ void main() {
       home: const Scaffold(body: MyGigsScreen()),
     );
 
-    await tester.tap(find.byKey(const Key('share-fan-profile')));
+    await _tapProfileControl(
+      tester,
+      find.byKey(const Key('share-fan-profile')),
+    );
     await tester.pump();
 
     expect(sharedText, contains('Following: ${harness.app.follows.length}'));
@@ -650,7 +619,7 @@ void main() {
     expect(find.text('Profile summary copied.'), findsOne);
   });
 
-  testWidgets('long history titles and venues truncate in compact rows', (
+  testWidgets('long history titles and venues wrap within compact rows', (
     tester,
   ) async {
     final auth = FakeAuthService();
@@ -676,14 +645,18 @@ void main() {
     tester.view.physicalSize = const Size(320, 700);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('fan-history-stat')));
+    await _tapProfileControl(tester, find.byKey(const Key('fan-history-stat')));
     await tester.pumpAndSettle();
-    final title = tester.widget<Text>(find.text(_longHistoryTitle));
-    final venue = tester.widget<Text>(find.text(_longHistoryVenue));
-    expect(title.maxLines, 1);
+    final title = tester.widget<Text>(
+      find.text(_longHistoryTitle.toUpperCase()),
+    );
+    final venue = tester.widget<Text>(
+      find.text(_longHistoryVenue.toUpperCase()),
+    );
+    expect(title.maxLines, 3);
     expect(title.overflow, TextOverflow.ellipsis);
-    expect(venue.maxLines, 1);
-    expect(venue.overflow, TextOverflow.ellipsis);
+    expect(venue.maxLines, isNull);
+    expect(venue.softWrap, isNot(isFalse));
     expect(tester.takeException(), isNull);
   });
 
@@ -761,10 +734,18 @@ void main() {
         findsNothing,
       );
 
+      await _selectProfileList(tester, 'SAVED · 1');
+      await _tapProfileControl(
+        tester,
+        find.byKey(ValueKey('gig-actions-${repository.futureGig.id}')),
+      );
+
       await tester.tap(
         find.byKey(ValueKey('ticket-action-${repository.futureGig.id}')),
       );
       await tester.pump();
+      await tester.tap(find.byTooltip('Close event actions'));
+      await tester.pumpAndSettle();
 
       expect(harness.app.rsvps, contains(repository.futureGig.id));
       expect(harness.app.upcomingRsvpGigs, [
@@ -775,6 +756,7 @@ void main() {
         find.byKey(ValueKey('next-show-${repository.futureGig.id}')),
         findsOne,
       );
+      await _selectProfileList(tester, 'GOING · 2');
       expect(
         find.byKey(ValueKey('upcoming-rsvp-${repository.futureGig.id}')),
         findsOne,
@@ -840,12 +822,12 @@ void main() {
           of: find.byKey(ValueKey('next-show-${repository.cancelledGig.id}')),
           matching: find.textContaining('CANCELLED'),
         ),
-        findsOne,
+        findsWidgets,
       );
       expect(
         find.descendant(
           of: find.byKey(ValueKey('next-show-${repository.cancelledGig.id}')),
-          matching: find.text('QR PASS'),
+          matching: find.text('SHOW QR PASS'),
         ),
         findsNothing,
       );
@@ -874,10 +856,18 @@ void main() {
     tester.view.physicalSize = const Size(402, 3000);
     await tester.pumpAndSettle();
 
+    await _selectProfileList(tester, 'SAVED · 1');
+    await _tapProfileControl(
+      tester,
+      find.byKey(ValueKey('gig-actions-${repository.futureGig.id}')),
+    );
+
     await tester.tap(
       find.byKey(ValueKey('ticket-action-${repository.futureGig.id}')),
     );
     await tester.pump();
+    await tester.tap(find.byTooltip('Close event actions'));
+    await tester.pumpAndSettle();
     expect(harness.app.upcomingRsvpGigs, [
       repository.futureGig,
       repository.cancelledGig,
@@ -1023,7 +1013,10 @@ void main() {
 
     expect(find.byKey(const Key('fan-profile-genres')), findsOne);
     expect(find.byKey(const Key('fan-profile-incomplete-hint')), findsOne);
-    await tester.tap(find.byKey(const ValueKey('fan-profile-genre-punk')));
+    await _tapProfileControl(
+      tester,
+      find.byKey(const ValueKey('fan-profile-genre-punk')),
+    );
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.editProfile);
   });
@@ -1048,6 +1041,7 @@ void main() {
 
     tester.view.physicalSize = const Size(402, 5000);
     await tester.pumpAndSettle();
+    await _selectProfileList(tester, 'FOLLOWED');
     final card = find.byKey(ValueKey('fan-event-${show.id}'));
     expect(card, findsOne);
     await tester.tap(card);
@@ -1070,7 +1064,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(harness.app.follows, contains('b1'));
-    await tester.tap(find.byKey(const Key('fan-following-stat')));
+    await _tapProfileControl(
+      tester,
+      find.byKey(const Key('fan-following-stat')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('FOLLOWING ✓'));
     await tester.pump(const Duration(milliseconds: 20));
@@ -1103,7 +1100,7 @@ void main() {
     expect(find.byKey(const Key('profile-tutorial')), findsOne);
     for (var step = 0; step < 3; step++) {
       final next = find.byKey(const Key('profile-tutorial-next'));
-      tester.widget<FilledButton>(next).onPressed!();
+      tester.widget<EpPill>(next).onPressed!();
       await tester.pumpAndSettle();
     }
     expect(find.byKey(const Key('profile-tutorial')), findsNothing);
@@ -1146,7 +1143,7 @@ void main() {
       find.byKey(ValueKey('upcoming-rsvp-${repository.futureGig.id}')),
       findsOne,
     );
-    expect(find.text('QR PASS'), findsOne);
+    expect(find.text('SHOW QR PASS'), findsOne);
     expect(find.byTooltip('Show QR code'), findsOne);
     expect(harness.app.upcomingRsvpGigs, contains(repository.futureGig));
   });
@@ -1300,6 +1297,17 @@ void main() {
     expect(find.byKey(const Key('delete-account-error')), findsNothing);
     await tester.pump(const Duration(seconds: 3));
   });
+}
+
+Future<void> _tapProfileControl(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _selectProfileList(WidgetTester tester, String label) async {
+  await _tapProfileControl(tester, find.text(label));
 }
 
 const _longHistoryTitle =

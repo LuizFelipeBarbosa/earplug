@@ -8,6 +8,7 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/sheets.dart';
 
 const int kRecapPreviewCount = 5;
@@ -48,12 +49,12 @@ String recapFormatNumber(num value) {
 String recapWindowLabel(BandRecap recap) {
   final first = recap.window.firstStartsAt;
   final last = recap.window.lastStartsAt;
-  final prefix = 'LAST ${recap.window.showsAnalyzed} SHOWS';
+  final prefix = 'Last ${recap.window.showsAnalyzed} shows';
   if (first == null || last == null) return prefix;
   final firstDate = DateTime.fromMillisecondsSinceEpoch(first);
   final lastDate = DateTime.fromMillisecondsSinceEpoch(last);
-  return '$prefix · ${monthNamesUpper[firstDate.month - 1]} – '
-      '${monthNamesUpper[lastDate.month - 1]}';
+  return '$prefix · ${monthNames[firstDate.month - 1]} ${firstDate.day} – '
+      '${monthNames[lastDate.month - 1]} ${lastDate.day}';
 }
 
 String recapVsAverageLabel(num value, num average) {
@@ -79,45 +80,36 @@ Future<void> showRecapShowsSheet(BuildContext context, BandRecap recap) {
     (ctx) => KeyedSubtree(
       key: const Key('analytics-shows-sheet'),
       child: EpSheetShell(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+        padding: const EdgeInsets.fromLTRB(
+          EpLayout.gutter,
+          20,
+          EpLayout.gutter,
+          24,
+        ),
         maxHeightFactor: .88,
         scrollable: true,
         mainAxisSize: MainAxisSize.min,
-        header: Text(
-          'ALL ${recap.shows.length} SHOWS',
-          style: Theme.of(ctx).textTheme.epSectionHeading,
-        ),
+        header: EpDisplay('All ${recap.shows.length} shows', size: 28),
         children: [
-          const SizedBox(height: 6),
-          Text(
-            recapWindowLabel(recap),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(ctx).textTheme.epSection.copyWith(
-              color: ctx.epColors.contentSecondary,
-            ),
-          ),
-          Text(
-            'AVG ${recapFormatNumber(recap.totals.avgPerShow)} PER SHOW',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(ctx).textTheme.epSection.copyWith(
-              color: ctx.epColors.contentSecondary,
-            ),
+          const SizedBox(height: 12),
+          EpEyebrow(recapWindowLabel(recap)),
+          const SizedBox(height: 8),
+          EpEyebrow(
+            'Avg ${recapFormatNumber(recap.totals.avgPerShow)} per show',
           ),
           if (recap.window.truncated) ...[
             const SizedBox(height: 5),
             Text(
               'Only the ${recap.window.showsAnalyzed} most recent shows are '
               'analyzed.',
-              style: Theme.of(ctx).textTheme.epCaption.copyWith(
-                color: ctx.epColors.contentDisabled,
-              ),
+              style: Theme.of(
+                ctx,
+              ).textTheme.epCaption.copyWith(color: ctx.epColors.muted),
             ),
           ],
-          const SizedBox(height: 4),
+          const SizedBox(height: 16),
+          const EpHairline(),
           for (var index = 0; index < shows.length; index++) ...[
-            if (index > 0) _RowDivider(color: ctx.epColors.border),
             _ShowDetailRow(
               show: shows[index],
               average: recap.totals.avgPerShow,
@@ -162,22 +154,22 @@ Future<void> showRecapRowsSheet(
     (ctx) => KeyedSubtree(
       key: const Key('analytics-rows-sheet'),
       child: EpSheetShell(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+        padding: const EdgeInsets.fromLTRB(
+          EpLayout.gutter,
+          20,
+          EpLayout.gutter,
+          24,
+        ),
         maxHeightFactor: .88,
         scrollable: true,
         mainAxisSize: MainAxisSize.min,
-        header: Text(title, style: Theme.of(ctx).textTheme.epSectionHeading),
+        header: EpDisplay(title, size: 28),
         children: [
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: Theme.of(ctx).textTheme.epSection.copyWith(
-              color: ctx.epColors.contentSecondary,
-            ),
-          ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 12),
+          EpEyebrow(subtitle),
+          const SizedBox(height: 16),
+          const EpHairline(),
           for (var index = 0; index < rows.length; index++) ...[
-            if (index > 0) _RowDivider(color: ctx.epColors.border),
             _RecapDetailRow(row: rows[index], maxValue: maxValue),
           ],
         ],
@@ -214,11 +206,7 @@ class AnalyticsStackedBar extends StatelessWidget {
           Container(
             height: 8,
             clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: context.epColors.surfaceDisabled,
-              border: Border.all(color: context.epColors.border),
-              borderRadius: BorderRadius.circular(99),
-            ),
+            decoration: BoxDecoration(color: context.epColors.panel),
             child: total == 0
                 ? null
                 : Row(
@@ -226,12 +214,12 @@ class AnalyticsStackedBar extends StatelessWidget {
                       if (newFans > 0)
                         Expanded(
                           flex: newFlex,
-                          child: const ColoredBox(color: Ep.brand),
+                          child: ColoredBox(color: context.epColors.ink),
                         ),
                       if (returningFans > 0)
                         Expanded(
                           flex: returningFlex,
-                          child: ColoredBox(color: context.epColors.accent),
+                          child: ColoredBox(color: context.epColors.outline),
                         ),
                     ],
                   ),
@@ -241,10 +229,10 @@ class AnalyticsStackedBar extends StatelessWidget {
             spacing: 12,
             runSpacing: 5,
             children: [
-              _ChartLegend(color: Ep.brand, label: 'NEW $newFans'),
+              _ChartLegend(color: context.epColors.ink, label: 'New $newFans'),
               _ChartLegend(
-                color: context.epColors.accent,
-                label: 'RETURNING $returningFans',
+                color: context.epColors.outline,
+                label: 'Returning $returningFans',
               ),
             ],
           ),
@@ -265,16 +253,9 @@ class _ChartLegend extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 7,
-          height: 7,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
+        Container(width: 7, height: 7, color: color),
         const SizedBox(width: 5),
-        Text(label, style: Theme.of(context).textTheme.epCaption),
+        Flexible(child: EpMonoText(label, color: context.epColors.muted)),
       ],
     );
   }
@@ -318,50 +299,13 @@ class _ShowDetailRow extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                DateBlock.forDate(date),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        show.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.epLabel,
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        show.venueName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.epCaption.copyWith(
-                          color: context.epColors.contentSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      '${show.measuredRsvps}',
-                      style: Theme.of(context).textTheme.epSectionHeading
-                          .copyWith(color: context.epColors.accent),
-                    ),
-                    Text(
-                      recapVsAverageLabel(show.measuredRsvps, average),
-                      maxLines: 1,
-                      style: Theme.of(context).textTheme.epCaption.copyWith(
-                        color: context.epColors.contentSecondary,
-                      ),
-                    ),
-                  ],
-                ),
+            LedgerRow(
+              title: show.title,
+              leading: DateBlock.forDate(date),
+              details: [
+                show.venueName,
+                '${show.measuredRsvps} RSVPs',
+                recapVsAverageLabel(show.measuredRsvps, average),
               ],
             ),
             const SizedBox(height: 10),
@@ -399,36 +343,10 @@ class _RecapDetailRow extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        row.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.epLabel,
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        row.meta,
-                        style: Theme.of(context).textTheme.epCaption.copyWith(
-                          color: context.epColors.contentSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  row.valueText,
-                  style: Theme.of(context).textTheme.epSectionHeading.copyWith(
-                    color: context.epColors.accent,
-                  ),
-                ),
-              ],
+            LedgerRow(
+              title: row.label,
+              details: [row.meta],
+              trailing: EpMonoText(row.valueText),
             ),
             const SizedBox(height: 10),
             _TrackBar(fraction: fraction),
@@ -456,18 +374,12 @@ class _TrackBar extends StatelessWidget {
           Positioned.fill(
             child: Container(
               clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: context.epColors.surfaceDisabled,
-                border: Border.all(color: context.epColors.border),
-                borderRadius: BorderRadius.circular(99),
-              ),
+              decoration: BoxDecoration(color: context.epColors.panel),
               alignment: Alignment.centerLeft,
               child: FractionallySizedBox(
                 widthFactor: fillFraction,
                 heightFactor: 1,
-                child: const DecoratedBox(
-                  decoration: BoxDecoration(color: Ep.brand),
-                ),
+                child: ColoredBox(color: context.epColors.ink),
               ),
             ),
           ),
@@ -477,20 +389,11 @@ class _TrackBar extends StatelessWidget {
               child: Container(
                 width: 1,
                 height: 8,
-                color: context.epColors.accent,
+                color: context.epColors.outline,
               ),
             ),
         ],
       ),
     );
   }
-}
-
-class _RowDivider extends StatelessWidget {
-  const _RowDivider({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => Container(height: 1, color: color);
 }

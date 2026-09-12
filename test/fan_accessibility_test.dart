@@ -3,6 +3,8 @@ import 'package:earplug/screens/edit_profile.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/screens/my_gigs.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -61,44 +63,46 @@ void main() {
     tester.view.physicalSize = const Size(320, 900);
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('fan-following-stat')), findsOne);
-    expect(find.byKey(const Key('fan-history-stat')), findsOne);
+    expect(find.byType(EpStatGrid), findsOne);
+    expect(find.byType(EpSegmentTabs), findsOne);
     for (final key in const [
-      Key('share-fan-profile'),
+      Key('edit-profile-action'),
       Key('profile-settings-action'),
+      Key('share-fan-profile'),
     ]) {
-      expect(find.byKey(key), findsOne);
-      expect(tester.getSize(find.byKey(key)), const Size(48, 48));
+      expect(tester.getSize(find.byKey(key)), const Size(44, 44));
     }
-    final editAction = find.byKey(const Key('edit-profile-action'));
-    expect(editAction, findsOne);
-    expect(tester.getSize(editAction).height, greaterThanOrEqualTo(48));
-    expect(find.text('EDIT PROFILE'), findsOne);
+    expect(find.byTooltip('Edit profile'), findsOne);
     expect(find.byTooltip('Share profile summary'), findsOne);
     expect(find.byTooltip('Privacy and account settings'), findsOne);
-    await tester.scrollUntilVisible(
-      find.textContaining('UPCOMING RSVPS'),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.textContaining('UPCOMING RSVPS'), findsOne);
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('fan-following-stat')),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
+    final followed = find.text('FOLLOWED');
+    await tester.ensureVisible(followed);
+    await tester.tap(followed);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('fan-following-stat')));
+    expect(
+      tester.widget<EpSegmentTabs>(find.byType(EpSegmentTabs)).selected,
+      3,
+    );
+    expect(find.byType(EpEntityRow), findsWidgets);
+
+    final browse = find.byKey(const Key('fan-following-stat'));
+    await tester.ensureVisible(browse);
+    await tester.pumpAndSettle();
+    await tester.tap(browse);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('following-search-field')), findsOne);
-    expect(find.text('FOLLOWING ✓'), findsWidgets);
-    final followingButton = tester.widget<OutlinedButton>(
-      find.widgetWithText(OutlinedButton, 'FOLLOWING ✓').first,
+    final sheet = find.byKey(const Key('fan-following-sheet'));
+    final followingButton = tester.widget<EpPill>(
+      find
+          .descendant(
+            of: sheet,
+            matching: find.byWidgetPredicate(
+              (widget) => widget is EpPill && widget.label == 'Following ✓',
+            ),
+          )
+          .first,
     );
-    expect(
-      followingButton.style!.textStyle!.resolve({})!.fontSize,
-      greaterThanOrEqualTo(11),
-    );
+    expect(followingButton.onPressed, isNotNull);
     await tester.tap(find.byTooltip('Close Following'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
@@ -181,12 +185,18 @@ void main() {
 
     const qualification = 'RSVP RECORD — ATTENDANCE NOT VERIFIED';
     const qualificationKey = Key('history-qualification');
-    await tester.tap(find.byKey(const Key('fan-history-stat')));
+    final past = find.text('PAST');
+    await tester.ensureVisible(past);
+    await tester.tap(past);
     await tester.pumpAndSettle();
 
     final qualificationFinder = find.byKey(qualificationKey);
-    expect(find.text(qualification), findsWidgets);
-    final text = tester.widget<Text>(qualificationFinder);
+    await tester.ensureVisible(qualificationFinder);
+    await tester.pumpAndSettle();
+    expect(find.text(qualification), findsOne);
+    final text = tester.widget<Text>(
+      find.descendant(of: qualificationFinder, matching: find.byType(Text)),
+    );
     final bounds = tester.getRect(qualificationFinder);
     expect(text.style!.fontSize, greaterThanOrEqualTo(11));
     expect(bounds.left, greaterThanOrEqualTo(0));

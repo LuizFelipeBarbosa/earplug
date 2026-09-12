@@ -179,8 +179,8 @@ void main() {
     expect(find.text('SWITCH'), findsOne);
     await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
-    expect(find.text('YOUR ACCOUNTS'), findsOne);
-    await tester.tap(find.text('FOGHORN DIET'));
+    expect(find.text('SWITCH IDENTITY'), findsOne);
+    await tester.tap(find.text('Foghorn Diet'));
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.bandDash);
     expect(harness.app.bandId, 'b1');
@@ -247,9 +247,9 @@ void main() {
     expect(find.text('SWITCH'), findsOne);
     await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
-    expect(find.text('YOUR ACCOUNTS'), findsOne);
+    expect(find.text('SWITCH IDENTITY'), findsOne);
     expect(find.text('Personal account'), findsOne);
-    await tester.tap(find.text('FOGHORN DIET'));
+    await tester.tap(find.text('Foghorn Diet'));
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.bandDash);
     expect(harness.app.bandId, 'b1');
@@ -271,8 +271,8 @@ void main() {
     expect(find.text('SWITCH'), findsOne);
     await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
-    expect(find.text('YOUR ACCOUNTS'), findsOne);
-    expect(find.text('PIGEON COURT'), findsWidgets);
+    expect(find.text('SWITCH IDENTITY'), findsOne);
+    expect(find.text('Pigeon Court'), findsWidgets);
   });
 }
 

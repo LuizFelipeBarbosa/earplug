@@ -6,6 +6,8 @@ import '../errors.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
+import '../widgets/ep_text.dart';
 
 String organizationTypeLabel(OrganizationType type) => switch (type) {
   OrganizationType.venueOperator => 'Venue operator',
@@ -153,14 +155,33 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
       color: context.epColors.background,
       child: Column(
         children: [
-          ScreenHeader(
-            child: EpPageHeading(
-              title: 'EARPLUG ADMIN',
-              action: TextButton(
-                key: const Key('admin-queue-exit'),
-                onPressed: app.toFanView,
-                child: const Text('BACK TO FAN VIEW'),
-              ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              EpLayout.gutter,
+              headerTopPad(context),
+              EpLayout.gutter,
+              24,
+            ),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      EpEyebrow.accent('Admin'),
+                      SizedBox(height: 8),
+                      EpDisplay('Applications', size: 36),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                EpPill(
+                  key: const Key('admin-queue-exit'),
+                  label: 'Fan view',
+                  variant: EpPillVariant.outline,
+                  onPressed: app.toFanView,
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -168,84 +189,67 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
               onRefresh: () => _loadFirstPage(app),
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: EpLayout.gutter,
+                ),
                 children: [
                   if (_overview case final overview?) ...[
-                    _OverviewCards(overview: overview),
-                    const SizedBox(height: 22),
+                    EpStatGrid(
+                      valueSize: 28,
+                      stats: [
+                        EpStat(
+                          '${overview.submitted}${overview.capped ? '+' : ''}',
+                          'Submitted',
+                        ),
+                        EpStat(
+                          '${overview.underReview}${overview.capped ? '+' : ''}',
+                          'Review',
+                        ),
+                        EpStat(
+                          '${overview.needsInfo}${overview.capped ? '+' : ''}',
+                          'Needs info',
+                        ),
+                        EpStat(
+                          '${overview.verifiedOrganizations}${overview.capped ? '+' : ''}',
+                          'Verified',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
                   ],
-                  EpButton(
-                    'SAFETY REPORTS',
-                    key: const Key('admin-safety-entry'),
-                    kind: EpButtonKind.outline,
-                    onTap: () => app.go(Screen.adminSafety),
+                  EpSegmentTabs(
+                    labels: [
+                      for (final filter in _filters) _statusLabel(filter),
+                    ],
+                    selected: _filters.indexOf(_filter),
+                    onSelect: (index) => _selectFilter(app, _filters[index]),
+                    scrollable: true,
                   ),
                   const SizedBox(height: 16),
-                  EpButton(
-                    'DISPUTES',
-                    key: const Key('admin-disputes-entry'),
-                    kind: EpButtonKind.outline,
-                    onTap: () => app.go(Screen.adminDisputes),
-                  ),
-                  const SizedBox(height: 16),
-                  EpButton(
-                    'BOOKINGS',
-                    key: const Key('admin-bookings-entry'),
-                    kind: EpButtonKind.outline,
-                    onTap: () => app.go(Screen.adminBookings),
-                  ),
-                  const SizedBox(height: 16),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        for (
-                          var index = 0;
-                          index < _filters.length;
-                          index++
-                        ) ...[
-                          EpChip(
-                            key: Key(
-                              'admin-queue-filter-${_filters[index].name}',
-                            ),
-                            label: _statusLabel(_filters[index]).toUpperCase(),
-                            active: _filter == _filters[index],
-                            onTap: () => _selectFilter(app, _filters[index]),
-                          ),
-                          if (index < _filters.length - 1)
-                            const SizedBox(width: 8),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SectionBar(label: 'KIND'),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        EpChip(
-                          key: const Key('admin-queue-kind-all'),
-                          label: 'ALL',
-                          active: _kind == null,
-                          onTap: () => _selectKind(app, null),
-                        ),
-                        const SizedBox(width: 8),
-                        EpChip(
-                          key: const Key('admin-queue-kind-organization'),
-                          label: 'ORGANIZATIONS',
-                          active: _kind == ApplicationKind.organization,
-                          onTap: () =>
-                              _selectKind(app, ApplicationKind.organization),
-                        ),
-                        const SizedBox(width: 8),
-                        EpChip(
-                          key: const Key('admin-queue-kind-host'),
-                          label: 'HOSTS',
-                          active: _kind == ApplicationKind.host,
-                          onTap: () => _selectKind(app, ApplicationKind.host),
-                        ),
-                      ],
-                    ),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      EpChip(
+                        key: const Key('admin-queue-kind-all'),
+                        label: 'ALL',
+                        active: _kind == null,
+                        onTap: () => _selectKind(app, null),
+                      ),
+                      EpChip(
+                        key: const Key('admin-queue-kind-organization'),
+                        label: 'ORGANIZATIONS',
+                        active: _kind == ApplicationKind.organization,
+                        onTap: () =>
+                            _selectKind(app, ApplicationKind.organization),
+                      ),
+                      EpChip(
+                        key: const Key('admin-queue-kind-host'),
+                        label: 'HOSTS',
+                        active: _kind == ApplicationKind.host,
+                        onTap: () => _selectKind(app, ApplicationKind.host),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   if (_loading)
@@ -259,11 +263,13 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
                       child: Text(
                         'No ${_statusLabel(_filter).toLowerCase()} applications.',
                         textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.epCaption,
+                        style: Theme.of(context).textTheme.epBody.copyWith(
+                          color: context.epColors.muted,
+                        ),
                       ),
                     )
                   else
-                    for (var index = 0; index < _rows.length; index++) ...[
+                    for (var index = 0; index < _rows.length; index++)
                       _ApplicationRow(
                         key: Key(
                           'admin-queue-row-${_rows[index].application.id}',
@@ -274,85 +280,49 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
                           _rows[index].application.id,
                         ),
                       ),
-                      if (index < _rows.length - 1) const SizedBox(height: 10),
-                    ],
                   if (!_loading && _page?.isDone == false) ...[
                     const SizedBox(height: 10),
-                    TextButton(
-                      key: const Key('admin-queue-load-more'),
-                      onPressed: _loadingMore ? null : () => _loadMore(app),
-                      child: Text(
-                        _loadingMore
-                            ? 'LOADING…'
+                    Center(
+                      child: EpPill(
+                        key: const Key('admin-queue-load-more'),
+                        variant: EpPillVariant.ghost,
+                        size: EpPillSize.chip,
+                        onPressed: _loadingMore ? null : () => _loadMore(app),
+                        label: _loadingMore
+                            ? 'Loading…'
                             : _loadMoreFailed
-                            ? 'RETRY'
-                            : 'LOAD MORE',
+                            ? 'Retry'
+                            : 'Load more',
                       ),
                     ),
                   ],
+                  const Padding(
+                    padding: EdgeInsets.only(top: 32, bottom: 8),
+                    child: EpEyebrow('Other queues'),
+                  ),
+                  _OtherQueueRow(
+                    key: const Key('admin-safety-entry'),
+                    label: 'Safety reports',
+                    onTap: () => app.go(Screen.adminSafety),
+                  ),
+                  _OtherQueueRow(
+                    key: const Key('admin-disputes-entry'),
+                    label: 'Disputes',
+                    onTap: () => app.go(Screen.adminDisputes),
+                  ),
+                  _OtherQueueRow(
+                    key: const Key('admin-bookings-entry'),
+                    label: 'Bookings',
+                    onTap: () => app.go(Screen.adminBookings),
+                  ),
+                  const EpHairline(),
+                  const SizedBox(height: tabBarClearance),
                 ],
               ),
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _OverviewCards extends StatelessWidget {
-  const _OverviewCards({required this.overview});
-
-  final AdminOverview overview;
-
-  @override
-  Widget build(BuildContext context) {
-    final caption = overview.capped ? '100+' : null;
-    final hosts = overview.hostApplications;
-    return Column(
-      children: [
-        Row(
-          children: [
-            EpStatCard(
-              label: 'SUBMITTED',
-              value: '${overview.submitted}',
-              caption: caption,
-            ),
-            const SizedBox(width: 8),
-            EpStatCard(
-              label: 'UNDER REVIEW',
-              value: '${overview.underReview}',
-              caption: caption,
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            EpStatCard(
-              label: 'NEEDS INFO',
-              value: '${overview.needsInfo}',
-              caption: caption,
-            ),
-            const SizedBox(width: 8),
-            EpStatCard(
-              label: 'VERIFIED ORGS',
-              value: '${overview.verifiedOrganizations}',
-              caption: caption,
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            EpStatCard(
-              label: 'HOSTS',
-              value: '${hosts.submitted + hosts.underReview + hosts.needsInfo}',
-              caption: caption,
-            ),
-          ],
-        ),
-      ],
     );
   }
 }
@@ -372,55 +342,106 @@ class _ApplicationRow extends StatelessWidget {
         isHost && hostDisplayName != null && hostDisplayName.isNotEmpty
         ? hostDisplayName
         : application.orgName;
-    return EpCard(
-      onTap: onTap,
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(
-                  heading,
-                  style: Theme.of(context).textTheme.epSectionHeading,
-                ),
+    final venue = application.venue;
+    final hostArea = application.hostArea?.trim();
+    final details = [
+      application.contactName,
+      if (venue != null) ...[
+        venue.addr,
+        if (venue.capacity != null) 'cap ${venue.capacity}',
+      ] else if (isHost && hostArea != null && hostArea.isNotEmpty)
+        hostArea,
+    ].join(' · ');
+
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            EpDisplay(heading, size: 24),
+                            EpBadge(
+                              key: Key(
+                                'admin-row-${application.id}-${isHost ? 'host' : 'type'}',
+                              ),
+                              label: isHost
+                                  ? 'Host'
+                                  : organizationTypeLabel(application.orgType),
+                              variant: EpBadgeVariant.secondary,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          details,
+                          style: Theme.of(context).textTheme.epBody.copyWith(
+                            color: context.epColors.muted,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        EpMonoText(
+                          'Submitted ${dateLabel(application.createdAt)}',
+                          color: context.epColors.muted,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Icon(
+                      Icons.chevron_right,
+                      size: 16,
+                      color: context.epColors.muted,
+                    ),
+                  ),
+                ],
               ),
-              if (isHost) ...[
-                const SizedBox(width: 8),
-                StatusPill(
-                  key: Key('admin-row-${application.id}-host'),
-                  label: 'HOST',
-                  tone: EpStatusPillTone.neutral,
-                ),
-              ],
-              const SizedBox(width: 10),
-              StatusPill(
-                label: _statusLabel(application.status),
-                tone: _statusTone(application.status),
-              ),
-            ],
-          ),
-          if (!isHost) ...[
-            const SizedBox(height: 5),
-            StatusPill(
-              key: Key('admin-row-${application.id}-type'),
-              label: organizationTypeLabel(application.orgType).toUpperCase(),
-              tone: EpStatusPillTone.neutral,
             ),
+            const EpHairline(),
           ],
-          const SizedBox(height: 10),
-          Text(
-            '${row.applicantName} · ${dateLabel(application.createdAt)}',
-            style: Theme.of(context).textTheme.epCaption.copyWith(
-              color: context.epColors.contentSecondary,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
+}
+
+class _OtherQueueRow extends StatelessWidget {
+  const _OtherQueueRow({super.key, required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    child: InkWell(
+      onTap: onTap,
+      child: Column(
+        children: [
+          const EpHairline(),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(children: [Expanded(child: EpDisplay(label, size: 20))]),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _NotAuthorized extends StatelessWidget {
@@ -445,10 +466,10 @@ class _NotAuthorized extends StatelessWidget {
                 style: Theme.of(context).textTheme.epBody,
               ),
               const SizedBox(height: 16),
-              EpButton(
-                'BACK TO FAN VIEW',
-                kind: EpButtonKind.outline,
-                onTap: onBack,
+              EpPill(
+                label: 'Back to fan view',
+                variant: EpPillVariant.outline,
+                onPressed: onBack,
               ),
             ],
           ),
@@ -463,14 +484,3 @@ String _statusLabel(OrganizationApplicationStatus status) => status.wireValue
     .split(' ')
     .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
     .join(' ');
-
-EpStatusPillTone _statusTone(OrganizationApplicationStatus status) =>
-    switch (status) {
-      OrganizationApplicationStatus.approved => EpStatusPillTone.success,
-      OrganizationApplicationStatus.submitted => EpStatusPillTone.selected,
-      OrganizationApplicationStatus.underReview ||
-      OrganizationApplicationStatus.needsInfo => EpStatusPillTone.warning,
-      OrganizationApplicationStatus.draft ||
-      OrganizationApplicationStatus.rejected ||
-      OrganizationApplicationStatus.withdrawn => EpStatusPillTone.neutral,
-    };

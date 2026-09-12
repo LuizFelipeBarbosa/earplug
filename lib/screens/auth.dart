@@ -3,7 +3,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_links.dart' show legalEffective, legalPrivacyUrl, legalTermsUrl;
@@ -13,11 +12,16 @@ import '../services/user_actions.dart' show openExternalForUser;
 import '../theme.dart';
 import '../widgets/branding.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 
 // The stamp's fixed tilt, used everywhere the door stamp is drawn.
 const _stampAngle = -9 * math.pi / 180;
-const _stepPadding = EdgeInsets.fromLTRB(22, 24, 22, 30);
+const _stepPadding = EdgeInsets.fromLTRB(20, 24, 20, 32);
+
+/// The door column never grows past a comfortable reading width on desktop.
+const _stepMaxWidth = 420.0;
 
 /// "29 JUL 26" — the date pressed into the door stamp.
 String _stampDate() {
@@ -41,6 +45,13 @@ String _stampDate() {
   return '$day ${months[now.month - 1]} $year';
 }
 
+/// "21:00" — the door time shown next to the mark.
+String _doorTime() {
+  final now = DateTime.now();
+  return '${now.hour.toString().padLeft(2, '0')}:'
+      '${now.minute.toString().padLeft(2, '0')}';
+}
+
 /// Auth as getting stamped at the door. A successful sign-in immediately
 /// replays the action that brought the fan here, then shows a short
 /// confirmation before returning them to where they started.
@@ -52,7 +63,6 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  String? _method; // 'Apple' | 'Google' | 'Email'
   bool _leaving = false;
   bool _completionScheduled = false;
   PendingKind? _completedKind;
@@ -63,14 +73,6 @@ class _AuthScreenState extends State<AuthScreen> {
   void dispose() {
     _leaveTimer?.cancel();
     super.dispose();
-  }
-
-  void _pickMethod(String method) {
-    setState(() => _method = method);
-  }
-
-  void _clearMethod() {
-    setState(() => _method = null);
   }
 
   void _scheduleCompletion(AppState app) {
@@ -114,12 +116,7 @@ class _AuthScreenState extends State<AuthScreen> {
           ? _ThroughStep(kind: _completedKind)
           : _CompletingStep(error: _completionError, onRetry: _retryCompletion);
     } else {
-      step = _DoorStep(
-        app: app,
-        method: _method,
-        onPick: _pickMethod,
-        onClearPick: _clearMethod,
-      );
+      step = _DoorStep(app: app);
     }
 
     return Container(
@@ -134,21 +131,23 @@ class _AuthScreenState extends State<AuthScreen> {
       child: Column(
         children: [
           Padding(
-            padding: EdgeInsets.fromLTRB(22, headerTopPad(context), 22, 0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const EpLogo.full(width: 118),
-                Text(
-                  'DOOR · 21:00',
-                  style: epText(
-                    size: 9,
-                    weight: FontWeight.w900,
-                    letterSpacing: 1.9,
-                    color: context.epColors.contentDisabled,
-                  ),
+            padding: EdgeInsets.fromLTRB(
+              EpLayout.gutter,
+              headerTopPad(context),
+              EpLayout.gutter,
+              0,
+            ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: _stepMaxWidth),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const EpLogo.compact(height: 28),
+                    Flexible(child: EpEyebrow('Door · ${_doorTime()}')),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
           Expanded(child: step),
@@ -160,20 +159,14 @@ class _AuthScreenState extends State<AuthScreen> {
 
 // ========================= the door =========================
 
-enum _EntryStage { providers, email, emailCode }
+/// Which half of the single email row is showing: the address, or the code
+/// that was just sent to it.
+enum _EntryStage { email, code }
 
 class _DoorStep extends StatefulWidget {
   final AppState app;
-  final String? method;
-  final ValueChanged<String> onPick;
-  final VoidCallback onClearPick;
 
-  const _DoorStep({
-    required this.app,
-    required this.method,
-    required this.onPick,
-    required this.onClearPick,
-  });
+  const _DoorStep({required this.app});
 
   @override
   State<_DoorStep> createState() => _DoorStepState();
@@ -185,7 +178,7 @@ class _DoorStepState extends State<_DoorStep> {
   final _termsRecognizer = TapGestureRecognizer();
   final _privacyRecognizer = TapGestureRecognizer();
 
-  _EntryStage _stage = _EntryStage.providers;
+  _EntryStage _stage = _EntryStage.email;
   bool _loading = false;
   String? _error;
 
@@ -216,46 +209,27 @@ class _DoorStepState extends State<_DoorStep> {
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
         padding: _stepPadding,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight: math.max(
-              0,
-              constraints.maxHeight - _stepPadding.vertical,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: _stepMaxWidth,
+              minHeight: math.max(
+                0,
+                constraints.maxHeight - _stepPadding.vertical,
+              ),
             ),
-          ),
-          child: IntrinsicHeight(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'GET ON\nEARPLUG',
-                  style: epDisplay(size: 38, height: .98),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Browse freely. Create an account when you RSVP, save a show, or start a band. It takes about ten seconds.',
-                  style: epText(
-                    size: 11.5,
-                    color: context.epColors.contentSecondary,
-                    height: 1.5,
-                  ),
-                ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 22),
-                    child: Center(
-                      child: _StampWell(stamped: widget.method != null),
-                    ),
-                  ),
-                ),
+                // An empty leading child gives the pitch an equal share of
+                // the slack above and below, centring it over the actions
+                // while they stay pinned to the bottom.
+                const SizedBox.shrink(),
+                _buildPitch(),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (_stage == _EntryStage.providers)
-                      ..._buildProviders()
-                    else
-                      ..._buildEntry(),
-                  ],
+                  children: _buildEntry(),
                 ),
               ],
             ),
@@ -265,43 +239,161 @@ class _DoorStepState extends State<_DoorStep> {
     );
   }
 
-  List<Widget> _buildProviders() {
+  /// The vertically centred sell: eyebrow, hero, copy, door stamp.
+  Widget _buildPitch() {
+    final textTheme = Theme.of(context).textTheme;
+    final palette = context.epColors;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const EpEyebrow.accent("You're on the list"),
+        const SizedBox(height: 12),
+        // Scales down rather than clipping when the hero cannot fit the
+        // width (narrow phones, large text).
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text.rich(
+            TextSpan(
+              children: [
+                const TextSpan(text: 'GET ON\n'),
+                const TextSpan(text: 'EarPlug'),
+                TextSpan(
+                  text: '.',
+                  style: TextStyle(color: palette.accent),
+                ),
+              ],
+            ),
+            style: textTheme.epDisplayAt(64).copyWith(color: palette.ink),
+            semanticsLabel: 'Get on EarPlug.',
+          ),
+        ),
+        const SizedBox(height: 20),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 300),
+          child: Text(
+            'Browse freely. Create an account when you RSVP, save a show, '
+            'or start a band. It takes about ten seconds.',
+            style: textTheme.epBody.copyWith(color: palette.muted),
+          ),
+        ),
+        const SizedBox(height: 40),
+        Transform.rotate(angle: _stampAngle, child: const _DoorStamp()),
+      ],
+    );
+  }
+
+  /// Everything the fan can act on, in one column: Google, the email row,
+  /// feedback, the legal line and the way out.
+  List<Widget> _buildEntry() {
+    final auth = widget.app.auth;
     final locked = _loading || widget.app.authStep == 2;
-    final codeMethods = widget.app.auth.supportsEmailSignIn
-        ? _MethodTile('EMAIL', onTap: locked ? null : _showEmail)
-        : null;
 
     return [
-      if (widget.app.auth.supportsAppleSignIn) ...[
-        EpButton(
-          ' Continue with Apple',
-          kind: locked ? EpButtonKind.disabled : EpButtonKind.light,
-          padding: const EdgeInsets.symmetric(vertical: 15),
-          onTap: locked ? null : () => _startOAuth(OAuthProvider.apple),
+      if (auth.supportsAppleSignIn) ...[
+        EpPill(
+          label: 'Continue with Apple',
+          size: EpPillSize.large,
+          expand: true,
+          onPressed: locked ? null : () => _startOAuth(OAuthProvider.apple),
         ),
-        const SizedBox(height: 9),
+        const SizedBox(height: 12),
       ],
-      if (widget.app.auth.supportsGoogleSignIn) ...[
-        EpButton(
-          'G · Continue with Google',
-          kind: locked ? EpButtonKind.disabled : EpButtonKind.ghost,
-          padding: const EdgeInsets.symmetric(vertical: 15),
-          onTap: locked ? null : () => _startOAuth(OAuthProvider.google),
+      if (auth.supportsGoogleSignIn) ...[
+        EpPill(
+          label: 'Continue with Google',
+          size: EpPillSize.large,
+          expand: true,
+          onPressed: locked ? null : () => _startOAuth(OAuthProvider.google),
         ),
-        const SizedBox(height: 9),
+        const SizedBox(height: 12),
       ],
-      ?codeMethods,
-      if (_error != null) ...[const SizedBox(height: 9), _InlineError(_error!)],
-      if (legalEffective) ...[
-        const SizedBox(height: 9),
-        _buildLegalConsentCaption(),
+      if (auth.supportsEmailSignIn) ...[
+        _buildEmailRow(),
+        const SizedBox(height: 12),
       ],
-      const SizedBox(height: 9),
-      TextAction('← KEEP BROWSING', onTap: locked ? null : widget.app.back),
+      if (_error != null) ...[
+        InlineFormFeedback(error: _error),
+        const SizedBox(height: 12),
+      ],
+      if (legalEffective) ...[_buildLegalConsent(), const SizedBox(height: 4)],
+      TextAction('← Keep browsing', onTap: locked ? null : widget.app.back),
     ];
   }
 
-  Widget _buildLegalConsentCaption() {
+  /// One row for the whole email sign-in: the address plus "Send code", which
+  /// becomes the 6-digit code plus "Verify" once the code is on its way.
+  Widget _buildEmailRow() {
+    final onCode = _stage == _EntryStage.code;
+    final submit = onCode ? _verifyEmailCode : _sendEmailCode;
+    final label = onCode
+        ? (_loading ? 'Verifying…' : 'Verify')
+        : (_loading ? 'Sending…' : 'Send code');
+    final canSubmit = !_loading && (!onCode || _codeIsComplete);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        EpUnderlineField(
+          // Rebuild the field outright so it picks up the other controller.
+          key: ValueKey(_stage),
+          controller: onCode ? _codeController : _emailController,
+          icon: Icons.mail_outline,
+          hint: onCode ? '6-digit code' : 'you@example.com',
+          keyboardType: onCode
+              ? TextInputType.number
+              : TextInputType.emailAddress,
+          textInputAction: TextInputAction.done,
+          autofillHints: [
+            onCode ? AutofillHints.oneTimeCode : AutofillHints.email,
+          ],
+          onChanged: onCode ? _clampCode : null,
+          onSubmitted: (_) {
+            if (!_loading) submit();
+          },
+          trailing: EpPill(
+            label: label,
+            variant: EpPillVariant.primary,
+            size: EpPillSize.regular,
+            onPressed: canSubmit ? submit : null,
+          ),
+        ),
+        if (onCode)
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            children: [
+              TextAction(
+                '← Use a different email',
+                onTap: _loading ? null : _restartWithEmail,
+              ),
+              TextAction(
+                'Resend code',
+                onTap: _loading ? null : _sendEmailCode,
+                color: context.epColors.accent,
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  bool get _codeIsComplete =>
+      RegExp(r'^\d{6}$').hasMatch(_codeController.text.trim());
+
+  /// [EpUnderlineField] takes no `inputFormatters`, so the code row keeps
+  /// itself to six digits here.
+  void _clampCode(String value) {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    final clamped = digits.length > 6 ? digits.substring(0, 6) : digits;
+    if (clamped == value) return;
+    _codeController.value = TextEditingValue(
+      text: clamped,
+      selection: TextSelection.collapsed(offset: clamped.length),
+    );
+  }
+
+  Widget _buildLegalConsent() {
     final linkStyle = TextStyle(
       color: context.epColors.accent,
       decoration: TextDecoration.underline,
@@ -311,7 +403,7 @@ class _DoorStepState extends State<_DoorStep> {
         text: 'By continuing you agree to the ',
         children: [
           TextSpan(
-            text: 'Terms of Service',
+            text: 'Terms',
             style: linkStyle,
             recognizer: _termsRecognizer,
           ),
@@ -325,107 +417,22 @@ class _DoorStepState extends State<_DoorStep> {
         ],
       ),
       key: const Key('auth-legal-consent'),
-      style: Theme.of(context).textTheme.epCaption,
+      style: Theme.of(
+        context,
+      ).textTheme.epBody.copyWith(color: context.epColors.muted),
       textAlign: TextAlign.center,
     );
   }
 
-  List<Widget> _buildEntry() {
-    return [
-      if (_stage == _EntryStage.email || _stage == _EntryStage.emailCode)
-        EpLabeledField(
-          controller: _emailController,
-          label: 'EMAIL ADDRESS',
-          hint: 'you@example.com',
-          enabled: !_loading && _stage == _EntryStage.email,
-          keyboardType: TextInputType.emailAddress,
-          textCapitalization: TextCapitalization.none,
-          autofillHints: const [AutofillHints.email],
-          textInputAction: TextInputAction.done,
-          onSubmitted: (_) {
-            if (_stage == _EntryStage.email) _sendEmailCode();
-          },
-        ),
-      const SizedBox(height: EpLayout.fieldGap),
-      if (_stage == _EntryStage.email)
-        EpButton(
-          _loading ? 'SENDING…' : 'SEND CODE',
-          kind: _loading ? EpButtonKind.disabled : EpButtonKind.filled,
-          onTap: _loading ? null : _sendEmailCode,
-        ),
-      if (_stage == _EntryStage.emailCode) _buildCodeEntry(),
-      if (_stage == _EntryStage.email && _error != null) ...[
-        const SizedBox(height: 9),
-        _InlineError(_error!),
-      ],
-      const SizedBox(height: 8),
-      TextAction('← BACK', onTap: _loading ? null : _showProviders),
-    ];
-  }
-
-  Widget _buildCodeEntry() {
-    final codeComplete = RegExp(
-      r'^\d{6}$',
-    ).hasMatch(_codeController.text.trim());
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        EpLabeledField(
-          controller: _codeController,
-          label: 'VERIFICATION CODE',
-          hint: '6-digit code',
-          enabled: !_loading,
-          keyboardType: TextInputType.number,
-          textInputAction: TextInputAction.done,
-          autofillHints: const [AutofillHints.oneTimeCode],
-          inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly,
-            LengthLimitingTextInputFormatter(6),
-          ],
-          onSubmitted: (_) => _verifyEmailCode(),
-        ),
-        const SizedBox(height: EpLayout.fieldGap),
-        EpButton(
-          _loading ? 'VERIFYING…' : 'VERIFY',
-          kind: _loading || !codeComplete
-              ? EpButtonKind.disabled
-              : EpButtonKind.filled,
-          onTap: _loading || !codeComplete ? null : _verifyEmailCode,
-        ),
-        if (_error != null) ...[
-          const SizedBox(height: 9),
-          _InlineError(_error!),
-        ],
-        const SizedBox(height: 12),
-        TextAction(
-          'RESEND CODE',
-          onTap: _loading ? null : _sendEmailCode,
-          color: context.epColors.accent,
-        ),
-      ],
-    );
-  }
-
-  void _showEmail() {
-    widget.onPick('Email');
+  void _restartWithEmail() {
     setState(() {
       _stage = _EntryStage.email;
       _error = null;
-    });
-  }
-
-  void _showProviders() {
-    widget.onClearPick();
-    setState(() {
-      _stage = _EntryStage.providers;
-      _error = null;
-      _emailController.clear();
       _codeController.clear();
     });
   }
 
   Future<void> _startOAuth(OAuthProvider provider) async {
-    widget.onPick(provider == OAuthProvider.apple ? 'Apple' : 'Google');
     setState(() {
       _loading = true;
       _error = null;
@@ -433,14 +440,9 @@ class _DoorStepState extends State<_DoorStep> {
     try {
       await widget.app.auth.signInWithOAuth(provider);
     } catch (error) {
-      if (error is AuthException && error.message.isEmpty) {
-        if (mounted) widget.onClearPick();
-        return;
-      }
-      if (mounted) {
-        widget.onClearPick();
-        setState(() => _error = _messageFor(error));
-      }
+      // An empty message means the fan dismissed the provider sheet.
+      if (error is AuthException && error.message.isEmpty) return;
+      if (mounted) setState(() => _error = _messageFor(error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -455,7 +457,7 @@ class _DoorStepState extends State<_DoorStep> {
       await widget.app.auth.startEmailSignIn(_emailController.text);
       if (!mounted) return;
       setState(() {
-        _stage = _EntryStage.emailCode;
+        _stage = _EntryStage.code;
         _codeController.clear();
       });
     } catch (error) {
@@ -493,281 +495,37 @@ class _DoorStepState extends State<_DoorStep> {
   }
 }
 
-/// The dashed circle where the stamp lands: pulsing "PRESS HERE" until a
-/// method is picked, then the stamp thuds in.
-class _StampWell extends StatelessWidget {
-  final bool stamped;
-
-  const _StampWell({required this.stamped});
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _DashedCirclePainter(Ep.whiteA(.15)),
-      child: SizedBox(
-        width: 198,
-        height: 198,
-        child: Center(
-          child: stamped
-              ? _StampThud(
-                  child: _DoorStamp(
-                    size: 158,
-                    borderColor: context.epColors.accent,
-                    inkColor: context.epColors.accent,
-                  ),
-                )
-              : const _PressHerePulse(),
-        ),
-      ),
-    );
-  }
-}
-
-class _PressHerePulse extends StatefulWidget {
-  const _PressHerePulse();
-
-  @override
-  State<_PressHerePulse> createState() => _PressHerePulseState();
-}
-
-class _PressHerePulseState extends State<_PressHerePulse>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  bool _pulseStarted = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _controller.stop();
-      _controller.value = 1;
-      return;
-    }
-    if (_pulseStarted) return;
-
-    _pulseStarted = true;
-    _controller.value = 1;
-    unawaited(_runPulse());
-  }
-
-  Future<void> _runPulse() async {
-    try {
-      for (var cycle = 0; cycle < 3; cycle++) {
-        await _controller.reverse().orCancel;
-        await _controller.forward().orCancel;
-      }
-    } on TickerCanceled {
-      // Disposing the widget or enabling reduced motion cancels the pulse.
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: Tween<double>(
-        begin: .28,
-        end: .7,
-      ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'PRESS HERE',
-            style: epText(
-              size: 10,
-              weight: FontWeight.w900,
-              letterSpacing: 2.4,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            'pick a method below',
-            style: epText(
-              size: 9.5,
-              color: context.epColors.contentSecondary,
-              letterSpacing: .6,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The stamp slamming down: oversized and transparent, overshooting to
-/// slightly squashed, then settling — always at the -9° stamp angle.
-class _StampThud extends StatefulWidget {
-  final Widget child;
-
-  const _StampThud({required this.child});
-
-  @override
-  State<_StampThud> createState() => _StampThudState();
-}
-
-class _StampThudState extends State<_StampThud>
-    with SingleTickerProviderStateMixin {
-  late final _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 420),
-  )..forward();
-
-  late final _scale = TweenSequence<double>([
-    TweenSequenceItem(tween: Tween(begin: 1.55, end: .93), weight: 55),
-    TweenSequenceItem(tween: Tween(begin: .93, end: 1.04), weight: 23),
-    TweenSequenceItem(tween: Tween(begin: 1.04, end: 1), weight: 22),
-  ]).animate(_controller);
-
-  late final _opacity = CurvedAnimation(
-    parent: _controller,
-    curve: const Interval(0, .55),
-  );
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _opacity,
-      child: ScaleTransition(
-        scale: _scale,
-        child: Transform.rotate(angle: _stampAngle, child: widget.child),
-      ),
-    );
-  }
-}
-
-/// The circular "★ EARPLUG ★ / IN / date" hand stamp.
+/// The circular "★ EarPlug ★ / IN / date" hand stamp. Callers tilt it to
+/// [_stampAngle].
 class _DoorStamp extends StatelessWidget {
-  final double size;
-  final Color borderColor;
-  final Color inkColor;
-
-  const _DoorStamp({
-    required this.size,
-    required this.borderColor,
-    required this.inkColor,
-  });
+  const _DoorStamp();
 
   @override
   Widget build(BuildContext context) {
-    final scale = size / 158;
+    final accent = context.epColors.accent;
     return Container(
-      width: size,
-      height: size,
+      width: 150,
+      height: 150,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: borderColor, width: 3),
+        border: Border.all(color: accent, width: 2),
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            '★ EARPLUG ★',
-            style: epText(
-              size: 9 * scale,
-              weight: FontWeight.w900,
-              letterSpacing: 2.2,
-              color: inkColor,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'IN',
-            style: epDisplay(size: 44 * scale, height: .9, color: inkColor),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            _stampDate(),
-            style: epText(
-              size: 9 * scale,
-              weight: FontWeight.w900,
-              letterSpacing: 2,
-              color: inkColor,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DashedCirclePainter extends CustomPainter {
-  final Color color;
-
-  const _DashedCirclePainter(this.color);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-    final path = Path()
-      ..addOval(Rect.fromLTWH(1, 1, size.width - 2, size.height - 2));
-    const dash = 6.0, gap = 5.0;
-    for (final metric in path.computeMetrics()) {
-      var d = 0.0;
-      while (d < metric.length) {
-        canvas.drawPath(
-          metric.extractPath(d, math.min(d + dash, metric.length)),
-          paint,
-        );
-        d += dash + gap;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DashedCirclePainter old) => old.color != color;
-}
-
-class _MethodTile extends StatelessWidget {
-  final String label;
-  final VoidCallback? onTap;
-
-  const _MethodTile(this.label, {required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return EpButton(label, kind: EpButtonKind.outline, onTap: onTap);
-  }
-}
-
-class _InlineError extends StatelessWidget {
-  final String message;
-
-  const _InlineError(this.message);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      message,
-      textAlign: TextAlign.center,
-      style: epText(
-        size: 11.5,
-        weight: FontWeight.w700,
-        color: context.epColors.destructive,
-        height: 1.35,
+      // The circle is a fixed disc, so the ink shrinks to stay inside it at
+      // large text scales instead of spilling over the border.
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            EpMonoText('★ EarPlug ★', color: accent, keepCase: true),
+            const SizedBox(height: 2),
+            EpDisplay('In', size: 44, color: accent),
+            const SizedBox(height: 2),
+            EpMonoText(_stampDate(), color: accent),
+          ],
+        ),
       ),
     );
   }
@@ -784,33 +542,43 @@ class _CompletingStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (error == null) ...[
-            const SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            const SizedBox(height: 16),
-            Text('FINISHING SIGN-IN'),
-          ] else ...[
-            Icon(
-              Icons.error_outline,
-              color: context.epColors.destructive,
-              size: 32,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              error!,
-              textAlign: TextAlign.center,
-              style: epText(size: 12, color: context.epColors.destructive),
-            ),
-            const SizedBox(height: 16),
-            EpButton('TRY AGAIN', onTap: onRetry),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (error == null) ...[
+              const SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(height: 16),
+              const EpDisplay('Finishing sign-in', size: 20),
+            ] else ...[
+              Icon(
+                Icons.error_outline,
+                color: context.epColors.destructive,
+                size: 24,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                error!,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.epBody.copyWith(
+                  color: context.epColors.destructive,
+                ),
+              ),
+              const SizedBox(height: 16),
+              EpPill(
+                label: 'Try again',
+                variant: EpPillVariant.primary,
+                size: EpPillSize.regular,
+                onPressed: onRetry,
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -825,31 +593,33 @@ class _ThroughStep extends StatelessWidget {
   Widget build(BuildContext context) {
     return _RiseIn(
       child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Transform.rotate(
-              angle: _stampAngle,
-              child: _DoorStamp(
-                size: 150,
-                borderColor: context.epColors.accent,
-                inkColor: context.epColors.accent,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Transform.rotate(angle: _stampAngle, child: const _DoorStamp()),
+              const SizedBox(height: 14),
+              EpDisplay(
+                switch (kind) {
+                  PendingKind.rsvp => 'RSVP confirmed',
+                  PendingKind.save => 'Show saved',
+                  PendingKind.follow => 'Band followed',
+                  PendingKind.band => "Let's start your band",
+                  PendingKind.join || PendingKind.orgJoin => 'Ready to join',
+                  PendingKind.gigInvite => 'Ready to claim',
+                  PendingKind.orgApply ||
+                  PendingKind.hostApply => 'Ready to apply',
+                  PendingKind.booking => 'Booking ready',
+                  PendingKind.tickets => 'Tickets ready',
+                  PendingKind.myGigs || null => 'Account ready',
+                },
+                size: 20,
+                textAlign: TextAlign.center,
+                maxLines: 2,
               ),
-            ),
-            const SizedBox(height: 14),
-            Text(switch (kind) {
-              PendingKind.rsvp => 'RSVP CONFIRMED',
-              PendingKind.save => 'SHOW SAVED',
-              PendingKind.follow => 'BAND FOLLOWED',
-              PendingKind.band => "LET'S START YOUR BAND",
-              PendingKind.join || PendingKind.orgJoin => 'READY TO JOIN',
-              PendingKind.gigInvite => 'READY TO CLAIM',
-              PendingKind.orgApply || PendingKind.hostApply => 'READY TO APPLY',
-              PendingKind.booking => 'BOOKING READY',
-              PendingKind.tickets => 'TICKETS READY',
-              PendingKind.myGigs || null => 'ACCOUNT READY',
-            }, style: epDisplay(size: 19)),
-          ],
+            ],
+          ),
         ),
       ),
     );
