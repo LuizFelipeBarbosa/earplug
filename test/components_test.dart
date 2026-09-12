@@ -335,7 +335,7 @@ void main() {
       semantics.dispose();
     });
 
-    testWidgets('logo variants use the full lockup and compact ear asset', (
+    testWidgets('logo variants use the wordmark and compact ear asset', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -353,26 +353,37 @@ void main() {
       expect(
         assets,
         containsAll([
-          'assets/images/listen_local_bw.png',
+          'assets/images/earplug_wordmark_white.png',
           'assets/images/earplug_mark.png',
         ]),
       );
     });
 
-    testWidgets('logos keep their artwork dark and invert for light surfaces', (
+    testWidgets('the wordmark swaps ink per theme and the mark inverts', (
       tester,
     ) async {
+      String assetOf(WidgetTester tester) =>
+          (tester.widget<Image>(find.byType(Image)).image as AssetImage)
+              .assetName;
+
       await tester.pumpWidget(
         _host(const EpLogo.full(), brightness: Brightness.dark),
       );
+      expect(assetOf(tester), 'assets/images/earplug_wordmark_white.png');
       expect(find.byType(ColorFiltered), findsNothing);
 
       await tester.pumpWidget(
         _host(const EpLogo.full(), brightness: Brightness.light),
       );
       await tester.pumpAndSettle();
+      expect(assetOf(tester), 'assets/images/earplug_wordmark_black.png');
+      expect(find.byType(ColorFiltered), findsNothing);
+
+      await tester.pumpWidget(
+        _host(const EpLogo.compact(), brightness: Brightness.light),
+      );
+      await tester.pumpAndSettle();
       expect(find.byType(ColorFiltered), findsOne);
-      expect(find.byType(Image), findsOne);
     });
 
     testWidgets(

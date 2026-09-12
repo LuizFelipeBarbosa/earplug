@@ -95,7 +95,8 @@ flutter:
   # file it contains, including ones nothing references.
   assets:
     - assets/images/earplug_mark.png
-    - assets/images/listen_local_bw.png
+    - assets/images/earplug_wordmark_black.png
+    - assets/images/earplug_wordmark_white.png
 
   fonts:
     - family: PP Telegraf

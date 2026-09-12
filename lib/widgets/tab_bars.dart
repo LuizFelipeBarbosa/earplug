@@ -329,17 +329,9 @@ class EpDesktopSidebar extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      children: [
-                        const EpLogo.compact(height: 28),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'EarPlug',
-                            style: Theme.of(context).textTheme.epSectionHeading,
-                          ),
-                        ),
-                      ],
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: EpLogo.full(width: 113, height: 32),
                     ),
                     const SizedBox(height: 40),
                     Text(
