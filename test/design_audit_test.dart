@@ -49,14 +49,18 @@ void main() {
   ];
 
   setUpAll(() async {
-    for (final (family, path) in [
-      ('Archivo', 'assets/fonts/Archivo-Regular.ttf'),
-      ('Archivo Black', 'assets/fonts/ArchivoBlack-Regular.ttf'),
-      ('MaterialIcons', 'fonts/MaterialIcons-Regular.otf'),
-    ]) {
-      final loader = FontLoader(family)..addFont(rootBundle.load(path));
-      await loader.load();
-    }
+    final telegraf = FontLoader('PP Telegraf')
+      ..addFont(rootBundle.load('assets/fonts/PPTelegraf-Regular.otf'))
+      ..addFont(rootBundle.load('assets/fonts/PPTelegraf-Ultrabold.otf'));
+    await telegraf.load();
+
+    final azeretMono = FontLoader('Azeret Mono')
+      ..addFont(rootBundle.load('assets/fonts/AzeretMono-Regular.ttf'));
+    await azeretMono.load();
+
+    final materialIcons = FontLoader('MaterialIcons')
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+    await materialIcons.load();
   });
 
   for (final view in views) {

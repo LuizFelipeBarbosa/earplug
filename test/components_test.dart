@@ -22,19 +22,17 @@ import 'support/harness.dart';
 void main() {
   group('EarPlug theme', () {
     test('semantic content colors meet WCAG AA on their dark surfaces', () {
+      // WCAG 1.4.3 exempts disabled text. Accent is used on the background
+      // or as a fill paired with onAccent, not as running text on panels.
       final pairs = <(Color, Color)>[
         (Ep.contentPrimary, Ep.background),
         (Ep.contentPrimary, Ep.surface),
         (Ep.contentSecondary, Ep.surface),
-        (Ep.contentDisabled, Ep.surfaceDisabled),
-        (Ep.contentDisabled, Ep.surfaceSelected),
         (Ep.accent, Ep.background),
-        (Ep.accent, Ep.surface),
-        (Ep.accent, Ep.surfaceSelected),
+        (Ep.onAccent, Ep.accent),
         (Ep.success, Ep.background),
         (Ep.warning, Ep.background),
         (Ep.destructive, Ep.background),
-        (Colors.white, Ep.brand),
       ];
 
       for (final (foreground, background) in pairs) {
@@ -48,67 +46,80 @@ void main() {
       }
     });
 
-    test('maps semantic tokens and all six Archivo roles into ThemeData', () {
-      final theme = buildEpTheme();
+    test(
+      'maps semantic tokens and the PP Telegraf / Azeret Mono roles into ThemeData',
+      () {
+        final theme = buildEpTheme();
 
-      expect(theme.scaffoldBackgroundColor, Ep.background);
-      expect(theme.colorScheme.primary, Ep.brand);
-      expect(theme.colorScheme.secondary, Ep.accent);
-      expect(theme.colorScheme.surface, Ep.surface);
-      expect(theme.colorScheme.error, Ep.destructive);
+        expect(theme.scaffoldBackgroundColor, Ep.background);
+        expect(theme.colorScheme.primary, Ep.accent);
+        expect(theme.colorScheme.secondary, Ep.accentDeep);
+        expect(theme.colorScheme.surface, Ep.background);
+        expect(theme.colorScheme.error, Ep.destructive);
 
-      final roles = [
-        theme.textTheme.epDisplay,
-        theme.textTheme.epPageHeading,
-        theme.textTheme.epSectionHeading,
-        theme.textTheme.epBody,
-        theme.textTheme.epLabel,
-        theme.textTheme.epCaption,
-      ];
-      expect(roles, everyElement(isA<TextStyle>()));
-      expect(theme.textTheme.epDisplay.fontFamily, 'Archivo Black');
-      for (final role in roles.skip(1)) {
-        expect(role.fontFamily, contains('Archivo'));
-        expect(role.fontFamily, isNot(contains('Archivo Black')));
-      }
-    });
+        final telegrafRoles = [
+          theme.textTheme.epDisplay,
+          theme.textTheme.epPageHeading,
+          theme.textTheme.epPosterTitle,
+          theme.textTheme.epSheetTitle,
+          theme.textTheme.epSectionHeading,
+          theme.textTheme.epBody,
+          theme.textTheme.epInput,
+          theme.textTheme.epCaption,
+        ];
+        final monoRoles = [
+          theme.textTheme.epSection,
+          theme.textTheme.epLabel,
+          theme.textTheme.epChipLabel,
+          theme.textTheme.epMeta,
+        ];
+        expect(telegrafRoles, everyElement(isA<TextStyle>()));
+        expect(monoRoles, everyElement(isA<TextStyle>()));
+        for (final role in telegrafRoles) {
+          expect(role.fontFamily, 'PP Telegraf');
+        }
+        for (final role in monoRoles) {
+          expect(role.fontFamily, 'Azeret Mono');
+        }
+      },
+    );
 
     test('uses the specified warm light palette and semantic mappings', () {
       final theme = buildEpTheme(Brightness.light);
       final palette = theme.extension<EpPalette>()!;
 
-      expect(palette.background, const Color(0xFFF6F5F1));
-      expect(palette.surface, const Color(0xFFFFFFFF));
-      expect(palette.surfaceRaised, const Color(0xFFFCFCFA));
-      expect(palette.surfaceSelected, const Color(0xFFE7EBFF));
-      expect(palette.surfaceDisabled, const Color(0xFFE5E7EC));
-      expect(palette.border, const Color(0xFFCDD1DA));
-      expect(palette.contentPrimary, const Color(0xFF16171C));
-      expect(palette.contentSecondary, const Color(0xFF525761));
-      expect(palette.contentDisabled, const Color(0xFF5E6470));
-      expect(palette.brand, const Color(0xFF1435F0));
+      expect(palette.background, const Color(0xFFF4F3F0));
+      expect(palette.surface, const Color(0xFFE9E8E4));
+      expect(palette.surfaceRaised, const Color(0xFFFFFFFF));
+      expect(palette.surfaceSelected, const Color(0xFFE6DEFF));
+      expect(palette.surfaceDisabled, const Color(0xFFDCDBD6));
+      expect(palette.border, const Color(0x240A0A0B));
+      expect(palette.contentPrimary, const Color(0xFF0A0A0B));
+      expect(palette.contentSecondary, const Color(0xFF5F5C69));
+      expect(palette.contentDisabled, const Color(0xFF8A8792));
+      expect(palette.accent, const Color(0xFF6D3EF0));
       expect(palette.success, const Color(0xFF087A5B));
-      expect(palette.warning, const Color(0xFF6F6500));
+      expect(palette.warning, palette.contentPrimary);
       expect(palette.destructive, const Color(0xFFB4232D));
       expect(theme.scaffoldBackgroundColor, palette.background);
-      expect(theme.colorScheme.surface, palette.surface);
+      expect(theme.colorScheme.surface, palette.background);
       expect(theme.colorScheme.error, palette.destructive);
       expect(theme.textTheme.epBody.color, palette.contentPrimary);
     });
 
     test('semantic light text and status colors meet WCAG AA', () {
       const palette = EpPalette.lightMode;
+      // WCAG 1.4.3 exempts disabled text. Check accent on the background
+      // and its onAccent foreground when used as a fill.
       final pairs = <(Color, Color)>[
         (palette.contentPrimary, palette.background),
         (palette.contentPrimary, palette.surface),
         (palette.contentSecondary, palette.surface),
-        (palette.contentDisabled, palette.surfaceDisabled),
-        (palette.contentDisabled, palette.surfaceSelected),
-        (palette.brand, palette.background),
+        (palette.accent, palette.background),
+        (palette.onAccent, palette.accent),
         (palette.success, palette.background),
         (palette.warning, palette.background),
         (palette.destructive, palette.background),
-        (Colors.white, palette.brand),
       ];
 
       for (final (foreground, background) in pairs) {
@@ -127,8 +138,8 @@ void main() {
         Ep.background,
         Ep.surface,
         Ep.surfaceRaised,
-        Ep.surfaceDisabled,
         Ep.surfaceSelected,
+        Ep.surfaceDisabled,
         Ep.border,
       ].map(_relativeLuminance).toList();
 
@@ -138,17 +149,20 @@ void main() {
     });
 
     test('refresh tokens preserve old names and expose semantic aliases', () {
-      expect(Ep.volt, Ep.warning);
+      expect(Ep.volt, Ep.accent);
+      expect(Ep.brand, Ep.accent);
+      expect(Ep.warning, Ep.ink);
       expect(Ep.ink, Ep.contentPrimary);
       expect(Ep.raised, Ep.surfaceRaised);
       expect(Ep.selected, Ep.surfaceSelected);
       expect(Ep.dark, Ep.background);
 
       final text = buildEpTheme().textTheme;
-      expect(text.epPosterTitle.fontFamily, 'Archivo Black');
-      expect(text.epPosterTitle.fontSize, 22);
-      expect(text.epSection.fontSize, 12);
-      expect(text.epSection.letterSpacing, 1.3);
+      expect(text.epPosterTitle.fontFamily, 'PP Telegraf');
+      expect(text.epPosterTitle.fontSize, 30);
+      expect(text.epSection.fontFamily, 'Azeret Mono');
+      expect(text.epSection.fontSize, 11);
+      expect(text.epSection.letterSpacing, 1.54);
       expect(text.epChipLabel.fontSize, greaterThanOrEqualTo(11));
       expect(text.epMeta.fontSize, greaterThanOrEqualTo(11));
     });
@@ -488,14 +502,14 @@ void main() {
           .style!
           .color;
       expect(lockedLabelColor, isNot(equals(locked.selectedColor)));
-      expect(lockedLabelColor, Ep.dark);
+      expect(lockedLabelColor, Ep.onAccent);
       expect(locked.selectedColor!.a, lessThan(1.0));
       expect(locked.selectedColor, Ep.volt.withValues(alpha: .55));
       expect(locked.side!.color, Ep.volt.withValues(alpha: .55));
       expect(locked.onSelected, isNotNull);
 
       final shown = tester.widget<FilterChip>(find.byType(FilterChip).at(1));
-      expect(tester.widget<Text>(find.text('SHOWN')).style!.color, Ep.dark);
+      expect(tester.widget<Text>(find.text('SHOWN')).style!.color, Ep.onAccent);
       expect(shown.selectedColor, Ep.volt);
       expect(shown.selectedColor!.a, 1.0);
       expect(shown.side!.color, Ep.volt);
