@@ -31,7 +31,9 @@ class EpDisplay extends StatelessWidget {
         .epDisplayAt(size)
         .copyWith(color: color ?? context.epColors.ink),
     maxLines: maxLines,
-    overflow: overflow,
+    overflow: maxLines == null && overflow == TextOverflow.ellipsis
+        ? TextOverflow.clip
+        : overflow,
     textAlign: textAlign,
   );
 }
@@ -214,12 +216,16 @@ class EpIconPill extends StatelessWidget {
     required this.semanticLabel,
     this.onPressed,
     this.filled = false,
+    this.color,
   });
 
   final IconData icon;
   final String semanticLabel;
   final VoidCallback? onPressed;
   final bool filled;
+
+  /// Icon and ring color for pills laid over artwork; defaults to ink/outline.
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -247,7 +253,9 @@ class EpIconPill extends StatelessWidget {
                   decoration: ShapeDecoration(
                     color: filled ? palette.accent : Colors.transparent,
                     shape: CircleBorder(
-                      side: BorderSide(color: palette.outline),
+                      side: BorderSide(
+                        color: color?.withValues(alpha: .4) ?? palette.outline,
+                      ),
                     ),
                   ),
                   child: Icon(
@@ -257,7 +265,7 @@ class EpIconPill extends StatelessWidget {
                         ? palette.contentDisabled
                         : filled
                         ? palette.onAccent
-                        : palette.ink,
+                        : color ?? palette.ink,
                   ),
                 ),
               ),

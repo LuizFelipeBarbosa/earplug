@@ -142,9 +142,7 @@ class GigDetailPresentation extends StatelessWidget {
             if (gig.lifecycle == GigLifecycle.cancelled)
               const _CancelledBanner(),
             Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: EpLayout.gutter,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -307,10 +305,7 @@ class _Hero extends StatelessWidget {
                 ),
               ),
               if (lineupLine.isNotEmpty)
-                EpMonoText(
-                  lineupLine,
-                  color: fly.fg.withValues(alpha: .85),
-                ),
+                EpMonoText(lineupLine, color: fly.fg.withValues(alpha: .85)),
             ],
           ),
           Positioned(
@@ -320,13 +315,14 @@ class _Hero extends StatelessWidget {
               icon: Icons.arrow_back,
               semanticLabel: 'Back',
               onPressed: onBack,
+              color: fly.fg,
             ),
           ),
           Positioned(
             right: -8,
             top: -2,
             child: previewLabel == null
-                ? _HeroActions(gig: gig, app: app)
+                ? _HeroActions(gig: gig, app: app, color: fly.fg)
                 : _PreviewStatusBadge(label: previewLabel!),
           ),
         ],
@@ -383,10 +379,15 @@ class _Hero extends StatelessWidget {
 }
 
 class _HeroActions extends StatelessWidget {
-  const _HeroActions({required this.gig, required this.app});
+  const _HeroActions({
+    required this.gig,
+    required this.app,
+    required this.color,
+  });
 
   final Gig gig;
   final AppState app;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -398,12 +399,14 @@ class _HeroActions extends StatelessWidget {
           icon: saved ? Icons.favorite : Icons.favorite_border,
           semanticLabel: saved ? 'Remove saved event' : 'Save',
           onPressed: () => app.requestSave(gig.id),
+          color: color,
         ),
         const SizedBox(width: 6),
         EpIconPill(
           key: ValueKey('gig-detail-share-${gig.id}'),
           icon: Icons.ios_share,
           semanticLabel: 'Share',
+          color: color,
           onPressed: () => copyForUser(
             context,
             publicWebUrl('g/${gig.publicRef}'),
@@ -713,7 +716,10 @@ class _GigCta extends StatelessWidget {
             'Pay at the door · preview only',
             'RSVP — ${gig.priceLabel} AT DOOR',
           );
-    return EpBottomCta(hint: hint, child: _CtaPill(label: label));
+    return EpBottomCta(
+      hint: hint,
+      child: _CtaPill(label: label),
+    );
   }
 
   Widget _tickets(BuildContext context) => EpBottomCta(

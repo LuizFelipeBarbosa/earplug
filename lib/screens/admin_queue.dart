@@ -162,25 +162,22 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
               EpLayout.gutter,
               24,
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      EpEyebrow.accent('Admin'),
-                      SizedBox(height: 8),
-                      EpDisplay('Applications', size: 36),
-                    ],
-                  ),
+                Row(
+                  children: [
+                    const Expanded(child: EpEyebrow.accent('Admin')),
+                    EpPill(
+                      key: const Key('admin-queue-exit'),
+                      label: 'Fan view',
+                      variant: EpPillVariant.outline,
+                      onPressed: app.toFanView,
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                EpPill(
-                  key: const Key('admin-queue-exit'),
-                  label: 'Fan view',
-                  variant: EpPillVariant.outline,
-                  onPressed: app.toFanView,
-                ),
+                const SizedBox(height: 8),
+                const EpDisplay('Applications', size: 36),
               ],
             ),
           ),
