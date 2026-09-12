@@ -197,7 +197,7 @@ void main() {
         of: find.byType(CircleIconButton),
         matching: find.byType(Container),
       );
-      expect(tester.getSize(circleVisual), const Size(40, 40));
+      expect(tester.getSize(circleVisual), const Size(36, 36));
       expect(find.byTooltip('Back'), findsOne);
 
       final buttonData = tester
@@ -225,7 +225,7 @@ void main() {
     });
 
     testWidgets(
-      'selected navigation item is announced, 66px tall, and strongly marked',
+      'selected navigation item is announced, 64px tall, and strongly marked',
       (tester) async {
         final semantics = tester.ensureSemantics();
         var pressed = false;
@@ -234,6 +234,7 @@ void main() {
           _host(
             SizedBox(
               width: 120,
+              height: EpLayout.tabBarHeight,
               child: EpNavigationItem(
                 icon: Icons.person_outline,
                 label: 'PROFILE',
@@ -255,17 +256,12 @@ void main() {
         await tester.pump();
         expect(pressed, isTrue);
 
-        expect(tester.getSize(find.byType(EpNavigationItem)).height, 66);
+        expect(tester.getSize(find.byType(EpNavigationItem)).height, 64);
         expect(tester.widget<Text>(find.text('PROFILE')).style!.fontSize, 11);
-        final indicator = tester.widget<AnimatedContainer>(
-          find.descendant(
-            of: find.byType(EpNavigationItem),
-            matching: find.byType(AnimatedContainer),
-          ),
+        expect(
+          tester.widget<Text>(find.text('PROFILE')).style!.color,
+          Ep.accent,
         );
-        expect(indicator.constraints!.maxWidth, 24);
-        expect(indicator.constraints!.maxHeight, 2.5);
-        expect((indicator.decoration! as BoxDecoration).color, Ep.brand);
         semantics.dispose();
       },
     );
@@ -469,9 +465,9 @@ void main() {
 
       final active = tester.widget<FilterChip>(find.byType(FilterChip).first);
       final neutral = tester.widget<FilterChip>(find.byType(FilterChip).at(1));
-      expect(active.selectedColor, Ep.volt);
-      expect(neutral.selectedColor, Ep.surfaceDisabled);
-      expect(neutral.side!.color, Ep.contentSecondary);
+      expect(active.selectedColor, Ep.ink);
+      expect(neutral.selectedColor, Ep.surfaceSelected);
+      expect(neutral.side, BorderSide.none);
       expect(
         tester.getSize(find.byType(EpChip).at(2)).height,
         greaterThanOrEqualTo(48),
@@ -503,16 +499,16 @@ void main() {
           .color;
       expect(lockedLabelColor, isNot(equals(locked.selectedColor)));
       expect(lockedLabelColor, Ep.onAccent);
-      expect(locked.selectedColor!.a, lessThan(1.0));
-      expect(locked.selectedColor, Ep.volt.withValues(alpha: .55));
-      expect(locked.side!.color, Ep.volt.withValues(alpha: .55));
+      expect(locked.selectedColor!.a, 1.0);
+      expect(locked.selectedColor, Ep.ink);
+      expect(locked.side, BorderSide.none);
       expect(locked.onSelected, isNotNull);
 
       final shown = tester.widget<FilterChip>(find.byType(FilterChip).at(1));
       expect(tester.widget<Text>(find.text('SHOWN')).style!.color, Ep.onAccent);
-      expect(shown.selectedColor, Ep.volt);
+      expect(shown.selectedColor, Ep.ink);
       expect(shown.selectedColor!.a, 1.0);
-      expect(shown.side!.color, Ep.volt);
+      expect(shown.side, BorderSide.none);
       expect(shown.onSelected, isNotNull);
 
       for (final label in ['LOCKED', 'SHOWN']) {
@@ -680,7 +676,7 @@ void main() {
       );
       expect(find.text('486'), findsOne);
       expect(find.text('NEXT UP'), findsOne);
-      expect(find.text('Riptide Release Show'), findsOne);
+      expect(find.text('RIPTIDE RELEASE SHOW'), findsOne);
       await tester.tap(find.text('DOOR MODE'));
       expect(launched, isTrue);
     });

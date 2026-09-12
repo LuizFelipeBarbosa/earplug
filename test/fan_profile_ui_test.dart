@@ -706,7 +706,7 @@ void main() {
       for (var visit = 0; visit < 4; visit++) {
         await tester.tap(find.text('EXPLORE'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('PROFILE'));
+        await tester.tap(find.text('YOU'));
         await tester.pumpAndSettle();
       }
 

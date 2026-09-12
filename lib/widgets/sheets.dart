@@ -5,7 +5,6 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
-import 'common.dart';
 import 'ep_sheet.dart';
 
 /// Shared visual chrome for bottom sheets presented by [showEpSheet].
@@ -15,7 +14,7 @@ class EpSheetShell extends StatelessWidget {
     required this.padding,
     this.backgroundColor,
     this.borderColor,
-    this.topRadius = 20,
+    this.topRadius = 0,
     this.handleColor,
     this.handleBottomSpacing = 10,
     required this.header,
@@ -28,8 +27,7 @@ class EpSheetShell extends StatelessWidget {
 
   final EdgeInsetsGeometry padding;
 
-  /// Colors fall back to the raised-surface sheet look; [EpActionSheet] and
-  /// the band media sheet pass their own denser palette.
+  /// Colors default to the shared sheet background and top hairline.
   final Color? backgroundColor;
   final Color? borderColor;
   final double topRadius;
@@ -54,10 +52,7 @@ class EpSheetShell extends StatelessWidget {
           child: Container(
             width: 36,
             height: 4,
-            decoration: BoxDecoration(
-              color: handleColor ?? colors.contentDisabled,
-              borderRadius: BorderRadius.circular(99),
-            ),
+            decoration: BoxDecoration(color: handleColor ?? colors.outline),
           ),
         ),
         SizedBox(height: handleBottomSpacing),
@@ -75,9 +70,9 @@ class EpSheetShell extends StatelessWidget {
             : BoxConstraints(maxHeight: screenHeight * maxHeightFactor!),
         padding: padding,
         decoration: BoxDecoration(
-          color: backgroundColor ?? colors.surfaceRaised,
+          color: backgroundColor ?? colors.background,
           borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
-          border: Border(top: BorderSide(color: borderColor ?? colors.border)),
+          border: Border(top: BorderSide(color: borderColor ?? colors.line)),
         ),
         // The shell paints an opaque surface above BottomSheet's Material, so
         // ink from rows needs its own transparent Material to show through.
@@ -90,7 +85,7 @@ class EpSheetShell extends StatelessWidget {
   }
 }
 
-/// Keyboard-aware chrome for a form sheet: a sentence-case [title] with a
+/// Keyboard-aware chrome for a form sheet: an uppercase [title] with a
 /// Close button (or [trailing]) above [child]. Unlike [EpSheetShell] it has no
 /// drag handle and rises with the on-screen keyboard. By default the body
 /// scrolls and clears the bottom system inset so its last control stays out of
@@ -116,8 +111,8 @@ class EpFormSheet extends StatelessWidget {
     return Container(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       decoration: BoxDecoration(
-        color: context.epColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+        color: context.epColors.background,
+        border: Border(top: BorderSide(color: context.epColors.line)),
       ),
       // Same as EpSheetShell: the surface above sits over BottomSheet's
       // Material, so list tiles and rows need this Material for their ink.
@@ -128,20 +123,30 @@ class EpFormSheet extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+              padding: const EdgeInsets.all(20),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
-                      title,
+                      title.toUpperCase(),
+                      semanticsLabel: title,
                       style: Theme.of(context).textTheme.epSheetTitle,
                     ),
                   ),
                   trailing ??
-                      IconButton(
-                        tooltip: 'Close',
-                        onPressed: () => Navigator.pop(context),
-                        icon: Icon(Icons.close),
+                      Tooltip(
+                        message: 'Close',
+                        excludeFromSemantics: true,
+                        child: TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: Text(
+                            'Close'.toUpperCase(),
+                            semanticsLabel: 'Close',
+                            style: Theme.of(context).textTheme.epLabel.copyWith(
+                              color: context.epColors.ink,
+                            ),
+                          ),
+                        ),
                       ),
                 ],
               ),
@@ -150,10 +155,10 @@ class EpFormSheet extends StatelessWidget {
               Flexible(
                 child: SingleChildScrollView(
                   padding: EdgeInsets.fromLTRB(
-                    16,
-                    0,
-                    16,
-                    24 + MediaQuery.paddingOf(context).bottom,
+                    20,
+                    20,
+                    20,
+                    20 + MediaQuery.paddingOf(context).bottom,
                   ),
                   child: child,
                 ),
@@ -167,8 +172,7 @@ class EpFormSheet extends StatelessWidget {
   }
 }
 
-/// Full-width option row for a form sheet: a title over a caption, selected
-/// state drawn by the card.
+/// Full-width option row with a selection indicator and bottom hairline.
 class EpOptionCard extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -187,23 +191,57 @@ class EpOptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return EpCard(
-      variant: selected ? EpCardVariant.selected : EpCardVariant.standard,
-      onTap: onTap,
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            titleCaps ? title.toUpperCase() : title,
-            style: epText(size: 12.5, weight: FontWeight.w800),
+    final colors = context.epColors;
+    final textTheme = Theme.of(context).textTheme;
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: true,
+      selected: selected,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: colors.line)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: selected ? colors.accent : null,
+                    border: selected ? null : Border.all(color: colors.outline),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        titleCaps ? title.toUpperCase() : title,
+                        semanticsLabel: title,
+                        style: textTheme.epBody.copyWith(color: colors.ink),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: textTheme.epCaption.copyWith(
+                          color: colors.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            subtitle,
-            style: epText(size: 11, color: context.epColors.contentSecondary),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -212,17 +250,29 @@ class EpOptionCard extends StatelessWidget {
 class _SheetOption extends StatelessWidget {
   final Widget leading;
   final VoidCallback onTap;
+  final double verticalPadding;
 
-  const _SheetOption({super.key, required this.leading, required this.onTap});
+  const _SheetOption({
+    required this.leading,
+    required this.onTap,
+    this.verticalPadding = 12,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: EpCard(
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: true,
+      child: InkWell(
         onTap: onTap,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        child: Row(children: [Expanded(child: leading)]),
+        child: Container(
+          padding: EdgeInsets.symmetric(vertical: verticalPadding),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: context.epColors.line)),
+          ),
+          child: leading,
+        ),
       ),
     );
   }
@@ -254,26 +304,22 @@ class EpActionSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final firstDestructive = items.indexWhere((item) => item.destructive);
     return EpSheetShell(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-      backgroundColor: context.epColors.raised,
-      borderColor: context.epColors.border,
-      topRadius: 16,
-      handleColor: context.epColors.mute,
+      padding: const EdgeInsets.all(20),
       handleBottomSpacing: 14,
       mainAxisSize: MainAxisSize.min,
       header: Text(
         header.toUpperCase(),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.epSection.copyWith(
-          color: context.epColors.mute,
-          fontSize: 11,
-        ),
+        semanticsLabel: header,
+        style: Theme.of(context).textTheme.epSection,
       ),
       children: [
         const SizedBox(height: 8),
         for (var index = 0; index < items.length; index++) ...[
-          if (index == firstDestructive) Divider(height: 17),
+          if (index == firstDestructive)
+            SizedBox(
+              height: 1,
+              child: ColoredBox(color: context.epColors.line),
+            ),
           _ActionSheetRow(item: items[index]),
         ],
       ],
@@ -303,13 +349,16 @@ class _ActionSheetRow extends StatelessWidget {
                 Navigator.of(context).pop();
                 item.onPressed!();
               },
-        borderRadius: BorderRadius.circular(10),
-        child: ConstrainedBox(
+        child: Container(
           constraints: const BoxConstraints(minHeight: 48),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: context.epColors.line)),
+          ),
           child: Row(
             children: [
               if (item.icon != null) ...[
-                Icon(item.icon, size: 19, color: color),
+                Icon(item.icon, size: 16, color: color),
                 const SizedBox(width: 12),
               ],
               Expanded(
@@ -317,7 +366,7 @@ class _ActionSheetRow extends StatelessWidget {
                   item.label,
                   style: Theme.of(
                     context,
-                  ).textTheme.epLabel.copyWith(color: color),
+                  ).textTheme.epBody.copyWith(color: color),
                 ),
               ),
             ],
@@ -386,126 +435,67 @@ void showSwitcherSheet(BuildContext context) {
     final displayName = profileName == null || profileName.isEmpty
         ? 'You'
         : profileName;
+    final identity = app.identity;
     return EpSheetShell(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+      padding: const EdgeInsets.all(20),
       maxHeightFactor: .88,
       scrollable: true,
       mainAxisSize: MainAxisSize.min,
       header: Text(
-        app.authed ? 'YOUR ACCOUNTS' : 'GET STARTED',
-        style: Theme.of(ctx).textTheme.epSectionHeading,
+        'Switch identity'.toUpperCase(),
+        semanticsLabel: 'Switch identity',
+        style: Theme.of(ctx).textTheme.epSection,
       ),
       children: [
         if (app.authed)
-          _SheetOption(
+          _IdentityOption(
+            name: displayName,
+            avatarName: profileName,
+            caption: 'Personal account',
+            active: identity is PersonalIdentity,
             onTap: () {
               Navigator.pop(ctx);
               app.toFanView();
             },
-            leading: Row(
-              children: [
-                EpFanAvatar(
-                  name: profileName,
-                  imageUrl: app.profile?.avatarUrl,
-                  size: 34,
-                  radius: 9,
-                ),
-                const SizedBox(width: 11),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(displayName, style: Theme.of(ctx).textTheme.epLabel),
-                    Text(
-                      'Personal account',
-                      style: Theme.of(ctx).textTheme.epCaption,
-                    ),
-                  ],
-                ),
-              ],
-            ),
           ),
         for (final id in bandIds)
           if (app.band(id) case final Band band)
-            _SheetOption(
+            _IdentityOption(
+              name: band.name,
+              avatarName: band.name,
+              caption: 'Manage band · ${app.roleFor(id)}',
+              active: identity is BandIdentity && identity.bandId == id,
               onTap: () {
                 Navigator.pop(ctx);
                 app.switchToBand(id);
               },
-              leading: Row(
-                children: [
-                  BandAvatar(band, size: 34, radius: 8, fontSize: 12),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          band.name.toUpperCase(),
-                          style: Theme.of(ctx).textTheme.epLabel,
-                        ),
-                        Text(
-                          'Manage band · ${app.roleFor(id)}',
-                          style: Theme.of(ctx).textTheme.epCaption,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
             ),
         if (app.authed)
           for (final membership in app.myOrganizations)
-            _SheetOption(
+            _IdentityOption(
               key: Key('switcher-org-${membership.organization.id}'),
+              name: membership.organization.name,
+              avatarName: membership.organization.name,
+              caption:
+                  membership.organization.orgType ==
+                      OrganizationType.privateHost
+                  ? 'Host'
+                  : 'Organizer · ${_roleLabel(membership.role)}',
+              active:
+                  identity is OrganizerIdentity &&
+                  identity.organizationId == membership.organization.id,
               onTap: () {
                 Navigator.pop(ctx);
                 app.switchToOrganization(membership.organization.id);
               },
-              leading: Row(
-                children: [
-                  EpFanAvatar(
-                    name: membership.organization.name,
-                    imageUrl: membership.organization.photoUrls.isEmpty
-                        ? null
-                        : membership.organization.photoUrls.first,
-                    size: 34,
-                    radius: 8,
-                    fontSize: 12,
-                  ),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          membership.organization.name.toUpperCase(),
-                          style: Theme.of(ctx).textTheme.epLabel,
-                        ),
-                        Text(
-                          membership.organization.orgType ==
-                                  OrganizationType.privateHost
-                              ? 'Host'
-                              : 'Organizer · ${_roleLabel(membership.role)}',
-                          style: Theme.of(ctx).textTheme.epCaption,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
             ),
-        Padding(
-          padding: const EdgeInsets.only(top: 10),
-          child: OutlinedButton.icon(
-            onPressed: () {
-              Navigator.pop(ctx);
-              app.requestStartBand();
-            },
-            icon: Icon(Icons.add),
-            label: Text(
-              bandIds.isEmpty ? 'START A BAND' : 'START ANOTHER BAND',
-            ),
-          ),
+        _SwitcherAction(
+          onTap: () {
+            Navigator.pop(ctx);
+            app.requestStartBand();
+          },
+          icon: Icons.add,
+          label: bandIds.isEmpty ? 'START A BAND' : 'START ANOTHER BAND',
         ),
         // In-progress applications stay accessible even for existing members.
         if (_applicationInProgress(_organizerApplication(app)) ||
@@ -516,34 +506,31 @@ void showSwitcherSheet(BuildContext context) {
                 ) &&
                 _organizerApplication(app)?.status !=
                     OrganizationApplicationStatus.approved))
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: OutlinedButton.icon(
-              key: const Key('switcher-become-organizer'),
-              onPressed: () {
-                Navigator.pop(ctx);
-                final application = _organizerApplication(app);
-                if (application == null ||
-                    application.editable ||
-                    application.status ==
-                        OrganizationApplicationStatus.withdrawn) {
-                  app.openOrganizerApply();
-                } else {
-                  app.go(Screen.orgApplicationStatus);
-                }
-              },
-              icon: const Icon(Icons.storefront_outlined),
-              label: Text(switch (_organizerApplication(app)) {
-                OrganizationApplication(
-                  status: OrganizationApplicationStatus.draft,
-                ) =>
-                  'CONTINUE ORGANIZER APPLICATION',
-                OrganizationApplication(status: final status)
-                    when status != OrganizationApplicationStatus.withdrawn =>
-                  'ORGANIZER APPLICATION · ${_applicationStatusLabel(status).toUpperCase()}',
-                _ => 'BECOME AN ORGANIZER',
-              }),
-            ),
+          _SwitcherAction(
+            key: const Key('switcher-become-organizer'),
+            onTap: () {
+              Navigator.pop(ctx);
+              final application = _organizerApplication(app);
+              if (application == null ||
+                  application.editable ||
+                  application.status ==
+                      OrganizationApplicationStatus.withdrawn) {
+                app.openOrganizerApply();
+              } else {
+                app.go(Screen.orgApplicationStatus);
+              }
+            },
+            icon: Icons.storefront_outlined,
+            label: switch (_organizerApplication(app)) {
+              OrganizationApplication(
+                status: OrganizationApplicationStatus.draft,
+              ) =>
+                'CONTINUE ORGANIZER APPLICATION',
+              OrganizationApplication(status: final status)
+                  when status != OrganizationApplicationStatus.withdrawn =>
+                'ORGANIZER APPLICATION · ${_applicationStatusLabel(status).toUpperCase()}',
+              _ => 'BECOME AN ORGANIZER',
+            },
           ),
         if (_applicationInProgress(_hostApplication(app)) ||
             (!app.myOrganizations.any(
@@ -553,51 +540,171 @@ void showSwitcherSheet(BuildContext context) {
                 ) &&
                 _hostApplication(app)?.status !=
                     OrganizationApplicationStatus.approved))
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: OutlinedButton.icon(
-              key: const Key('switcher-become-host'),
-              onPressed: () {
-                Navigator.pop(ctx);
-                final application = _hostApplication(app);
-                if (application == null ||
-                    application.editable ||
-                    application.status ==
-                        OrganizationApplicationStatus.withdrawn) {
-                  app.openHostApply();
-                } else {
-                  app.go(Screen.orgApplicationStatus);
-                }
-              },
-              icon: const Icon(Icons.home_outlined),
-              label: Text(switch (_hostApplication(app)) {
-                OrganizationApplication(
-                  status: OrganizationApplicationStatus.draft,
-                ) =>
-                  'CONTINUE HOST APPLICATION',
-                OrganizationApplication(status: final status)
-                    when status != OrganizationApplicationStatus.withdrawn =>
-                  'HOST APPLICATION · ${_applicationStatusLabel(status).toUpperCase()}',
-                _ => 'BECOME A HOST',
-              }),
-            ),
+          _SwitcherAction(
+            key: const Key('switcher-become-host'),
+            onTap: () {
+              Navigator.pop(ctx);
+              final application = _hostApplication(app);
+              if (application == null ||
+                  application.editable ||
+                  application.status ==
+                      OrganizationApplicationStatus.withdrawn) {
+                app.openHostApply();
+              } else {
+                app.go(Screen.orgApplicationStatus);
+              }
+            },
+            icon: Icons.home_outlined,
+            label: switch (_hostApplication(app)) {
+              OrganizationApplication(
+                status: OrganizationApplicationStatus.draft,
+              ) =>
+                'CONTINUE HOST APPLICATION',
+              OrganizationApplication(status: final status)
+                  when status != OrganizationApplicationStatus.withdrawn =>
+                'HOST APPLICATION · ${_applicationStatusLabel(status).toUpperCase()}',
+              _ => 'BECOME A HOST',
+            },
           ),
         if (app.isPlatformAdmin)
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: OutlinedButton.icon(
-              key: const Key('switcher-admin'),
-              onPressed: () {
-                Navigator.pop(ctx);
-                app.switchToAdmin();
-              },
-              icon: const Icon(Icons.admin_panel_settings_outlined),
-              label: const Text('EARPLUG ADMIN'),
-            ),
+          _SwitcherAction(
+            key: const Key('switcher-admin'),
+            onTap: () {
+              Navigator.pop(ctx);
+              app.switchToAdmin();
+            },
+            icon: Icons.admin_panel_settings_outlined,
+            label: 'EARPLUG ADMIN',
           ),
       ],
     );
   });
+}
+
+class _IdentityOption extends StatelessWidget {
+  const _IdentityOption({
+    super.key,
+    required this.name,
+    required this.avatarName,
+    required this.caption,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String name;
+  final String? avatarName;
+  final String caption;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetOption(
+      onTap: onTap,
+      leading: Row(
+        children: [
+          _IdentityTile(name: avatarName, active: active),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: Theme.of(context).textTheme.epSectionHeading),
+                const SizedBox(height: 4),
+                Text(
+                  caption,
+                  style: Theme.of(context).textTheme.epChipLabel.copyWith(
+                    color: context.epColors.muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IdentityTile extends StatelessWidget {
+  const _IdentityTile({required this.name, required this.active});
+
+  final String? name;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final words = (name ?? '')
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .take(2);
+    final initials = words.isEmpty
+        ? '??'
+        : words.map((word) => word.characters.first).join();
+    final colors = context.epColors;
+    return Semantics(
+      image: true,
+      label: name == null || name!.trim().isEmpty
+          ? 'Profile avatar'
+          : '${name!.trim()} avatar',
+      child: ExcludeSemantics(
+        child: Container(
+          width: 40,
+          height: 40,
+          padding: const EdgeInsets.all(2),
+          color: active ? colors.accent : colors.panel,
+          alignment: Alignment.center,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              initials.toUpperCase(),
+              semanticsLabel: initials,
+              style: Theme.of(context).textTheme.epSectionHeading.copyWith(
+                color: active ? colors.onAccent : colors.ink,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SwitcherAction extends StatelessWidget {
+  const _SwitcherAction({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetOption(
+      onTap: onTap,
+      verticalPadding: 16,
+      leading: Row(
+        children: [
+          Icon(icon, size: 16, color: context.epColors.ink),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label.toUpperCase(),
+              semanticsLabel: label,
+              style: Theme.of(
+                context,
+              ).textTheme.epChipLabel.copyWith(color: context.epColors.ink),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ============================ QR ticket ============================
@@ -622,29 +729,37 @@ Future<void> showQrDialog(BuildContext context, Gig gig, Venue venue) async {
   if (!context.mounted) return;
   await showDialog<void>(
     context: context,
-    barrierColor: Colors.black.withValues(alpha: .72),
+    barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: .72),
     builder: (ctx) {
       return Dialog(
-        backgroundColor: context.epColors.contentPrimary,
+        backgroundColor: ctx.epColors.ink,
         insetPadding: const EdgeInsets.all(30),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        child: Padding(
-          padding: const EdgeInsets.all(22),
+        shape: const RoundedRectangleBorder(),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                gig.title.toUpperCase(),
+                'Your ticket'.toUpperCase(),
+                semanticsLabel: 'Your ticket',
                 textAlign: TextAlign.center,
-                style: epDisplay(
-                  size: 14,
-                  color: context.epColors.background,
-                  height: 1.2,
+                style: Theme.of(
+                  ctx,
+                ).textTheme.epSection.copyWith(color: ctx.epColors.background),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                gig.title.toUpperCase(),
+                semanticsLabel: gig.title,
+                textAlign: TextAlign.center,
+                style: Theme.of(ctx).textTheme.epSheetTitle.copyWith(
+                  color: ctx.epColors.background,
                 ),
               ),
               const SizedBox(height: 12),
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(12),
                 color: Colors.white,
                 child: QrImageView(
                   data: ticket.payload,
@@ -662,8 +777,18 @@ Future<void> showQrDialog(BuildContext context, Gig gig, Venue venue) async {
                     : '${gig.dateShort} · ${venue.name}\nCHECKED IN ✓',
                 textAlign: TextAlign.center,
                 style: Theme.of(
-                  context,
-                ).textTheme.epCaption.copyWith(color: context.epColors.surface),
+                  ctx,
+                ).textTheme.epCaption.copyWith(color: ctx.epColors.background),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: FilledButton.styleFrom(
+                  backgroundColor: ctx.epColors.background,
+                  foregroundColor: ctx.epColors.ink,
+                  shape: const StadiumBorder(),
+                ),
+                child: Text('Close'.toUpperCase(), semanticsLabel: 'Close'),
               ),
             ],
           ),

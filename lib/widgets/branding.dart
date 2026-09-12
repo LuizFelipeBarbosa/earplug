@@ -14,7 +14,7 @@ class EpLogo extends StatelessWidget {
   const EpLogo.compact({
     super.key,
     this.width,
-    this.height = 48,
+    this.height = 28,
     this.semanticLabel = 'EarPlug',
   }) : _variant = _EpLogoVariant.compact;
 
