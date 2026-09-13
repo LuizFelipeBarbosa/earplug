@@ -115,7 +115,7 @@ class _FiltersSheet extends StatelessWidget {
         child: Text('Clear all'.toUpperCase(), semanticsLabel: 'Clear all'),
       ),
       footer: _ResultsButton(
-        count: app.feed.length,
+        count: showGenres ? app.feed.length : app.homeFeed.length,
         labelAsApply: labelConfirmationAsApply,
       ),
       child: ListView(

@@ -16,6 +16,7 @@ import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:earplug/widgets/map_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import 'support/harness.dart';
@@ -133,9 +134,7 @@ void main() {
     expect(_hero('1 show near you.'), findsOne);
   });
 
-  testWidgets('map markers use the same multi-genre filtered feed', (
-    tester,
-  ) async {
+  testWidgets('map markers ignore genre filters', (tester) async {
     final harness = await pumpApp(
       tester,
       home: const Scaffold(body: HomeScreen()),
@@ -146,10 +145,10 @@ void main() {
     );
 
     expect(harness.app.feed.map((gig) => gig.id), ['g2', 'g1', 'g4']);
-    for (final id in const ['g1', 'g2', 'g4']) {
-      expect(find.byKey(Key('gig-marker-$id')), findsOne);
-    }
-    expect(find.byKey(const Key('gig-marker-g3')), findsNothing);
+    expect(harness.app.homeFeed.length, harness.app.allGigs.length);
+    await tester.pump(const Duration(seconds: 1));
+    await _expandClusterContaining(tester, 'gig-marker-g3');
+    expect(find.byKey(const Key('gig-marker-g3')), findsOne);
   });
 
   testWidgets('map marker hover stays on the pin inside its 48px target', (
@@ -525,16 +524,18 @@ void main() {
       tester,
       home: const Scaffold(body: HomeScreen()),
       beforePump: (app) {
+        app.useCurrentPosition(const LatLng(0, 0));
+        app.setDistanceFilter(0.1);
         app.toggleDateFilter(DateFilter.tonight);
         app.toggleGenre('klezmer');
       },
     );
 
-    expect(harness.app.feed, isEmpty);
+    expect(harness.app.homeFeed, isEmpty);
     expect(find.text(_noMatches), findsOne);
     expect(find.text(_noGigs), findsNothing);
     expect(find.text('SHOW THIS WEEK'), findsOne);
-    expect(find.text('CLEAR GENRES'), findsOne);
+    expect(find.text('CLEAR GENRES'), findsNothing);
     expect(find.text('VIEW ALL NEARBY SHOWS'), findsOne);
 
     await tester.tap(find.text('SHOW THIS WEEK'));
@@ -544,7 +545,7 @@ void main() {
     await tester.tap(find.text('VIEW ALL NEARBY SHOWS'));
     await tester.pumpAndSettle();
     expect(harness.app.filters.activeCount, 0);
-    expect(harness.app.feed, isNotEmpty);
+    expect(harness.app.homeFeed, isNotEmpty);
   });
 
   testWidgets('an empty backend blames nobody', (tester) async {

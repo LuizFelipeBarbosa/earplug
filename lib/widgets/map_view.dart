@@ -349,7 +349,7 @@ class _GigMapViewState extends State<GigMapView> {
     final app = context.read<AppState>();
     final view = context.select<AppState, _MapInputs>(
       (app) => (
-        feed: app.feed,
+        feed: app.homeFeed,
         center: app.discoveryCenter,
         position: app.currentPosition,
         location: app.discoveryLocation,

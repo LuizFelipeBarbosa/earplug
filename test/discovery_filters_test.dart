@@ -31,6 +31,49 @@ void main() {
       },
     );
 
+    test('homeFeed ignores genres while feed applies them', () async {
+      final app = await _app();
+
+      app.toggleGenre('hardcore');
+      app.toggleGenre('surf');
+
+      expect(app.feed.map((gig) => gig.id), ['g2', 'g1', 'g4']);
+      expect(app.homeFeed.length, app.allGigs.length);
+    });
+
+    test('homeFeed keeps its instance across genre changes only', () async {
+      final app = await _app();
+
+      final before = app.homeFeed;
+      app.toggleGenre('hardcore');
+      expect(app.homeFeed, same(before));
+
+      app.toggleFree();
+      expect(app.homeFeed, isNot(same(before)));
+    });
+
+    test('homeFeed applies date, price and distance filters', () async {
+      final app = await _app();
+      final selected = DemoData.gigs[1].startsAt;
+
+      app.setDateRange(DateTimeRange(start: selected, end: selected));
+      expect(app.homeFeed.map((gig) => gig.id), ['g2']);
+
+      app.clearDateFilter();
+      app.setPriceFilter(PriceFilter.free);
+      expect(app.homeFeed.every((gig) => gig.free), isTrue);
+
+      app.setPriceFilter(PriceFilter.any);
+      app.useCurrentPosition(DemoData.venues['v1']!.point);
+      app.setDistanceFilter(1);
+      expect(
+        app.homeFeed.every(
+          (gig) => app.distanceMilesFromCurrent(app.venue(gig.venueId))! <= 1,
+        ),
+        isTrue,
+      );
+    });
+
     test('custom date ranges include the whole selected end date', () async {
       final app = await _app();
       final selected = DemoData.gigs[1].startsAt;

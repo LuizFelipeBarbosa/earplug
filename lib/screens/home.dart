@@ -41,7 +41,7 @@ class _HomeHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final count = context.select<AppState, int>((app) => app.feed.length);
+    final count = context.select<AppState, int>((app) => app.homeFeed.length);
     final hero = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -416,7 +416,7 @@ class _FeedListState extends State<_FeedList> {
   /// rebuilds on every AppState notification because its cards read live
   /// RSVP and going-count state off [app].
   List<_FeedRow> _feedRows(AppState app) {
-    final feed = app.feed;
+    final feed = app.homeFeed;
     final inputs = (
       feed: feed,
       featuredBoosted: feed.isNotEmpty && app.isDiscoveryBoosted(feed.first),
@@ -645,11 +645,6 @@ class _DiscoveryEmptyState extends StatelessWidget {
               : 'Expand to ${nextDistance.toInt()} mi',
           onPressed: () => app.setDistanceFilter(nextDistance),
         ),
-      );
-    }
-    if (filters.genres.isNotEmpty) {
-      actions.add(
-        EpPill(label: 'Clear genres', onPressed: app.clearGenreFilters),
       );
     }
     if (filters.price != PriceFilter.any) {
