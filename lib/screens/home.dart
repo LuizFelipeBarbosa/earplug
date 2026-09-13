@@ -304,8 +304,13 @@ class _FeedListState extends State<_FeedList> {
         tabBarClearance,
       ),
       itemCount: rows.length + 1,
+      // Same breathing room under the quick filters as the map header's
+      // bottom padding, so the Featured hairline does not hug the chips.
       itemBuilder: (context, index) => index == 0
-          ? const _HomeHeader()
+          ? const Padding(
+              padding: EdgeInsets.only(bottom: 14),
+              child: _HomeHeader(),
+            )
           : _buildRow(context, rows[index - 1], app),
     );
   }
