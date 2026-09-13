@@ -137,6 +137,126 @@ void main() {
       },
     );
 
+    test('Use my location turns on with a successful foreground fix', () async {
+      final venue = DemoData.venues['v1']!;
+      final app = await _app(
+        locationService: _FakeLocationService(
+          LocationSuccess(
+            UserLocation(
+              latitude: venue.point.latitude,
+              longitude: venue.point.longitude,
+              accuracyMeters: 5,
+            ),
+          ),
+        ),
+      );
+
+      expect(await app.setUseCurrentLocation(true), isTrue);
+      expect(app.discoveryLocation, DiscoveryLocation.current);
+      expect(app.usingCurrentLocation, isTrue);
+    });
+
+    test('Use my location turns off to the saved home scene', () async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final app = AppState.demo(
+        repository: DemoRepository(auth: auth),
+        auth: auth,
+        locationService: _FakeLocationService(
+          const LocationSuccess(
+            UserLocation(
+              latitude: 37.7524,
+              longitude: -122.4180,
+              accuracyMeters: 5,
+            ),
+          ),
+        ),
+      );
+      addTearDown(app.dispose);
+      await pumpEventQueue();
+
+      expect(
+        await app.saveFanProfile(
+          name: 'Fan',
+          bio: null,
+          homeLocation: FanCity.berkeley,
+          genres: const [],
+          locationPersonalizationEnabled: true,
+          followedBandUpdatesEnabled: true,
+        ),
+        isTrue,
+      );
+
+      await app.setUseCurrentLocation(true);
+      await app.setUseCurrentLocation(false);
+
+      expect(app.discoveryLocation, DiscoveryLocation.home);
+      expect(app.locationLabel, 'BERKELEY SCENE');
+    });
+
+    test('Use my location turns off to Mission without a profile', () async {
+      final app = await _app(
+        locationService: _FakeLocationService(
+          const LocationSuccess(
+            UserLocation(
+              latitude: 37.7524,
+              longitude: -122.4180,
+              accuracyMeters: 5,
+            ),
+          ),
+        ),
+      );
+
+      await app.setUseCurrentLocation(true);
+      await app.setUseCurrentLocation(false);
+
+      expect(app.discoveryLocation, DiscoveryLocation.sf);
+    });
+
+    test(
+      'turning Use my location off cancels a pending GPS response',
+      () async {
+        final location = _DeferredLocationService();
+        final app = await _app(locationService: location);
+
+        final pendingSelection = app.setUseCurrentLocation(true);
+        expect(app.locating, isTrue);
+        expect(await app.setUseCurrentLocation(false), isTrue);
+        expect(app.discoveryLocation, DiscoveryLocation.sf);
+        expect(app.locating, isFalse);
+
+        location.complete(
+          const UserLocation(
+            latitude: 37.7524,
+            longitude: -122.4180,
+            accuracyMeters: 5,
+          ),
+        );
+
+        expect(await pendingSelection, isFalse);
+        expect(app.discoveryLocation, DiscoveryLocation.sf);
+        expect(app.currentPosition, isNull);
+      },
+    );
+
+    test(
+      'dismissLocationFailure clears the current location failure',
+      () async {
+        final app = await _app(
+          locationService: _FakeLocationService(
+            const LocationFailure(LocationFailureReason.permissionDenied),
+          ),
+        );
+
+        expect(await app.setUseCurrentLocation(true), isFalse);
+        expect(app.locationFailure, isNotNull);
+
+        app.dismissLocationFailure();
+
+        expect(app.locationFailure, isNull);
+      },
+    );
+
     test('home distance filters use the saved fan city', () async {
       final auth = FakeAuthService();
       await auth.signInDemo();

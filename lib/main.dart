@@ -844,7 +844,9 @@ class _ToastLayer extends StatelessWidget {
     return Positioned(
       left: 20,
       right: 20,
-      bottom: 104,
+      bottom: EpLayout.isDesktop(context)
+          ? 104
+          : EpLayout.tabBarHeight + MediaQuery.paddingOf(context).bottom + 172,
       child: toast.isEmpty ? const SizedBox.shrink() : _Toast(message: toast),
     );
   }

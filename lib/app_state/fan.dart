@@ -11,6 +11,7 @@ mixin _FanState on _AppStateCore {
   int get _locationRequestGeneration;
   set _locationRequestGeneration(int value);
   abstract DiscoveryLocation discoveryLocation;
+  bool get usingCurrentLocation;
   abstract FanCity? _discoveryHomeCity;
   abstract LatLng? currentPosition;
   abstract bool locating;
@@ -342,11 +343,13 @@ mixin _FanState on _AppStateCore {
     userGenres
       ..clear()
       ..addAll(savedGenres);
-    if (locationPersonalizationEnabled && homeLocation != null) {
-      _applyFanCity(homeLocation);
-      _appliedHomePersonalization = homeLocation;
-    } else if (_appliedHomePersonalization != null) {
-      _applyFanCity(FanCity.sf);
+    if (!usingCurrentLocation) {
+      if (locationPersonalizationEnabled && homeLocation != null) {
+        _applyFanCity(homeLocation);
+        _appliedHomePersonalization = homeLocation;
+      } else if (_appliedHomePersonalization != null) {
+        _applyFanCity(FanCity.sf);
+      }
     }
     notifyListeners();
     return true;

@@ -27,6 +27,7 @@ class PendingAuth {
 mixin _SessionState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
   abstract FanCity? _appliedHomePersonalization;
+  bool get usingCurrentLocation;
   abstract UserProfile? profile;
   set history(List<FanHistoryItem> value);
   Set<String> get rsvps;
@@ -131,9 +132,11 @@ mixin _SessionState on _AppStateCore {
         preferredCity = loadedProfile?.fanOnboarding?.preferredCity;
       }
       if (preferredCity != null) {
-        _applyFanCity(preferredCity);
-        if (loadedProfile?.locationPersonalizationEnabled == true) {
-          _appliedHomePersonalization = preferredCity;
+        if (!usingCurrentLocation) {
+          _applyFanCity(preferredCity);
+          if (loadedProfile?.locationPersonalizationEnabled == true) {
+            _appliedHomePersonalization = preferredCity;
+          }
         }
       } else if (_appliedHomePersonalization != null) {
         _applyFanCity(FanCity.sf);

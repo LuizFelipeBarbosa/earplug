@@ -7,6 +7,8 @@ enum ExploreResultType { all, events, bands, venues }
 mixin _DiscoveryState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
   set _appliedHomePersonalization(FanCity? value);
+  UserProfile? get profile;
+  FanOnboarding? get fanOnboarding;
   Map<String, Band> get _bands;
   set _bands(Map<String, Band> value);
   List<Gig> get _allGigs;
@@ -35,6 +37,8 @@ mixin _DiscoveryState on _AppStateCore {
       (discoveryLocation == DiscoveryLocation.current &&
           currentPosition != null) ||
       discoveryLocation == DiscoveryLocation.home;
+  bool get usingCurrentLocation =>
+      discoveryLocation == DiscoveryLocation.current;
   int get activeFilterCount => filters.activeCount;
 
   // ---- explore
@@ -133,6 +137,35 @@ mixin _DiscoveryState on _AppStateCore {
     );
   }
 
+  /// The Home eyebrow toggle. On asks for one foreground fix (may prompt);
+  /// off returns to the saved scene: profile home city, else onboarding city,
+  /// else Mission SF.
+  Future<bool> setUseCurrentLocation(bool on) async {
+    if (on) return selectCurrentLocation();
+    if (!usingCurrentLocation && !locating && locationFailure == null) {
+      return true;
+    }
+    _restoreSceneLocation();
+    notifyListeners();
+    return true;
+  }
+
+  void _restoreSceneLocation() {
+    final home = profile?.homeLocation;
+    if (home != null) {
+      _applyFanCity(home);
+      if (profile?.locationPersonalizationEnabled == true) {
+        _appliedHomePersonalization = home;
+      }
+    } else if (fanOnboarding?.preferredCity case final city?) {
+      _applyFanCity(city);
+    } else {
+      _applyDiscoveryCity('sf');
+    }
+  }
+
+  void dismissLocationFailure() => _set(() => locationFailure = null);
+
   void _applyDiscoveryCity(String c) {
     _appliedHomePersonalization = null;
     _locationRequestGeneration++;
@@ -202,7 +235,7 @@ mixin _DiscoveryState on _AppStateCore {
       if (!_disposed && requestGeneration == _locationRequestGeneration) {
         locationFailure = const LocationFailure(
           LocationFailureReason.unavailable,
-          message: 'Location request timed out. Retry or choose a city.',
+          message: 'Location request timed out. Retry or switch it off.',
         );
         notifyListeners();
       }

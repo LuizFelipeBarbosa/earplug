@@ -337,7 +337,7 @@ class _GigMapViewState extends State<GigMapView> {
       _controller.fitCamera(
         CameraFit.coordinates(
           coordinates: points,
-          padding: const EdgeInsets.fromLTRB(46, 46, 46, 240),
+          padding: const EdgeInsets.fromLTRB(46, 46, 46, 264),
           maxZoom: 14,
         ),
       );
@@ -424,11 +424,15 @@ class _GigMapViewState extends State<GigMapView> {
           Positioned(
             left: 12,
             right: 12,
-            bottom: tabBarClearance + 10,
+            bottom:
+                EpLayout.tabBarHeight +
+                MediaQuery.paddingOf(context).bottom +
+                12,
             child: TapRegion(
               onTapOutside: (_) => setState(() => selected = null),
               child: _MapGigCard(
                 gig: g,
+                flyer: app.flyer(g.flyKey),
                 venue: selectedGroup.venue,
                 position: selectedIndex,
                 total: selectedGroup.gigs.length,
@@ -456,6 +460,7 @@ class _GigMapViewState extends State<GigMapView> {
 
 class _MapGigCard extends StatelessWidget {
   final Gig gig;
+  final FlyerStyle flyer;
   final Venue venue;
   final int position;
   final int total;
@@ -465,6 +470,7 @@ class _MapGigCard extends StatelessWidget {
 
   const _MapGigCard({
     required this.gig,
+    required this.flyer,
     required this.venue,
     required this.position,
     required this.total,
@@ -479,7 +485,7 @@ class _MapGigCard extends StatelessWidget {
     return EpCard(
       key: ValueKey('map-gig-card-${gig.id}'),
       variant: EpCardVariant.raised,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.all(12),
       onTap: onOpen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -507,20 +513,43 @@ class _MapGigCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 7),
+            const SizedBox(height: 8),
           ],
-          EpDisplay(gig.title, size: 20, maxLines: 2),
-          const SizedBox(height: 4),
-          Text(
-            '${venue.name} · $areaLabel · ${gig.dateLine}',
-            style: Theme.of(context).textTheme.epCaption,
-          ),
-          const SizedBox(height: 12),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              PriceBadge(gig),
-              FilledButton(onPressed: onOpen, child: Text('OPEN GIG →')),
+              GigFlyer(gig, flyer, width: 72, height: 96),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    EpDisplay(gig.title, size: 18, maxLines: 2),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${venue.name} · $areaLabel',
+                      style: Theme.of(context).textTheme.epCaption,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      gig.dateLine,
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        PriceBadge(gig),
+                        FilledButton(
+                          onPressed: onOpen,
+                          child: Text('OPEN GIG →'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ],

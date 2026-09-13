@@ -426,6 +426,94 @@ class EpSegmentTabs extends StatelessWidget {
   }
 }
 
+class EpSegment {
+  const EpSegment({
+    required this.icon,
+    required this.label,
+    required this.semanticLabel,
+    this.key,
+  });
+
+  final IconData icon;
+  final String label;
+  final String semanticLabel;
+  final Key? key;
+}
+
+/// A pill-shaped, mutually exclusive icon and label switch.
+class EpSegmentedControl extends StatelessWidget {
+  const EpSegmentedControl({
+    super.key,
+    required this.segments,
+    required this.selected,
+    required this.onSelect,
+  }) : assert(segments.length >= 2);
+
+  final List<EpSegment> segments;
+  final int selected;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.epColors;
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        shape: StadiumBorder(side: BorderSide(color: palette.outline)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var index = 0; index < segments.length; index++)
+              Semantics(
+                key: segments[index].key,
+                button: true,
+                selected: index == selected,
+                inMutuallyExclusiveGroup: true,
+                label: segments[index].semanticLabel,
+                excludeSemantics: true,
+                child: Material(
+                  color: index == selected ? palette.ink : Colors.transparent,
+                  shape: const StadiumBorder(),
+                  child: InkWell(
+                    customBorder: const StadiumBorder(),
+                    onTap: () => onSelect(index),
+                    child: SizedBox(
+                      height: 32,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              segments[index].icon,
+                              size: 14,
+                              color: index == selected
+                                  ? palette.onAccent
+                                  : palette.ink,
+                            ),
+                            const SizedBox(width: 6),
+                            EpMonoText(
+                              segments[index].label,
+                              color: index == selected
+                                  ? palette.onAccent
+                                  : palette.ink,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class EpReadinessBar extends StatelessWidget {
   const EpReadinessBar({super.key, required this.done, required this.total})
     : assert(total >= 0),

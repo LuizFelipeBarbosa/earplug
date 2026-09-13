@@ -128,6 +128,78 @@ void main() {
     expect(flags.isInMutuallyExclusiveGroup, isTrue);
   });
 
+  testWidgets('segmented control callbacks and labels', (tester) async {
+    var selected = 0;
+    await _pump(
+      tester,
+      StatefulBuilder(
+        builder: (context, setState) => EpSegmentedControl(
+          segments: const [
+            EpSegment(
+              key: Key('seg-a'),
+              icon: Icons.map,
+              label: 'Map',
+              semanticLabel: 'Map view',
+            ),
+            EpSegment(
+              key: Key('seg-b'),
+              icon: Icons.list,
+              label: 'List',
+              semanticLabel: 'List view',
+            ),
+          ],
+          selected: selected,
+          onSelect: (index) => setState(() => selected = index),
+        ),
+      ),
+    );
+    expect(find.text('MAP'), findsOneWidget);
+    expect(find.text('LIST'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('seg-b')));
+    await tester.pump();
+    expect(selected, 1);
+    expect(
+      tester
+          .getSemantics(find.byKey(const Key('seg-b')))
+          .flagsCollection
+          .isSelected,
+      Tristate.isTrue,
+    );
+  });
+
+  testWidgets('icon pill badge is optional', (tester) async {
+    await _pump(
+      tester,
+      const EpIconPill(
+        icon: Icons.add,
+        semanticLabel: 'Add',
+        badge: '3',
+        badgeKey: Key('badge'),
+      ),
+    );
+    expect(find.byKey(const Key('badge')), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
+
+    await _pump(
+      tester,
+      const EpIconPill(icon: Icons.add, semanticLabel: 'Add'),
+    );
+    expect(find.byKey(const Key('badge')), findsNothing);
+    expect(find.text('3'), findsNothing);
+  });
+
+  testWidgets('pill leading widget replaces icon slot', (tester) async {
+    await _pump(
+      tester,
+      const EpPill(
+        leading: SizedBox(key: Key('lead'), width: 14, height: 14),
+        label: 'Near me',
+      ),
+    );
+    expect(find.byKey(const Key('lead')), findsOneWidget);
+    expect(find.text('NEAR ME'), findsOneWidget);
+  });
+
   testWidgets('readiness colors and semantics', (tester) async {
     await _pump(tester, const EpReadinessBar(done: 2, total: 4));
     final palette = tester.element(find.byType(EpReadinessBar)).epColors;

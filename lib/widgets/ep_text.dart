@@ -107,6 +107,7 @@ class EpPill extends StatelessWidget {
     this.variant = EpPillVariant.outline,
     this.size = EpPillSize.chip,
     this.icon,
+    this.leading,
     this.expand = false,
     this.selected = false,
     this.semanticLabel,
@@ -118,6 +119,7 @@ class EpPill extends StatelessWidget {
   final EpPillVariant variant;
   final EpPillSize size;
   final IconData? icon;
+  final Widget? leading;
   final bool expand;
   final bool selected;
   final String? semanticLabel;
@@ -179,7 +181,10 @@ class EpPill extends StatelessWidget {
                   mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    if (icon != null) ...[
+                    if (leading != null) ...[
+                      leading!,
+                      const SizedBox(width: 8),
+                    ] else if (icon != null) ...[
                       Icon(icon, size: 16, color: foreground),
                       const SizedBox(width: 8),
                     ],
@@ -217,6 +222,8 @@ class EpIconPill extends StatelessWidget {
     this.onPressed,
     this.filled = false,
     this.color,
+    this.badge,
+    this.badgeKey,
   });
 
   final IconData icon;
@@ -226,10 +233,33 @@ class EpIconPill extends StatelessWidget {
 
   /// Icon and ring color for pills laid over artwork; defaults to ink/outline.
   final Color? color;
+  final String? badge;
+  final Key? badgeKey;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.epColors;
+    final iconCircle = Ink(
+      width: 36,
+      height: 36,
+      decoration: ShapeDecoration(
+        color: filled ? palette.accent : Colors.transparent,
+        shape: CircleBorder(
+          side: BorderSide(
+            color: color?.withValues(alpha: .4) ?? palette.outline,
+          ),
+        ),
+      ),
+      child: Icon(
+        icon,
+        size: 16,
+        color: onPressed == null
+            ? palette.contentDisabled
+            : filled
+            ? palette.onAccent
+            : color ?? palette.ink,
+      ),
+    );
     return Tooltip(
       message: semanticLabel,
       excludeFromSemantics: true,
@@ -247,27 +277,38 @@ class EpIconPill extends StatelessWidget {
             child: SizedBox.square(
               dimension: 44,
               child: Center(
-                child: Ink(
-                  width: 36,
-                  height: 36,
-                  decoration: ShapeDecoration(
-                    color: filled ? palette.accent : Colors.transparent,
-                    shape: CircleBorder(
-                      side: BorderSide(
-                        color: color?.withValues(alpha: .4) ?? palette.outline,
+                child: badge == null
+                    ? iconCircle
+                    : Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          iconCircle,
+                          Positioned(
+                            top: -2,
+                            right: -2,
+                            child: Container(
+                              width: 16,
+                              height: 16,
+                              decoration: ShapeDecoration(
+                                color: palette.accent,
+                                shape: const CircleBorder(),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  badge!,
+                                  key: badgeKey,
+                                  style: Theme.of(context).textTheme.epMeta
+                                      .copyWith(
+                                        fontSize: 9,
+                                        color: palette.onAccent,
+                                        height: 1,
+                                      ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-                  child: Icon(
-                    icon,
-                    size: 16,
-                    color: onPressed == null
-                        ? palette.contentDisabled
-                        : filled
-                        ? palette.onAccent
-                        : color ?? palette.ink,
-                  ),
-                ),
               ),
             ),
           ),

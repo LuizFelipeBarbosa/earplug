@@ -288,6 +288,15 @@ void main() {
     await tester.tap(find.byKey(const Key('gig-marker-g1')));
     await tester.pumpAndSettle();
     expect(find.text('OPEN GIG →'), findsOne);
+    final cardFinder = find.byKey(const ValueKey('map-gig-card-g1'));
+    expect(
+      find.descendant(of: cardFinder, matching: find.byType(GigFlyer)),
+      findsOne,
+    );
+    expect(
+      tester.getRect(cardFinder).bottom,
+      closeTo(900 - (EpLayout.tabBarHeight + 12), 1),
+    );
 
     await tester.tap(find.text('BASEMENT BLOWOUT'));
     await tester.pumpAndSettle();

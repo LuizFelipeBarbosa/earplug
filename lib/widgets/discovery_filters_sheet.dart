@@ -3,21 +3,13 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../genres.dart';
-import '../models.dart';
-import '../services/location_service.dart';
 import '../theme.dart';
 import 'common.dart';
 import 'ep_sheet.dart';
 import 'sheets.dart';
 
-void showDiscoveryLocationSheet(BuildContext context) {
-  showEpSheet(
-    context,
-    (context) => Consumer<AppState>(
-      builder: (context, app, _) => _LocationSheet(app: app),
-    ),
-  );
-}
+/// Removed with the Home location toggle; deleted once home.dart stops calling it.
+void showDiscoveryLocationSheet(BuildContext context) {}
 
 void showDiscoveryFiltersSheet(
   BuildContext context, {
@@ -81,139 +73,6 @@ class _SheetFrame extends StatelessWidget {
           footer,
         ],
       ],
-    );
-  }
-}
-
-class _LocationSheet extends StatelessWidget {
-  const _LocationSheet({required this.app});
-
-  final AppState app;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SheetFrame(
-      title: 'Where are you?',
-      child: ListView(
-        children: [
-          Text(
-            'Use your position once, or pick a scene manually.',
-            style: Theme.of(context).textTheme.epBody.copyWith(
-              color: context.epColors.contentSecondary,
-            ),
-          ),
-          const SizedBox(height: 10),
-          _OptionTile(
-            key: const Key('current-location-option'),
-            title: 'Current location',
-            subtitle: app.locating
-                ? 'Finding you…'
-                : 'Foreground location · not stored',
-            selected: app.discoveryLocation == DiscoveryLocation.current,
-            leading: app.locating
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Icon(
-                    Icons.my_location,
-                    color: context.epColors.accent,
-                    size: 16,
-                  ),
-            onTap: app.locating
-                ? null
-                : () async {
-                    final selected = await app.selectCurrentLocation();
-                    if (selected && context.mounted) Navigator.pop(context);
-                  },
-          ),
-          if (app.locationFailure case final LocationFailure failure) ...[
-            const SizedBox(height: 8),
-            _LocationFailureMessage(failure: failure, app: app),
-          ],
-          if (app.profile?.homeLocation case final homeCity?)
-            if (discoveryLocationForFanCity(homeCity) == DiscoveryLocation.home)
-              _OptionTile(
-                title: homeCity.label,
-                subtitle: 'Saved home location',
-                selected: app.discoveryLocation == DiscoveryLocation.home,
-                leading: Icon(Icons.home_outlined, size: 16),
-                onTap: () {
-                  if (app.discoveryLocation != DiscoveryLocation.home) {
-                    app.selectFanCity(homeCity);
-                  }
-                  Navigator.pop(context);
-                },
-              ),
-          _OptionTile(
-            title: 'Mission, SF',
-            subtitle: 'San Francisco',
-            selected: app.discoveryLocation == DiscoveryLocation.sf,
-            leading: Icon(Icons.location_on_outlined, size: 16),
-            onTap: () {
-              app.setCity('sf');
-              Navigator.pop(context);
-            },
-          ),
-          _OptionTile(
-            title: 'Temescal, OAK',
-            subtitle: 'Oakland',
-            selected: app.discoveryLocation == DiscoveryLocation.oak,
-            leading: Icon(Icons.location_on_outlined, size: 16),
-            onTap: () {
-              app.setCity('oak');
-              Navigator.pop(context);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LocationFailureMessage extends StatelessWidget {
-  const _LocationFailureMessage({required this.failure, required this.app});
-
-  final LocationFailure failure;
-  final AppState app;
-
-  @override
-  Widget build(BuildContext context) {
-    final (message, action) = switch (failure.reason) {
-      LocationFailureReason.servicesDisabled => (
-        'Location services are off. Turn them on or choose a city below.',
-        'OPEN LOCATION SETTINGS',
-      ),
-      LocationFailureReason.permissionDeniedForever => (
-        'Location access is blocked. Allow it in settings or choose a city.',
-        'OPEN APP SETTINGS',
-      ),
-      LocationFailureReason.permissionDenied => (
-        'Location access was denied. You can try again or choose a city.',
-        null,
-      ),
-      LocationFailureReason.unavailable => (
-        'Your location is unavailable right now. Try again or choose a city.',
-        null,
-      ),
-    };
-
-    return EpCard(
-      padding: const EdgeInsets.all(12),
-      borderColor: context.epColors.warning,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(message, style: Theme.of(context).textTheme.epBody),
-          if (action != null) ...[
-            const SizedBox(height: 4),
-            TextButton(
-              onPressed: app.openLocationRecoverySettings,
-              child: Text(action.toUpperCase(), semanticsLabel: action),
-            ),
-          ],
-        ],
-      ),
     );
   }
 }
@@ -314,7 +173,7 @@ class _FiltersSheet extends StatelessWidget {
           Text(switch (app.discoveryLocation) {
             DiscoveryLocation.current => 'Measured from your current location.',
             DiscoveryLocation.home => 'Measured from your saved home location.',
-            _ => 'Choose Current location to filter by distance.',
+            _ => 'Turn on Use my location to filter by distance.',
           }, style: Theme.of(context).textTheme.epCaption),
           const SizedBox(height: 9),
           Wrap(
@@ -416,84 +275,6 @@ class _ResultsButton extends StatelessWidget {
       key: const Key('show-filter-results'),
       onPressed: () => Navigator.pop(context),
       child: Text(label.toUpperCase(), semanticsLabel: label),
-    );
-  }
-}
-
-class _OptionTile extends StatelessWidget {
-  const _OptionTile({
-    super.key,
-    required this.title,
-    this.subtitle,
-    this.leading,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String title;
-  final String? subtitle;
-  final Widget? leading;
-  final bool selected;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.epColors;
-    return Semantics(
-      container: true,
-      button: true,
-      enabled: onTap != null,
-      selected: selected,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: colors.line)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 14,
-                height: 14,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: selected ? colors.accent : null,
-                  border: selected ? null : Border.all(color: colors.outline),
-                ),
-              ),
-              const SizedBox(width: 12),
-              if (leading != null) ...[leading!, const SizedBox(width: 12)],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: Theme.of(context).textTheme.epBody.copyWith(
-                        color: onTap == null
-                            ? colors.contentDisabled
-                            : colors.ink,
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle!,
-                        style: Theme.of(context).textTheme.epCaption.copyWith(
-                          color: onTap == null
-                              ? colors.contentDisabled
-                              : colors.muted,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
