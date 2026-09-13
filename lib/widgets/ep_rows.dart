@@ -681,6 +681,11 @@ class EpUnderlineField extends StatelessWidget {
                   style: Theme.of(context).textTheme.epInput,
                   decoration: InputDecoration(
                     hintText: hint,
+                    // Drop the theme's minimum height: without a visible
+                    // border the decorator top-aligns its text in the spare
+                    // space, floating it above the icon and trailing control.
+                    // The row centres the natural-height field instead.
+                    constraints: const BoxConstraints(),
                     hintStyle: Theme.of(
                       context,
                     ).textTheme.epInput.copyWith(color: palette.muted),
