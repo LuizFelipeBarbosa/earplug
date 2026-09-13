@@ -849,8 +849,8 @@ class _ToastLayer extends StatelessWidget {
       left: 20,
       right: 20,
       bottom: EpLayout.isDesktop(context)
-          ? 104
-          : EpLayout.tabBarHeight + MediaQuery.paddingOf(context).bottom + 172,
+          ? 24
+          : EpLayout.tabBarHeight + MediaQuery.paddingOf(context).bottom + 12,
       child: toast.isEmpty ? const SizedBox.shrink() : _Toast(message: toast),
     );
   }
@@ -879,26 +879,21 @@ class _Toast extends StatelessWidget {
             ),
           );
         },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: DecoratedBox(
+          key: const ValueKey('toast'),
           decoration: BoxDecoration(
-            color: context.epColors.contentPrimary,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: .6),
-                blurRadius: 30,
-                offset: const Offset(0, 10),
-              ),
-            ],
+            color: context.epColors.surface,
+            border: Border.all(color: context.epColors.border),
+            borderRadius: BorderRadius.circular(EpLayout.cardRadius),
           ),
-          child: Text(
-            message,
-            textAlign: TextAlign.center,
-            style: epText(
-              size: 12.5,
-              weight: FontWeight.w800,
-              color: context.epColors.background,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.epBody.copyWith(color: context.epColors.ink),
             ),
           ),
         ),
