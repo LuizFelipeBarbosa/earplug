@@ -23,7 +23,7 @@ void main() {
         home: const Scaffold(body: HomeScreen()),
         size: size,
       );
-      await tester.tap(find.text('FILTERS'));
+      await tester.tap(find.byKey(const Key('home-filters')));
       await tester.pumpAndSettle();
 
       final options = find.descendant(
@@ -65,7 +65,7 @@ void main() {
       tester,
       home: const Scaffold(body: HomeScreen()),
     );
-    await tester.tap(find.text('FILTERS'));
+    await tester.tap(find.byKey(const Key('home-filters')));
     await tester.pumpAndSettle();
     expect(find.byType(EpSheetShell), findsOneWidget);
     expect(find.byType(TextField), findsNothing);

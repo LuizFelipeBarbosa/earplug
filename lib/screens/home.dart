@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -5,6 +6,7 @@ import '../app_state.dart';
 import '../date_names.dart';
 import '../memo.dart';
 import '../models.dart';
+import '../services/location_service.dart';
 import '../theme.dart';
 import '../widgets/branding.dart';
 import '../widgets/common.dart';
@@ -23,7 +25,7 @@ class HomeScreen extends StatelessWidget {
     if (!mapMode) return const _FeedList();
     return const Column(
       children: [
-        ScreenHeader(bottomPadding: 20, child: _HomeHeader()),
+        ScreenHeader(bottomPadding: 14, child: _HomeHeader()),
         Expanded(
           child: GigMapView(emptyState: _DiscoveryEmptyState(compact: true)),
         ),
@@ -45,7 +47,7 @@ class _HomeHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _HeroEyebrow(),
-        const SizedBox(height: 12),
+        const SizedBox(height: 6),
         _HeroTitle(count: count),
       ],
     );
@@ -71,66 +73,94 @@ class _HomeHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const EpLogo.compact(key: ValueKey('home-logo'), height: 28),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: _ViewControls(),
-              ),
+            const EpLogo.full(
+              key: ValueKey('home-logo'),
+              width: null,
+              height: 22,
             ),
+            const Spacer(),
+            _ViewControls(),
           ],
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 16),
         hero,
-        const SizedBox(height: 20),
+        const SizedBox(height: 14),
         _QuickFilters(),
       ],
     );
   }
 }
 
-/// "FRI 11 SEP · MISSION, SF" — the date, then the location picker.
+/// "FRI 11 SEP · MISSION, SF" — the date and current location controls.
 class _HeroEyebrow extends StatelessWidget {
   const _HeroEyebrow();
 
   @override
   Widget build(BuildContext context) {
     final today = context.read<AppState>().firstSelectableDiscoveryDate;
-    final locationLabel = context.select<AppState, String>(
-      (app) => app.locationLabel,
-    );
-    final palette = context.epColors;
-    return Wrap(
-      spacing: 6,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        EpEyebrow.accent(
-          '${weekdayNames[today.weekday - 1]} ${today.day} '
-          '${monthNames[today.month - 1]} ·',
-        ),
-        Semantics(
-          button: true,
-          label: 'Change location, $locationLabel',
-          excludeSemantics: true,
-          child: InkWell(
-            key: const ValueKey('home-location-control'),
-            onTap: () => showDiscoveryLocationSheet(context),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: EpMonoText(locationLabel, color: palette.accent),
-                  ),
-                  Icon(Icons.expand_more, size: 16, color: palette.accent),
-                ],
-              ),
-            ),
+    final (:locationLabel, :usingCurrentLocation, :locating, :locationFailure) =
+        context.select<
+          AppState,
+          ({
+            String locationLabel,
+            bool usingCurrentLocation,
+            bool locating,
+            LocationFailure? locationFailure,
+          })
+        >(
+          (app) => (
+            locationLabel: app.locationLabel,
+            usingCurrentLocation: app.usingCurrentLocation,
+            locating: app.locating,
+            locationFailure: app.locationFailure,
           ),
+        );
+    final app = context.read<AppState>();
+    final palette = context.epColors;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            EpEyebrow.accent(
+              '${weekdayNames[today.weekday - 1]} ${today.day} '
+              '${monthNames[today.month - 1]} ·',
+            ),
+            EpMonoText(locationLabel, color: palette.accent),
+            EpPill(
+              key: const ValueKey('home-location-control'),
+              icon: Icons.my_location,
+              leading: locating
+                  ? const SizedBox.square(
+                      dimension: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : null,
+              label: locating
+                  ? 'Locating…'
+                  : usingCurrentLocation
+                  ? 'Near me'
+                  : 'Use my location',
+              selected: usingCurrentLocation,
+              semanticLabel: usingCurrentLocation
+                  ? 'Using your location. Switch off'
+                  : 'Use my location',
+              onPressed: locating
+                  ? null
+                  : () => app.setUseCurrentLocation(!usingCurrentLocation),
+            ),
+          ],
         ),
+        if (locationFailure case final failure?) ...[
+          const SizedBox(height: 6),
+          _LocationFailureNote(failure: failure, app: app),
+        ],
       ],
     );
   }
@@ -144,31 +174,38 @@ class _HeroTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.epColors;
-    final size = EpLayout.isDesktop(context)
-        ? 72.0
+    final (numeral, labelSize) = EpLayout.isDesktop(context)
+        ? (88.0, 32.0)
         : MediaQuery.textScalerOf(context).scale(1) > 1.3
-        ? 32.0
-        : 44.0;
-    final label = '$count ${count == 1 ? 'show' : 'shows'} near you';
-    return Text.rich(
-      TextSpan(
+        ? (44.0, 18.0)
+        : (56.0, 22.0);
+    return Semantics(
+      key: const ValueKey('home-hero'),
+      label: '$count ${count == 1 ? 'show' : 'shows'} near you.',
+      excludeSemantics: true,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TextSpan(text: label.toUpperCase()),
-          TextSpan(
-            text: '.',
-            style: TextStyle(color: palette.accent),
+          Text(
+            '$count',
+            style: Theme.of(context).textTheme
+                .epDisplayAt(numeral)
+                .copyWith(color: palette.accent, height: .9),
+          ),
+          Text(
+            count == 1 ? 'SHOW NEAR YOU.' : 'SHOWS NEAR YOU.',
+            style: Theme.of(context).textTheme
+                .epDisplayAt(labelSize)
+                .copyWith(color: palette.ink, height: 1),
           ),
         ],
       ),
-      semanticsLabel: '$label.',
-      style: Theme.of(
-        context,
-      ).textTheme.epDisplayAt(size).copyWith(color: palette.ink),
     );
   }
 }
 
-/// Map toggle and the filter sheet, as the artboard's two header pills.
+/// Map/list segmented control.
 class _ViewControls extends StatelessWidget {
   const _ViewControls();
 
@@ -176,33 +213,24 @@ class _ViewControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.read<AppState>();
     final mapMode = context.select<AppState, bool>((value) => value.mapMode);
-    final filters = context.select<AppState, DiscoveryFilters>(
-      (value) => value.filters,
-    );
-    return Wrap(
-      alignment: WrapAlignment.end,
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        EpPill(
-          key: const ValueKey('home-view-toggle'),
+    return EpSegmentedControl(
+      key: const ValueKey('home-view-toggle'),
+      segments: const [
+        EpSegment(
+          key: Key('home-view-map'),
+          icon: Icons.map_outlined,
           label: 'Map',
-          selected: mapMode,
-          semanticLabel: mapMode ? 'Switch to list' : 'Switch to map',
-          onPressed: () => app.setMapMode(!mapMode),
+          semanticLabel: 'Map view',
         ),
-        EpPill(
-          label: filters.activeCount == 0
-              ? 'Filters'
-              : 'Filters · ${filters.activeCount}',
-          selected:
-              filters.genres.isNotEmpty ||
-              filters.maxDistanceMiles != null ||
-              filters.price == PriceFilter.paid ||
-              filters.date == DateFilter.custom,
-          onPressed: () => showDiscoveryFiltersSheet(context),
+        EpSegment(
+          key: Key('home-view-list'),
+          icon: Icons.view_list_outlined,
+          label: 'List',
+          semanticLabel: 'List view',
         ),
       ],
+      selected: mapMode ? 0 : 1,
+      onSelect: (index) => app.setMapMode(index == 0),
     );
   }
 }
@@ -220,6 +248,7 @@ class _QuickFilters extends StatelessWidget {
     final filters = context.select<AppState, DiscoveryFilters>(
       (value) => value.filters,
     );
+    final sheetCount = _sheetFilterCount(filters);
     return Wrap(
       alignment: showViewControls ? WrapAlignment.end : WrapAlignment.start,
       spacing: 8,
@@ -240,7 +269,80 @@ class _QuickFilters extends StatelessWidget {
           selected: filters.price == PriceFilter.free,
           onPressed: app.toggleFree,
         ),
+        EpIconPill(
+          key: const ValueKey('home-filters'),
+          icon: Icons.tune,
+          badge: sheetCount == 0 ? null : '$sheetCount',
+          badgeKey: const Key('home-filters-count'),
+          filled: false,
+          semanticLabel: sheetCount == 0
+              ? 'Filters'
+              : 'Filters, $sheetCount active',
+          onPressed: () => showDiscoveryFiltersSheet(context),
+        ),
         if (showViewControls) const _ViewControls(),
+      ],
+    );
+  }
+}
+
+int _sheetFilterCount(DiscoveryFilters filters) =>
+    filters.genres.length +
+    (filters.maxDistanceMiles != null ? 1 : 0) +
+    (filters.price == PriceFilter.paid ? 1 : 0) +
+    (filters.date == DateFilter.custom ? 1 : 0);
+
+class _LocationFailureNote extends StatelessWidget {
+  const _LocationFailureNote({required this.failure, required this.app})
+    : super(key: const ValueKey('home-location-failure'));
+
+  final LocationFailure failure;
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    final (message, action) = switch (failure.reason) {
+      LocationFailureReason.servicesDisabled => (
+        'Location services are off. Turn them on or switch it off.',
+        'Open location settings',
+      ),
+      LocationFailureReason.permissionDeniedForever => (
+        'Location access is blocked. Allow it in settings or switch it off.',
+        'Open app settings',
+      ),
+      LocationFailureReason.permissionDenied => (
+        'Location access was denied. You can try again or switch it off.',
+        null,
+      ),
+      LocationFailureReason.unavailable => (
+        'Your location is unavailable right now. Try again or switch it off.',
+        null,
+      ),
+    };
+    final palette = context.epColors;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.warning_amber_rounded, size: 14, color: palette.muted),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(message, style: Theme.of(context).textTheme.epCaption),
+              if (action != null && !kIsWeb)
+                TextButton(
+                  onPressed: app.openLocationRecoverySettings,
+                  child: Text(action.toUpperCase(), semanticsLabel: action),
+                ),
+            ],
+          ),
+        ),
+        EpIconPill(
+          icon: Icons.close,
+          semanticLabel: 'Dismiss',
+          onPressed: app.dismissLocationFailure,
+        ),
       ],
     );
   }

@@ -27,60 +27,65 @@ const _noGigs =
 const _noMatches =
     'Nothing matches those filters.\nLoosen them up and see what is out there.';
 
+Finder _hero(String label) => find.byWidgetPredicate(
+  (widget) => widget is Semantics && widget.properties.label == label,
+);
+
 void main() {
-  testWidgets('Home defaults to Map and keeps List as an intentional switch', (
-    tester,
-  ) async {
-    final harness = await pumpApp(
-      tester,
-      home: const Scaffold(body: HomeScreen()),
-    );
+  testWidgets(
+    'Home defaults to Map and keeps List as an intentional switch with location toggle geometry',
+    (tester) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: HomeScreen()),
+      );
 
-    expect(harness.app.mapMode, isTrue);
-    expect(find.byType(GigMapView), findsOne);
-    expect(find.text('PUNK'), findsNothing);
-    expect(find.byKey(const Key('home-logo')), findsOne);
+      expect(harness.app.mapMode, isTrue);
+      expect(find.byType(GigMapView), findsOne);
+      expect(find.text('PUNK'), findsNothing);
+      expect(find.byKey(const Key('home-logo')), findsOne);
 
-    final logo = tester.getRect(find.byKey(const Key('home-logo')));
-    final viewToggle = tester.getRect(
-      find.byKey(const Key('home-view-toggle')),
-    );
-    final location = tester.getRect(
-      find.byKey(const Key('home-location-control')),
-    );
-    expect(logo.right, lessThan(viewToggle.left));
-    expect((logo.center.dy - viewToggle.center.dy).abs(), lessThan(6));
-    expect(viewToggle.bottom, lessThan(location.top));
-    expect(location.left, greaterThanOrEqualTo(EpLayout.gutter));
-    expect(location.right, lessThanOrEqualTo(402 - EpLayout.gutter));
+      final logo = tester.getRect(find.byKey(const Key('home-logo')));
+      final viewToggle = tester.getRect(
+        find.byKey(const Key('home-view-toggle')),
+      );
+      final location = tester.getRect(
+        find.byKey(const Key('home-location-control')),
+      );
+      expect(logo.right, lessThan(viewToggle.left));
+      expect((logo.center.dy - viewToggle.center.dy).abs(), lessThan(6));
+      expect(viewToggle.bottom, lessThan(location.top));
+      expect(location.left, greaterThanOrEqualTo(EpLayout.gutter));
+      expect(location.right, lessThanOrEqualTo(402 - EpLayout.gutter));
 
-    await tester.tap(find.byKey(const Key('home-view-toggle')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('home-view-list')));
+      await tester.pumpAndSettle();
 
-    expect(harness.app.mapMode, isFalse);
-    expect(find.byType(GigMapView), findsNothing);
-    expect(find.textContaining('8 SHOWS NEAR YOU'), findsOne);
-    final cards = tester.widgetList<FanEventCard>(find.byType(FanEventCard));
-    final featured = cards.first;
-    expect(featured.gig.id, harness.app.feed.first.id);
-    expect(featured.presentation, FanEventCardPresentation.featured);
-    expect(
-      cards
-          .skip(1)
-          .every(
-            (card) => card.presentation == FanEventCardPresentation.compact,
-          ),
-      isTrue,
-    );
-    expect(
-      find.byKey(ValueKey('fan-event-${harness.app.feed.first.id}')),
-      findsOne,
-    );
+      expect(harness.app.mapMode, isFalse);
+      expect(find.byType(GigMapView), findsNothing);
+      expect(_hero('8 shows near you.'), findsOne);
+      final cards = tester.widgetList<FanEventCard>(find.byType(FanEventCard));
+      final featured = cards.first;
+      expect(featured.gig.id, harness.app.feed.first.id);
+      expect(featured.presentation, FanEventCardPresentation.featured);
+      expect(
+        cards
+            .skip(1)
+            .every(
+              (card) => card.presentation == FanEventCardPresentation.compact,
+            ),
+        isTrue,
+      );
+      expect(
+        find.byKey(ValueKey('fan-event-${harness.app.feed.first.id}')),
+        findsOne,
+      );
 
-    harness.app.resetTo(Screen.explore);
-    harness.app.resetTo(Screen.home);
-    expect(harness.app.mapMode, isFalse);
-  });
+      harness.app.resetTo(Screen.explore);
+      harness.app.resetTo(Screen.home);
+      expect(harness.app.mapMode, isFalse);
+    },
+  );
 
   testWidgets('Home identity row and location picker fit a narrow phone', (
     tester,
@@ -124,8 +129,7 @@ void main() {
       beforePump: (app) => app.setMapMode(false),
     );
 
-    expect(find.textContaining('1 SHOW NEAR YOU'), findsOne);
-    expect(find.textContaining('1 SHOWS NEAR YOU'), findsNothing);
+    expect(_hero('1 show near you.'), findsOne);
   });
 
   testWidgets('map markers use the same multi-genre filtered feed', (
@@ -217,7 +221,7 @@ void main() {
       home: const Scaffold(body: HomeScreen()),
     );
 
-    await tester.tap(find.byKey(const Key('home-view-toggle')));
+    await tester.tap(find.byKey(const Key('home-view-list')));
     await tester.pumpAndSettle();
     expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
@@ -405,7 +409,7 @@ void main() {
       home: const Scaffold(body: HomeScreen()),
     );
 
-    await tester.tap(find.text('FILTERS'));
+    await tester.tap(find.byKey(const Key('home-filters')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('PUNK'));
     await tester.pumpAndSettle();
@@ -417,7 +421,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('ANY GENRE · I\'M OPEN'), findsNothing);
-    expect(find.text('FILTERS · 1'), findsOne);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('home-filters')),
+        matching: find.text('1'),
+      ),
+      findsOne,
+    );
   });
 
   testWidgets('current location is user initiated and adds a map marker', (
@@ -430,14 +440,57 @@ void main() {
     );
 
     expect(harness.app.discoveryLocation, DiscoveryLocation.sf);
-    await tester.tap(find.text('MISSION, SF'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('current-location-option')));
+    await tester.tap(find.byKey(const Key('home-location-control')));
     await tester.pumpAndSettle();
 
     expect(harness.app.discoveryLocation, DiscoveryLocation.current);
     expect(find.byKey(const Key('current-location-marker')), findsOne);
+    expect(find.text('NEAR ME'), findsOne);
     await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('current location can be switched back to the saved scene', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      locationService: const _SuccessfulLocationService(),
+      home: const Scaffold(body: HomeScreen()),
+    );
+
+    await tester.tap(find.byKey(const Key('home-location-control')));
+    await tester.pumpAndSettle();
+    expect(harness.app.discoveryLocation, DiscoveryLocation.current);
+    expect(find.byKey(const Key('current-location-marker')), findsOne);
+
+    await tester.tap(find.byKey(const Key('home-location-control')));
+    await tester.pumpAndSettle();
+    expect(harness.app.discoveryLocation, DiscoveryLocation.sf);
+    expect(find.byKey(const Key('current-location-marker')), findsNothing);
+  });
+
+  testWidgets('location failure is shown and can be dismissed', (tester) async {
+    final harness = await pumpApp(
+      tester,
+      locationService: const _DeniedLocationService(),
+      home: const Scaffold(body: HomeScreen()),
+    );
+
+    await tester.tap(find.byKey(const Key('home-location-control')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('home-location-failure')), findsOne);
+    expect(harness.app.discoveryLocation, DiscoveryLocation.sf);
+    expect(find.text('USE MY LOCATION'), findsOne);
+
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('home-location-failure')),
+        matching: find.byTooltip('Dismiss'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('home-location-failure')), findsNothing);
   });
 
   testWidgets('zero results offer direct date and reset recovery actions', (
@@ -486,7 +539,7 @@ void main() {
     expect(harness.app.allGigs, isEmpty);
     expect(find.text(_noGigs), findsOne);
     expect(find.text(_noMatches), findsNothing);
-    expect(find.textContaining('0 SHOWS NEAR YOU'), findsOne);
+    expect(_hero('0 shows near you.'), findsOne);
   });
 
   testWidgets('Home list lazily builds a 60-gig feed', (tester) async {
@@ -716,6 +769,20 @@ class _SuccessfulLocationService implements LocationService {
           accuracyMeters: 5,
         ),
       );
+
+  @override
+  Future<bool> openAppSettings() async => true;
+
+  @override
+  Future<bool> openLocationSettings() async => true;
+}
+
+class _DeniedLocationService implements LocationService {
+  const _DeniedLocationService();
+
+  @override
+  Future<LocationResult> requestCurrentLocation() async =>
+      const LocationFailure(LocationFailureReason.permissionDenied);
 
   @override
   Future<bool> openAppSettings() async => true;

@@ -8,9 +8,6 @@ import 'common.dart';
 import 'ep_sheet.dart';
 import 'sheets.dart';
 
-/// Removed with the Home location toggle; deleted once home.dart stops calling it.
-void showDiscoveryLocationSheet(BuildContext context) {}
-
 void showDiscoveryFiltersSheet(
   BuildContext context, {
   bool labelConfirmationAsApply = false,
