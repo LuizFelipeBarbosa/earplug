@@ -647,7 +647,11 @@ class EpUnderlineField extends StatelessWidget {
       builder: (context) {
         final palette = context.epColors;
         final focused = Focus.of(context).hasFocus;
+        // The row centres everything on one axis so a tall trailing pill,
+        // the icon and the text share a baseline band; the gap to the
+        // underline lives on the container so the trailing never sits on it.
         return Container(
+          padding: const EdgeInsets.only(bottom: 8),
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(
@@ -657,6 +661,7 @@ class EpUnderlineField extends StatelessWidget {
             ),
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (icon != null) ...[
                 Icon(icon, size: 16, color: palette.muted),
@@ -680,7 +685,7 @@ class EpUnderlineField extends StatelessWidget {
                       context,
                     ).textTheme.epInput.copyWith(color: palette.muted),
                     isDense: true,
-                    contentPadding: const EdgeInsets.only(bottom: 12),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
@@ -690,7 +695,7 @@ class EpUnderlineField extends StatelessWidget {
                   ),
                 ),
               ),
-              ?trailing,
+              if (trailing != null) ...[const SizedBox(width: 12), trailing!],
             ],
           ),
         );
