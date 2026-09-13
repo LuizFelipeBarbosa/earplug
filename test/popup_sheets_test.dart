@@ -1,3 +1,4 @@
+import 'package:earplug/discovery_filters.dart';
 import 'package:earplug/screens/home.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_sheet.dart';
@@ -36,14 +37,14 @@ void main() {
       final resultsPosition = tester.getRect(results);
 
       await tester.scrollUntilVisible(
-        find.text('PUNK'),
+        find.text('PAID'),
         160,
         scrollable: options,
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('PUNK'));
+      await tester.tap(find.text('PAID'));
       await tester.pumpAndSettle();
-      expect(harness.app.fGenres, {'punk'});
+      expect(harness.app.fPrice, PriceFilter.paid);
 
       await tester.scrollUntilVisible(
         find.text('PAID'),
@@ -70,12 +71,13 @@ void main() {
     expect(find.byType(EpSheetShell), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
 
-    await tester.tap(find.text('PUNK'));
+    await tester.tap(find.text('PAID'));
     await tester.pumpAndSettle();
     expect(harness.app.activeFilterCount, 1);
     await tester.tap(find.byKey(const Key('clear-discovery-filters')));
     await tester.pumpAndSettle();
     expect(harness.app.activeFilterCount, 0);
+    expect(harness.app.fPrice, PriceFilter.any);
 
     await tester.tap(find.byKey(const Key('show-filter-results')));
     await tester.pumpAndSettle();

@@ -11,6 +11,7 @@ import 'sheets.dart';
 void showDiscoveryFiltersSheet(
   BuildContext context, {
   bool labelConfirmationAsApply = false,
+  bool showGenres = true,
 }) {
   showEpSheet(
     context,
@@ -18,6 +19,7 @@ void showDiscoveryFiltersSheet(
       builder: (context, app, _) => _FiltersSheet(
         app: app,
         labelConfirmationAsApply: labelConfirmationAsApply,
+        showGenres: showGenres,
       ),
     ),
   );
@@ -54,11 +56,22 @@ class _SheetFrame extends StatelessWidget {
               style: Theme.of(context).textTheme.epSheetTitle,
             ),
           ),
-          if (action != null) Flexible(child: action!),
-          IconButton(
-            tooltip: 'Close',
-            onPressed: () => Navigator.pop(context),
-            icon: Icon(Icons.close),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ?action,
+              IconButton(
+                tooltip: 'Close',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 44,
+                  height: 44,
+                ),
+                alignment: Alignment.centerRight,
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close),
+              ),
+            ],
           ),
         ],
       ),
@@ -78,10 +91,12 @@ class _FiltersSheet extends StatelessWidget {
   const _FiltersSheet({
     required this.app,
     required this.labelConfirmationAsApply,
+    required this.showGenres,
   });
 
   final AppState app;
   final bool labelConfirmationAsApply;
+  final bool showGenres;
 
   @override
   Widget build(BuildContext context) {
@@ -89,6 +104,11 @@ class _FiltersSheet extends StatelessWidget {
       title: 'Filters',
       action: TextButton(
         key: const Key('clear-discovery-filters'),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          minimumSize: const Size(0, 44),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
         onPressed: app.activeFilterCount == 0
             ? null
             : app.clearDiscoveryFilters,
@@ -136,35 +156,37 @@ class _FiltersSheet extends StatelessWidget {
               ),
             ],
           ),
-          const _Divider(),
-          SectionBar(
-            label: 'GENRES · CHOOSE ANY',
-            trailing: app.fGenres.isNotEmpty
-                ? _TextAction(
-                    label: 'CLEAR GENRES',
-                    onTap: app.clearGenreFilters,
-                  )
-                : null,
-          ),
-          const SizedBox(height: 9),
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
-            children: [
-              EpChip(
-                label: "Any genre · I'm open",
-                active: app.fGenres.isEmpty,
-                onTap: app.clearGenreFilters,
-              ),
-              for (final genre in kGenres)
+          if (showGenres) ...[
+            const _Divider(),
+            SectionBar(
+              label: 'GENRES · CHOOSE ANY',
+              trailing: app.fGenres.isNotEmpty
+                  ? _TextAction(
+                      label: 'CLEAR GENRES',
+                      onTap: app.clearGenreFilters,
+                    )
+                  : null,
+            ),
+            const SizedBox(height: 9),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
                 EpChip(
-                  label: genre,
-                  active: app.fGenres.contains(genre),
-                  onTap: () => app.toggleGenre(genre),
+                  label: "Any genre · I'm open",
+                  active: app.fGenres.isEmpty,
+                  onTap: app.clearGenreFilters,
                 ),
-            ],
-          ),
-          const _Divider(),
+                for (final genre in kGenres)
+                  EpChip(
+                    label: genre,
+                    active: app.fGenres.contains(genre),
+                    onTap: () => app.toggleGenre(genre),
+                  ),
+              ],
+            ),
+            const _Divider(),
+          ],
           const SectionBar(label: 'DISTANCE'),
           const SizedBox(height: 5),
           Text(switch (app.discoveryLocation) {

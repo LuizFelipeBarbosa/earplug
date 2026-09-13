@@ -11,6 +11,7 @@ import 'package:earplug/services/location_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:earplug/widgets/map_view.dart';
 import 'package:flutter/material.dart';
@@ -411,11 +412,11 @@ void main() {
 
     await tester.tap(find.byKey(const Key('home-filters')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('PUNK'));
+    expect(find.text('GENRES · CHOOSE ANY'), findsNothing);
+    await tester.tap(find.text('PAID'));
     await tester.pumpAndSettle();
 
-    expect(harness.app.fGenres, {'punk'});
-    expect(find.text('SHOW 3 RESULTS'), findsOne);
+    expect(harness.app.fPrice, PriceFilter.paid);
 
     await tester.tap(find.byKey(const Key('show-filter-results')));
     await tester.pumpAndSettle();
@@ -428,6 +429,30 @@ void main() {
       ),
       findsOne,
     );
+  });
+
+  testWidgets('quick filters fill the row and share a center line', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      home: const Scaffold(body: HomeScreen()),
+      size: const Size(402, 700),
+    );
+
+    final pills = find.byType(EpPill);
+    final tonight = tester.getRect(pills.at(0));
+    final thisWeek = tester.getRect(pills.at(1));
+    final free = tester.getRect(pills.at(2));
+    final filters = tester.getRect(find.byKey(const Key('home-filters')));
+    expect(
+      (tonight.center.dy - thisWeek.center.dy).abs(),
+      lessThanOrEqualTo(1),
+    );
+    expect((tonight.center.dy - free.center.dy).abs(), lessThanOrEqualTo(1));
+    expect((tonight.center.dy - filters.center.dy).abs(), lessThanOrEqualTo(1));
+    expect(tonight.left, EpLayout.gutter);
+    expect(filters.right, 402 - EpLayout.gutter);
   });
 
   testWidgets('current location is user initiated and adds a map marker', (

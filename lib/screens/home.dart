@@ -287,45 +287,60 @@ class _QuickFilters extends StatelessWidget {
       (value) => value.filters,
     );
     final sheetCount = _sheetFilterCount(filters);
-    return Wrap(
-      alignment: showViewControls ? WrapAlignment.end : WrapAlignment.start,
-      spacing: 8,
-      runSpacing: 8,
+    final tonight = EpPill(
+      label: 'Tonight',
+      selected: filters.date == DateFilter.tonight,
+      onPressed: () => app.toggleDateFilter(DateFilter.tonight),
+      expand: !showViewControls,
+    );
+    final thisWeek = EpPill(
+      label: 'This week',
+      selected: filters.date == DateFilter.week,
+      onPressed: () => app.toggleDateFilter(DateFilter.week),
+      expand: !showViewControls,
+    );
+    final free = EpPill(
+      label: 'Free',
+      selected: filters.price == PriceFilter.free,
+      onPressed: app.toggleFree,
+      expand: !showViewControls,
+    );
+    final icon = EpIconPill(
+      key: const ValueKey('home-filters'),
+      icon: Icons.tune,
+      badge: sheetCount == 0 ? null : '$sheetCount',
+      badgeKey: const Key('home-filters-count'),
+      filled: false,
+      semanticLabel: sheetCount == 0
+          ? 'Filters'
+          : 'Filters, $sheetCount active',
+      onPressed: () => showDiscoveryFiltersSheet(context, showGenres: false),
+    );
+    if (showViewControls) {
+      return Wrap(
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 8,
+        runSpacing: 8,
+        children: [tonight, thisWeek, free, icon, const _ViewControls()],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        EpPill(
-          label: 'Tonight',
-          selected: filters.date == DateFilter.tonight,
-          onPressed: () => app.toggleDateFilter(DateFilter.tonight),
-        ),
-        EpPill(
-          label: 'This week',
-          selected: filters.date == DateFilter.week,
-          onPressed: () => app.toggleDateFilter(DateFilter.week),
-        ),
-        EpPill(
-          label: 'Free',
-          selected: filters.price == PriceFilter.free,
-          onPressed: app.toggleFree,
-        ),
-        EpIconPill(
-          key: const ValueKey('home-filters'),
-          icon: Icons.tune,
-          badge: sheetCount == 0 ? null : '$sheetCount',
-          badgeKey: const Key('home-filters-count'),
-          filled: false,
-          semanticLabel: sheetCount == 0
-              ? 'Filters'
-              : 'Filters, $sheetCount active',
-          onPressed: () => showDiscoveryFiltersSheet(context),
-        ),
-        if (showViewControls) const _ViewControls(),
+        Expanded(child: tonight),
+        const SizedBox(width: 8),
+        Expanded(child: thisWeek),
+        const SizedBox(width: 8),
+        Expanded(child: free),
+        const SizedBox(width: 8),
+        icon,
       ],
     );
   }
 }
 
 int _sheetFilterCount(DiscoveryFilters filters) =>
-    filters.genres.length +
     (filters.maxDistanceMiles != null ? 1 : 0) +
     (filters.price == PriceFilter.paid ? 1 : 0) +
     (filters.date == DateFilter.custom ? 1 : 0);
