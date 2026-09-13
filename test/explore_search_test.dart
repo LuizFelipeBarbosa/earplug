@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:ui' show Tristate;
 
+import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/services/location_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -26,6 +28,21 @@ const _directoryOnlyVenue = Venue(
 );
 
 void main() {
+  testWidgets('explore shows the shared location link', (tester) async {
+    final harness = await pumpApp(
+      tester,
+      locationService: const _SuccessfulLocationService(),
+      home: const Scaffold(body: ExploreScreen()),
+    );
+
+    expect(find.text('USE MY LOCATION'), findsOne);
+    await tester.tap(find.byKey(const Key('explore-location-control')));
+    await tester.pumpAndSettle();
+
+    expect(harness.app.discoveryLocation, DiscoveryLocation.current);
+    expect(find.text('CURRENT LOCATION'), findsOne);
+  });
+
   testWidgets('typing keeps a local draft until the search button is tapped', (
     tester,
   ) async {
@@ -528,6 +545,26 @@ void main() {
       findsNothing,
     );
   });
+}
+
+class _SuccessfulLocationService implements LocationService {
+  const _SuccessfulLocationService();
+
+  @override
+  Future<LocationResult> requestCurrentLocation() async =>
+      const LocationSuccess(
+        UserLocation(
+          latitude: 37.7524,
+          longitude: -122.4180,
+          accuracyMeters: 5,
+        ),
+      );
+
+  @override
+  Future<bool> openAppSettings() async => true;
+
+  @override
+  Future<bool> openLocationSettings() async => true;
 }
 
 Finder _scopeTab(String label) => find.descendant(

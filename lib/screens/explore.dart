@@ -13,6 +13,7 @@ import '../widgets/common.dart';
 import '../widgets/discovery_filters_sheet.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
+import '../widgets/location_eyebrow.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -71,7 +72,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const EpDisplay('Explore', size: 44),
-              const SizedBox(height: 20),
+              const SizedBox(height: 6),
+              const DiscoveryLocationEyebrow(
+                controlKey: ValueKey('explore-location-control'),
+                failureKey: ValueKey('explore-location-failure'),
+              ),
+              const SizedBox(height: 16),
               EpUnderlineField(
                 fieldKey: const Key('explore-search-field'),
                 controller: _controller,
@@ -276,9 +282,9 @@ class _SearchResults extends StatelessWidget {
       _SearchSectionRow(:final label) => EpSectionHeader(label: label),
       _SearchMessageRow(:final message) => Text(
         message,
-        style: Theme.of(context).textTheme.epBody.copyWith(
-          color: context.epColors.muted,
-        ),
+        style: Theme.of(
+          context,
+        ).textTheme.epBody.copyWith(color: context.epColors.muted),
       ),
       _SearchGigRow(:final gig) => KeyedSubtree(
         key: ValueKey('fan-event-${gig.id}'),
@@ -404,9 +410,9 @@ class _ExploreFilterButton extends StatelessWidget {
           isLabelVisible: active,
           label: Text(
             '$activeCount',
-            style: Theme.of(context).textTheme.epChipLabel.copyWith(
-              color: context.epColors.onAccent,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.epChipLabel.copyWith(color: context.epColors.onAccent),
           ),
           backgroundColor: context.epColors.accent,
           textColor: context.epColors.onAccent,
@@ -433,7 +439,9 @@ class _BandRow extends StatelessWidget {
       key: ValueKey('explore-band-card-$bandId'),
       leading: EpAvatarTile(
         initials: band.initials,
-        image: imageUrl == null || imageUrl.isEmpty ? null : NetworkImage(imageUrl),
+        image: imageUrl == null || imageUrl.isEmpty
+            ? null
+            : NetworkImage(imageUrl),
       ),
       title: band.name,
       sub: [
@@ -592,7 +600,9 @@ class _BrowseRowsState extends State<_BrowseRows> {
         padding: const EdgeInsets.only(top: 20),
         child: Text(
           'No nearby events in the loaded feed.',
-          style: Theme.of(context).textTheme.epBody.copyWith(color: context.epColors.muted),
+          style: Theme.of(
+            context,
+          ).textTheme.epBody.copyWith(color: context.epColors.muted),
         ),
       ),
       _BrowseBandsRow() => _buildBandsBlock(),
@@ -641,7 +651,9 @@ class _BrowseRowsState extends State<_BrowseRows> {
     if (app.venueStatus == DataStatus.connecting) {
       return Text(
         'Loading venues…',
-        style: Theme.of(context).textTheme.epBody.copyWith(color: context.epColors.muted),
+        style: Theme.of(
+          context,
+        ).textTheme.epBody.copyWith(color: context.epColors.muted),
       );
     }
     if (app.venueStatus == DataStatus.error) {
@@ -650,7 +662,9 @@ class _BrowseRowsState extends State<_BrowseRows> {
         children: [
           Text(
             "Couldn't load venues.",
-            style: Theme.of(context).textTheme.epBody.copyWith(color: context.epColors.muted),
+            style: Theme.of(
+              context,
+            ).textTheme.epBody.copyWith(color: context.epColors.muted),
           ),
           const SizedBox(height: 10),
           EpPill(label: 'Retry', onPressed: app.retryVenues),
@@ -659,7 +673,9 @@ class _BrowseRowsState extends State<_BrowseRows> {
     }
     return Text(
       'No venues listed yet.',
-      style: Theme.of(context).textTheme.epBody.copyWith(color: context.epColors.muted),
+      style: Theme.of(
+        context,
+      ).textTheme.epBody.copyWith(color: context.epColors.muted),
     );
   }
 }
@@ -775,7 +791,8 @@ class _SearchEventActions extends StatelessWidget {
           value: () => copyForUser(
             context,
             publicWebUrl('g/${gig.publicRef}'),
-            successMessage: 'Link copied: ${publicWebDisplayUrl('g/${gig.publicRef}')}',
+            successMessage:
+                'Link copied: ${publicWebDisplayUrl('g/${gig.publicRef}')}',
           ),
           child: const EpMonoText('Share event'),
         ),
@@ -796,7 +813,13 @@ class _SearchEventActions extends StatelessWidget {
                 app.requestRsvp(gig.id);
               }
             },
-            child: EpMonoText(external ? 'Tickets ↗' : going ? 'Going ✓' : 'RSVP'),
+            child: EpMonoText(
+              external
+                  ? 'Tickets ↗'
+                  : going
+                  ? 'Going ✓'
+                  : 'RSVP',
+            ),
           ),
       ],
     );
@@ -814,7 +837,9 @@ class _BandPageStatus extends StatelessWidget {
       return Text(
         'Loading bands…',
         key: const Key('explore-bands-loading'),
-        style: Theme.of(context).textTheme.epBody.copyWith(color: context.epColors.muted),
+        style: Theme.of(
+          context,
+        ).textTheme.epBody.copyWith(color: context.epColors.muted),
       );
     }
     if (app.exploreBandsError != null) {
@@ -822,7 +847,9 @@ class _BandPageStatus extends StatelessWidget {
         children: [
           Text(
             "Couldn't load more bands.",
-            style: Theme.of(context).textTheme.epBody.copyWith(color: context.epColors.muted),
+            style: Theme.of(
+              context,
+            ).textTheme.epBody.copyWith(color: context.epColors.muted),
           ),
           const SizedBox(height: 7),
           TextButton(
@@ -843,7 +870,9 @@ class _BandPageStatus extends StatelessWidget {
     return Text(
       'All bands loaded.',
       key: const Key('explore-bands-end'),
-      style: Theme.of(context).textTheme.epBody.copyWith(color: context.epColors.muted),
+      style: Theme.of(
+        context,
+      ).textTheme.epBody.copyWith(color: context.epColors.muted),
     );
   }
 }
