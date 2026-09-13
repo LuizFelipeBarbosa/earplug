@@ -22,6 +22,7 @@ import 'navigation.dart';
 import 'services/auth_service.dart';
 import 'services/browser_history.dart';
 import 'services/flyer_text_extractor.dart';
+import 'services/geocoding_service.dart';
 import 'services/location_service.dart';
 import 'services/media_picker.dart';
 import 'services/media_upload_service.dart';
@@ -63,6 +64,7 @@ mixin _AppStateCore on ChangeNotifier {
   EarplugRepository get repository;
   AuthService get auth;
   LocationService get locationService;
+  ReverseGeocodingService? get reverseGeocoding;
   MediaUploadService get mediaUploader;
   DateTime Function() get _now;
 
@@ -153,6 +155,7 @@ class AppState extends ChangeNotifier
     required EarplugRepository repository,
     required AuthService auth,
     LocationService? locationService,
+    ReverseGeocodingService? reverseGeocoding,
     MediaUploadService? mediaUploadService,
     String? initialJoinToken,
     String? initialPerformerInviteToken,
@@ -176,6 +179,7 @@ class AppState extends ChangeNotifier
          auth,
          repository,
          locationService ?? GeolocatorLocationService(),
+         reverseGeocoding,
          mediaUploadService,
          initialJoinToken,
          initialPerformerInviteToken,
@@ -204,6 +208,7 @@ class AppState extends ChangeNotifier
     EarplugRepository? repository,
     AuthService? auth,
     LocationService? locationService,
+    ReverseGeocodingService? reverseGeocoding,
     MediaUploadService? mediaUploadService,
     String? initialJoinToken,
     String? initialPerformerInviteToken,
@@ -229,6 +234,7 @@ class AppState extends ChangeNotifier
       repository: repository ?? DemoRepository(auth: resolvedAuth),
       auth: resolvedAuth,
       locationService: locationService,
+      reverseGeocoding: reverseGeocoding,
       mediaUploadService: mediaUploadService,
       initialJoinToken: initialJoinToken,
       initialPerformerInviteToken: initialPerformerInviteToken,
@@ -255,6 +261,7 @@ class AppState extends ChangeNotifier
     this.auth,
     this.repository,
     this.locationService,
+    this.reverseGeocoding,
     MediaUploadService? providedMediaUploader,
     String? initialJoinToken,
     String? initialPerformerInviteToken,
@@ -407,6 +414,8 @@ class AppState extends ChangeNotifier
   final AuthService auth;
   @override
   final LocationService locationService;
+  @override
+  final ReverseGeocodingService? reverseGeocoding;
   @override
   final DateTime Function() _now;
   @override

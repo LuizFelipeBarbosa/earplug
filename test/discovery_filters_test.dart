@@ -6,9 +6,11 @@ import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/services/geocoding_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'support/stub_repository.dart';
 
@@ -154,6 +156,74 @@ void main() {
       expect(await app.setUseCurrentLocation(true), isTrue);
       expect(app.discoveryLocation, DiscoveryLocation.current);
       expect(app.usingCurrentLocation, isTrue);
+    });
+
+    test('reverse geocoding updates the current location label', () async {
+      final venue = DemoData.venues['v1']!;
+      final app = await _app(
+        locationService: _FakeLocationService(
+          LocationSuccess(
+            UserLocation(
+              latitude: venue.point.latitude,
+              longitude: venue.point.longitude,
+              accuracyMeters: 5,
+            ),
+          ),
+        ),
+        reverseGeocoding: const _FakeReverseGeocoding(
+          PlaceName(neighbourhood: 'Temescal', locality: 'Oakland'),
+        ),
+      );
+
+      await app.setUseCurrentLocation(true);
+      await pumpEventQueue();
+
+      expect(app.locationLabel, 'TEMESCAL, OAKLAND');
+    });
+
+    test('stale reverse geocoding does not change the scene label', () async {
+      final venue = DemoData.venues['v1']!;
+      final reverse = _DeferredReverseGeocoding();
+      final app = await _app(
+        locationService: _FakeLocationService(
+          LocationSuccess(
+            UserLocation(
+              latitude: venue.point.latitude,
+              longitude: venue.point.longitude,
+              accuracyMeters: 5,
+            ),
+          ),
+        ),
+        reverseGeocoding: reverse,
+      );
+
+      await app.setUseCurrentLocation(true);
+      await app.setUseCurrentLocation(false);
+      reverse.complete(
+        const PlaceName(neighbourhood: 'Mission', locality: 'SF'),
+      );
+      await pumpEventQueue();
+
+      expect(app.locationLabel, 'MISSION, SF');
+    });
+
+    test('current location falls back without reverse geocoding', () async {
+      final venue = DemoData.venues['v1']!;
+      final app = await _app(
+        locationService: _FakeLocationService(
+          LocationSuccess(
+            UserLocation(
+              latitude: venue.point.latitude,
+              longitude: venue.point.longitude,
+              accuracyMeters: 5,
+            ),
+          ),
+        ),
+      );
+
+      await app.setUseCurrentLocation(true);
+
+      expect(app.locationLabel, 'CURRENT LOCATION');
     });
 
     test('Use my location turns off to the saved home scene', () async {
@@ -485,6 +555,7 @@ void _expectLabelsFollowDistanceOrder(AppState app) {
 
 Future<AppState> _app({
   LocationService? locationService,
+  ReverseGeocodingService? reverseGeocoding,
   DateTime? nextFeedStartsAt,
   List<Gig>? feedGigs,
 }) async {
@@ -505,6 +576,7 @@ Future<AppState> _app({
           )),
     auth: auth,
     locationService: locationService,
+    reverseGeocoding: reverseGeocoding,
   );
   addTearDown(app.dispose);
   await pumpEventQueue();
@@ -541,4 +613,22 @@ class _DeferredLocationService implements LocationService {
 
   @override
   Future<bool> openLocationSettings() async => true;
+}
+
+class _FakeReverseGeocoding implements ReverseGeocodingService {
+  const _FakeReverseGeocoding(this.place);
+
+  final PlaceName place;
+
+  @override
+  Future<PlaceName?> reverseGeocode(LatLng point) async => place;
+}
+
+class _DeferredReverseGeocoding implements ReverseGeocodingService {
+  final _result = Completer<PlaceName?>();
+
+  void complete(PlaceName place) => _result.complete(place);
+
+  @override
+  Future<PlaceName?> reverseGeocode(LatLng point) => _result.future;
 }

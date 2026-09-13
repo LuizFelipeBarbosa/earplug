@@ -428,6 +428,9 @@ class EarplugApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final geocodingService = StadiaGeocodingService(
+      apiKey: Env.stadiaMapsApiKey,
+    );
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<AppearanceController>.value(value: appearance),
@@ -436,7 +439,7 @@ class EarplugApp extends StatelessWidget {
           dispose: (_, repository) => repository.dispose(),
         ),
         Provider<GeocodingService>(
-          create: (_) => StadiaGeocodingService(apiKey: Env.stadiaMapsApiKey),
+          create: (_) => geocodingService,
           dispose: (_, service) =>
               (service as StadiaGeocodingService).dispose(),
         ),
@@ -446,6 +449,7 @@ class EarplugApp extends StatelessWidget {
               AppState(
                 repository: repository,
                 auth: auth,
+                reverseGeocoding: geocodingService,
                 initialJoinToken: initialJoinToken,
                 initialPerformerInviteToken: initialPerformerInviteToken,
                 initialGigId: initialGigId,

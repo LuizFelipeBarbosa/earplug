@@ -22,6 +22,7 @@ mixin _DiscoveryState on _AppStateCore {
   FanCity? _discoveryHomeCity;
   FanCity? get discoveryHomeCity => _discoveryHomeCity;
   LatLng? currentPosition;
+  String? currentPlaceName;
   bool locating = false;
   LocationFailure? locationFailure;
   DiscoveryFilters filters = const DiscoveryFilters();
@@ -151,6 +152,7 @@ mixin _DiscoveryState on _AppStateCore {
   }
 
   void _restoreSceneLocation() {
+    currentPlaceName = null;
     final home = profile?.homeLocation;
     if (home != null) {
       _applyFanCity(home);
@@ -174,6 +176,7 @@ mixin _DiscoveryState on _AppStateCore {
         : DiscoveryLocation.sf;
     _discoveryHomeCity = null;
     currentPosition = null;
+    currentPlaceName = null;
     locating = false;
     locationFailure = null;
     filters = filters.copyWith(maxDistanceMiles: null);
@@ -188,6 +191,7 @@ mixin _DiscoveryState on _AppStateCore {
         ? selectedCity
         : null;
     currentPosition = null;
+    currentPlaceName = null;
     locating = false;
     locationFailure = null;
     filters = filters.copyWith(maxDistanceMiles: null);
@@ -197,6 +201,7 @@ mixin _DiscoveryState on _AppStateCore {
     _appliedHomePersonalization = null;
     _locationRequestGeneration++;
     currentPosition = position;
+    currentPlaceName = null;
     discoveryLocation = DiscoveryLocation.current;
     _discoveryHomeCity = null;
     locating = false;
@@ -222,8 +227,10 @@ mixin _DiscoveryState on _AppStateCore {
           _appliedHomePersonalization = null;
           currentPosition = LatLng(location.latitude, location.longitude);
           discoveryLocation = DiscoveryLocation.current;
+          currentPlaceName = null;
           _discoveryHomeCity = null;
           locationFailure = null;
+          unawaited(_resolvePlaceName(requestGeneration, currentPosition!));
           say('Showing gigs near your current location.');
           return true;
         case final LocationFailure failure:
@@ -259,7 +266,8 @@ mixin _DiscoveryState on _AppStateCore {
   }
 
   String get locationLabel => switch (discoveryLocation) {
-    DiscoveryLocation.current => 'CURRENT LOCATION',
+    DiscoveryLocation.current =>
+      (currentPlaceName ?? 'Current location').toUpperCase(),
     DiscoveryLocation.home =>
       '${(_discoveryHomeCity ?? FanCity.sf).label.toUpperCase()} SCENE',
     DiscoveryLocation.oak => 'TEMESCAL, OAK',
@@ -273,6 +281,27 @@ mixin _DiscoveryState on _AppStateCore {
     DiscoveryLocation.oak => const LatLng(37.8378, -122.2628),
     DiscoveryLocation.sf => const LatLng(37.7599, -122.4148),
   };
+
+  Future<void> _resolvePlaceName(int generation, LatLng point) async {
+    final service = reverseGeocoding;
+    if (service == null) return;
+
+    PlaceName? place;
+    try {
+      place = await service
+          .reverseGeocode(point)
+          .timeout(const Duration(seconds: 6));
+    } catch (_) {
+      place = null;
+    }
+    if (_disposed ||
+        generation != _locationRequestGeneration ||
+        discoveryLocation != DiscoveryLocation.current) {
+      return;
+    }
+    currentPlaceName = place?.label;
+    notifyListeners();
+  }
 
   void toggleDateFilter(DateFilter value) => _set(() {
     filters = filters.copyWith(
