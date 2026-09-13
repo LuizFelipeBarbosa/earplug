@@ -93,7 +93,7 @@ class _HomeHeader extends StatelessWidget {
   }
 }
 
-/// "FRI 11 SEP · MISSION, SF" — the date and current location controls.
+/// The date and current location control.
 class _HeroEyebrow extends StatelessWidget {
   const _HeroEyebrow();
 
@@ -118,42 +118,25 @@ class _HeroEyebrow extends StatelessWidget {
           ),
         );
     final app = context.read<AppState>();
-    final palette = context.epColors;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Wrap(
-          spacing: 8,
-          runSpacing: 4,
+          spacing: 6,
+          runSpacing: 2,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             EpEyebrow.accent(
               '${weekdayNames[today.weekday - 1]} ${today.day} '
               '${monthNames[today.month - 1]} ·',
             ),
-            EpMonoText(locationLabel, color: palette.accent),
-            EpPill(
+            _LocationLink(
               key: const ValueKey('home-location-control'),
-              icon: Icons.my_location,
-              leading: locating
-                  ? const SizedBox.square(
-                      dimension: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : null,
-              label: locating
-                  ? 'Locating…'
-                  : usingCurrentLocation
-                  ? 'Near me'
-                  : 'Use my location',
-              selected: usingCurrentLocation,
-              semanticLabel: usingCurrentLocation
-                  ? 'Using your location. Switch off'
-                  : 'Use my location',
-              onPressed: locating
-                  ? null
-                  : () => app.setUseCurrentLocation(!usingCurrentLocation),
+              locationLabel: locationLabel,
+              usingCurrentLocation: usingCurrentLocation,
+              locating: locating,
+              app: app,
             ),
           ],
         ),
@@ -162,6 +145,55 @@ class _HeroEyebrow extends StatelessWidget {
           _LocationFailureNote(failure: failure, app: app),
         ],
       ],
+    );
+  }
+}
+
+class _LocationLink extends StatelessWidget {
+  const _LocationLink({
+    super.key,
+    required this.locationLabel,
+    required this.usingCurrentLocation,
+    required this.locating,
+    required this.app,
+  });
+
+  final String locationLabel;
+  final bool usingCurrentLocation;
+  final bool locating;
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.epColors;
+    final text = locating
+        ? 'LOCATING…'
+        : usingCurrentLocation
+        ? locationLabel
+        : 'USE MY LOCATION';
+    return Semantics(
+      button: true,
+      enabled: !locating,
+      label: usingCurrentLocation
+          ? 'Using your location. Switch off'
+          : 'Use my location',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: locating
+            ? null
+            : () => app.setUseCurrentLocation(!usingCurrentLocation),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Text(
+            text,
+            style: Theme.of(context).textTheme.epSection.copyWith(
+              color: locating ? palette.muted : palette.accent,
+              decoration: TextDecoration.underline,
+              decorationColor: palette.accent,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -175,31 +207,37 @@ class _HeroTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.epColors;
     final (numeral, labelSize) = EpLayout.isDesktop(context)
-        ? (88.0, 32.0)
+        ? (72.0, 32.0)
         : MediaQuery.textScalerOf(context).scale(1) > 1.3
-        ? (44.0, 18.0)
-        : (56.0, 22.0);
+        ? (32.0, 16.0)
+        : (44.0, 22.0);
     return Semantics(
       key: const ValueKey('home-hero'),
       label: '$count ${count == 1 ? 'show' : 'shows'} near you.',
       excludeSemantics: true,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '$count',
-            style: Theme.of(context).textTheme
-                .epDisplayAt(numeral)
-                .copyWith(color: palette.accent, height: .9),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: '$count ',
+                style: Theme.of(context).textTheme
+                    .epDisplayAt(numeral)
+                    .copyWith(color: palette.accent),
+              ),
+              TextSpan(
+                text: count == 1 ? 'SHOW NEAR YOU.' : 'SHOWS NEAR YOU.',
+                style: Theme.of(
+                  context,
+                ).textTheme.epDisplayAt(labelSize).copyWith(color: palette.ink),
+              ),
+            ],
           ),
-          Text(
-            count == 1 ? 'SHOW NEAR YOU.' : 'SHOWS NEAR YOU.',
-            style: Theme.of(context).textTheme
-                .epDisplayAt(labelSize)
-                .copyWith(color: palette.ink, height: 1),
-          ),
-        ],
+          maxLines: 1,
+          softWrap: false,
+        ),
       ),
     );
   }

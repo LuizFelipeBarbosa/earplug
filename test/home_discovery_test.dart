@@ -445,7 +445,7 @@ void main() {
 
     expect(harness.app.discoveryLocation, DiscoveryLocation.current);
     expect(find.byKey(const Key('current-location-marker')), findsOne);
-    expect(find.text('NEAR ME'), findsOne);
+    expect(find.text('CURRENT LOCATION'), findsOne);
     await tester.pump(const Duration(seconds: 3));
   });
 
