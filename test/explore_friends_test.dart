@@ -53,6 +53,26 @@ void main() {
     expect(tapped, isTrue);
   });
 
+  testWidgets('signed in with no entries offers find people', (tester) async {
+    var tapped = false;
+    await tester.pumpWidget(
+      host(
+        ExploreFriendsSection(
+          entries: const [],
+          signedIn: true,
+          hasFriends: true,
+          onFindPeople: () => tapped = true,
+          onSignIn: () {},
+          onOpenGig: (_) {},
+          venueLine: (_) => 'Venue',
+        ),
+      ),
+    );
+    expect(find.byKey(const Key('explore-find-people')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('explore-find-people')));
+    expect(tapped, isTrue);
+  });
+
   testWidgets('renders friend rows, sublines, avatars and see all', (
     tester,
   ) async {
@@ -96,7 +116,7 @@ void main() {
     );
     expect(find.byType(ExploreAvatarStack), findsNWidgets(2));
     expect(find.text('Maya is going'), findsOneWidget);
-    expect(find.text('Maya, Dev going'), findsOneWidget);
+    expect(find.text('Maya and Dev are going'), findsOneWidget);
     expect(find.text('SEE ALL'), findsOneWidget);
     await tester.tap(find.text('SEE ALL'));
     await tester.tap(find.byKey(Key('explore-friends-gig-${gig.id}')));

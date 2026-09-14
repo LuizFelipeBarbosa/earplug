@@ -124,14 +124,14 @@ class EpGigRow extends StatelessWidget {
 class EpEntityRow extends StatelessWidget {
   const EpEntityRow({
     super.key,
-    required this.leading,
+    this.leading,
     required this.title,
     this.sub,
     this.trailing,
     this.onTap,
   });
 
-  final Widget leading;
+  final Widget? leading;
   final String title;
   final String? sub;
   final Widget? trailing;
@@ -143,8 +143,7 @@ class EpEntityRow extends StatelessWidget {
     padding: const EdgeInsets.symmetric(vertical: 12),
     child: Row(
       children: [
-        leading,
-        const SizedBox(width: 12),
+        if (leading != null) ...[leading!, const SizedBox(width: 12)],
         Expanded(
           child: Column(
             mainAxisSize: MainAxisSize.min,

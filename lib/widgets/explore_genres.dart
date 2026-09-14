@@ -19,11 +19,13 @@ class ExploreGenreRail extends StatelessWidget {
     required this.chips,
     required this.selected,
     required this.onSelect,
+    this.padding = const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
   });
 
   final List<GenreChip> chips;
   final String? selected;
   final ValueChanged<String?> onSelect;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -47,7 +49,7 @@ class ExploreGenreRail extends StatelessWidget {
           key: const Key('explore-genre-rail-list'),
           primary: false,
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
+          padding: padding,
           itemCount: chips.length + 1,
           separatorBuilder: (context, index) => const SizedBox(width: 8),
           itemBuilder: (context, index) {

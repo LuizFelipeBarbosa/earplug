@@ -34,34 +34,28 @@ class ExploreFriendsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final content = !signedIn
-        ? _InfoPanel(
-            body: 'See where the people you follow are going.',
-            action: EpPill(
-              key: const Key('explore-friends-sign-in'),
-              label: 'Sign in to see friends',
-              onPressed: onSignIn,
-            ),
+        ? EpMenuRow(
+            key: const Key('explore-friends-sign-in'),
+            icon: Icons.group_outlined,
+            label: 'Sign in to see friends',
+            sub: 'Follow people and see their weekend plans.',
+            onTap: onSignIn,
           )
         : !hasFriends
-        ? _InfoPanel(
-            body:
-                'Follow people and, when they follow you back, their weekend plans show up here.',
-            action: EpPill(
-              key: const Key('explore-find-people'),
-              label: 'Find people',
-              variant: EpPillVariant.primary,
-              onPressed: onFindPeople,
-            ),
+        ? EpMenuRow(
+            key: const Key('explore-find-people'),
+            icon: Icons.group_outlined,
+            label: 'Find people',
+            sub: 'See where friends are going this weekend.',
+            onTap: onFindPeople,
           )
         : entries.isEmpty
-        ? _InfoPanel(
-            body: "No friends have RSVP'd for this weekend yet.",
-            action: EpPill(
-              key: const Key('explore-find-people'),
-              label: 'Find people',
-              variant: EpPillVariant.primary,
-              onPressed: onFindPeople,
-            ),
+        ? EpMenuRow(
+            key: const Key('explore-find-people'),
+            icon: Icons.group_outlined,
+            label: 'Find people',
+            sub: 'See where friends are going this weekend.',
+            onTap: onFindPeople,
           )
         : Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -90,40 +84,16 @@ class ExploreFriendsSection extends StatelessWidget {
   }
 
   String _friendsLine(List<SocialUserCard> friends) {
+    if (friends.isEmpty) return 'No friends are going';
     if (friends.length == 1) return '${friends[0].name} is going';
     if (friends.length == 2) {
-      return '${friends[0].name}, ${friends[1].name} going';
+      return '${friends[0].name} and ${friends[1].name} are going';
     }
-    return '${friends[0].name}, ${friends[1].name} +${friends.length - 2} going';
+    if (friends.length == 3) {
+      return '${friends[0].name}, ${friends[1].name} and ${friends[2].name} are going';
+    }
+    return '${friends[0].name}, ${friends[1].name} and ${friends.length - 2} others are going';
   }
-}
-
-class _InfoPanel extends StatelessWidget {
-  const _InfoPanel({required this.body, required this.action});
-
-  final String body;
-  final Widget action;
-
-  @override
-  Widget build(BuildContext context) => EpPanel(
-    striped: true,
-    padding: const EdgeInsets.all(20),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const EpEyebrow('FRIENDS'),
-        const SizedBox(height: 10),
-        Text(
-          body,
-          style: Theme.of(
-            context,
-          ).textTheme.epBody.copyWith(color: context.epColors.muted),
-        ),
-        const SizedBox(height: 16),
-        action,
-      ],
-    ),
-  );
 }
 
 class ExploreAvatarStack extends StatelessWidget {

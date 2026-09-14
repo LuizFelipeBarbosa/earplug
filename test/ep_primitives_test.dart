@@ -242,6 +242,14 @@ void main() {
     expect(actionTapped, isTrue);
   });
 
+  testWidgets('entity row without leading starts title at row edge', (
+    tester,
+  ) async {
+    await _pump(tester, const EpEntityRow(leading: null, title: 'Band'));
+
+    expect(tester.getTopLeft(find.text('BAND')).dx, 0);
+  });
+
   testWidgets('plain field forwards input', (tester) async {
     String? changed;
     await _pump(
