@@ -49,6 +49,7 @@ class FanEventCard extends StatelessWidget {
             venueName: venue.name,
             info: compactGigInfo(gig, app, showDistance: showDistance),
             lineup: exploreLineupFor(gig, app),
+            actions: gigCardActions(context, gig, app),
             friends: friends,
             onTap: () => app.openGig(gig.id),
             width: width,
@@ -92,6 +93,13 @@ class FanEventCard extends StatelessWidget {
     );
   }
 }
+
+List<Widget> gigCardActions(BuildContext context, Gig gig, AppState app) =>
+    _EventActions(
+      gig: gig,
+      app: app,
+      trailingAction: null,
+    ).posterActions(context);
 
 String compactGigMeta(Gig gig, AppState app, {required bool showDistance}) {
   final venue = app.venue(gig.venueId);

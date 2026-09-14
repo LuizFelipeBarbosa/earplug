@@ -710,7 +710,20 @@ void main() {
       ),
     );
 
-    expect(find.byType(ExploreFeaturedCard), findsOne);
+    final featuredCard = find.byType(ExploreFeaturedCard);
+    expect(featuredCard, findsOne);
+    final cardRect = tester.getRect(featuredCard);
+    for (final (index, action) in ['save', 'share'].indexed) {
+      final pill = find.descendant(
+        of: featuredCard,
+        matching: find.byKey(ValueKey('$action-${gig.id}')),
+      );
+      expect(pill, findsOneWidget);
+      final offset = tester.getTopLeft(pill) - cardRect.topLeft;
+      expect(offset.dy, closeTo(12, 1));
+      expect(offset.dx, closeTo(14 + index * 32, 1));
+      expect(offset.dx, lessThan(cardRect.width / 2));
+    }
     expect(find.byType(EpDateBlock), findsNothing);
     expect(find.byType(DateBlock), findsNothing);
     expect(find.byType(GigFlyer), findsOne);

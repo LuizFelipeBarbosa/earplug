@@ -8,6 +8,7 @@ import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/explore_friends.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
+import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
@@ -195,12 +196,45 @@ void main() {
         findsOneWidget,
       );
       final followedCard = find.byKey(const Key('explore-featured-gFollowed'));
+      final cardRect = tester.getRect(followedCard);
+      for (final (index, action) in ['save', 'share'].indexed) {
+        final pill = find.descendant(
+          of: followedCard,
+          matching: find.byKey(ValueKey('$action-gFollowed')),
+        );
+        expect(pill, findsOneWidget);
+        final offset = tester.getTopLeft(pill) - cardRect.topLeft;
+        expect(offset.dy, closeTo(12, 1));
+        expect(offset.dx, closeTo(14 + index * 32, 1));
+        expect(offset.dx, lessThan(cardRect.width / 2));
+      }
+      final gig = _gigs.first;
+      final date =
+          '${gig.startsAt.day} ${monthNamesUpper[gig.startsAt.month - 1]}';
+      final info = find.descendant(
+        of: followedCard,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              widget.textSpan?.toPlainText().contains(date) == true &&
+              widget.textSpan?.toPlainText().contains('FREE') == true,
+        ),
+      );
+      expect(info, findsOneWidget);
+      final legacyMeta = compactGigMeta(gig, h.app, showDistance: true);
+      final venueLine =
+          '${h.app.venue(gig.venueId).name} · doors ${gig.doorsLabel}';
       expect(
         find.descendant(
           of: followedCard,
-          matching: find.textContaining('FREE'),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Text &&
+                (widget.data == legacyMeta.toUpperCase() ||
+                    widget.data == venueLine.toUpperCase()),
+          ),
         ),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.descendant(of: followedCard, matching: find.text('Followed Band')),

@@ -721,6 +721,10 @@ void main() {
     expect(find.text('Cinder'), findsNothing);
     expect(find.byKey(const Key('lineup-see-all')), findsOneWidget);
     expect(
+      tester.widget<Text>(find.text('See all')).style,
+      tester.widget<Text>(find.text('Aster')).style,
+    );
+    expect(
       find.descendant(
         of: find.byType(ExploreFeaturedCard),
         matching: find.byType(EpDateBlock),
@@ -730,7 +734,7 @@ void main() {
   });
 
   testWidgets(
-    'featured card info uses regular 14-point metrics in both layouts',
+    'featured card uses regular info and medium lineup names at 14 points in both layouts',
     (tester) async {
       const info = ExploreGigInfo(
         dateTime: '23 SEP · 8PM',
@@ -776,6 +780,25 @@ void main() {
             span.text == ' · ' ? palette.muted : palette.ink,
           );
         }
+        final name = tester.widget<Text>(find.text('Aster'));
+        expect(name.style?.fontSize, 14);
+        expect(name.style?.fontWeight, FontWeight.w500);
+        expect(name.style?.fontFamily, 'Azeret Mono');
+        expect(name.style?.color, palette.ink);
+        final avatarBorder = tester.widget<DecoratedBox>(
+          find.ancestor(
+            of: find.byType(EpAvatarTile),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is DecoratedBox &&
+                  widget.position == DecorationPosition.foreground,
+            ),
+          ),
+        );
+        expect(
+          (avatarBorder.decoration as BoxDecoration).border,
+          Border.all(color: palette.ink),
+        );
         expect(find.text('LEGACY META'), findsNothing);
         expect(tester.takeException(), isNull);
       }

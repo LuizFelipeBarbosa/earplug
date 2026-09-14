@@ -106,11 +106,15 @@ class ExploreLineupRow extends StatelessWidget {
     super.key,
     required this.bands,
     this.tint,
+    this.nameStyle,
+    this.avatarBorderColor,
     this.onSeeAll,
   });
 
   final List<ExploreLineupBand> bands;
   final Color? tint;
+  final TextStyle? nameStyle;
+  final Color? avatarBorderColor;
   final VoidCallback? onSeeAll;
 
   double _textWidth(BuildContext context, String text, TextStyle style) {
@@ -125,15 +129,18 @@ class ExploreLineupRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (bands.isEmpty) return const SizedBox.shrink();
-    final style = Theme.of(context).textTheme.epBody.copyWith(color: tint);
+    final style =
+        nameStyle ?? Theme.of(context).textTheme.epBody.copyWith(color: tint);
     return LayoutBuilder(
       builder: (context, constraints) {
         final widths = [
           for (final band in bands) 26 + _textWidth(context, band.name, style),
         ];
-        final seeAllStyle = Theme.of(
-          context,
-        ).textTheme.epChipLabel.copyWith(color: tint ?? context.epColors.ink);
+        final seeAllStyle =
+            nameStyle ??
+            Theme.of(context).textTheme.epChipLabel.copyWith(
+              color: tint ?? context.epColors.ink,
+            );
         final seeAllWidth = _textWidth(context, 'See all', seeAllStyle);
         var used = 0.0;
         var count = bands.length;
@@ -173,6 +180,8 @@ class ExploreLineupRow extends StatelessWidget {
               child: _ExploreLineupChip(
                 band: bands.first,
                 textColor: tint,
+                textStyle: nameStyle,
+                avatarBorderColor: avatarBorderColor,
                 allowOverflow: true,
                 shrinkToFit: true,
               ),
@@ -182,6 +191,8 @@ class ExploreLineupRow extends StatelessWidget {
             _ExploreLineupChip(
               band: visible[i],
               textColor: tint,
+              textStyle: nameStyle,
+              avatarBorderColor: avatarBorderColor,
               allowOverflow: false,
             ),
           ],
@@ -284,28 +295,44 @@ class _ExploreLineupChip extends StatelessWidget {
   const _ExploreLineupChip({
     required this.band,
     this.textColor,
+    this.textStyle,
+    this.avatarBorderColor,
     this.allowOverflow = true,
     this.shrinkToFit = false,
   });
 
   final ExploreLineupBand band;
   final Color? textColor;
+  final TextStyle? textStyle;
+  final Color? avatarBorderColor;
   final bool allowOverflow;
   final bool shrinkToFit;
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = Theme.of(context).textTheme.epBody;
+    final nameStyle =
+        textStyle ??
+        Theme.of(context).textTheme.epBody.copyWith(color: textColor);
+    final avatar = EpAvatarTile(
+      initials: band.initials,
+      size: 20,
+      image: band.avatarUrl == null || band.avatarUrl!.isEmpty
+          ? null
+          : NetworkImage(band.avatarUrl!),
+    );
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        EpAvatarTile(
-          initials: band.initials,
-          size: 20,
-          image: band.avatarUrl == null || band.avatarUrl!.isEmpty
-              ? null
-              : NetworkImage(band.avatarUrl!),
-        ),
+        if (avatarBorderColor != null)
+          DecoratedBox(
+            position: DecorationPosition.foreground,
+            decoration: BoxDecoration(
+              border: Border.all(color: avatarBorderColor!),
+            ),
+            child: avatar,
+          )
+        else
+          avatar,
         SizedBox(width: shrinkToFit ? 4 : 6),
         if (allowOverflow && shrinkToFit)
           Flexible(
@@ -314,9 +341,7 @@ class _ExploreLineupChip extends StatelessWidget {
               softWrap: false,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: textColor == null
-                  ? textStyle
-                  : textStyle.copyWith(color: textColor),
+              style: nameStyle,
             ),
           )
         else
@@ -325,9 +350,7 @@ class _ExploreLineupChip extends StatelessWidget {
             softWrap: false,
             maxLines: 1,
             overflow: TextOverflow.clip,
-            style: textColor == null
-                ? textStyle
-                : textStyle.copyWith(color: textColor),
+            style: nameStyle,
           ),
       ],
     );
@@ -542,6 +565,7 @@ class ExploreFeaturedCard extends StatelessWidget {
     this.meta,
     this.info,
     this.lineup = const <ExploreLineupBand>[],
+    this.actions = const [],
     this.width = 300,
     this.height = 380,
   });
@@ -553,6 +577,7 @@ class ExploreFeaturedCard extends StatelessWidget {
   final String? meta;
   final ExploreGigInfo? info;
   final List<ExploreLineupBand> lineup;
+  final List<Widget> actions;
   final double width;
   final double height;
 
@@ -588,7 +613,7 @@ class ExploreFeaturedCard extends StatelessWidget {
                     end: Alignment.bottomCenter,
                     colors: [
                       context.epColors.background.withValues(alpha: 0),
-                      context.epColors.background.withValues(alpha: .86),
+                      context.epColors.background.withValues(alpha: .94),
                     ],
                   ),
                 ),
@@ -597,6 +622,33 @@ class ExploreFeaturedCard extends StatelessWidget {
                 ..._landscapeContent(context, style)
               else
                 _portraitContent(context, style),
+              if (actions.isNotEmpty)
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Container(
+                    color: context.epColors.background.withValues(alpha: .55),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 4,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < actions.length; i++) ...[
+                          if (i > 0) const SizedBox(width: 4),
+                          SizedBox.square(
+                            dimension: 28,
+                            child: FittedBox(
+                              fit: BoxFit.contain,
+                              child: actions[i],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -632,7 +684,12 @@ class ExploreFeaturedCard extends StatelessWidget {
           const SizedBox(height: 8),
           ExploreLineupRow(
             bands: lineup,
-            tint: style.fg.withValues(alpha: .85),
+            nameStyle: Theme.of(context).textTheme.epLabel.copyWith(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: context.epColors.ink,
+            ),
+            avatarBorderColor: context.epColors.ink,
             onSeeAll: onTap,
           ),
         ],
@@ -685,7 +742,12 @@ class ExploreFeaturedCard extends StatelessWidget {
               const SizedBox(height: 8),
               ExploreLineupRow(
                 bands: lineup,
-                tint: style.fg.withValues(alpha: .85),
+                nameStyle: Theme.of(context).textTheme.epLabel.copyWith(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: context.epColors.ink,
+                ),
+                avatarBorderColor: context.epColors.ink,
                 onSeeAll: onTap,
               ),
             ],
