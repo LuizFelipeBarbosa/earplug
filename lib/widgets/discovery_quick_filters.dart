@@ -66,14 +66,15 @@ class DiscoveryQuickFilters extends StatelessWidget {
         children: [tonight, thisWeek, free, icon, trailing!],
       );
     }
+    // Widths follow the label lengths so THIS WEEK never wraps at phone width.
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Expanded(child: tonight),
+        Expanded(flex: 17, child: tonight),
         const SizedBox(width: 8),
-        Expanded(child: thisWeek),
+        Expanded(flex: 20, child: thisWeek),
         const SizedBox(width: 8),
-        Expanded(child: free),
+        Expanded(flex: 12, child: free),
         const SizedBox(width: 8),
         icon,
       ],

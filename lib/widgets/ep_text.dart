@@ -193,6 +193,9 @@ class EpPill extends StatelessWidget {
                         keepCase ? label : label.toUpperCase(),
                         semanticsLabel: label,
                         textAlign: TextAlign.center,
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.clip,
                         style:
                             (size == EpPillSize.chip
                                     ? Theme.of(context).textTheme.epChipLabel
