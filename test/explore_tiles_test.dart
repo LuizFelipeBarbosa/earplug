@@ -51,6 +51,13 @@ void main() {
     final nameText = tester.widget<Text>(find.text('The Tile Band'));
     expect(nameText.maxLines, 3);
     expect(nameText.softWrap, isTrue);
+    // Content is left-aligned so the first avatar in a rail sits on the
+    // gutter, under the section heading.
+    final tileLeft = tester.getTopLeft(find.byType(ExploreBandTile)).dx;
+    expect(tester.getTopLeft(find.byType(EpAvatarTile)).dx, tileLeft);
+    expect(tester.getTopLeft(find.text('The Tile Band')).dx, tileLeft);
+    expect(nameText.textAlign, TextAlign.left);
+    expect(genreText.textAlign, TextAlign.left);
     await tester.tap(find.text('The Tile Band'));
     expect(tapped, isTrue);
 
@@ -77,6 +84,42 @@ void main() {
           .maxLines,
       3,
     );
+  });
+
+  testWidgets('band rail height fits the tallest tile at any text scale', (
+    tester,
+  ) async {
+    final band = bandFixture(
+      id: 'tall-band',
+      name: 'The Very Long Band Name That Should Wrap Across Several Lines',
+      genres: ['garage', 'surf punk', 'noise', 'post-hardcore', 'shoegaze'],
+    );
+    for (final scale in [1.0, 1.3]) {
+      // A Column gives the tile unbounded height, so it takes its content
+      // height instead of filling the screen.
+      await tester.pumpWidget(
+        plain(
+          Column(children: [ExploreBandTile(band: band, onTap: () {})]),
+          textScaler: TextScaler.linear(scale),
+        ),
+      );
+      final tile = find.byType(ExploreBandTile);
+      final context = tester.element(tile);
+      final textTheme = Theme.of(context).textTheme;
+      double line(TextStyle style) =>
+          (style.fontSize! * style.height! * scale).ceilToDouble();
+      final expected =
+          72 + 6 + 2 + line(textTheme.epLabel) * 3 + line(textTheme.epMeta) * 2;
+      final rail = exploreBandRailHeight(context);
+      expect(rail, expected);
+      // Name and genres both hit their line caps in this fixture, so the
+      // tile is as tall as it ever gets; the rail must contain it with no
+      // more than the per-line rounding slack to spare.
+      expect(tester.widget<Text>(find.text(band.name)).maxLines, 3);
+      final tileHeight = tester.getSize(tile).height;
+      expect(tileHeight, lessThanOrEqualTo(rail));
+      expect(tileHeight, greaterThan(rail - 5));
+    }
   });
 
   testWidgets('collection card shows title, show count, and handles taps', (

@@ -58,9 +58,14 @@ class _ExploreScreenState extends State<ExploreScreen> {
         : app.exploreGenrePage != null
         ? ValueKey('explore-genre-${app.exploreGenre}')
         : const ValueKey('explore-browse-all');
-    return CustomScrollView(
-      key: modeKey,
-      slivers: _slivers(context, app, searching, q),
+    // The status-bar inset lives on the SafeArea rather than inside the
+    // scroll view, so the pinned genre rail never slides under the status bar.
+    return SafeArea(
+      bottom: false,
+      child: CustomScrollView(
+        key: modeKey,
+        slivers: _slivers(context, app, searching, q),
+      ),
     );
   }
 
@@ -71,7 +76,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
     String q,
   ) {
     final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.6);
-    final baseExtent = (40 + 12 + 1) * scale;
+    // 12px above and below the 40px chip row, then the hairline. The top gap
+    // keeps the chips off the viewport edge once the header is pinned.
+    final baseExtent = (12 + 40 + 12 + 1) * scale;
     final maxHeader = MediaQuery.sizeOf(context).height * .45;
     final pinRail = baseExtent <= maxHeader;
     final extent = pinRail ? baseExtent : 1 * scale;
@@ -81,6 +88,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (pinRail) ...[
+            const SizedBox(height: 12),
             ExploreGenreRail(
               chips: app.exploreGenres,
               selected: app.exploreGenre,
@@ -95,11 +103,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
     final slivers = <Widget>[
       SliverToBoxAdapter(
         child: Padding(
-          padding: EdgeInsets.fromLTRB(
+          // The pinned controls carry the gap under the search field's
+          // hairline; the SafeArea carries the status-bar inset above.
+          padding: const EdgeInsets.fromLTRB(
             EpLayout.gutter,
-            MediaQuery.paddingOf(context).top + 22,
+            22,
             EpLayout.gutter,
-            18,
+            0,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -149,10 +159,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
     if (!pinRail) {
       slivers.add(
         SliverToBoxAdapter(
-          child: ExploreGenreRail(
-            chips: app.exploreGenres,
-            selected: app.exploreGenre,
-            onSelect: app.setExploreGenre,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: ExploreGenreRail(
+              chips: app.exploreGenres,
+              selected: app.exploreGenre,
+              onSelect: app.setExploreGenre,
+            ),
           ),
         ),
       );
@@ -329,7 +342,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
         }
         slivers.add(
           SliverToBoxAdapter(
-            child: _gutter(EpSectionHeader(label: 'BANDS')),
+            child: _gutter(
+              const EpSectionHeader(
+                label: 'BANDS',
+                padding: EdgeInsets.only(top: 32, bottom: 4),
+              ),
+            ),
           ),
         );
         if (bandIds.isNotEmpty) {
@@ -338,7 +356,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
               child: EpCarousel(
                 key: const Key('explore-bands'),
                 itemExtent: 120,
-                height: 220,
+                height: exploreBandRailHeight(context),
                 wrapWhenScaled: true,
                 itemCount: bandIds.length,
                 itemBuilder: (_, i) {

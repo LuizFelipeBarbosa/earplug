@@ -7,6 +7,7 @@ import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/explore_friends.dart';
+import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
@@ -391,6 +392,58 @@ void main() {
     await tester.tap(band);
     expect(h.app.current.screen, Screen.band);
     expect(h.app.current.param, 'bFollow');
+  });
+
+  testWidgets('bands rail hugs its tiles and sits 32 under the venues row', (
+    tester,
+  ) async {
+    await _pumpExplore(tester, signedIn: true, gigs: _gigs, bands: _bands);
+    final rail = find.byKey(const Key('explore-bands'));
+    final allBands = find.byKey(const Key('explore-toggle-bands'));
+    await _scrollTo(tester, allBands);
+    expect(rail, findsOneWidget);
+    final railRect = tester.getRect(rail);
+    expect(railRect.height, exploreBandRailHeight(tester.element(rail)));
+    // The first avatar starts on the gutter, under the heading's left edge.
+    final heading = find.text('BANDS');
+    expect(
+      tester.getTopLeft(find.byKey(const Key('explore-band-card-bFollow'))).dx,
+      tester.getTopLeft(heading).dx,
+    );
+    // No dead space between the rail and the All bands row.
+    expect(tester.getTopLeft(allBands).dy, railRect.bottom);
+    // The heading keeps 32px clear of the All venues row above it.
+    final allVenues = find.byKey(const Key('explore-toggle-venues'));
+    expect(tester.getTopLeft(heading).dy - tester.getRect(allVenues).bottom, 32);
+  });
+
+  testWidgets('pinned genre rail stays below the status bar when scrolled', (
+    tester,
+  ) async {
+    const statusBar = 47.0;
+    await _pumpExplore(
+      tester,
+      gigs: _gigs,
+      bands: _bands,
+      home: Builder(
+        builder: (context) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(padding: const EdgeInsets.only(top: statusBar)),
+          child: const Scaffold(body: ExploreScreen()),
+        ),
+      ),
+    );
+    final chips = find.byKey(const Key('explore-genre-rail'));
+    // At rest the chips sit 12px under the search field's hairline.
+    final fieldBottom = tester.getRect(find.byType(EpUnderlineField)).bottom;
+    expect(tester.getTopLeft(chips).dy - fieldBottom, 12);
+    expect(tester.getTopLeft(find.text('EXPLORE')).dy, greaterThan(statusBar));
+
+    await _scrollTo(tester, find.byKey(const Key('explore-toggle-bands')));
+    expect(find.text('EXPLORE'), findsNothing);
+    expect(tester.getTopLeft(chips).dy, statusBar + 12);
+    expect(tester.getTopLeft(chips).dy, greaterThanOrEqualTo(12));
   });
 
   testWidgets('find people row is at the bottom and opens People', (

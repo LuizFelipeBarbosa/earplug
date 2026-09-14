@@ -4,8 +4,10 @@ import 'package:earplug/app_state.dart';
 import 'package:earplug/explore_ranking.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/ep_carousel.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/explore_genres.dart';
+import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -188,7 +190,18 @@ void main() {
     expect(find.byKey(const Key('band-tile-b1')), findsOneWidget);
     expect(find.byKey(const Key('band-tile-b2')), findsOneWidget);
     expect(bandTiles, 2);
-    await tester.tap(find.byKey(const Key('explore-toggle-bands')));
+    // The heading keeps 32px clear of the content above it, the rail is
+    // sized to the band tile's tallest content, and the All bands row
+    // follows the rail directly.
+    final heading = find.text('BANDS PLAYING PUNK');
+    final widen = find.byKey(const Key('explore-genre-widen'));
+    expect(tester.getTopLeft(heading).dy - tester.getRect(widen).bottom, 32);
+    final rail = find.byType(EpCarousel);
+    final railRect = tester.getRect(rail);
+    expect(railRect.height, exploreBandRailHeight(tester.element(rail)));
+    final allBands = find.byKey(const Key('explore-toggle-bands'));
+    expect(tester.getTopLeft(allBands).dy, railRect.bottom);
+    await tester.tap(allBands);
     expect(allBandsTapped, isTrue);
   });
 

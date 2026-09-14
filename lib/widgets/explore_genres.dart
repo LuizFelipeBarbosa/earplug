@@ -9,6 +9,7 @@ import '../theme.dart';
 import 'ep_carousel.dart';
 import 'ep_rows.dart';
 import 'ep_text.dart';
+import 'explore_tiles.dart';
 import 'fan_event_card.dart';
 
 /// A sideways-scrollable rail of genre chips: "All" plus one chip per genre.
@@ -135,12 +136,15 @@ class ExploreGenrePageBody extends StatelessWidget {
 
     if (page.bandIds.isNotEmpty) {
       children.addAll([
-        EpSectionHeader(label: 'Bands playing ${page.label.toUpperCase()}'),
-        // Same extent as the browse page's BANDS rail: the tile is 120 wide
-        // with a wrapping name and genre line under a 72px avatar.
+        EpSectionHeader(
+          label: 'Bands playing ${page.label.toUpperCase()}',
+          padding: const EdgeInsets.only(top: 32, bottom: 4),
+        ),
+        // Same extent as the browse page's BANDS rail: sized to the tile's
+        // tallest content so no dead space opens up above the All bands row.
         EpCarousel(
           itemExtent: 120,
-          height: 220,
+          height: exploreBandRailHeight(context),
           wrapWhenScaled: true,
           itemCount: page.bandIds.length,
           itemBuilder: (context, index) => bandTile(page.bandIds[index]),

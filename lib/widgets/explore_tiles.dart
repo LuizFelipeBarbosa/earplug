@@ -482,15 +482,40 @@ class ExploreLocationRow extends StatelessWidget {
   );
 }
 
+/// Layout constants shared by [ExploreBandTile] and [exploreBandRailHeight],
+/// so a rail can be sized to the tile's tallest possible content.
+const _bandTileAvatarSize = 72.0;
+const _bandTileAvatarGap = 6.0;
+const _bandTileNameMaxLines = 3;
+const _bandTileGenreGap = 2.0;
+const _bandTileGenreMaxLines = 2;
+
+/// The height a BANDS rail needs to show a default [ExploreBandTile] with its
+/// name and genre lines fully wrapped at the current text scale, so the rail
+/// leaves no dead space under shorter tiles.
+double exploreBandRailHeight(BuildContext context) {
+  final textTheme = Theme.of(context).textTheme;
+  final scale = MediaQuery.textScalerOf(context).scale(1);
+  // The text engine rounds each line box to whole pixels, so round each line
+  // up rather than the total: a fractional total can land a pixel short.
+  double lineHeight(TextStyle style) =>
+      (style.fontSize! * style.height! * scale).ceilToDouble();
+  final text =
+      lineHeight(textTheme.epLabel) * _bandTileNameMaxLines +
+      lineHeight(textTheme.epMeta) * _bandTileGenreMaxLines;
+  return _bandTileAvatarSize + _bandTileAvatarGap + _bandTileGenreGap + text;
+}
+
 /// Square avatar + name + genre line, for RECOMMENDED / BANDS rails.
-/// Total width 120 wrapping a 72px avatar column by default.
+/// Total width 120 wrapping a 72px avatar column by default; content is
+/// left-aligned so the first avatar lines up with the section heading.
 class ExploreBandTile extends StatelessWidget {
   const ExploreBandTile({
     super.key,
     required this.band,
     required this.onTap,
     this.width = 120,
-    this.avatarSize = 72,
+    this.avatarSize = _bandTileAvatarSize,
   });
 
   final Band band;
@@ -509,8 +534,11 @@ class ExploreBandTile extends StatelessWidget {
         label: band.name,
         child: GestureDetector(
           onTap: onTap,
+          // The whole slot is tappable, including the gaps between avatar,
+          // name and genres.
+          behavior: HitTestBehavior.opaque,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               EpAvatarTile(
                 initials: band.initials,
@@ -519,23 +547,23 @@ class ExploreBandTile extends StatelessWidget {
                     ? null
                     : NetworkImage(imageUrl),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: _bandTileAvatarGap),
               Text(
                 band.name,
-                maxLines: 3,
+                maxLines: _bandTileNameMaxLines,
                 softWrap: true,
                 overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
+                textAlign: TextAlign.left,
                 style: Theme.of(context).textTheme.epLabel,
               ),
               if (genres.isNotEmpty) ...[
-                const SizedBox(height: 2),
+                const SizedBox(height: _bandTileGenreGap),
                 Text(
                   genres,
-                  maxLines: 2,
+                  maxLines: _bandTileGenreMaxLines,
                   softWrap: true,
                   overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
+                  textAlign: TextAlign.left,
                   style: Theme.of(
                     context,
                   ).textTheme.epMeta.copyWith(color: context.epColors.muted),
