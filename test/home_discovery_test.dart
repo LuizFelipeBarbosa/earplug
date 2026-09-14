@@ -643,7 +643,7 @@ void main() {
     final rowHeight = tester.getSize(find.byType(ExploreEventRow)).height;
     expect(thumbnailSize.width, 64);
     expect(thumbnailSize.height, closeTo(rowHeight - 25, 0.1));
-    expect(find.byType(GigFlyer), findsNothing);
+    expect(find.byType(GigFlyer), findsOneWidget);
     // Day, month, doors time and price make up the row's mono meta line.
     expect(
       find.textContaining(

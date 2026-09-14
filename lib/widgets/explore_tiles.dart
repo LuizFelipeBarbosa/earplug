@@ -192,13 +192,17 @@ class ExploreEventRow extends StatelessWidget {
         url: imageUrl,
         fit: BoxFit.cover,
         cacheWidth: thumbnailSize.round(),
-        fallback: ColoredBox(
-          color: style.base,
-          child: Center(
-            child: EpDisplay(
-              _initialsFor(gig.title),
-              size: 16,
-              color: style.fg,
+        fallback: SizedBox.expand(
+          child: SizedBox(
+            height: thumbnailSize,
+            child: FittedBox(
+              fit: BoxFit.cover,
+              clipBehavior: Clip.hardEdge,
+              child: SizedBox(
+                width: 240,
+                height: 300,
+                child: GigFlyer(gig, style),
+              ),
             ),
           ),
         ),
@@ -338,10 +342,10 @@ class ExploreFeaturedCard extends StatelessWidget {
                   fit: BoxFit.cover,
                   cacheWidth: width.round(),
                   cacheHeight: height.round(),
-                  fallback: EpPanel(color: style.base, striped: true),
+                  fallback: GigFlyer(gig, style, width: width, height: height),
                 )
               else
-                EpPanel(color: style.base, striped: true),
+                GigFlyer(gig, style, width: width, height: height),
               DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(

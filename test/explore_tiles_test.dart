@@ -151,7 +151,7 @@ void main() {
     expect(tapped, isTrue);
   });
 
-  testWidgets('event row shows metadata, fallback initials, and taps', (
+  testWidgets('event row shows metadata, generated flyer, and taps', (
     tester,
   ) async {
     var tapped = false;
@@ -172,7 +172,20 @@ void main() {
       ),
     );
     expect(find.text('NEON NIGHTS'), findsOneWidget);
-    expect(find.text('NN'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(ExploreEventRow),
+        matching: find.byType(GigFlyer),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(ExploreEventRow),
+        matching: find.text('NN'),
+      ),
+      findsNothing,
+    );
     expect(find.textContaining('19 SEP'), findsOneWidget);
     expect(find.textContaining('The Foghorn'), findsOneWidget);
     await tester.tap(find.text('NEON NIGHTS'));
@@ -343,6 +356,34 @@ void main() {
       expect(find.text(name), findsOneWidget);
     }
     expect(find.text('Fourth'), findsNothing);
+  });
+
+  testWidgets('featured card uses generated flyer without duplicating title', (
+    tester,
+  ) async {
+    final gig = gigFixture(
+      id: 'featured-generated-flyer',
+      title: 'Generated Flyer Event',
+      flyerUrl: null,
+    );
+    await tester.pumpWidget(
+      plain(
+        ExploreFeaturedCard(
+          gig: gig,
+          venueName: 'The Foghorn',
+          onTap: () {},
+        ),
+      ),
+    );
+
+    expect(
+      find.descendant(
+        of: find.byType(ExploreFeaturedCard),
+        matching: find.byType(GigFlyer),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('GENERATED FLYER EVENT'), findsOneWidget);
   });
 
   testWidgets('featured card shows details, ticket cue, and taps', (
