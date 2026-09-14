@@ -77,7 +77,7 @@ class _MyGigsScreenState extends State<MyGigsScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _ProfileHeader(app: app),
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
               EpStatGrid(
                 topLine: false,
                 stats: [
@@ -240,6 +240,18 @@ class _ProfileHeader extends StatelessWidget {
                     size: 20,
                     keepCase: true,
                   ),
+                  if (profile case final UserProfile profile) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Member since ${monthNamesFull[profile.createdAt.month - 1]} ${profile.createdAt.year}',
+                      key: const Key('fan-profile-since'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.epCaption.copyWith(
+                        color: context.epColors.muted,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

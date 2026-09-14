@@ -36,6 +36,22 @@ final List<String> weekdayNamesUpper = [
 ];
 
 /// The shouted form the flyer typography uses.
+/// Full month names for prose such as "Member since March 2026".
+const List<String> monthNamesFull = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
 final List<String> monthNamesUpper = [
   for (final name in monthNames) name.toUpperCase(),
 ];
