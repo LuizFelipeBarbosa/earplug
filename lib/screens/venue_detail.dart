@@ -61,13 +61,14 @@ class _TopBar extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.fromLTRB(
         EpLayout.gutter,
-        headerTopPad(context),
+        EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
         EpLayout.gutter,
         0,
       ),
       child: Row(
         children: [
           EpIconPill(
+            key: const ValueKey('venue-detail-back-control'),
             icon: Icons.arrow_back,
             semanticLabel: 'Back',
             onPressed: onBack,

@@ -38,11 +38,13 @@ class ScreenHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // RootShell supplies the 28px desktop shell inset; mobile screens need
+    // the full status-bar-aware header offset here.
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(
         EpLayout.gutter,
-        headerTopPad(context),
+        EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
         EpLayout.gutter,
         bottomPadding,
       ),

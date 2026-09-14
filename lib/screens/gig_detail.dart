@@ -281,7 +281,12 @@ class _Hero extends StatelessWidget {
         .join(' · ');
 
     final content = Padding(
-      padding: EdgeInsets.fromLTRB(22, headerTopPad(context) + 8, 22, 20),
+      padding: EdgeInsets.fromLTRB(
+        EpLayout.gutter + 8,
+        (EpLayout.isDesktop(context) ? 0 : headerTopPad(context)) + 2,
+        EpLayout.gutter + 8,
+        20,
+      ),
       child: Stack(
         key: const ValueKey('gig-detail-hero-content'),
         clipBehavior: Clip.none,
@@ -320,6 +325,7 @@ class _Hero extends StatelessWidget {
             left: -8,
             top: -2,
             child: EpIconPill(
+              key: const ValueKey('gig-detail-back-control'),
               icon: Icons.arrow_back,
               semanticLabel: 'Back',
               onPressed: onBack,

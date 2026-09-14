@@ -56,11 +56,12 @@ class _PeopleScreenState extends State<PeopleScreen> {
           Padding(
             padding: EdgeInsets.fromLTRB(
               EpLayout.gutter,
-              MediaQuery.paddingOf(context).top + 22,
+              EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
               EpLayout.gutter,
               0,
             ),
             child: EpIconPill(
+              key: const ValueKey('people-back-control'),
               icon: Icons.arrow_back,
               semanticLabel: 'Back',
               onPressed: app.back,

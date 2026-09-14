@@ -65,13 +65,14 @@ class _ExploreCollectionScreenState extends State<ExploreCollectionScreen> {
         Padding(
           padding: EdgeInsets.fromLTRB(
             EpLayout.gutter,
-            headerTopPad(context),
+            EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
             EpLayout.gutter,
             0,
           ),
           child: Row(
             children: [
               EpIconPill(
+                key: const ValueKey('explore-collection-back-control'),
                 icon: Icons.arrow_back,
                 semanticLabel: 'Back',
                 onPressed: app.back,

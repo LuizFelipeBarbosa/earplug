@@ -54,10 +54,14 @@ class _HomeHeader extends StatelessWidget {
     );
 
     if (EpLayout.isDesktop(context)) {
+      final desktopHero = KeyedSubtree(
+        key: const ValueKey('home-header-hero'),
+        child: hero,
+      );
       return Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(flex: 3, child: hero),
+          Expanded(flex: 3, child: desktopHero),
           const SizedBox(width: 24),
           Expanded(
             flex: 2,
@@ -74,6 +78,7 @@ class _HomeHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          key: const ValueKey('home-header-row'),
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const EpLogo.full(
@@ -256,7 +261,10 @@ class _FeedListState extends State<_FeedList> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const _HomeHeader(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
+            child: const _HomeHeader(),
+          ),
           const SizedBox(height: 32),
           const EpHairline(),
           if (lead == -1)

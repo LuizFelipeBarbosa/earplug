@@ -158,7 +158,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ListView(
       padding: EdgeInsets.fromLTRB(
         EpLayout.gutter,
-        headerTopPad(context),
+        EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
         EpLayout.gutter,
         32,
       ),
@@ -166,6 +166,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Row(
           children: [
             CircleIconButton(
+              key: const ValueKey('settings-back-control'),
               onTap: _deleting ? null : app.back,
               tooltip: 'Back to profile',
             ),

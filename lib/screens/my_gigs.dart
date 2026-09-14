@@ -68,7 +68,7 @@ class _MyGigsScreenState extends State<MyGigsScreen> {
         child: SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(
             EpLayout.gutter,
-            headerTopPad(context),
+            EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
             EpLayout.gutter,
             0,
           ),

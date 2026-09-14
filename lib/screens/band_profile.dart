@@ -159,6 +159,7 @@ class _BandHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.epColors;
     final topInset = MediaQuery.paddingOf(context).top;
+    final headerTop = EpLayout.isDesktop(context) ? 0.0 : headerTopPad(context);
     final metadata = [
       ...band.genres,
       '${band.followersLabel} ${band.followers == 1 ? 'follower' : 'followers'}',
@@ -218,9 +219,10 @@ class _BandHero extends StatelessWidget {
               ),
             ),
             Positioned(
-              top: 16 + topInset,
-              left: 12,
+              top: headerTop,
+              left: EpLayout.gutter,
               child: EpIconPill(
+                key: const ValueKey('band-profile-back-control'),
                 icon: Icons.arrow_back,
                 semanticLabel: backLabel,
                 onPressed: onBack,

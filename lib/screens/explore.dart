@@ -58,9 +58,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
         : app.exploreGenrePage != null
         ? ValueKey('explore-genre-${app.exploreGenre}')
         : const ValueKey('explore-browse-all');
-    // The status-bar inset lives on the SafeArea rather than inside the
-    // scroll view, so the pinned genre rail never slides under the status bar.
+    // Keep the first sliver at the shared header offset on every breakpoint.
+    // SafeArea still avoids the bottom system controls, while headerTopPad
+    // accounts for the status bar on phones and the fixed desktop offset.
     return SafeArea(
+      top: false,
       bottom: false,
       child: CustomScrollView(
         key: modeKey,
@@ -104,10 +106,10 @@ class _ExploreScreenState extends State<ExploreScreen> {
       SliverToBoxAdapter(
         child: Padding(
           // The pinned controls carry the gap under the search field's
-          // hairline; the SafeArea carries the status-bar inset above.
-          padding: const EdgeInsets.fromLTRB(
+          // hairline; the shared header offset positions the title itself.
+          padding: EdgeInsets.fromLTRB(
             EpLayout.gutter,
-            22,
+            EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
             EpLayout.gutter,
             0,
           ),

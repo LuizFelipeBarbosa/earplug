@@ -359,16 +359,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           child: ListView(
             controller: _scrollController,
             padding: EdgeInsets.fromLTRB(
-              16,
-              headerTopPad(context),
-              16,
+              EpLayout.gutter,
+              EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
+              EpLayout.gutter,
               actionBarClearance(context) +
                   MediaQuery.paddingOf(context).bottom,
             ),
             children: [
               Row(
+                key: const ValueKey('edit-profile-header-row'),
                 children: [
                   CircleIconButton(
+                    key: const ValueKey('edit-profile-back-control'),
                     onTap: _saving ? null : _attemptClose,
                     tooltip: 'Back to profile',
                   ),
