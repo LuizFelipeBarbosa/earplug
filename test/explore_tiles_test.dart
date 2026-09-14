@@ -140,10 +140,13 @@ void main() {
       of: find.byType(ExploreEventRow),
       matching: find.byType(EpNetworkImage),
     );
-    expect(tester.getSize(thumbnail), const Size(72.5, 72.5));
+    final thumbnailSize = tester.getSize(thumbnail);
+    final rowHeight = tester.getSize(find.byType(ExploreEventRow)).height;
+    expect(thumbnailSize.width, 72.5);
+    expect(thumbnailSize.height, closeTo(rowHeight - 25, 0.1));
     final image = tester.widget<EpNetworkImage>(thumbnail);
     expect(image.cacheWidth, 73);
-    expect(image.cacheHeight, 73);
+    expect(image.cacheHeight, isNull);
   });
 
   testWidgets('event imagery uses flyer photos for every fly key', (
@@ -196,6 +199,10 @@ void main() {
 
     expect(find.text('Mission Creep'), findsOneWidget);
     expect(find.text('Static Bloom'), findsOneWidget);
+    final missionCreep = tester.getTopLeft(find.text('Mission Creep'));
+    final staticBloom = tester.getTopLeft(find.text('Static Bloom'));
+    expect(staticBloom.dy, closeTo(missionCreep.dy, 0.5));
+    expect(staticBloom.dx, greaterThan(missionCreep.dx + 40));
     expect(
       find.descendant(
         of: find.byType(ExploreEventRow),

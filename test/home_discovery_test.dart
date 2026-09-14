@@ -639,7 +639,10 @@ void main() {
       of: find.byType(FanEventCard),
       matching: find.byType(EpNetworkImage),
     );
-    expect(tester.getSize(thumbnail), const Size(56, 56));
+    final thumbnailSize = tester.getSize(thumbnail);
+    final rowHeight = tester.getSize(find.byType(ExploreEventRow)).height;
+    expect(thumbnailSize.width, 64);
+    expect(thumbnailSize.height, closeTo(rowHeight - 25, 0.1));
     expect(find.byType(GigFlyer), findsNothing);
     // Day, month, doors time and price make up the row's mono meta line.
     expect(

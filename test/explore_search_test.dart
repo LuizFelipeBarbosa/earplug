@@ -249,6 +249,8 @@ void main() {
       250,
       scrollable: _browseScrollable(),
     );
+    await tester.ensureVisible(bandsToggle);
+    await tester.pumpAndSettle();
     await tester.tap(bandsToggle);
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.exploreCollection);
@@ -263,6 +265,8 @@ void main() {
       250,
       scrollable: _browseScrollable(),
     );
+    await tester.ensureVisible(venuesToggle);
+    await tester.pumpAndSettle();
     await tester.tap(venuesToggle);
     await tester.pumpAndSettle();
     expect(venuesHarness.app.current.screen, Screen.exploreCollection);

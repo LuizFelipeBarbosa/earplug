@@ -97,30 +97,28 @@ class _ExploreLineupChip extends StatelessWidget {
   final ExploreLineupBand band;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) => SizedBox(
-      width: constraints.maxWidth,
-      child: Row(
-        children: [
-          EpAvatarTile(
-            initials: band.initials,
-            size: 20,
-            image: band.avatarUrl == null || band.avatarUrl!.isEmpty
-                ? null
-                : NetworkImage(band.avatarUrl!),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              band.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.epBody,
-            ),
-          ),
-        ],
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      EpAvatarTile(
+        initials: band.initials,
+        size: 20,
+        image: band.avatarUrl == null || band.avatarUrl!.isEmpty
+            ? null
+            : NetworkImage(band.avatarUrl!),
       ),
-    ),
+      const SizedBox(width: 6),
+      Flexible(
+        fit: FlexFit.loose,
+        child: Text(
+          band.name,
+          softWrap: false,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.epBody,
+        ),
+      ),
+    ],
   );
 }
 
@@ -135,7 +133,7 @@ class ExploreEventRow extends StatelessWidget {
     this.sub,
     this.lineup,
     this.meta,
-    this.thumbnailSize = 56,
+    this.thumbnailSize = 64,
   });
 
   final Gig gig;
@@ -158,12 +156,11 @@ class ExploreEventRow extends StatelessWidget {
     final bands = lineup ?? const <ExploreLineupBand>[];
     final thumbnail = SizedBox(
       width: thumbnailSize,
-      height: thumbnailSize,
+      height: double.infinity,
       child: EpNetworkImage(
         url: imageUrl,
         fit: BoxFit.cover,
         cacheWidth: thumbnailSize.round(),
-        cacheHeight: thumbnailSize.round(),
         fallback: ColoredBox(
           color: style.base,
           child: Center(
@@ -179,69 +176,71 @@ class ExploreEventRow extends StatelessWidget {
     return _ExploreHairlineRow(
       semanticLabel: gig.title,
       onTap: onTap,
-      minHeight: thumbnailSize,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          thumbnail,
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                EpDisplay(
-                  gig.title,
-                  size: 18,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  meta == null ? monoLine : monoLine.toUpperCase(),
-                  semanticsLabel: monoLine,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.epMeta.copyWith(
-                    letterSpacing: 0.4,
-                    color: context.epColors.muted,
+      minHeight: 44,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            thumbnail,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  EpDisplay(
+                    gig.title,
+                    size: 18,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                if (bands.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 6,
-                    children: [
-                      for (final band in bands) _ExploreLineupChip(band: band),
-                    ],
-                  ),
-                ] else if (sub != null) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 2),
                   Text(
-                    sub!,
+                    meta == null ? monoLine : monoLine.toUpperCase(),
+                    semanticsLabel: monoLine,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.epBody.copyWith(color: context.epColors.muted),
+                    style: Theme.of(context).textTheme.epMeta.copyWith(
+                      letterSpacing: 0.4,
+                      color: context.epColors.muted,
+                    ),
                   ),
+                  if (bands.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 6,
+                      children: [
+                        for (final band in bands) _ExploreLineupChip(band: band),
+                      ],
+                    ),
+                  ] else if (sub != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      sub!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.epBody.copyWith(color: context.epColors.muted),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child:
-                trailing ??
-                Icon(
-                  Icons.chevron_right,
-                  size: 16,
-                  color: context.epColors.muted,
-                ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            Align(
+              alignment: Alignment.topRight,
+              child:
+                  trailing ??
+                  Icon(
+                    Icons.chevron_right,
+                    size: 16,
+                    color: context.epColors.muted,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }
