@@ -17,7 +17,6 @@ import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fakes.dart';
@@ -388,18 +387,6 @@ void main() {
   testWidgets('profile leads with private identity and branded fan fallback', (
     tester,
   ) async {
-    // Sharing copies to the clipboard; without a handler the platform call
-    // never resolves and the confirmation never reaches the messenger.
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (_) async => null,
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
     final semantics = tester.ensureSemantics();
     final auth = FakeAuthService();
     await auth.signInDemo();
@@ -412,6 +399,10 @@ void main() {
 
     final header = find.byKey(const Key('fan-profile-header'));
     expect(header, findsOne);
+    final title = find.byKey(const Key('fan-profile-title'));
+    final titleBottom = tester.getBottomLeft(title).dy;
+    final headerTop = tester.getTopLeft(header).dy;
+    expect((headerTop - titleBottom).abs(), lessThanOrEqualTo(8));
     final avatar = tester.widget<EpAvatarTile>(
       find.byKey(const Key('fan-profile-avatar')),
     );
@@ -440,8 +431,6 @@ void main() {
     }
     expect(find.byTooltip('Edit profile'), findsOne);
     expect(find.byTooltip('Privacy and account settings'), findsOne);
-    expect(find.byTooltip('Share profile summary'), findsOne);
-    expect(find.byKey(const Key('fan-profile-incomplete-hint')), findsOne);
     final stats = tester.widget<EpStatGrid>(find.byType(EpStatGrid));
     expect(stats.topLine, isFalse);
     expect(stats.stats.map((stat) => stat.label), [
@@ -454,12 +443,6 @@ void main() {
       '${harness.app.history.length}',
       '${harness.app.friendIds.length}',
     ]);
-    await _tapProfileControl(
-      tester,
-      find.byKey(const Key('share-fan-profile')),
-    );
-    expect(find.text('Profile summary copied.'), findsOne);
-    await tester.pump(const Duration(seconds: 3));
     semantics.dispose();
   });
 
@@ -641,52 +624,6 @@ void main() {
       expect(find.text(item.title.toUpperCase()), findsOne);
     }
     semantics.dispose();
-  });
-
-  testWidgets('profile sharing includes counts but no event-level history', (
-    tester,
-  ) async {
-    String? sharedText;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          sharedText = (call.arguments as Map)['text'] as String?;
-        }
-        return null;
-      },
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: DemoRepository(auth: auth),
-      home: const Scaffold(body: MyGigsScreen()),
-    );
-
-    await _tapProfileControl(
-      tester,
-      find.byKey(const Key('share-fan-profile')),
-    );
-    await tester.pump();
-
-    expect(sharedText, contains('Following: ${harness.app.follows.length}'));
-    expect(sharedText, contains('RSVP History: ${harness.app.history.length}'));
-    expect(sharedText, contains('not verified attendance'));
-    for (final item in harness.app.history) {
-      expect(sharedText, isNot(contains(item.title)));
-      if (item.venueName.isNotEmpty) {
-        expect(sharedText, isNot(contains(item.venueName)));
-      }
-    }
-    expect(find.text('Profile summary copied.'), findsOne);
   });
 
   testWidgets('fan-stat-friends opens the friends sheet with Maya', (
@@ -1101,7 +1038,6 @@ void main() {
     );
 
     expect(find.byKey(const Key('fan-profile-genres')), findsOne);
-    expect(find.byKey(const Key('fan-profile-incomplete-hint')), findsOne);
     await _tapProfileControl(
       tester,
       find.byKey(const ValueKey('fan-profile-genre-punk')),

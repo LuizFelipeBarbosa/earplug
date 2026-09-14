@@ -94,12 +94,10 @@ void main() {
     for (final key in const [
       Key('edit-profile-action'),
       Key('profile-settings-action'),
-      Key('share-fan-profile'),
     ]) {
       expect(tester.getSize(find.byKey(key)), const Size(44, 44));
     }
     expect(find.byTooltip('Edit profile'), findsOne);
-    expect(find.byTooltip('Share profile summary'), findsOne);
     expect(find.byTooltip('Privacy and account settings'), findsOne);
     final browse = find.byKey(const Key('fan-stat-following'));
     await tester.ensureVisible(browse);

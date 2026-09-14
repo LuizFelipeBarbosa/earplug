@@ -7,7 +7,6 @@ import '../app_state.dart';
 import '../date_names.dart';
 import '../genres.dart';
 import '../models.dart';
-import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
@@ -81,7 +80,7 @@ class _MyGigsScreenState extends State<MyGigsScreen> {
                 size: 44,
                 key: Key('fan-profile-title'),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 4),
               _ProfileHeader(app: app),
               const SizedBox(height: 4),
               EpStatGrid(
@@ -470,12 +469,6 @@ class _ProfileDetails extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final profile = app.profile;
-    final incomplete =
-        profile != null &&
-        (profile.name.trim().isEmpty ||
-            profile.avatarUrl == null ||
-            (profile.bio?.trim().isEmpty ?? true) ||
-            profile.genres.isEmpty);
     return Padding(
       padding: const EdgeInsets.only(top: 20),
       child: Column(
@@ -503,37 +496,6 @@ class _ProfileDetails extends StatelessWidget {
                   ),
               ],
             ),
-          if (incomplete) ...[
-            const SizedBox(height: 12),
-            Text(
-              'Add a photo, bio, and genres so bands and fans recognize you.',
-              key: const Key('fan-profile-incomplete-hint'),
-              style: Theme.of(context).textTheme.epCaption,
-            ),
-          ],
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              EpIconPill(
-                key: const Key('share-fan-profile'),
-                icon: Icons.ios_share_outlined,
-                semanticLabel: 'Share profile summary',
-                onPressed: profile == null
-                    ? null
-                    : () => _shareFanProfile(
-                        context,
-                        displayName: profile.name.trim().isEmpty
-                            ? 'EarPlug fan'
-                            : profile.name.trim(),
-                        followingCount: app.follows.length,
-                        historyCount: app.history.length,
-                      ),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -586,27 +548,6 @@ void _showFriendsSheet(BuildContext context) {
         },
       ),
     ),
-  );
-}
-
-Future<void> _shareFanProfile(
-  BuildContext context, {
-  required String displayName,
-  required int followingCount,
-  required int historyCount,
-}) async {
-  final bandLabel = followingCount == 1 ? 'band' : 'bands';
-  final eventLabel = historyCount == 1 ? 'event' : 'events';
-  final summary = [
-    '$displayName on EarPlug',
-    'Following: $followingCount $bandLabel',
-    'RSVP History: $historyCount past $eventLabel',
-    'RSVP history is not verified attendance.',
-  ].join('\n');
-  await copyForUser(
-    context,
-    summary,
-    successMessage: 'Profile summary copied.',
   );
 }
 
