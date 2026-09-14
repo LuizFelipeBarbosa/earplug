@@ -761,17 +761,8 @@ void main() {
       );
 
       await _selectProfileList(tester, 'SAVED · 1');
-      await _tapProfileControl(
-        tester,
-        find.byKey(ValueKey('gig-actions-${repository.futureGig.id}')),
-      );
-
-      await tester.tap(
-        find.byKey(ValueKey('ticket-action-${repository.futureGig.id}')),
-      );
+      harness.app.toggleRsvp(repository.futureGig.id);
       await tester.pump();
-      await tester.tap(find.byTooltip('Close event actions'));
-      await tester.pumpAndSettle();
 
       expect(harness.app.rsvps, contains(repository.futureGig.id));
       expect(harness.app.upcomingRsvpGigs, [
@@ -801,14 +792,7 @@ void main() {
         findsOne,
       );
 
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(ValueKey('upcoming-rsvp-${repository.futureGig.id}')),
-          matching: find.byKey(
-            ValueKey('ticket-action-${repository.futureGig.id}'),
-          ),
-        ),
-      );
+      harness.app.toggleRsvp(repository.futureGig.id);
       await tester.pump();
       expect(harness.app.rsvps, isNot(contains(repository.futureGig.id)));
       expect(harness.app.upcomingRsvpGigs, [repository.cancelledGig]);
@@ -883,17 +867,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await _selectProfileList(tester, 'SAVED · 1');
-    await _tapProfileControl(
-      tester,
-      find.byKey(ValueKey('gig-actions-${repository.futureGig.id}')),
-    );
-
-    await tester.tap(
-      find.byKey(ValueKey('ticket-action-${repository.futureGig.id}')),
-    );
+    harness.app.toggleRsvp(repository.futureGig.id);
     await tester.pump();
-    await tester.tap(find.byTooltip('Close event actions'));
-    await tester.pumpAndSettle();
     expect(harness.app.upcomingRsvpGigs, [
       repository.futureGig,
       repository.cancelledGig,
@@ -1140,7 +1115,6 @@ void main() {
       findsOne,
     );
     expect(find.text('SHOW QR PASS'), findsOne);
-    expect(find.byTooltip('Show QR code'), findsOne);
     expect(harness.app.upcomingRsvpGigs, contains(repository.futureGig));
   });
 

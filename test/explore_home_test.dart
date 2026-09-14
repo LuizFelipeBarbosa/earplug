@@ -452,7 +452,11 @@ void main() {
     expect(tester.getTopLeft(chips).dy - fieldBottom, 12);
     expect(tester.getTopLeft(find.text('EXPLORE')).dy, greaterThan(statusBar));
 
-    await _scrollTo(tester, find.byKey(const Key('explore-toggle-bands')));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('explore-toggle-bands')),
+      100,
+      scrollable: _browseScrollable(),
+    );
     expect(find.text('EXPLORE'), findsNothing);
     expect(tester.getTopLeft(chips).dy, statusBar + 12);
     expect(tester.getTopLeft(chips).dy, greaterThanOrEqualTo(12));

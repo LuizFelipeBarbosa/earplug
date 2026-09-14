@@ -468,6 +468,57 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('event row omits the fallback chevron when actions are present', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      plain(
+        ExploreEventRow(
+          gig: gigFixture(id: 'actions-no-chevron', title: 'Action Event'),
+          venueName: 'The Foghorn',
+          actions: const [Icon(Icons.bookmark)],
+          onTap: () {},
+        ),
+      ),
+    );
+    expect(find.byIcon(Icons.chevron_right), findsNothing);
+  });
+
+  testWidgets('event row wraps long titles beside actions', (tester) async {
+    const title =
+        'A Very Long Event Title That Must Wrap Within A Narrow Card Width';
+    await tester.pumpWidget(
+      plain(
+        SizedBox(
+          width: 300,
+          child: ExploreEventRow(
+            gig: gigFixture(id: 'long-title-actions', title: title),
+            venueName: 'The Foghorn',
+            info: const ExploreGigInfo(
+              dateTime: '23 SEP · 8PM',
+              distance: '2.3 MI',
+              price: '\$15',
+            ),
+            lineup: const [
+              ExploreLineupBand(name: 'Aster', initials: 'AS'),
+              ExploreLineupBand(name: 'Briar', initials: 'BR'),
+              ExploreLineupBand(name: 'Cinder', initials: 'CI'),
+            ],
+            actions: const [Icon(Icons.bookmark), Icon(Icons.ios_share)],
+            onTap: () {},
+          ),
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    final titleText = tester.widget<Text>(find.text(title.toUpperCase()));
+    expect(
+      tester.getSize(find.text(title.toUpperCase())).height,
+      greaterThan(24),
+    );
+    expect(titleText.softWrap, isTrue);
+  });
+
   testWidgets('event row info wraps and emphasizes date and time', (
     tester,
   ) async {

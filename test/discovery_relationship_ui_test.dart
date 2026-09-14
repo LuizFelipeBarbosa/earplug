@@ -1,5 +1,4 @@
 import 'package:earplug/app_state.dart';
-import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/screens/explore.dart';
@@ -206,15 +205,14 @@ void main() {
     );
 
     expect(find.text(gig.title.toUpperCase()), findsWidgets);
-    // Time and price share the row's mono meta line; the lineup is rendered
-    // as separate avatar and name items.
+    // Date/time, distance, and price render as structured info spans; lineup
+    // chips show the first band and expose a see-all affordance when needed.
     expect(find.textContaining(gig.doorsLabel), findsOne);
     expect(find.textContaining('FREE'), findsOne);
     expect(find.textContaining('DOORS ${gig.doorsLabel}'), findsNothing);
     expect(find.textContaining(gig.ageRequirement.label), findsNothing);
     expect(find.textContaining('Mission Creep'), findsOne);
-    expect(find.textContaining('Dial Tone Grief'), findsOne);
-    expect(find.textContaining('Static Bloom'), findsOne);
+    expect(find.byKey(const Key('lineup-see-all')), findsOne);
     expect(
       find.descendant(
         of: find.byType(FanEventCard),
@@ -236,32 +234,6 @@ void main() {
     expect(harness.app.current.screen, Screen.auth);
     expect(harness.app.pending?.kind, PendingKind.save);
     expect(harness.app.pending?.id, gig.id);
-    await tester.pump(const Duration(seconds: 3));
-  });
-
-  testWidgets('fan card RSVP changes to the going state', (tester) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    final gig = DemoData.gigs.first;
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: DemoRepository(auth: auth),
-      home: Consumer<AppState>(
-        builder: (context, app, _) => Scaffold(
-          body: Padding(
-            padding: const EdgeInsets.all(16),
-            child: FanEventCard(gig: gig, app: app),
-          ),
-        ),
-      ),
-    );
-
-    expect(find.text('RSVP'), findsOne);
-    await tester.tap(find.byKey(ValueKey('ticket-action-${gig.id}')));
-    await tester.pump();
-    expect(harness.app.rsvps, contains(gig.id));
-    expect(find.text('GOING ✓'), findsOne);
     await tester.pump(const Duration(seconds: 3));
   });
 

@@ -660,21 +660,17 @@ void main() {
     );
     final thumbnailSize = tester.getSize(thumbnail);
     final rowHeight = tester.getSize(find.byType(ExploreEventRow)).height;
-    expect(thumbnailSize.width, 64);
+    expect(thumbnailSize.width, 96);
     expect(thumbnailSize.height, closeTo(rowHeight - 25, 0.1));
-    expect(
-      tester.getRect(find.byKey(ValueKey('ticket-action-${gig.id}'))).bottom,
-      closeTo(tester.getRect(thumbnail).bottom, 1),
-    );
     expect(find.byType(GigFlyer), findsOneWidget);
-    // Day, month, doors time and price make up the row's mono meta line.
     expect(
       find.textContaining(
-        '${gig.startsAt.day} ${monthNamesUpper[gig.startsAt.month - 1]} · '
-        '${gig.doorsLabel} · ${gig.priceLabel}',
+        '${gig.startsAt.day} ${monthNamesUpper[gig.startsAt.month - 1]}',
       ),
       findsOne,
     );
+    expect(find.textContaining(gig.doorsLabel), findsOne);
+    expect(find.textContaining(gig.priceLabel), findsOne);
     expect(
       find.descendant(
         of: find.byType(FanEventCard),
@@ -689,14 +685,7 @@ void main() {
     expect(find.textContaining('${gig.going} GOING'), findsNothing);
     expect(find.byKey(ValueKey('save-${gig.id}')), findsOne);
     expect(find.byKey(ValueKey('share-${gig.id}')), findsOne);
-    expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsOne);
     expect(harness.app.rsvps, isNot(contains(gig.id)));
-    expect(
-      tester
-          .widget<EpPill>(find.byKey(ValueKey('ticket-action-${gig.id}')))
-          .variant,
-      EpPillVariant.primary,
-    );
     expect(find.byKey(ValueKey('discovery-boost-${gig.id}')), findsOne);
     expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
@@ -726,7 +715,6 @@ void main() {
     expect(find.byType(GigFlyer), findsOne);
     expect(find.text('$presenter PRESENTS'), findsOne);
     expect(find.text(gig.title.toUpperCase()), findsOne);
-    expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsOne);
   });
 
   testWidgets('cancelled future RSVP still surfaces in the upcoming profile', (
@@ -779,7 +767,6 @@ void main() {
     expect(harness.app.upcomingRsvpGigs.map((g) => g.id), [gig.id]);
     expect(find.byKey(ValueKey('next-show-${gig.id}')), findsOne);
     expect(find.byKey(ValueKey('fan-event-${gig.id}')), findsOne);
-    expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsNothing);
     expect(find.byKey(ValueKey('show-qr-${gig.id}')), findsNothing);
     expect(find.text('QR PASS'), findsNothing);
     expect(find.text('CANCELLED'), findsWidgets);

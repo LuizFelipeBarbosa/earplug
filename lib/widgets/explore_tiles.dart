@@ -323,6 +323,9 @@ class ExploreEventRow extends StatelessWidget {
         ' · ${gig.doorsLabel} · $venueName';
     final monoLine = meta ?? dateLine;
     final bands = lineup ?? const <ExploreLineupBand>[];
+    final showChevron =
+        (actions == null || actions!.isEmpty) &&
+        trailing == null;
     final poster = SizedBox(
       width: thumbnailSize,
       height: double.infinity,
@@ -364,7 +367,12 @@ class ExploreEventRow extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      EpDisplay(gig.title, size: 18),
+                      Text(
+                        gig.title.toUpperCase(),
+                        semanticsLabel: gig.title,
+                        softWrap: true,
+                        style: Theme.of(context).textTheme.epDisplayAt(18),
+                      ),
                       const SizedBox(height: 2),
                       if (info != null)
                         _ExploreGigInfoLine(info: info!)
@@ -422,6 +430,7 @@ class ExploreEventRow extends StatelessWidget {
             if (actions != null && actions!.isNotEmpty) ...[
               const SizedBox(width: 8),
               Column(
+                mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.start,
                 children: [
                   Row(
@@ -442,20 +451,22 @@ class ExploreEventRow extends StatelessWidget {
                 ],
               ),
             ],
-            const SizedBox(width: 12),
-            if (stretchTrailing && trailing != null)
-              trailing!
-            else
-              Align(
-                alignment: Alignment.center,
-                child:
-                    trailing ??
-                    Icon(
-                      Icons.chevron_right,
-                      size: 16,
-                      color: context.epColors.muted,
-                    ),
-              ),
+            if (trailing != null || showChevron) ...[
+              const SizedBox(width: 12),
+              if (stretchTrailing && trailing != null)
+                trailing!
+              else
+                Align(
+                  alignment: Alignment.center,
+                  child:
+                      trailing ??
+                      Icon(
+                        Icons.chevron_right,
+                        size: 16,
+                        color: context.epColors.muted,
+                      ),
+                ),
+            ],
           ],
         ),
       ),
