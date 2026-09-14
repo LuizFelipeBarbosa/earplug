@@ -62,7 +62,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
     // SafeArea still avoids the bottom system controls, while headerTopPad
     // accounts for the status bar on phones and the fixed desktop offset.
     return SafeArea(
-      top: false,
+      top: true,
       bottom: false,
       child: CustomScrollView(
         key: modeKey,
@@ -109,7 +109,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
           // hairline; the shared header offset positions the title itself.
           padding: EdgeInsets.fromLTRB(
             EpLayout.gutter,
-            EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
+            EpLayout.isDesktop(context) ? 0 : 22,
             EpLayout.gutter,
             0,
           ),
@@ -337,10 +337,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
           ),
         );
         final bandIds = <String>[];
-        for (final id in [
-          ...home.recommendedBandIds,
-          ...app.exploreBandIds,
-        ]) {
+        for (final id in [...home.recommendedBandIds, ...app.exploreBandIds]) {
           if (!bandIds.contains(id) && app.band(id) != null) bandIds.add(id);
           if (bandIds.length == 16) break;
         }
@@ -404,9 +401,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
                       icon: Icons.group_outlined,
                       label: 'Sign in to see friends',
                       sub: 'See where friends are going',
-                      onTap: () => app.needAuth(
-                        const PendingAuth(PendingKind.myGigs),
-                      ),
+                      onTap: () =>
+                          app.needAuth(const PendingAuth(PendingKind.myGigs)),
                     ),
             ),
           ),

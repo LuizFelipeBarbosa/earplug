@@ -138,25 +138,44 @@ class ExploreLineupRow extends StatelessWidget {
         var used = 0.0;
         var count = bands.length;
         var allFit = true;
-        for (var i = 0; i < bands.length; i++) {
-          final next = used + (i == 0 ? 0 : 12) + widths[i];
-          if (next > constraints.maxWidth) {
-            count = i;
-            allFit = false;
-            break;
+        if (constraints.maxWidth.isFinite) {
+          for (var i = 0; i < bands.length; i++) {
+            final next = used + (i == 0 ? 0 : 12) + widths[i];
+            if (next > constraints.maxWidth) {
+              count = i;
+              allFit = false;
+              break;
+            }
+            used = next;
           }
-          used = next;
-        }
-        if (!allFit) {
-          while (count > 0 && used + 12 + seeAllWidth > constraints.maxWidth) {
-            count--;
-            used -= widths[count] + (count == 0 ? 0 : 12);
+          if (!allFit) {
+            while (count > 0 &&
+                used + 12 + seeAllWidth > constraints.maxWidth) {
+              count--;
+              used -= widths[count] + (count == 0 ? 0 : 12);
+            }
           }
         }
         final visible = bands.take(count).toList();
+        // Force the first band only when its avatar and a legible slice of its
+        // name fit beside "See all"; otherwise the link stands alone.
+        final firstChipOverflows =
+            !allFit &&
+            visible.isEmpty &&
+            constraints.maxWidth >= 26 + 40 + 12 + seeAllWidth;
         return Row(
           mainAxisSize: MainAxisSize.max,
           children: [
+            if (firstChipOverflows)
+              Flexible(
+                fit: FlexFit.tight,
+                child: _ExploreLineupChip(
+                  band: bands.first,
+                  textColor: tint,
+                  allowOverflow: true,
+                  shrinkToFit: true,
+                ),
+              ),
             for (var i = 0; i < visible.length; i++) ...[
               if (i > 0) const SizedBox(width: 12),
               _ExploreLineupChip(
@@ -166,7 +185,8 @@ class ExploreLineupRow extends StatelessWidget {
               ),
             ],
             if (!allFit) ...[
-              if (visible.isNotEmpty) const SizedBox(width: 12),
+              if (visible.isNotEmpty || firstChipOverflows)
+                const SizedBox(width: 12),
               GestureDetector(
                 key: const Key('lineup-see-all'),
                 onTap: onSeeAll,
@@ -249,11 +269,13 @@ class _ExploreLineupChip extends StatelessWidget {
     required this.band,
     this.textColor,
     this.allowOverflow = true,
+    this.shrinkToFit = false,
   });
 
   final ExploreLineupBand band;
   final Color? textColor;
   final bool allowOverflow;
+  final bool shrinkToFit;
 
   @override
   Widget build(BuildContext context) {
@@ -268,16 +290,29 @@ class _ExploreLineupChip extends StatelessWidget {
               ? null
               : NetworkImage(band.avatarUrl!),
         ),
-        const SizedBox(width: 6),
-        Text(
-          band.name,
-          softWrap: false,
-          maxLines: 1,
-          overflow: allowOverflow ? TextOverflow.ellipsis : TextOverflow.clip,
-          style: textColor == null
-              ? textStyle
-              : textStyle.copyWith(color: textColor),
-        ),
+        SizedBox(width: shrinkToFit ? 4 : 6),
+        if (allowOverflow && shrinkToFit)
+          Flexible(
+            child: Text(
+              band.name,
+              softWrap: false,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: textColor == null
+                  ? textStyle
+                  : textStyle.copyWith(color: textColor),
+            ),
+          )
+        else
+          Text(
+            band.name,
+            softWrap: false,
+            maxLines: 1,
+            overflow: TextOverflow.clip,
+            style: textColor == null
+                ? textStyle
+                : textStyle.copyWith(color: textColor),
+          ),
       ],
     );
   }
@@ -324,8 +359,7 @@ class ExploreEventRow extends StatelessWidget {
     final monoLine = meta ?? dateLine;
     final bands = lineup ?? const <ExploreLineupBand>[];
     final showChevron =
-        (actions == null || actions!.isEmpty) &&
-        trailing == null;
+        (actions == null || actions!.isEmpty) && trailing == null;
     final poster = SizedBox(
       width: thumbnailSize,
       height: double.infinity,
@@ -364,14 +398,21 @@ class ExploreEventRow extends StatelessWidget {
                 mainAxisSize: MainAxisSize.max,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (gig.lifecycle == GigLifecycle.cancelled) ...[
+                    EpMonoText(
+                      'CANCELLED',
+                      key: ValueKey('gig-cancelled-${gig.id}'),
+                      color: context.epColors.destructive,
+                    ),
+                    const SizedBox(height: 4),
+                  ],
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        gig.title.toUpperCase(),
-                        semanticsLabel: gig.title,
-                        softWrap: true,
-                        style: Theme.of(context).textTheme.epDisplayAt(18),
+                      EpDisplay(
+                        gig.title,
+                        size: 18,
+                        overflow: TextOverflow.clip,
                       ),
                       const SizedBox(height: 2),
                       if (info != null)

@@ -426,7 +426,10 @@ void main() {
     expect(tester.getTopLeft(allBands).dy, railRect.bottom);
     // The heading keeps 32px clear of the All venues row above it.
     final allVenues = find.byKey(const Key('explore-toggle-venues'));
-    expect(tester.getTopLeft(heading).dy - tester.getRect(allVenues).bottom, 32);
+    expect(
+      tester.getTopLeft(heading).dy - tester.getRect(allVenues).bottom,
+      32,
+    );
   });
 
   testWidgets('pinned genre rail stays below the status bar when scrolled', (
@@ -452,11 +455,7 @@ void main() {
     expect(tester.getTopLeft(chips).dy - fieldBottom, 12);
     expect(tester.getTopLeft(find.text('EXPLORE')).dy, greaterThan(statusBar));
 
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('explore-toggle-bands')),
-      100,
-      scrollable: _browseScrollable(),
-    );
+    await _scrollTo(tester, find.byKey(const Key('explore-toggle-bands')));
     expect(find.text('EXPLORE'), findsNothing);
     expect(tester.getTopLeft(chips).dy, statusBar + 12);
     expect(tester.getTopLeft(chips).dy, greaterThanOrEqualTo(12));

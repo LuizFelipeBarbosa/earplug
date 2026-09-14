@@ -243,6 +243,19 @@ void main() {
     expect(find.textContaining('FREE'), findsNothing);
   });
 
+  testWidgets('cancelled event row shows the CANCELLED marker', (tester) async {
+    final gig = gigFixture(
+      id: 'cancelled-row',
+      title: 'Cancelled Show',
+      lifecycle: GigLifecycle.cancelled,
+    );
+    await tester.pumpWidget(
+      plain(ExploreEventRow(gig: gig, venueName: 'The Foghorn', onTap: () {})),
+    );
+    expect(find.text('CANCELLED'), findsOneWidget);
+    expect(find.byKey(ValueKey('gig-cancelled-${gig.id}')), findsOneWidget);
+  });
+
   testWidgets('event row stretches actions and centers plain trailing icons', (
     tester,
   ) async {
@@ -584,6 +597,28 @@ void main() {
     await tester.tap(find.byKey(const Key('lineup-see-all')));
     expect(tapped, isTrue);
   });
+
+  testWidgets(
+    'lineup row always shows the first band even when it must ellipsize',
+    (tester) async {
+      const bands = [
+        ExploreLineupBand(name: 'A Very Long Band Name Indeed', initials: 'AV'),
+        ExploreLineupBand(name: 'Second', initials: 'SE'),
+      ];
+      await tester.pumpWidget(
+        plain(SizedBox(width: 200, child: ExploreLineupRow(bands: bands))),
+      );
+      expect(find.byType(EpAvatarTile), findsOneWidget);
+      expect(find.byKey(const Key('lineup-see-all')), findsOneWidget);
+
+      await tester.pumpWidget(
+        plain(SizedBox(width: 700, child: ExploreLineupRow(bands: bands))),
+      );
+      expect(find.text('A Very Long Band Name Indeed'), findsOneWidget);
+      expect(find.text('Second'), findsOneWidget);
+      expect(find.byKey(const Key('lineup-see-all')), findsNothing);
+    },
+  );
 
   testWidgets('lineup is pinned to the poster bottom edge', (tester) async {
     await tester.pumpWidget(
