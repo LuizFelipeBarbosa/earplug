@@ -136,9 +136,11 @@ class ExploreGenrePageBody extends StatelessWidget {
     if (page.bandIds.isNotEmpty) {
       children.addAll([
         EpSectionHeader(label: 'Bands playing ${page.label.toUpperCase()}'),
+        // Same extent as the browse page's BANDS rail: the tile is 120 wide
+        // with a wrapping name and genre line under a 72px avatar.
         EpCarousel(
-          itemExtent: 88,
-          height: 132,
+          itemExtent: 120,
+          height: 220,
           wrapWhenScaled: true,
           itemCount: page.bandIds.length,
           itemBuilder: (context, index) => bandTile(page.bandIds[index]),

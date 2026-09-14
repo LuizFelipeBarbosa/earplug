@@ -305,13 +305,18 @@ void main() {
   });
 
   testWidgets('just for you row shows a friends cue', (tester) async {
-    await _pumpExplore(
+    // Friends attend the featured pair too, so the +6 friend weight cannot
+    // promote gLater out of Just for you.
+    final h = await _pumpExplore(
       tester,
       signedIn: true,
       gigs: _gigs,
       bands: _bands,
-      friends: _friendsFor(const ['gLater']),
+      followed: const {'bFollow'},
+      saved: const {'gSaved'},
+      friends: _friendsFor(const ['gFollowed', 'gSaved', 'gLater']),
     );
+    expect(h.app.exploreHome.forYou.map((gig) => gig.id), contains('gLater'));
     final row = find.byKey(const Key('explore-for-you-gLater'));
     await _scrollTo(tester, row);
     expect(
@@ -353,13 +358,16 @@ void main() {
   testWidgets('bands rail shows recommended bands and opens a band', (
     tester,
   ) async {
+    // Recommendations exclude followed bands, so the fan's genre affinity is
+    // what ranks the punk band first.
     final h = await _pumpExplore(
       tester,
       signedIn: true,
       gigs: _gigs,
       bands: _bands,
-      followed: const {'bFollow'},
+      genres: const ['punk'],
     );
+    expect(h.app.exploreHome.recommendedBandIds.first, 'bFollow');
     await _scrollTo(tester, find.byKey(const Key('explore-bands')));
     final band = find.byKey(const Key('explore-band-card-bFollow'));
     expect(band, findsOneWidget);
@@ -484,6 +492,8 @@ void main() {
     );
     expect(tester.takeException(), isNull);
     expect(find.byKey(const Key('explore-featured')), findsOneWidget);
+    await _scrollTo(tester, find.byKey(const Key('explore-find-people')));
+    expect(tester.takeException(), isNull);
     expect(find.byKey(const Key('explore-find-people')), findsOneWidget);
   });
 
@@ -492,6 +502,7 @@ void main() {
   ) async {
     await _pumpExplore(
       tester,
+      signedIn: true,
       size: const Size(360, 800),
       gigs: _gigs,
       bands: _bands,
