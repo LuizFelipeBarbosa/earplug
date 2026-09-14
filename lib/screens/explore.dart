@@ -115,7 +115,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const EpDisplay('Explore', size: 44),
-              const SizedBox(height: 16),
+              const SizedBox(height: 4),
               EpUnderlineField(
                 fieldKey: const Key('explore-search-field'),
                 controller: _controller,
