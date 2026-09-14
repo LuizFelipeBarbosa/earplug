@@ -1,5 +1,6 @@
 import 'package:earplug/app_state.dart';
 import 'package:earplug/explore_ranking.dart';
+import 'package:earplug/flyer_styles.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
@@ -17,8 +18,12 @@ import 'support/fixtures.dart';
 import 'support/harness.dart';
 
 void main() {
-  Widget plain(Widget child, {TextScaler? textScaler}) => MaterialApp(
-    theme: buildEpTheme(),
+  Widget plain(
+    Widget child, {
+    TextScaler? textScaler,
+    Brightness brightness = Brightness.dark,
+  }) => MaterialApp(
+    theme: buildEpTheme(brightness),
     home: MediaQuery(
       data: MediaQueryData(
         size: const Size(400, 800),
@@ -69,6 +74,94 @@ void main() {
       );
       expect((layers.children.first as Icon).icon, Icons.bookmark);
       expect((layers.children.last as Icon).icon, Icons.bookmark_border);
+    }
+  });
+
+  testWidgets('non-ring action color tints both layers and shadows the glyph', (
+    tester,
+  ) async {
+    final shadows = [
+      Shadow(color: Ep.background.withValues(alpha: 0.60), blurRadius: 4),
+    ];
+    for (final active in [false, true]) {
+      await tester.pumpWidget(
+        plain(
+          Center(
+            child: ExploreCardIconButton(
+              icon: Icons.bookmark_border,
+              fillIcon: Icons.bookmark,
+              semanticLabel: 'Save event',
+              active: active,
+              color: Ep.ink,
+              iconShadows: shadows,
+              onPressed: () {},
+            ),
+          ),
+          brightness: Brightness.light,
+        ),
+      );
+      final fill = tester.widget<Icon>(find.byIcon(Icons.bookmark));
+      final outline = tester.widget<Icon>(find.byIcon(Icons.bookmark_border));
+      expect(fill.color, Ep.ink.withValues(alpha: active ? 0.60 : 0.22));
+      expect(fill.shadows, isNull);
+      expect(outline.color, Ep.ink);
+      expect(outline.shadows, shadows);
+    }
+  });
+
+  testWidgets('ring actions stay unfilled in both themes and all states', (
+    tester,
+  ) async {
+    for (final brightness in Brightness.values) {
+      for (final enabled in [false, true]) {
+        for (final active in [false, true]) {
+          await tester.pumpWidget(
+            plain(
+              Center(
+                child: ExploreCardIconButton(
+                  icon: Icons.bookmark_border,
+                  fillIcon: Icons.bookmark,
+                  semanticLabel: 'Save event',
+                  ring: true,
+                  active: active,
+                  color: Ep.ink,
+                  iconShadows: const [Shadow(color: Ep.background)],
+                  onPressed: enabled ? () {} : null,
+                ),
+              ),
+              brightness: brightness,
+            ),
+          );
+          final button = find.byType(ExploreCardIconButton);
+          final palette = tester.element(button).epColors;
+          final outline = tester.widget<Icon>(
+            find.byIcon(Icons.bookmark_border),
+          );
+          expect(find.byIcon(Icons.bookmark), findsNothing);
+          expect(
+            find.descendant(of: button, matching: find.byType(Stack)),
+            findsNothing,
+          );
+          expect(
+            outline.color,
+            !enabled
+                ? palette.contentDisabled
+                : active
+                ? palette.accent
+                : palette.muted,
+          );
+          expect(outline.shadows, isNull);
+          final ring = tester.widget<DecoratedBox>(
+            find.descendant(of: button, matching: find.byType(DecoratedBox)),
+          );
+          final decoration = ring.decoration as ShapeDecoration;
+          expect(decoration.color, isNull);
+          expect(
+            (decoration.shape as CircleBorder).side,
+            BorderSide(color: palette.line, width: 1),
+          );
+        }
+      }
     }
   });
 
@@ -754,9 +847,10 @@ void main() {
             gig: gigFixture(id: 'long-title-actions', title: title),
             venueName: 'The Foghorn',
             info: const ExploreGigInfo(
-              dateTime: '23 SEP · 8PM',
-              distance: '2.3 MI',
               price: '\$15',
+              date: '23 SEP',
+              time: '8PM',
+              distance: '2.3 MI',
             ),
             lineup: const [
               ExploreLineupBand(name: 'Aster', initials: 'AS'),
@@ -787,9 +881,10 @@ void main() {
           gig: gigFixture(id: 'structured-info'),
           venueName: 'The Foghorn',
           info: const ExploreGigInfo(
-            dateTime: '23 SEP · 8PM',
-            distance: 'A VERY LONG DISTANCE LABEL',
             price: 'A VERY LONG PRICE LABEL',
+            date: '23 SEP',
+            time: '8PM',
+            distance: 'A VERY LONG DISTANCE LABEL',
           ),
           onTap: () {},
         ),
@@ -819,9 +914,10 @@ void main() {
           gig: gigFixture(id: 'uniform-info'),
           venueName: 'The Foghorn',
           info: const ExploreGigInfo(
-            dateTime: '6 NOV · 8PM',
-            distance: '11 MI',
             price: 'FREE',
+            date: '6 NOV',
+            time: '8PM',
+            distance: '11 MI',
           ),
           onTap: () {},
         ),
@@ -834,8 +930,17 @@ void main() {
     );
     expect(
       (infoText.textSpan! as TextSpan).toPlainText(),
-      '6 NOV · 8PM · 11 MI · FREE',
+      'FREE · 6 NOV · 8PM · 11 MI',
     );
+    expect(infoText.semanticsLabel, 'FREE · 6 NOV · 8PM · 11 MI');
+    final palette = tester.element(find.byType(ExploreEventRow)).epColors;
+    for (final span
+        in (infoText.textSpan! as TextSpan).children!.cast<TextSpan>()) {
+      expect(
+        span.style?.color,
+        span.text == ' · ' ? palette.muted : palette.ink,
+      );
+    }
   });
 
   testWidgets('lineup row shows all chips when wide and see all when narrow', (
@@ -983,70 +1088,155 @@ void main() {
     'featured card uses regular info and medium lineup names at 14 points in both layouts',
     (tester) async {
       const info = ExploreGigInfo(
-        dateTime: '23 SEP · 8PM',
-        distance: '11 MI',
         price: 'FREE',
+        date: '23 SEP',
+        time: '8PM',
+        distance: '11 MI',
       );
-      for (final size in [const Size(300, 380), const Size(334, 200)]) {
-        await tester.pumpWidget(
-          plain(
-            ExploreFeaturedCard(
-              gig: gigFixture(id: 'featured-structured-info'),
-              venueName: 'The Foghorn',
-              meta: 'Legacy meta',
-              info: info,
-              lineup: const [ExploreLineupBand(name: 'Aster', initials: 'AS')],
-              onTap: () {},
-              width: size.width,
-              height: size.height,
-            ),
-          ),
-        );
-        final infoFinder = find.descendant(
-          of: find.byType(ExploreFeaturedCard),
-          matching: find.byWidgetPredicate(
-            (widget) =>
-                widget is Text &&
-                widget.textSpan?.toPlainText().contains(info.dateTime) == true,
-          ),
-        );
-        expect(infoFinder, findsOneWidget);
-        final infoText = tester.widget<Text>(infoFinder);
-        final infoSpan = infoText.textSpan! as TextSpan;
-        expect(infoSpan.toPlainText(), '23 SEP · 8PM · 11 MI · FREE');
-        expect(infoText.softWrap, isTrue);
-        expect(infoText.maxLines, isNull);
-        expect(infoText.overflow, isNull);
-        final palette = tester.element(infoFinder).epColors;
-        for (final span in infoSpan.children!.whereType<TextSpan>()) {
-          expect(span.style?.fontSize, 14);
-          expect(span.style?.fontWeight, FontWeight.w400);
-          expect(
-            span.style?.color,
-            span.text == ' · ' ? palette.muted : palette.ink,
-          );
+      for (final brightness in Brightness.values) {
+        for (final flyKey in ['paper', 'panel']) {
+          for (final size in [const Size(300, 380), const Size(334, 200)]) {
+            await tester.pumpWidget(
+              plain(
+                ExploreFeaturedCard(
+                  gig: gigFixture(
+                    id: 'featured-structured-info',
+                    title: 'Featured Event',
+                    flyKey: flyKey,
+                  ),
+                  venueName: 'The Foghorn',
+                  meta: 'Legacy meta',
+                  info: info,
+                  lineup: const [
+                    ExploreLineupBand(name: 'Aster', initials: 'AS'),
+                  ],
+                  onTap: () {},
+                  width: size.width,
+                  height: size.height,
+                ),
+                brightness: brightness,
+              ),
+            );
+            final infoFinder = find.descendant(
+              of: find.byType(ExploreFeaturedCard),
+              matching: find.byWidgetPredicate(
+                (widget) =>
+                    widget is Text &&
+                    widget.textSpan?.toPlainText().contains(info.date) == true,
+              ),
+            );
+            expect(infoFinder, findsOneWidget);
+            final infoText = tester.widget<Text>(infoFinder);
+            final infoSpan = infoText.textSpan! as TextSpan;
+            expect(infoSpan.toPlainText(), 'FREE · 23 SEP · 8PM · 11 MI');
+            expect(infoText.semanticsLabel, 'FREE · 23 SEP · 8PM · 11 MI');
+            expect(infoText.softWrap, isTrue);
+            expect(infoText.maxLines, isNull);
+            expect(infoText.overflow, isNull);
+            for (final span in infoSpan.children!.whereType<TextSpan>()) {
+              expect(span.style?.fontSize, 14);
+              expect(span.style?.fontWeight, FontWeight.w400);
+              expect(
+                span.style?.color,
+                span.text == ' · ' ? Ep.ink.withValues(alpha: 0.60) : Ep.ink,
+              );
+            }
+            final name = tester.widget<Text>(find.text('Aster'));
+            expect(name.style?.fontSize, 14);
+            expect(name.style?.fontWeight, FontWeight.w500);
+            expect(name.style?.fontFamily, 'Azeret Mono');
+            expect(name.style?.color, Ep.ink);
+            final avatarBorder = tester.widget<DecoratedBox>(
+              find.ancestor(
+                of: find.byType(EpAvatarTile),
+                matching: find.byWidgetPredicate(
+                  (widget) =>
+                      widget is DecoratedBox &&
+                      widget.position == DecorationPosition.foreground,
+                ),
+              ),
+            );
+            expect(
+              (avatarBorder.decoration as BoxDecoration).border,
+              Border.all(color: Ep.ink),
+            );
+            final title = tester.widget<Text>(find.text('FEATURED EVENT'));
+            expect(title.style?.color, Ep.ink);
+            final scrim = tester.widget<DecoratedBox>(
+              find.descendant(
+                of: find.byType(ExploreFeaturedCard),
+                matching: find.byWidgetPredicate(
+                  (widget) =>
+                      widget is DecoratedBox &&
+                      widget.decoration is BoxDecoration &&
+                      (widget.decoration as BoxDecoration).gradient
+                          is LinearGradient,
+                ),
+              ),
+            );
+            final gradient =
+                (scrim.decoration as BoxDecoration).gradient! as LinearGradient;
+            expect(gradient.colors, [
+              Ep.background.withValues(alpha: 0),
+              Ep.background.withValues(alpha: .94),
+            ]);
+            expect(find.text('LEGACY META'), findsNothing);
+            expect(tester.takeException(), isNull);
+          }
         }
-        final name = tester.widget<Text>(find.text('Aster'));
-        expect(name.style?.fontSize, 14);
-        expect(name.style?.fontWeight, FontWeight.w500);
-        expect(name.style?.fontFamily, 'Azeret Mono');
-        expect(name.style?.color, palette.ink);
-        final avatarBorder = tester.widget<DecoratedBox>(
-          find.ancestor(
-            of: find.byType(EpAvatarTile),
-            matching: find.byWidgetPredicate(
-              (widget) =>
-                  widget is DecoratedBox &&
-                  widget.position == DecorationPosition.foreground,
+      }
+    },
+  );
+
+  testWidgets(
+    'featured fan actions contrast with generated flyers and photos',
+    (tester) async {
+      for (final artwork in [
+        (flyKey: 'paper', url: null, color: flyerStyles['paper']!.fg),
+        (flyKey: 'panel', url: '', color: flyerStyles['panel']!.fg),
+        (flyKey: 'accent', url: null, color: flyerStyles['accent']!.fg),
+        (flyKey: 'unknown', url: null, color: flyerStyles['paper']!.fg),
+        (flyKey: 'paper', url: 'https://example.com/flyer.jpg', color: Ep.ink),
+      ]) {
+        final gig = gigFixture(
+          id: 'featured-action-contrast',
+          title: 'Featured Event',
+          startsAt: DateTime(2026, 9, 23),
+          flyKey: artwork.flyKey,
+          flyerUrl: artwork.url,
+        );
+        await pumpApp(
+          tester,
+          home: Scaffold(
+            body: Consumer<AppState>(
+              builder: (context, app, _) => FanEventCard(
+                gig: gig,
+                app: app,
+                presentation: FanEventCardPresentation.featured,
+              ),
             ),
           ),
         );
+        for (final icon in [Icons.bookmark_border, Icons.ios_share]) {
+          final glyph = tester.widget<Icon>(find.byIcon(icon));
+          expect(glyph.color, artwork.color);
+          if (artwork.url != null && artwork.url!.isNotEmpty) {
+            expect(glyph.shadows, [
+              Shadow(
+                color: Ep.background.withValues(alpha: 0.60),
+                blurRadius: 4,
+              ),
+            ]);
+          } else {
+            expect(glyph.shadows, isNull);
+          }
+        }
         expect(
-          (avatarBorder.decoration as BoxDecoration).border,
-          Border.all(color: palette.ink),
+          tester.widget<Icon>(find.byIcon(Icons.bookmark)).color,
+          artwork.color.withValues(alpha: 0.22),
         );
-        expect(find.text('LEGACY META'), findsNothing);
-        expect(tester.takeException(), isNull);
+        final info = tester.widget<Text>(find.text('FREE · 23 SEP · 8PM'));
+        expect(info.semanticsLabel, 'FREE · 23 SEP · 8PM');
       }
     },
   );

@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import '../app_links.dart';
 import '../app_state.dart';
 import '../date_names.dart';
+import '../flyer_styles.dart';
 import '../models.dart';
 import '../services/user_actions.dart';
+import '../theme.dart';
 import 'ep_text.dart';
 import 'explore_tiles.dart';
 
@@ -39,6 +41,7 @@ class FanEventCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final venue = app.venue(gig.venueId);
     if (presentation == FanEventCardPresentation.featured) {
+      final actionStyle = _featuredActionStyle(gig);
       return LayoutBuilder(
         builder: (context, constraints) {
           final width = constraints.maxWidth;
@@ -49,7 +52,14 @@ class FanEventCard extends StatelessWidget {
             venueName: venue.name,
             info: compactGigInfo(gig, app, showDistance: showDistance),
             lineup: exploreLineupFor(gig, app),
-            actions: gigCardActions(context, gig, app, ring: false),
+            actions: gigCardActions(
+              context,
+              gig,
+              app,
+              ring: false,
+              color: actionStyle.color,
+              iconShadows: actionStyle.iconShadows,
+            ),
             friends: friends,
             onTap: () => app.openGig(gig.id),
             width: width,
@@ -67,11 +77,7 @@ class FanEventCard extends StatelessWidget {
       key: rowKey ?? ValueKey('fan-event-${gig.id}'),
       gig: gig,
       venueName: venue.name,
-      info: ExploreGigInfo(
-        dateTime: '${_metaDateLabel(gig)} · ${gig.doorsLabel}',
-        distance: showDistance ? _distanceLabel(app.distanceOf(venue)) : null,
-        price: gig.priceLabel,
-      ),
+      info: compactGigInfo(gig, app, showDistance: showDistance),
       lineup: exploreLineupFor(gig, app),
       actions: actions.posterActions(context),
       friends: friends,
@@ -99,12 +105,33 @@ List<Widget> gigCardActions(
   Gig gig,
   AppState app, {
   bool ring = true,
-}) => _EventActions(
-  gig: gig,
-  app: app,
-  trailingAction: null,
-  ring: ring,
-).posterActions(context);
+  Color? color,
+  List<Shadow>? iconShadows,
+}) {
+  // Explore's carousel builds its featured actions directly through this helper.
+  final actionStyle = !ring && color == null ? _featuredActionStyle(gig) : null;
+  return _EventActions(
+    gig: gig,
+    app: app,
+    trailingAction: null,
+    ring: ring,
+    color: color ?? actionStyle?.color,
+    iconShadows: iconShadows ?? actionStyle?.iconShadows,
+  ).posterActions(context);
+}
+
+({Color color, List<Shadow>? iconShadows}) _featuredActionStyle(Gig gig) {
+  if (gig.flyerUrl != null && gig.flyerUrl!.isNotEmpty) {
+    return (
+      color: Ep.ink,
+      iconShadows: [
+        Shadow(color: Ep.background.withValues(alpha: 0.60), blurRadius: 4),
+      ],
+    );
+  }
+  final style = flyerStyles[gig.flyKey] ?? flyerStyles['paper']!;
+  return (color: style.fg, iconShadows: null);
+}
 
 String compactGigMeta(Gig gig, AppState app, {required bool showDistance}) {
   final venue = app.venue(gig.venueId);
@@ -123,9 +150,10 @@ ExploreGigInfo compactGigInfo(
 }) {
   final venue = app.venue(gig.venueId);
   return ExploreGigInfo(
-    dateTime: '${_metaDateLabel(gig)} · ${gig.doorsLabel}',
-    distance: showDistance ? _distanceLabel(app.distanceOf(venue)) : null,
     price: gig.priceLabel,
+    date: _metaDateLabel(gig),
+    time: gig.doorsLabel,
+    distance: showDistance ? _distanceLabel(app.distanceOf(venue)) : null,
   );
 }
 
@@ -149,12 +177,16 @@ class _EventActions extends StatelessWidget {
     required this.app,
     required this.trailingAction,
     this.ring = true,
+    this.color,
+    this.iconShadows,
   });
 
   final Gig gig;
   final AppState app;
   final Widget? trailingAction;
   final bool ring;
+  final Color? color;
+  final List<Shadow>? iconShadows;
 
   List<Widget> posterActions(BuildContext context) => [
     _saveAction,
@@ -183,6 +215,8 @@ class _EventActions extends StatelessWidget {
       active: saved,
       onPressed: () => app.requestSave(gig.id),
       ring: ring,
+      color: color,
+      iconShadows: iconShadows,
     );
   }
 
@@ -192,6 +226,8 @@ class _EventActions extends StatelessWidget {
     semanticLabel: 'Share event',
     onPressed: () => _share(context, gig),
     ring: ring,
+    color: color,
+    iconShadows: iconShadows,
   );
 }
 

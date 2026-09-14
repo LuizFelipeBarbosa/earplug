@@ -38,6 +38,8 @@ class ExploreCardIconButton extends StatelessWidget {
     required this.onPressed,
     this.ring = false,
     this.active = false,
+    this.color,
+    this.iconShadows,
   });
 
   final IconData icon;
@@ -46,6 +48,8 @@ class ExploreCardIconButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool ring;
   final bool active;
+  final Color? color;
+  final List<Shadow>? iconShadows;
 
   @override
   Widget build(BuildContext context) {
@@ -76,27 +80,46 @@ class ExploreCardIconButton extends StatelessWidget {
                     decoration: ring
                         ? ShapeDecoration(
                             shape: CircleBorder(
-                              side: BorderSide(color: ink, width: 1),
+                              side: BorderSide(color: colors.line, width: 1),
                             ),
                           )
                         : null,
                     child: Center(
                       child: SizedBox.square(
                         dimension: 16,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            if (fillIcon != null)
-                              Icon(
-                                fillIcon,
+                        child: ring
+                            ? Icon(
+                                icon,
                                 size: 16,
-                                color: active
-                                    ? colors.accent.withValues(alpha: 0.60)
-                                    : colors.ink.withValues(alpha: 0.22),
+                                color: onPressed == null
+                                    ? colors.contentDisabled
+                                    : active
+                                    ? colors.accent
+                                    : colors.muted,
+                              )
+                            : Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  if (fillIcon != null)
+                                    Icon(
+                                      fillIcon,
+                                      size: 16,
+                                      color: active
+                                          ? (color ?? colors.accent).withValues(
+                                              alpha: 0.60,
+                                            )
+                                          : (color ?? colors.ink).withValues(
+                                              alpha: 0.22,
+                                            ),
+                                    ),
+                                  Icon(
+                                    icon,
+                                    size: 16,
+                                    color: color ?? ink,
+                                    shadows: iconShadows,
+                                  ),
+                                ],
                               ),
-                            Icon(icon, size: 16, color: ink),
-                          ],
-                        ),
                       ),
                     ),
                   ),
@@ -236,11 +259,17 @@ class ExploreLineupWrap extends StatelessWidget {
 }
 
 class ExploreGigInfo {
-  const ExploreGigInfo({required this.dateTime, this.distance, this.price});
+  const ExploreGigInfo({
+    required this.price,
+    required this.date,
+    required this.time,
+    this.distance,
+  });
 
-  final String dateTime;
+  final String price;
+  final String date;
+  final String time;
   final String? distance;
-  final String? price;
 }
 
 class ExploreLineupRow extends StatelessWidget {
@@ -377,23 +406,27 @@ class ExploreLineupRow extends StatelessWidget {
 }
 
 class _ExploreGigInfoLine extends StatelessWidget {
-  const _ExploreGigInfoLine({required this.info, this.size = 13});
+  const _ExploreGigInfoLine({required this.info, this.size = 13, this.color});
 
   final ExploreGigInfo info;
   final double size;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
     final metric = Theme.of(context).textTheme.epLabel.copyWith(
       fontSize: size,
       fontWeight: FontWeight.w400,
-      color: context.epColors.ink,
+      color: color ?? context.epColors.ink,
     );
-    final separator = metric.copyWith(color: context.epColors.muted);
+    final separator = metric.copyWith(
+      color: color?.withValues(alpha: 0.60) ?? context.epColors.muted,
+    );
     final metricSpans = <TextSpan>[
-      TextSpan(text: info.dateTime, style: metric),
+      TextSpan(text: info.price, style: metric),
+      TextSpan(text: info.date, style: metric),
+      TextSpan(text: info.time, style: metric),
       if (info.distance != null) TextSpan(text: info.distance, style: metric),
-      if (info.price != null) TextSpan(text: info.price, style: metric),
     ];
     final spans = <InlineSpan>[];
     for (var i = 0; i < metricSpans.length; i++) {
@@ -404,9 +437,10 @@ class _ExploreGigInfoLine extends StatelessWidget {
       TextSpan(children: spans),
       softWrap: true,
       semanticsLabel: [
-        info.dateTime,
+        info.price,
+        info.date,
+        info.time,
         if (info.distance != null) info.distance!,
-        if (info.price != null) info.price!,
       ].join(' · '),
     );
   }
@@ -744,16 +778,16 @@ class ExploreFeaturedCard extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      context.epColors.background.withValues(alpha: 0),
-                      context.epColors.background.withValues(alpha: .94),
+                      Ep.background.withValues(alpha: 0),
+                      Ep.background.withValues(alpha: .94),
                     ],
                   ),
                 ),
               ),
               if (height < width)
-                ..._landscapeContent(context, style)
+                ..._landscapeContent(context)
               else
-                _portraitContent(context, style),
+                _portraitContent(context),
               if (actions.isNotEmpty)
                 Positioned(
                   top: 8,
@@ -778,7 +812,7 @@ class ExploreFeaturedCard extends StatelessWidget {
 
   String get _venueLine => '$venueName · doors ${gig.doorsLabel}';
 
-  Widget _portraitContent(BuildContext context, FlyerStyle style) => Padding(
+  Widget _portraitContent(BuildContext context) => Padding(
     padding: const EdgeInsets.all(16),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -793,11 +827,11 @@ class ExploreFeaturedCard extends StatelessWidget {
           size: 28,
           maxLines: 3,
           overflow: TextOverflow.ellipsis,
-          color: style.fg,
+          color: Ep.ink,
         ),
         const SizedBox(height: 6),
         if (info != null)
-          _ExploreGigInfoLine(info: info!, size: 14)
+          _ExploreGigInfoLine(info: info!, size: 14, color: Ep.ink)
         else
           EpMonoText(meta ?? _venueLine, color: context.epColors.muted),
         if (lineup.isNotEmpty) ...[
@@ -807,9 +841,9 @@ class ExploreFeaturedCard extends StatelessWidget {
             nameStyle: Theme.of(context).textTheme.epLabel.copyWith(
               fontSize: 14,
               fontWeight: FontWeight.w500,
-              color: context.epColors.ink,
+              color: Ep.ink,
             ),
-            avatarBorderColor: context.epColors.ink,
+            avatarBorderColor: Ep.ink,
             onSeeAll: onTap,
           ),
         ],
@@ -818,7 +852,7 @@ class ExploreFeaturedCard extends StatelessWidget {
   );
 
   /// Title and gig details pinned bottom-left.
-  List<Widget> _landscapeContent(BuildContext context, FlyerStyle style) {
+  List<Widget> _landscapeContent(BuildContext context) {
     final venueStyle = Theme.of(context).textTheme.epChipLabel.copyWith(
       fontSize: 11,
       color: context.epColors.muted,
@@ -845,7 +879,7 @@ class ExploreFeaturedCard extends StatelessWidget {
               size: 24,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              color: style.fg,
+              color: Ep.ink,
             ),
             const SizedBox(height: 6),
             Row(
@@ -853,7 +887,11 @@ class ExploreFeaturedCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: info != null
-                      ? _ExploreGigInfoLine(info: info!, size: 14)
+                      ? _ExploreGigInfoLine(
+                          info: info!,
+                          size: 14,
+                          color: Ep.ink,
+                        )
                       : Text(
                           (meta ?? _venueLine).toUpperCase(),
                           semanticsLabel: meta ?? _venueLine,
@@ -871,9 +909,9 @@ class ExploreFeaturedCard extends StatelessWidget {
                 nameStyle: Theme.of(context).textTheme.epLabel.copyWith(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
-                  color: context.epColors.ink,
+                  color: Ep.ink,
                 ),
-                avatarBorderColor: context.epColors.ink,
+                avatarBorderColor: Ep.ink,
                 onSeeAll: onTap,
               ),
             ],

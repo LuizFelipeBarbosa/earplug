@@ -1,6 +1,7 @@
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/date_names.dart';
+import 'package:earplug/flyer_styles.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/services/auth_service.dart';
@@ -204,6 +205,16 @@ void main() {
         );
         expect(button, findsOneWidget);
         expect(tester.widget<ExploreCardIconButton>(button).ring, isFalse);
+        final glyph = tester.widget<Icon>(
+          find.descendant(
+            of: button,
+            matching: find.byIcon(
+              action == 'save' ? Icons.bookmark_border : Icons.ios_share,
+            ),
+          ),
+        );
+        expect(glyph.color, flyerStyles['paper']!.fg);
+        expect(glyph.shadows, isNull);
         final rect = tester.getRect(button);
         expect(rect.size, const Size(28, 28));
         expect(rect.top - cardRect.top, closeTo(8, 1));
