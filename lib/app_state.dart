@@ -47,6 +47,7 @@ part 'app_state/opportunities.dart';
 part 'app_state/organizer.dart';
 part 'app_state/payments.dart';
 part 'app_state/session.dart';
+part 'app_state/social.dart';
 part 'app_state/tickets.dart';
 part 'app_state/venues.dart';
 
@@ -99,6 +100,8 @@ mixin _AppStateCore on ChangeNotifier {
   // AppState resolves the concrete implementation rather than this declaration.
   // ignore: unused_element
   void _clearOpportunityState();
+  // ignore: unused_element
+  void _clearSocialState();
   void _clearSessionSensitiveState();
   void _syncPublicGigSubscriptionForCurrentScreen();
   Future<void> _loadPublicGig(String id);
@@ -150,6 +153,7 @@ class AppState extends ChangeNotifier
         _OrganizerState,
         _CatalogState,
         _SessionState,
+        _SocialState,
         _NavigationState {
   AppState({
     required EarplugRepository repository,
@@ -508,6 +512,7 @@ class AppState extends ChangeNotifier
     _clearBookingState();
     _clearPaymentState();
     _clearFinanceState();
+    _clearSocialState();
     _clearTicketState();
     _resetGigForm();
   }

@@ -4,6 +4,7 @@ enum PendingKind {
   rsvp,
   tickets,
   follow,
+  followUser,
   save,
   myGigs,
   band,
@@ -37,6 +38,9 @@ mixin _SessionState on _AppStateCore {
   Set<String> get saved;
   set saved(Set<String> value);
   Band? band(String id);
+  void toggleFollowUser(String userId);
+  Future<void> loadSocial({bool refresh = false});
+  Future<void> loadFriendsGoing({bool refresh = false});
   void go(Screen s, [String? param]);
   void back();
   void resetTo(Screen s);
@@ -90,6 +94,8 @@ mixin _SessionState on _AppStateCore {
       await _refreshProfile(sessionGeneration: sessionGeneration);
       if (!_isCurrentSession(sessionGeneration)) return false;
       unawaited(_refreshHistory(sessionGeneration: sessionGeneration));
+      unawaited(loadSocial());
+      unawaited(loadFriendsGoing());
       return true;
     } catch (error) {
       logError('ensureUser', error);
@@ -267,6 +273,9 @@ mixin _SessionState on _AppStateCore {
         _syncFollowedBandGigSubscriptions();
         final name = band(p.id!)?.name;
         say(name == null ? 'Band followed.' : 'Following $name.');
+        _postAuthScreen = null;
+      case PendingKind.followUser:
+        toggleFollowUser(p!.id!);
         _postAuthScreen = null;
       case PendingKind.save:
         await repository.ensureSave(p!.id!);

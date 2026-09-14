@@ -605,6 +605,7 @@ class _ThroughStep extends StatelessWidget {
                   PendingKind.rsvp => 'RSVP confirmed',
                   PendingKind.save => 'Show saved',
                   PendingKind.follow => 'Band followed',
+                  PendingKind.followUser => 'Person followed',
                   PendingKind.band => "Let's start your band",
                   PendingKind.join || PendingKind.orgJoin => 'Ready to join',
                   PendingKind.gigInvite => 'Ready to claim',

@@ -16,6 +16,7 @@ mixin _NavigationState on _AppStateCore {
   Booking? bookingById(String id);
   ActiveIdentity identityForBooking(Booking booking);
   void ensureExploreBands();
+  void ensureSocial();
   void needAuth(PendingAuth p);
   Future<void> loadBandProfileDetails(String id, {bool refresh = false});
   Future<void> refreshBandSetupStatus(String id);
@@ -80,6 +81,7 @@ mixin _NavigationState on _AppStateCore {
     });
     pushBrowserPath(_browserPathFor(s, param));
     if (_showsBandDirectory(current)) ensureExploreBands();
+    if (current.screen == Screen.explore) ensureSocial();
   }
 
   void back() {
@@ -101,6 +103,7 @@ mixin _NavigationState on _AppStateCore {
     });
     _refreshVisibleBandDashboard();
     if (_showsBandDirectory(current)) ensureExploreBands();
+    if (current.screen == Screen.explore) ensureSocial();
   }
 
   void resetTo(Screen s) {
@@ -113,6 +116,7 @@ mixin _NavigationState on _AppStateCore {
     _onBandChanged();
     _onOrganizationChanged();
     if (_showsBandDirectory(current)) ensureExploreBands();
+    if (current.screen == Screen.explore) ensureSocial();
   }
 
   /// Explore and its bands collection both page the band directory.
