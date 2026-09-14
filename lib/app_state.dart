@@ -15,6 +15,7 @@ import 'date_names.dart';
 import 'discovery_filters.dart';
 import 'discovery_policy.dart';
 import 'errors.dart';
+import 'explore_ranking.dart';
 import 'flyer_styles.dart';
 import 'memo.dart';
 import 'models.dart';
@@ -39,6 +40,7 @@ part 'app_state/band_create.dart';
 part 'app_state/bookings.dart';
 part 'app_state/catalog.dart';
 part 'app_state/discovery.dart';
+part 'app_state/explore.dart';
 part 'app_state/fan.dart';
 part 'app_state/finance.dart';
 part 'app_state/gig_editor.dart';
@@ -77,6 +79,7 @@ mixin _AppStateCore on ChangeNotifier {
   // only from siblings, fields the owner writes but only siblings read).
   DateTime? get _nextFeedStartsAt;
   Map<String, Venue> get _venues;
+  double _distanceMilesFromDiscoveryCenter(Venue venue);
   void _applyFanCity(FanCity selectedCity);
   void _invalidateVenueDetails(Set<String> ids);
   void _refreshExploreBands();
@@ -143,6 +146,7 @@ class AppState extends ChangeNotifier
         _BandCreateState,
         _VenueState,
         _DiscoveryState,
+        _ExploreState,
         _FanState,
         _BandConsoleState,
         _OpportunityState,

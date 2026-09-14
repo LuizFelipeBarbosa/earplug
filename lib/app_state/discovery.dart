@@ -473,6 +473,7 @@ mixin _DiscoveryState on _AppStateCore {
     return '${calculated.toStringAsFixed(1)} mi';
   }
 
+  @override
   double _distanceMilesFromDiscoveryCenter(Venue venue) => distanceInMiles(
     startLatitude: discoveryCenter.latitude,
     startLongitude: discoveryCenter.longitude,
