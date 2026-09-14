@@ -297,6 +297,8 @@ class ExploreFeaturedCard extends StatelessWidget {
     required this.venueName,
     required this.onTap,
     this.friends = const <SocialUserCard>[],
+    this.meta,
+    this.lineup = const <ExploreLineupBand>[],
     this.width = 300,
     this.height = 380,
   });
@@ -305,6 +307,8 @@ class ExploreFeaturedCard extends StatelessWidget {
   final String venueName;
   final VoidCallback onTap;
   final List<SocialUserCard> friends;
+  final String? meta;
+  final List<ExploreLineupBand> lineup;
   final double width;
   final double height;
 
@@ -383,7 +387,11 @@ class ExploreFeaturedCard extends StatelessWidget {
               color: style.fg,
             ),
             const SizedBox(height: 6),
-            EpMonoText(_venueLine, color: context.epColors.muted),
+            EpMonoText(meta ?? _venueLine, color: context.epColors.muted),
+            if (lineup.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _lineupRow(context, style.fg.withValues(alpha: .85)),
+            ],
             const SizedBox(height: 8),
             EpPill(label: cue, onPressed: null, size: EpPillSize.chip),
           ],
@@ -426,8 +434,8 @@ class ExploreFeaturedCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    _venueLine.toUpperCase(),
-                    semanticsLabel: _venueLine,
+                    (meta ?? _venueLine).toUpperCase(),
+                    semanticsLabel: meta ?? _venueLine,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: venueStyle,
@@ -437,10 +445,29 @@ class ExploreFeaturedCard extends StatelessWidget {
                 EpPill(label: cue, onPressed: null, size: EpPillSize.chip),
               ],
             ),
+            if (lineup.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _lineupRow(context, style.fg.withValues(alpha: .85)),
+            ],
           ],
         ),
       ),
     ];
+  }
+
+  Widget _lineupRow(BuildContext context, Color tint) {
+    final bands = lineup.take(3).toList();
+    return Row(
+      children: [
+        for (var i = 0; i < bands.length; i++) ...[
+          if (i > 0) const SizedBox(width: 12),
+          Flexible(
+            fit: FlexFit.loose,
+            child: _ExploreLineupChip(band: bands[i], textColor: tint),
+          ),
+        ],
+      ],
+    );
   }
 
   Widget _friendsCueRow(BuildContext context) => Row(

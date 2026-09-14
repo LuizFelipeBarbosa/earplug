@@ -235,6 +235,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
                         key: Key('explore-featured-${gig.id}'),
                         gig: gig,
                         venueName: app.venue(gig.venueId).name,
+                        meta: compactGigMeta(gig, app, showDistance: true),
+                        lineup: exploreLineupFor(gig, app),
                         onTap: () => app.openGig(gig.id),
                         width: extent,
                         height: height,

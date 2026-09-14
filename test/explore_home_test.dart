@@ -194,6 +194,18 @@ void main() {
         find.byKey(const Key('explore-featured-gFollowed')),
         findsOneWidget,
       );
+      final followedCard = find.byKey(const Key('explore-featured-gFollowed'));
+      expect(
+        find.descendant(
+          of: followedCard,
+          matching: find.textContaining('FREE'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: followedCard, matching: find.text('Followed Band')),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('explore-featured-gSaved')), findsOneWidget);
       expect(find.byKey(const Key('explore-featured-gWeekend')), findsNothing);
 

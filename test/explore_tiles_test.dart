@@ -315,6 +315,36 @@ void main() {
     );
   });
 
+  testWidgets('featured card renders meta and up to three lineup chips', (
+    tester,
+  ) async {
+    final gig = gigFixture(id: 'featured-lineup', title: 'Featured Event');
+    await tester.pumpWidget(
+      plain(
+        ExploreFeaturedCard(
+          gig: gig,
+          venueName: 'The Foghorn',
+          meta: '23 Sep · 8PM · FREE · 11 MI',
+          lineup: const [
+            ExploreLineupBand(name: 'Aster', initials: 'AS'),
+            ExploreLineupBand(name: 'Briar', initials: 'BR'),
+            ExploreLineupBand(name: 'Cinder', initials: 'CI'),
+            ExploreLineupBand(name: 'Fourth', initials: 'FO'),
+          ],
+          onTap: () {},
+          width: 334,
+          height: 200,
+        ),
+      ),
+    );
+
+    expect(find.textContaining('23 SEP · 8PM · FREE · 11 MI'), findsOneWidget);
+    for (final name in ['Aster', 'Briar', 'Cinder']) {
+      expect(find.text(name), findsOneWidget);
+    }
+    expect(find.text('Fourth'), findsNothing);
+  });
+
   testWidgets('featured card shows details, ticket cue, and taps', (
     tester,
   ) async {
@@ -375,7 +405,7 @@ void main() {
   });
 
   testWidgets(
-    'landscape featured card fits its title, venue line and cue at 1.0 and 1.5',
+    'landscape featured card fits its title, meta, lineup and cue at 1.0 and 1.5',
     (tester) async {
       final gig = gigFixture(
         id: 'featured-landscape',
@@ -389,6 +419,12 @@ void main() {
             ExploreFeaturedCard(
               gig: gig,
               venueName: 'A Venue With A Long Name',
+              meta: '23 Sep · 8PM · FREE · 11 MI',
+              lineup: const [
+                ExploreLineupBand(name: 'Aster', initials: 'AS'),
+                ExploreLineupBand(name: 'Briar', initials: 'BR'),
+                ExploreLineupBand(name: 'Cinder', initials: 'CI'),
+              ],
               onTap: () {},
               width: 334,
               height: 200,
@@ -407,7 +443,7 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.textContaining('A VENUE WITH A LONG NAME · DOORS 8PM'),
+          find.textContaining('23 SEP · 8PM · FREE · 11 MI'),
           findsOneWidget,
         );
         expect(find.text('TICKETS'), findsOneWidget);
