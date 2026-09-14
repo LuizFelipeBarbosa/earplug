@@ -136,15 +136,19 @@ List<String> _rankBandIds(
     }
   }
   final candidates = <_ScoredBand>[];
+  final gigById = <String, Gig>{};
+  for (final gig in feed) {
+    gigById.putIfAbsent(gig.id, () => gig);
+  }
   for (final id in candidateIds) {
     final band = bands[id];
     if (band == null) continue;
     final hasSoon = band.upcoming.any((gigId) {
-      final gig = _gigById(feed, gigId);
+      final gig = gigById[gigId];
       return gig != null && _within(gig.startsAt, signals.now, const Duration(days: 7));
     });
     final hasLater = band.upcoming.any((gigId) {
-      final gig = _gigById(feed, gigId);
+      final gig = gigById[gigId];
       return gig != null && _within(gig.startsAt, signals.now, const Duration(days: 30));
     });
     candidates.add(_ScoredBand(
@@ -463,13 +467,6 @@ class _ScoredGenre {
   const _ScoredGenre(this.chip, this.score);
   final GenreChip chip;
   final int score;
-}
-
-Gig? _gigById(List<Gig> feed, String id) {
-  for (final gig in feed) {
-    if (gig.id == id) return gig;
-  }
-  return null;
 }
 
 bool _within(DateTime value, DateTime now, Duration duration) {

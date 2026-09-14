@@ -75,6 +75,38 @@ void main() {
     expect(home.upcoming.every((gig) => !grouped.contains(gig.id)), isTrue);
   });
 
+  test('Explore ignores the filter-sheet genre selection', () async {
+    final app = await _createApp();
+    app.toggleGenre('noise');
+
+    final home = app.exploreHome;
+    final visibleIds = {
+      ...home.tonight.map((gig) => gig.id),
+      ...home.week.map((gig) => gig.id),
+      ...home.upcoming.map((gig) => gig.id),
+    };
+    final nonNoiseGigIds = DemoData.gigs
+        .where((gig) => !gig.genres.map(canonicalGenre).contains('noise'))
+        .map((gig) => gig.id)
+        .toSet();
+    expect(visibleIds.intersection(nonNoiseGigIds), isNotEmpty);
+
+    final expectedCounts = <String, int>{};
+    for (final gig in DemoData.gigs) {
+      for (final genre in gig.genres.map(canonicalGenre)) {
+        if (genre != 'noise') {
+          expectedCounts[genre] = (expectedCounts[genre] ?? 0) + 1;
+        }
+      }
+    }
+    final chipsByGenre = {
+      for (final chip in app.exploreGenres) chip.genre: chip,
+    };
+    for (final entry in expectedCounts.entries) {
+      expect(chipsByGenre[entry.key]?.feedCount, entry.value);
+    }
+  });
+
   test(
     'exploreGenres includes feed genres and attended history leads ranking',
     () async {
@@ -127,6 +159,34 @@ void main() {
     app.setExploreGenre(null);
     expect(app.exploreGenrePage, isNull);
   });
+
+  test(
+    'changing fan genres invalidates the selected Explore genre page',
+    () async {
+      final app = await _createApp();
+      app.setExploreGenre('hardcore');
+      final before = app.exploreGenrePage;
+      expect(before, isNotNull);
+
+      final profile = app.profile!;
+      final replacementGenre = app.userGenres.contains('noise')
+          ? 'punk'
+          : 'noise';
+      final saved = await app.saveFanProfile(
+        name: profile.name,
+        bio: profile.bio,
+        homeLocation: profile.homeLocation,
+        genres: [replacementGenre],
+        locationPersonalizationEnabled: profile.locationPersonalizationEnabled,
+        followedBandUpdatesEnabled: profile.followedBandUpdatesEnabled,
+        shareRsvpsWithFriends: profile.shareRsvpsWithFriends,
+      );
+      expect(saved, isTrue);
+      await flushAsyncWork();
+
+      expect(app.exploreGenrePage, isNot(same(before)));
+    },
+  );
 
   test('followed lineup band ranks ahead within a shared day', () async {
     final first = DemoData.gigs

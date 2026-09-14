@@ -4,7 +4,7 @@ part of '../app_state.dart';
 /// genre chips, and the selected genre page, all memoized by their inputs.
 mixin _ExploreState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
-  List<Gig> get feed;
+  List<Gig> get homeFeed;
   Map<String, Band> get _bands;
   List<Venue> get venues;
   Venue venue(String id);
@@ -23,7 +23,7 @@ mixin _ExploreState on _AppStateCore {
 
   final Memo<
     ({
-      List<Gig> feed,
+      List<Gig> homeFeed,
       Map<String, Band> bands,
       List<Venue> venues,
       Set<String> follows,
@@ -43,7 +43,7 @@ mixin _ExploreState on _AppStateCore {
 
   final Memo<
     ({
-      List<Gig> feed,
+      List<Gig> homeFeed,
       List<FanHistoryItem> history,
       Map<String, Gig> interactionGigs,
       Map<String, Band> bands,
@@ -60,13 +60,15 @@ mixin _ExploreState on _AppStateCore {
   final Memo<
     ({
       String genre,
-      List<Gig> feed,
+      List<Gig> homeFeed,
       Map<String, Band> bands,
       List<String> exploreBandIds,
       Set<String> follows,
       Set<String> saved,
       List<({Gig gig, List<SocialUserCard> friends})> friendsGoing,
       Set<String> boostedGigIds,
+      String genresKey,
+      FanCity? homeCity,
       int quarterHourBucket,
     }),
     ExploreGenrePage
@@ -96,7 +98,7 @@ mixin _ExploreState on _AppStateCore {
   ExploreHome get exploreHome {
     final now = _now();
     final inputs = (
-      feed: feed,
+      homeFeed: homeFeed,
       bands: _bands,
       venues: venues,
       follows: follows,
@@ -112,15 +114,19 @@ mixin _ExploreState on _AppStateCore {
     );
     return _exploreHomeMemo(inputs, () {
       final signals = _signals();
-      final tonight = feed.where((gig) => gig.when == GigWhen.tonight).toList();
-      final week = feed.where((gig) => gig.when == GigWhen.week).toList();
-      final upcoming = feed.where((gig) => gig.when == GigWhen.later).toList();
+      final tonight = homeFeed
+          .where((gig) => gig.when == GigWhen.tonight)
+          .toList();
+      final week = homeFeed.where((gig) => gig.when == GigWhen.week).toList();
+      final upcoming = homeFeed
+          .where((gig) => gig.when == GigWhen.later)
+          .toList();
       return ExploreHome(
         recommendedBandIds: List.unmodifiable(
-          rankRecommendedBands(bands: _bands, feed: feed, signals: signals),
+          rankRecommendedBands(bands: _bands, feed: homeFeed, signals: signals),
         ),
         collections: buildCollections(
-          feed: feed,
+          feed: homeFeed,
           venue: venue,
           bands: _bands,
           signals: signals,
@@ -128,7 +134,7 @@ mixin _ExploreState on _AppStateCore {
         tonight: List.unmodifiable(tonight),
         week: List.unmodifiable(week),
         upcoming: List.unmodifiable(upcoming),
-        venues: venuesWithShows(feed: feed, venue: venue),
+        venues: venuesWithShows(feed: homeFeed, venue: venue),
         personalised: authed && (userGenres.isNotEmpty || follows.isNotEmpty),
       );
     });
@@ -136,7 +142,7 @@ mixin _ExploreState on _AppStateCore {
 
   List<GenreChip> get exploreGenres {
     final inputs = (
-      feed: feed,
+      homeFeed: homeFeed,
       history: history,
       interactionGigs: _interactionGigs,
       bands: _bands,
@@ -149,7 +155,7 @@ mixin _ExploreState on _AppStateCore {
     return _exploreGenresMemo(inputs, () {
       final signals = _signals();
       return rankGenres(
-        feed: feed,
+        feed: homeFeed,
         attendedGigGenres: history.map((item) => item.genres),
         interactionGigs: _interactionGigs.values,
         bands: _bands,
@@ -173,20 +179,22 @@ mixin _ExploreState on _AppStateCore {
     final now = _now();
     final inputs = (
       genre: genre,
-      feed: feed,
+      homeFeed: homeFeed,
       bands: _bands,
       exploreBandIds: exploreBandIds,
       follows: follows,
       saved: saved,
       friendsGoing: friendsGoing,
       boostedGigIds: _discoveryBoostedGigIds,
+      genresKey: _genresKey,
+      homeCity: discoveryHomeCity,
       quarterHourBucket: now.millisecondsSinceEpoch ~/ (15 * 60 * 1000),
     );
     return _exploreGenrePageMemo(inputs, () {
       final signals = _signals();
       return buildGenrePage(
         genre: genre,
-        feed: feed,
+        feed: homeFeed,
         bands: _bands,
         directoryBandIds: exploreBandIds,
         signals: signals,
