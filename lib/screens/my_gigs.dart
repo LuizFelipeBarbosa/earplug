@@ -242,6 +242,16 @@ class _ProfileHeader extends StatelessWidget {
                   ),
                   if (profile case final UserProfile profile) ...[
                     const SizedBox(height: 2),
+                    if (profile.homeLocation case final FanCity city)
+                      Text(
+                        '${city.label} scene',
+                        key: const Key('fan-profile-scene'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.epCaption.copyWith(
+                          color: context.epColors.ink,
+                        ),
+                      ),
                     Text(
                       'Member since ${monthNamesFull[profile.createdAt.month - 1]} ${profile.createdAt.year}',
                       key: const Key('fan-profile-since'),

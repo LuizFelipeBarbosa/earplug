@@ -423,7 +423,13 @@ void main() {
     expect(name.text, harness.app.profile!.name);
     expect(name.keepCase, isTrue);
     expect(name.size, 20);
-    expect(find.byKey(const Key('fan-profile-scene')), findsNothing);
+    final city = harness.app.profile!.homeLocation;
+    if (city == null) {
+      expect(find.byKey(const Key('fan-profile-scene')), findsNothing);
+    } else {
+      expect(find.text('${city.label} scene'), findsOneWidget);
+    }
+    expect(find.byKey(const Key('fan-profile-since')), findsOneWidget);
     for (final key in const [
       Key('edit-profile-action'),
       Key('profile-settings-action'),
