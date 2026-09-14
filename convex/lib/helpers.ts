@@ -503,6 +503,7 @@ export const venuePayloadValidator = v.object({
   verified: v.boolean(),
   managedByOrganizationId: v.union(v.id("organizations"), v.null()),
   exactAddr: v.union(v.string(), v.null()),
+  photoUrls: v.array(v.string()),
 });
 
 export const mediaKindValidator = v.union(
@@ -760,7 +761,11 @@ export function effectiveAddressDisclosure(
     : "onTicket";
 }
 
-export function toVenuePayload(venue: Doc<"venues">) {
+export async function toVenuePayload(
+  ctx: QueryCtx,
+  venue: Doc<"venues">,
+  cache?: DocCache,
+) {
   const disclosure = effectiveAddressDisclosure(venue);
   const approx =
     venue.approxLat !== undefined && venue.approxLng !== undefined
@@ -791,6 +796,16 @@ export function toVenuePayload(venue: Doc<"venues">) {
           exactAddr: null,
         };
 
+  const photoUrls = (
+    await Promise.all(
+      (venue.photoStorageIds ?? [])
+        .slice(0, MAX_VENUE_PHOTOS)
+        .map((storageId) =>
+          cache ? cache.getUrl(storageId) : ctx.storage.getUrl(storageId),
+        ),
+    )
+  ).filter((url): url is string => url !== null);
+
   return {
     _id: venue._id,
     name: venue.name,
@@ -810,6 +825,7 @@ export function toVenuePayload(venue: Doc<"venues">) {
     addressDisclosure: disclosure,
     verified: venue.status === "verified",
     managedByOrganizationId: venue.managedByOrganizationId ?? null,
+    photoUrls,
   };
 }
 
@@ -926,6 +942,11 @@ export const K_ANON_FANS = 5;
 /** The venue list is now user- and organization-generated; `venues:list`
  * truncates at 500 pending real pagination. */
 export const MAX_VENUES = 500;
+
+/** Up to 4 ctx.storage.getUrl calls per venue; venues:list ships up to
+ * MAX_VENUES (500) venues, but most currently have zero photos so the
+ * amortized cost is low. */
+export const MAX_VENUE_PHOTOS = 4;
 
 // ─── Fan profile limits ────────────────────────────────────────────────────
 

@@ -3010,10 +3010,11 @@ describe("opportunity payload", () => {
     });
     const { payload, venue } = await t.run(async (ctx) => {
       const opportunity = await ctx.db.get(opportunityId);
-      if (!opportunity) throw new Error("Fixture opportunity missing");
+      const storedVenue = await ctx.db.get(venueId);
+      if (!opportunity || !storedVenue) throw new Error("Fixture missing");
       return {
         payload: await toOpportunityPayload(ctx, opportunity),
-        venue: await ctx.db.get(venueId),
+        venue: await toVenuePayload(ctx, storedVenue),
       };
     });
     expect(Object.keys(payload).sort()).toEqual(
@@ -3023,7 +3024,7 @@ describe("opportunity payload", () => {
       _id: opportunityId,
       venueId,
       privateEvent: false,
-      venue: toVenuePayload(venue!),
+      venue,
       flyerUrl: null,
       area: "Uptown, Oakland",
       venueType: "hall",

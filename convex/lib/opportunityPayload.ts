@@ -115,7 +115,11 @@ export async function toOpportunityPayload(
     mode: opportunity.mode,
     privateEvent: isPrivate,
     venueId: isPrivate ? null : (opportunity.venueId ?? null),
-    venue: isPrivate ? null : (venue ? toVenuePayload(venue) : null),
+    venue: isPrivate
+      ? null
+      : venue
+        ? await toVenuePayload(ctx, venue)
+        : null,
     area: opportunity.area,
     venueType: isPrivate ? "private" : (opportunity.venueType ?? null),
     venueConsentStatus:
