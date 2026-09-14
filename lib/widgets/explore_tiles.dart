@@ -453,7 +453,7 @@ class ExploreEventRow extends StatelessWidget {
                         size: 18,
                         overflow: TextOverflow.clip,
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 8),
                       if (info != null)
                         _ExploreGigInfoLine(info: info!)
                       else
@@ -979,7 +979,7 @@ const _venueTilePaddingTop = 6.0;
 const _venueTilePaddingBottom = 4.0;
 const _venueTileNameSize = 20.0;
 const _venueTileNameMaxLines = 2;
-const _venueTileDateSize = 20.0;
+const _venueTileDateSize = 16.0;
 const _venueTileLineGap = 2.0;
 const _venueTileInlineGap = 6.0;
 const _venueTileAreaSeparator = ' · ';
