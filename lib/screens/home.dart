@@ -7,7 +7,7 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets/branding.dart';
 import '../widgets/common.dart';
-import '../widgets/discovery_filters_sheet.dart';
+import '../widgets/discovery_quick_filters.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/fan_event_card.dart';
@@ -63,7 +63,7 @@ class _HomeHeader extends StatelessWidget {
             flex: 2,
             child: Align(
               alignment: Alignment.bottomRight,
-              child: _QuickFilters(showViewControls: true),
+              child: DiscoveryQuickFilters(trailing: const _ViewControls()),
             ),
           ),
         ],
@@ -88,7 +88,7 @@ class _HomeHeader extends StatelessWidget {
         const SizedBox(height: 16),
         hero,
         const SizedBox(height: 14),
-        _QuickFilters(),
+        DiscoveryQuickFilters(),
       ],
     );
   }
@@ -168,78 +168,6 @@ class _ViewControls extends StatelessWidget {
     );
   }
 }
-
-/// Tonight / This week / Free, plus the view controls where the header has no
-/// separate identity row (desktop).
-class _QuickFilters extends StatelessWidget {
-  const _QuickFilters({this.showViewControls = false});
-
-  final bool showViewControls;
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.read<AppState>();
-    final filters = context.select<AppState, DiscoveryFilters>(
-      (value) => value.filters,
-    );
-    final sheetCount = _sheetFilterCount(filters);
-    final tonight = EpPill(
-      label: 'Tonight',
-      selected: filters.date == DateFilter.tonight,
-      onPressed: () => app.toggleDateFilter(DateFilter.tonight),
-      expand: !showViewControls,
-    );
-    final thisWeek = EpPill(
-      label: 'This week',
-      selected: filters.date == DateFilter.week,
-      onPressed: () => app.toggleDateFilter(DateFilter.week),
-      expand: !showViewControls,
-    );
-    final free = EpPill(
-      label: 'Free',
-      selected: filters.price == PriceFilter.free,
-      onPressed: app.toggleFree,
-      expand: !showViewControls,
-    );
-    final icon = EpIconPill(
-      key: const ValueKey('home-filters'),
-      icon: Icons.tune,
-      badge: sheetCount == 0 ? null : '$sheetCount',
-      badgeKey: const Key('home-filters-count'),
-      filled: false,
-      semanticLabel: sheetCount == 0
-          ? 'Filters'
-          : 'Filters, $sheetCount active',
-      onPressed: () => showDiscoveryFiltersSheet(context, showGenres: false),
-    );
-    if (showViewControls) {
-      return Wrap(
-        alignment: WrapAlignment.end,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 8,
-        runSpacing: 8,
-        children: [tonight, thisWeek, free, icon, const _ViewControls()],
-      );
-    }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(child: tonight),
-        const SizedBox(width: 8),
-        Expanded(child: thisWeek),
-        const SizedBox(width: 8),
-        Expanded(child: free),
-        const SizedBox(width: 8),
-        icon,
-      ],
-    );
-  }
-}
-
-int _sheetFilterCount(DiscoveryFilters filters) =>
-    (filters.maxDistanceMiles != null ? 1 : 0) +
-    (filters.price == PriceFilter.paid ? 1 : 0) +
-    (filters.date == DateFilter.custom ? 1 : 0);
 
 class _FeedList extends StatefulWidget {
   const _FeedList();
