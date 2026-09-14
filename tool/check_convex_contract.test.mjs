@@ -29,7 +29,8 @@ function completeFunction(identifier, functionType) {
       identifier === "bands.js:bySlug" ||
       identifier === "bookingsRead.js:get" ||
       identifier === "tickets.js:orderStatus" ||
-      identifier === "gigs.js:resolvePublic"
+      identifier === "gigs.js:resolvePublic" ||
+      identifier === "users.js:me"
     ) {
       entry.returns ??= {
         type: "union",
@@ -293,6 +294,13 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing payouts.js:statementForBand",
     "missing features.js:fees",
     "missing stripeActions.js:enableBandTicketSales",
+    "missing users.js:me",
+    "missing interactions.js:history",
+    "missing social.js:searchUsers",
+    "missing social.js:toggleFollowUser",
+    "missing social.js:mySocial",
+    "missing social.js:friendsGoing",
+    "missing social.js:userCard",
   ]);
 });
 

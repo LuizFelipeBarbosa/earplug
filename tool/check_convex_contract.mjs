@@ -137,6 +137,13 @@ export const requiredClientFunctions = Object.freeze({
   "payouts.js:statementForBand": "Query",
   "features.js:fees": "Query",
   "stripeActions.js:enableBandTicketSales": "Action",
+  "users.js:me": "Query",
+  "interactions.js:history": "Query",
+  "social.js:searchUsers": "Query",
+  "social.js:toggleFollowUser": "Mutation",
+  "social.js:mySocial": "Query",
+  "social.js:friendsGoing": "Query",
+  "social.js:userCard": "Query",
 });
 
 export const requiredClientFields = Object.freeze([
@@ -230,6 +237,15 @@ export const requiredClientFields = Object.freeze([
   ["gigs.js:saveDraft", "args", "ticketPriceMinor", true],
   ["gigs.js:saveDraft", "args", "ticketCapacity", true],
   ["gigs.js:getProject", "return", "ticketPriceMinor", false],
+  ["users.js:me", "return", "shareRsvpsWithFriends", false],
+  ["users.js:updateProfile", "args", "shareRsvpsWithFriends", true],
+  ["interactions.js:history", "arrayReturn", "genres", false],
+  ["social.js:mySocial", "return", "friends", false],
+  ["social.js:mySocial", "return", "shareRsvpsWithFriends", false],
+  ["social.js:friendsGoing", "return", "entries", false],
+  ["social.js:friendsGoing", "return", "truncated", false],
+  ["social.js:searchUsers", "arrayReturn", "isFriend", false],
+  ["social.js:toggleFollowUser", "args", "on", true],
 ]);
 
 export function deploymentNameFromUrl(value) {
