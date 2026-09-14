@@ -76,8 +76,14 @@ class _MyGigsScreenState extends State<MyGigsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              const EpDisplay(
+                'Profile',
+                size: 44,
+                key: Key('fan-profile-title'),
+              ),
+              const SizedBox(height: 16),
               _ProfileHeader(app: app),
-              const SizedBox(height: 12),
+              const SizedBox(height: 4),
               EpStatGrid(
                 topLine: false,
                 stats: [
