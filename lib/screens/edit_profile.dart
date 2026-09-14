@@ -34,6 +34,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   FanCity? _homeLocation;
   var _locationPersonalizationEnabled = false;
   var _followedBandUpdatesEnabled = true;
+  var _shareRsvpsWithFriends = true;
   PickedMedia? _pickedAvatar;
   var _removeAvatar = false;
   var _locatingHome = false;
@@ -52,6 +53,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Set<String> _initialGenres = const {};
   var _initialLocationPersonalization = false;
   var _initialFollowedBandUpdates = true;
+  var _initialShareRsvpsWithFriends = true;
 
   @override
   void initState() {
@@ -64,6 +66,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _initialLocationPersonalization =
         profile?.locationPersonalizationEnabled ?? false;
     _initialFollowedBandUpdates = profile?.followedBandUpdatesEnabled ?? true;
+    _initialShareRsvpsWithFriends = profile?.shareRsvpsWithFriends ?? true;
     _nameController = TextEditingController(text: profile?.name ?? '');
     _bioController = TextEditingController(text: profile?.bio ?? '');
     _genres = Set.of(profile?.genres ?? const []);
@@ -76,6 +79,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _locationPersonalizationEnabled =
         profile?.locationPersonalizationEnabled ?? false;
     _followedBandUpdatesEnabled = profile?.followedBandUpdatesEnabled ?? true;
+    _shareRsvpsWithFriends = profile?.shareRsvpsWithFriends ?? true;
     _mediaPicker = widget.mediaPicker ?? MediaPicker();
   }
 
@@ -154,6 +158,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       !setEquals(_genres, _initialGenres) ||
       _locationPersonalizationEnabled != _initialLocationPersonalization ||
       _followedBandUpdatesEnabled != _initialFollowedBandUpdates ||
+      _shareRsvpsWithFriends != _initialShareRsvpsWithFriends ||
       _pickedAvatar != null ||
       _removeAvatar;
 
@@ -318,6 +323,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       genres: _genres.toList()..sort(),
       locationPersonalizationEnabled: _locationPersonalizationEnabled,
       followedBandUpdatesEnabled: _followedBandUpdatesEnabled,
+      shareRsvpsWithFriends: _shareRsvpsWithFriends,
     );
     if (!mounted) return;
 
@@ -501,6 +507,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ? null
                     : (value) =>
                           setState(() => _followedBandUpdatesEnabled = value),
+              ),
+              const SizedBox(height: 12),
+              SwitchRow(
+                key: const Key('edit-profile-share-rsvps'),
+                label: 'Share my RSVPs with friends',
+                caption: "Friends see the shows you're going to.",
+                value: _shareRsvpsWithFriends,
+                onChanged: _saving
+                    ? null
+                    : (value) => setState(() => _shareRsvpsWithFriends = value),
               ),
               if (_error case final error?) ...[
                 const SizedBox(height: EpLayout.fieldGap),

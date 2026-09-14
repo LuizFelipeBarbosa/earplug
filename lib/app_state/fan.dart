@@ -296,6 +296,7 @@ mixin _FanState on _AppStateCore {
     required List<String> genres,
     required bool locationPersonalizationEnabled,
     required bool followedBandUpdatesEnabled,
+    bool? shareRsvpsWithFriends,
   }) async {
     if (!authed) return false;
     final sessionGeneration = _sessionGeneration;
@@ -318,6 +319,7 @@ mixin _FanState on _AppStateCore {
         genres: savedGenres,
         locationPersonalizationEnabled: locationPersonalizationEnabled,
         followedBandUpdatesEnabled: followedBandUpdatesEnabled,
+        shareRsvpsWithFriends: shareRsvpsWithFriends,
       );
     } catch (error) {
       logError('updateFanProfile', error);
@@ -335,6 +337,7 @@ mixin _FanState on _AppStateCore {
         genres: savedGenres,
         locationPersonalizationEnabled: locationPersonalizationEnabled,
         followedBandUpdatesEnabled: followedBandUpdatesEnabled,
+        shareRsvpsWithFriends: shareRsvpsWithFriends,
       );
     } else {
       await _refreshProfile(sessionGeneration: sessionGeneration);

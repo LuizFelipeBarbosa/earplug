@@ -25,6 +25,34 @@ import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
+class _ProfileCaptureRepository extends DemoRepository {
+  _ProfileCaptureRepository({required super.auth});
+
+  bool? capturedShareRsvps;
+
+  @override
+  Future<void> updateFanProfile({
+    required String name,
+    required String? bio,
+    required FanCity? homeLocation,
+    required List<String> genres,
+    required bool locationPersonalizationEnabled,
+    required bool followedBandUpdatesEnabled,
+    bool? shareRsvpsWithFriends,
+  }) async {
+    capturedShareRsvps = shareRsvpsWithFriends;
+    await super.updateFanProfile(
+      name: name,
+      bio: bio,
+      homeLocation: homeLocation,
+      genres: genres,
+      locationPersonalizationEnabled: locationPersonalizationEnabled,
+      followedBandUpdatesEnabled: followedBandUpdatesEnabled,
+      shareRsvpsWithFriends: shareRsvpsWithFriends,
+    );
+  }
+}
+
 void main() {
   testWidgets('unsaved profile edits survive desktop and mobile resizing', (
     tester,
@@ -313,7 +341,8 @@ void main() {
     await tester.drag(find.byType(Scrollable).first, const Offset(0, -160));
     await tester.pumpAndSettle();
 
-    expect(find.byType(SwitchRow), findsNWidgets(2));
+    expect(find.byType(SwitchRow), findsNWidgets(3));
+    expect(find.byKey(const Key('edit-profile-share-rsvps')), findsOneWidget);
     expect(find.text('Personalize with home location'), findsOne);
     expect(find.text('Show followed-band updates'), findsOne);
     expect(find.textContaining('Your location stays private'), findsOne);
@@ -329,6 +358,31 @@ void main() {
 
     expect(harness.app.profile?.locationPersonalizationEnabled, isTrue);
     expect(harness.app.profile?.followedBandUpdatesEnabled, isFalse);
+  });
+
+  testWidgets('editor saves the share RSVPs preference', (tester) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _ProfileCaptureRepository(auth: auth);
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: EditProfileScreen()),
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('edit-profile-share-rsvps')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final switchRow = find.byKey(const Key('edit-profile-share-rsvps'));
+    expect(tester.widget<SwitchRow>(switchRow).value, isTrue);
+    await tester.tap(switchRow);
+    await tester.pump();
+    expect(tester.widget<SwitchRow>(switchRow).value, isFalse);
+    await tester.tap(find.byKey(const Key('save-fan-profile')));
+    await tester.pumpAndSettle();
+    expect(repository.capturedShareRsvps, isFalse);
   });
 
   testWidgets('profile leads with private identity and branded fan fallback', (
