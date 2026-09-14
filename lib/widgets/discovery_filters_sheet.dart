@@ -60,16 +60,20 @@ class _SheetFrame extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               ?action,
-              IconButton(
-                tooltip: 'Close',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(
-                  width: 44,
-                  height: 44,
+              // Shift the whole 44px target so the glyph sits flush with the
+              // sheet edge while its hover ring stays centred on the glyph.
+              Transform.translate(
+                offset: const Offset(10, 0),
+                child: IconButton(
+                  tooltip: 'Close',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 44,
+                    height: 44,
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
                 ),
-                alignment: Alignment.centerRight,
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close),
               ),
             ],
           ),
