@@ -66,6 +66,8 @@ class ExploreEventRow extends StatelessWidget {
     required this.onTap,
     this.trailing,
     this.sub,
+    this.meta,
+    this.thumbnailSize = 56,
   });
 
   final Gig gig;
@@ -73,6 +75,8 @@ class ExploreEventRow extends StatelessWidget {
   final VoidCallback onTap;
   final Widget? trailing;
   final String? sub;
+  final String? meta;
+  final double thumbnailSize;
 
   @override
   Widget build(BuildContext context) {
@@ -82,14 +86,15 @@ class ExploreEventRow extends StatelessWidget {
         '${weekdayNamesUpper[gig.startsAt.weekday - 1]} ${gig.startsAt.day} '
         '${monthNamesUpper[gig.startsAt.month - 1]} · $venueName'
         '${gig.free ? ' · FREE' : ''}';
+    final monoLine = meta ?? dateLine;
     final thumbnail = SizedBox(
-      width: 56,
-      height: 56,
+      width: thumbnailSize,
+      height: thumbnailSize,
       child: EpNetworkImage(
         url: imageUrl,
         fit: BoxFit.cover,
-        cacheWidth: 56,
-        cacheHeight: 56,
+        cacheWidth: thumbnailSize.round(),
+        cacheHeight: thumbnailSize.round(),
         fallback: ColoredBox(
           color: style.base,
           child: Center(
@@ -105,7 +110,7 @@ class ExploreEventRow extends StatelessWidget {
     return _ExploreHairlineRow(
       semanticLabel: gig.title,
       onTap: onTap,
-      minHeight: 56,
+      minHeight: thumbnailSize,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -123,10 +128,15 @@ class ExploreEventRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                EpMonoText(
-                  dateLine,
-                  color: context.epColors.muted,
-                  keepCase: true,
+                Text(
+                  meta == null ? monoLine : monoLine.toUpperCase(),
+                  semanticsLabel: monoLine,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.epChipLabel.copyWith(
+                    fontSize: 11,
+                    color: context.epColors.muted,
+                  ),
                 ),
                 if (sub != null) ...[
                   const SizedBox(height: 2),

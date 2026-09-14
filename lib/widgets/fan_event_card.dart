@@ -6,8 +6,8 @@ import '../models.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import 'common.dart';
-import 'ep_rows.dart';
 import 'ep_text.dart';
+import 'explore_tiles.dart';
 
 enum FanEventCardPresentation { compact, featured }
 
@@ -69,17 +69,17 @@ class FanEventCard extends StatelessWidget {
       gig.priceLabel,
       if (showDistance) app.distanceOf(venue),
     ].join(' · ');
-    final row = _CompactFanEventRow(
+    final row = ExploreEventRow(
       key: ValueKey('fan-event-${gig.id}'),
       gig: gig,
+      venueName: venue.name,
       meta: meta,
-      lineup: compactLineup,
-      titleSize: EpLayout.isDesktop(context) ? 30 : 24,
-      onTap: () => app.openGig(gig.id),
-      actions: ConstrainedBox(
+      sub: compactLineup.isEmpty ? null : compactLineup.join(' · '),
+      trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 104),
         child: actions,
       ),
+      onTap: () => app.openGig(gig.id),
     );
     if (!app.isDiscoveryBoosted(gig)) return row;
     return Column(
@@ -94,78 +94,6 @@ class FanEventCard extends StatelessWidget {
         ),
         row,
       ],
-    );
-  }
-}
-
-class _CompactFanEventRow extends StatelessWidget {
-  const _CompactFanEventRow({
-    super.key,
-    required this.gig,
-    required this.meta,
-    required this.lineup,
-    required this.titleSize,
-    required this.onTap,
-    required this.actions,
-  });
-
-  final Gig gig;
-  final String meta;
-  final List<String> lineup;
-  final double titleSize;
-  final VoidCallback onTap;
-  final Widget actions;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.epColors;
-    final content = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 48),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  EpDateBlock(date: gig.startsAt),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        EpDisplay(gig.title, size: titleSize, maxLines: 3),
-                        const SizedBox(height: 8),
-                        EpMonoText(meta, color: palette.muted),
-                        const SizedBox(height: 4),
-                        Text(
-                          lineup.join(' · '),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(
-                            context,
-                          ).textTheme.epBody.copyWith(color: palette.muted),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Align(alignment: Alignment.centerRight, child: actions),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const EpHairline(),
-      ],
-    );
-    return Semantics(
-      button: true,
-      enabled: true,
-      child: InkWell(onTap: onTap, child: content),
     );
   }
 }
@@ -372,9 +300,7 @@ class _TicketAction extends StatelessWidget {
     return EpPill(
       key: ValueKey('ticket-action-${gig.id}'),
       label: external ? 'Tickets ↗' : (going ? 'Going ✓' : 'RSVP'),
-      variant: prominent && !going
-          ? EpPillVariant.primary
-          : EpPillVariant.outline,
+      variant: going ? EpPillVariant.outline : EpPillVariant.primary,
       size: prominent ? EpPillSize.regular : EpPillSize.chip,
       onPressed: external
           ? () => _openTickets(context, app, gig)

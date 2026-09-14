@@ -2,6 +2,7 @@ import 'package:earplug/app_state.dart';
 import 'package:earplug/explore_ranking.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -113,6 +114,38 @@ void main() {
       expect(find.textContaining('FREE'), findsNothing);
     },
   );
+
+  testWidgets('event row supports custom metadata and thumbnail size', (
+    tester,
+  ) async {
+    const meta = 'WED 23 SEP · 8PM · FREE · 11.2 mi';
+    await tester.pumpWidget(
+      plain(
+        ExploreEventRow(
+          gig: gigFixture(id: 'custom-meta-row'),
+          venueName: 'The Foghorn',
+          meta: meta,
+          thumbnailSize: 72.5,
+          onTap: () {},
+        ),
+      ),
+    );
+
+    final metaText = tester.widget<Text>(
+      find.text('WED 23 SEP · 8PM · FREE · 11.2 MI'),
+    );
+    expect(metaText.semanticsLabel, meta);
+    expect(metaText.maxLines, 2);
+    expect(find.textContaining('The Foghorn'), findsNothing);
+    final thumbnail = find.descendant(
+      of: find.byType(ExploreEventRow),
+      matching: find.byType(EpNetworkImage),
+    );
+    expect(tester.getSize(thumbnail), const Size(72.5, 72.5));
+    final image = tester.widget<EpNetworkImage>(thumbnail);
+    expect(image.cacheWidth, 73);
+    expect(image.cacheHeight, 73);
+  });
 
   testWidgets('featured card shows details, ticket cue, and taps', (
     tester,

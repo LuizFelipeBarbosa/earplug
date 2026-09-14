@@ -10,8 +10,8 @@ import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
-import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
+import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:earplug/widgets/map_view.dart';
 import 'package:flutter/material.dart';
@@ -584,7 +584,7 @@ void main() {
     expect(tester.widgetList(find.byType(FanEventCard)).length, lessThan(60));
   });
 
-  testWidgets('compact is the default date-first card presentation', (
+  testWidgets('compact is the default thumbnail card presentation', (
     tester,
   ) async {
     final gig = DemoData.gigs.firstWhere((item) => item.discoveryListingReady);
@@ -594,6 +594,7 @@ void main() {
     );
     final harness = await pumpApp(
       tester,
+      size: const Size(390, 900),
       auth: auth,
       repository: StubRepository(auth: auth)
         ..returnsStream(
@@ -625,7 +626,18 @@ void main() {
     expect(harness.app.isDiscoveryBoosted(gig), isTrue);
     final card = tester.widget<FanEventCard>(find.byType(FanEventCard));
     expect(card.presentation, FanEventCardPresentation.compact);
-    expect(find.byType(EpDateBlock), findsOne);
+    expect(
+      find.descendant(
+        of: find.byType(FanEventCard),
+        matching: find.byType(ExploreEventRow),
+      ),
+      findsOne,
+    );
+    final thumbnail = find.descendant(
+      of: find.byType(FanEventCard),
+      matching: find.byType(EpNetworkImage),
+    );
+    expect(tester.getSize(thumbnail), const Size(56, 56));
     expect(find.byType(GigFlyer), findsNothing);
     // Weekday, time and price make up the row's mono meta line.
     expect(
@@ -643,6 +655,13 @@ void main() {
     expect(find.byKey(ValueKey('save-${gig.id}')), findsOne);
     expect(find.byKey(ValueKey('share-${gig.id}')), findsOne);
     expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsOne);
+    expect(harness.app.rsvps, isNot(contains(gig.id)));
+    expect(
+      tester
+          .widget<EpPill>(find.byKey(ValueKey('ticket-action-${gig.id}')))
+          .variant,
+      EpPillVariant.primary,
+    );
     expect(find.byKey(ValueKey('discovery-boost-${gig.id}')), findsOne);
     expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
