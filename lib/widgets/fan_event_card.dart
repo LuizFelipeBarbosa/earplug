@@ -67,8 +67,15 @@ class FanEventCard extends StatelessWidget {
       lineup: exploreLineupFor(gig, app),
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 104),
-        child: actions,
+        child: _EventActions(
+          gig: gig,
+          app: app,
+          trailingAction: trailingAction,
+          prominent: false,
+          stretch: true,
+        ),
       ),
+      stretchTrailing: true,
       onTap: () => app.openGig(gig.id),
     );
     if (!app.isDiscoveryBoosted(gig)) return row;
@@ -258,44 +265,82 @@ class _EventActions extends StatelessWidget {
     required this.app,
     required this.trailingAction,
     required this.prominent,
+    this.stretch = false,
   });
 
   final Gig gig;
   final AppState app;
   final Widget? trailingAction;
   final bool prominent;
+  final bool stretch;
 
   @override
   Widget build(BuildContext context) {
-    final saved = app.saved.contains(gig.id);
+    if (stretch) {
+      return Column(
+        key: ValueKey('event-actions-${gig.id}'),
+        mainAxisSize: MainAxisSize.max,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _saveAction,
+              const SizedBox(width: 4),
+              _shareAction(context),
+            ],
+          ),
+          ..._ticketActions,
+        ],
+      );
+    }
     return Wrap(
       key: ValueKey('event-actions-${gig.id}'),
       alignment: WrapAlignment.end,
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: 4,
       runSpacing: 4,
-      children: [
-        EpIconPill(
-          key: ValueKey('save-${gig.id}'),
-          icon: saved ? Icons.bookmark : Icons.bookmark_border,
-          semanticLabel: saved ? 'Remove saved event' : 'Save event',
-          filled: saved,
-          onPressed: () => app.requestSave(gig.id),
-        ),
-        EpIconPill(
-          key: ValueKey('share-${gig.id}'),
-          icon: Icons.ios_share,
-          semanticLabel: 'Share event',
-          onPressed: () => _share(context, gig),
-        ),
-        if (gig.lifecycle == GigLifecycle.cancelled)
-          const EpBadge(label: 'Cancelled')
-        else ...[
-          _TicketAction(gig: gig, app: app, prominent: prominent),
-          ?trailingAction,
-        ],
-      ],
+      children: [_saveAction, _shareAction(context), ..._ticketActions],
     );
+  }
+
+  Widget get _saveAction {
+    final saved = app.saved.contains(gig.id);
+    return EpIconPill(
+      key: ValueKey('save-${gig.id}'),
+      icon: saved ? Icons.bookmark : Icons.bookmark_border,
+      semanticLabel: saved ? 'Remove saved event' : 'Save event',
+      filled: saved,
+      onPressed: () => app.requestSave(gig.id),
+    );
+  }
+
+  Widget _shareAction(BuildContext context) => EpIconPill(
+    key: ValueKey('share-${gig.id}'),
+    icon: Icons.ios_share,
+    semanticLabel: 'Share event',
+    onPressed: () => _share(context, gig),
+  );
+
+  List<Widget> get _ticketActions {
+    if (gig.lifecycle == GigLifecycle.cancelled) {
+      return [const EpBadge(label: 'Cancelled')];
+    }
+    final actions = <Widget>[
+      _TicketAction(gig: gig, app: app, prominent: prominent),
+      ?trailingAction,
+    ];
+    if (!stretch) return actions;
+    return [
+      Wrap(
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 4,
+        runSpacing: 4,
+        children: actions,
+      ),
+    ];
   }
 }
 

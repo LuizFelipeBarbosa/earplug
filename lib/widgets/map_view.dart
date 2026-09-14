@@ -494,18 +494,22 @@ class _MapGigCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: EpEyebrow(
-                    '${position + 1} OF $total GIGS AT THIS VENUE',
-                    key: const Key('map-gig-position'),
+                  child: DefaultTextStyle.merge(
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    child: EpEyebrow(
+                      '${position + 1} OF $total GIGS AT THIS VENUE',
+                      key: const Key('map-gig-position'),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 _CarouselButton(
                   key: const Key('previous-map-gig'),
                   icon: Icons.chevron_left,
                   onTap: onPrevious,
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
                 _CarouselButton(
                   key: const Key('next-map-gig'),
                   icon: Icons.chevron_right,
@@ -515,42 +519,56 @@ class _MapGigCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
           ],
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              GigFlyer(gig, flyer, width: 72, height: 96),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    EpDisplay(gig.title, size: 18, maxLines: 2),
-                    SizedBox(height: total > 1 ? 2 : 4),
-                    Text(
-                      '${venue.name} · $areaLabel',
-                      style: Theme.of(context).textTheme.epCaption,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      gig.dateLine,
-                      style: Theme.of(context).textTheme.epCaption,
-                    ),
-                    SizedBox(height: total > 1 ? 4 : 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        PriceBadge(gig),
-                        FilledButton(
-                          onPressed: onOpen,
-                          child: Text('OPEN GIG →'),
-                        ),
-                      ],
-                    ),
-                  ],
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                GigFlyer(gig, flyer, width: 72, height: 96),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      EpDisplay(
+                        gig.title,
+                        size: 18,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: total > 1 ? 2 : 4),
+                      Text(
+                        '${venue.name} · $areaLabel',
+                        style: Theme.of(context).textTheme.epCaption,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        gig.dateLine,
+                        style: Theme.of(context).textTheme.epCaption,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const Spacer(),
+                      SizedBox(height: total > 1 ? 4 : 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          PriceBadge(gig),
+                          FilledButton(
+                            onPressed: onOpen,
+                            child: const Text(
+                              'OPEN GIG →',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -568,10 +586,13 @@ class _CarouselButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final button = IconButton(
       onPressed: onTap,
+      padding: EdgeInsets.zero,
       style: const ButtonStyle(
-        fixedSize: WidgetStatePropertyAll(Size.square(48)),
+        minimumSize: WidgetStatePropertyAll(Size.square(28)),
+        fixedSize: WidgetStatePropertyAll(Size.square(28)),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
-      icon: Icon(icon, size: 20),
+      icon: Icon(icon, size: 18),
     );
     if (onTap != null) return button;
     return GestureDetector(

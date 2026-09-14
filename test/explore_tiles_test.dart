@@ -203,6 +203,60 @@ void main() {
     expect(find.textContaining('FREE'), findsNothing);
   });
 
+  testWidgets('event row stretches actions and centers plain trailing icons', (
+    tester,
+  ) async {
+    final gig = gigFixture(id: 'trailing-row', title: 'Neon Nights');
+    await tester.pumpWidget(
+      plain(
+        ExploreEventRow(
+          gig: gig,
+          venueName: 'The Foghorn',
+          sub: 'Live music at The Foghorn',
+          stretchTrailing: true,
+          trailing: const Column(
+            mainAxisSize: MainAxisSize.max,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Icon(Icons.bookmark_border, key: Key('row-trailing-top')),
+              Icon(Icons.circle, key: Key('row-trailing-bottom')),
+            ],
+          ),
+          onTap: () {},
+        ),
+      ),
+    );
+
+    final thumbnail = find.descendant(
+      of: find.byType(ExploreEventRow),
+      matching: find.byType(EpNetworkImage),
+    );
+    expect(
+      tester.getRect(find.byKey(const Key('row-trailing-top'))).top,
+      closeTo(tester.getRect(thumbnail).top, 1),
+    );
+    expect(
+      tester.getRect(find.byKey(const Key('row-trailing-bottom'))).bottom,
+      closeTo(tester.getRect(thumbnail).bottom, 1),
+    );
+
+    await tester.pumpWidget(
+      plain(
+        ExploreEventRow(
+          gig: gig,
+          venueName: 'The Foghorn',
+          sub: 'Live music at The Foghorn',
+          trailing: const Icon(Icons.chevron_right, key: Key('row-chevron')),
+          onTap: () {},
+        ),
+      ),
+    );
+    expect(
+      tester.getRect(find.byKey(const Key('row-chevron'))).center.dy,
+      closeTo(tester.getRect(find.byType(ExploreEventRow)).center.dy, 1),
+    );
+  });
+
   testWidgets('event row shows known friends and hides them by default', (
     tester,
   ) async {

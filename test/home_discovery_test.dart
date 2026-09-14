@@ -359,6 +359,25 @@ void main() {
     expect(find.text('RIPTIDE RELEASE SHOW'), findsOne);
     expect(find.text('1 OF 2 GIGS AT THIS VENUE'), findsOne);
 
+    expect(
+      tester.getSize(find.byKey(const Key('previous-map-gig'))).height,
+      lessThanOrEqualTo(32),
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('next-map-gig'))).height,
+      lessThanOrEqualTo(32),
+    );
+    final card = find.byKey(const ValueKey('map-gig-card-g2'));
+    final openButton = find.descendant(
+      of: card,
+      matching: find.widgetWithText(FilledButton, 'OPEN GIG →'),
+    );
+    final flyer = find.descendant(of: card, matching: find.byType(GigFlyer));
+    expect(
+      tester.getRect(openButton).bottom,
+      closeTo(tester.getRect(flyer).bottom, 1),
+    );
+
     await tester.tap(find.byKey(const Key('previous-map-gig')));
     await tester.pumpAndSettle();
     expect(find.text('RIPTIDE RELEASE SHOW'), findsOne);
@@ -643,6 +662,10 @@ void main() {
     final rowHeight = tester.getSize(find.byType(ExploreEventRow)).height;
     expect(thumbnailSize.width, 64);
     expect(thumbnailSize.height, closeTo(rowHeight - 25, 0.1));
+    expect(
+      tester.getRect(find.byKey(ValueKey('ticket-action-${gig.id}'))).bottom,
+      closeTo(tester.getRect(thumbnail).bottom, 1),
+    );
     expect(find.byType(GigFlyer), findsOneWidget);
     // Day, month, doors time and price make up the row's mono meta line.
     expect(

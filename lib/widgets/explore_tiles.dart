@@ -159,6 +159,7 @@ class ExploreEventRow extends StatelessWidget {
     required this.venueName,
     required this.onTap,
     this.trailing,
+    this.stretchTrailing = false,
     this.sub,
     this.lineup,
     this.meta,
@@ -170,6 +171,7 @@ class ExploreEventRow extends StatelessWidget {
   final String venueName;
   final VoidCallback onTap;
   final Widget? trailing;
+  final bool stretchTrailing;
   final String? sub;
   final List<ExploreLineupBand>? lineup;
   final String? meta;
@@ -276,16 +278,19 @@ class ExploreEventRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            Align(
-              alignment: Alignment.topRight,
-              child:
-                  trailing ??
-                  Icon(
-                    Icons.chevron_right,
-                    size: 16,
-                    color: context.epColors.muted,
-                  ),
-            ),
+            if (stretchTrailing && trailing != null)
+              trailing!
+            else
+              Align(
+                alignment: Alignment.center,
+                child:
+                    trailing ??
+                    Icon(
+                      Icons.chevron_right,
+                      size: 16,
+                      color: context.epColors.muted,
+                    ),
+              ),
           ],
         ),
       ),
