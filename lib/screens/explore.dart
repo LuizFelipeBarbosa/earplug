@@ -11,7 +11,6 @@ import '../widgets/common.dart';
 import '../widgets/ep_carousel.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
-import '../widgets/explore_friends.dart';
 import '../widgets/explore_genres.dart';
 import '../widgets/explore_tiles.dart';
 
@@ -191,6 +190,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
         );
       } else {
         final home = app.exploreHome;
+        final friendsByGig = {
+          for (final entry in app.friendsGoing) entry.gig.id: entry.friends,
+        };
         if (home.featured.isNotEmpty) {
           slivers.add(
             SliverToBoxAdapter(
@@ -222,6 +224,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                         onTap: () => app.openGig(gig.id),
                         width: extent,
                         height: height,
+                        friends: friendsByGig[gig.id] ?? const [],
                       );
                     },
                   );
@@ -250,6 +253,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     venueName: app.venue(gig.venueId).name,
                     lineup: exploreLineupFor(gig, app),
                     onTap: () => app.openGig(gig.id),
+                    friends: friendsByGig[gig.id] ?? const [],
                   ),
                 );
               },
@@ -270,63 +274,78 @@ class _ExploreScreenState extends State<ExploreScreen> {
             ),
           );
         }
+        final venues = home.venues;
+        if (venues.isNotEmpty) {
+          slivers.add(
+            SliverToBoxAdapter(
+              child: _gutter(
+                EpSectionHeader(label: 'VENUES · ${venues.length}'),
+              ),
+            ),
+          );
+          slivers.add(
+            SliverToBoxAdapter(
+              child: EpCarousel(
+                key: const Key('explore-venues'),
+                itemExtent: 220,
+                height: 280,
+                wrapWhenScaled: true,
+                itemCount: venues.length,
+                itemBuilder: (_, i) {
+                  final entry = venues[i];
+                  return ExploreVenueTile(
+                    key: Key('explore-venue-tile-${entry.venue.id}'),
+                    entry: entry,
+                    width: 220,
+                    distance: app.distanceOf(entry.venue),
+                    onTap: () => app.openVenue(entry.venue.id),
+                  );
+                },
+              ),
+            ),
+          );
+        }
         slivers.add(
           SliverToBoxAdapter(
             child: _gutter(
-              ExploreFriendsSection(
-                entries: app.friendsGoing,
-                signedIn: app.authed,
-                hasFriends: app.hasFriends,
-                onFindPeople: () => app.go(Screen.people),
-                onSignIn: () =>
-                    app.needAuth(const PendingAuth(PendingKind.myGigs)),
-                onOpenGig: app.openGig,
-                onSeeAll: () => app.go(Screen.exploreCollection, 'friends'),
-                venueLine: (g) => app.venue(g.venueId).name,
-                previewCount: 3,
-                title: 'People you know are attending',
+              EpMenuRow(
+                key: const Key('explore-toggle-venues'),
+                icon: Icons.place_outlined,
+                label: 'All venues',
+                onTap: () => app.go(Screen.exploreCollection, 'venues'),
               ),
             ),
           ),
         );
+        final bandIds = <String>[];
+        for (final id in [
+          ...home.recommendedBandIds,
+          ...app.exploreBandIds,
+        ]) {
+          if (!bandIds.contains(id) && app.band(id) != null) bandIds.add(id);
+          if (bandIds.length == 16) break;
+        }
         slivers.add(
           SliverToBoxAdapter(
-            child: _gutter(EpSectionHeader(label: 'EXPLORE VENUES & BANDS')),
+            child: _gutter(EpSectionHeader(label: 'BANDS')),
           ),
         );
-        if (home.discover.isNotEmpty) {
+        if (bandIds.isNotEmpty) {
           slivers.add(
             SliverToBoxAdapter(
               child: EpCarousel(
-                key: const Key('explore-discover'),
-                itemExtent: 168,
-                height: 132,
+                key: const Key('explore-bands'),
+                itemExtent: 120,
+                height: 220,
                 wrapWhenScaled: true,
-                itemCount: home.discover.length,
+                itemCount: bandIds.length,
                 itemBuilder: (_, i) {
-                  final entry = home.discover[i];
-                  if (entry.kind == DiscoverKind.venue) {
-                    final venue = entry.venue!;
-                    return ExploreVenueTile(
-                      key: Key('explore-venue-tile-${venue.venue.id}'),
-                      entry: venue,
-                      distance: app.distanceOf(venue.venue),
-                      onTap: () => app.openVenue(venue.venue.id),
-                    );
-                  }
-                  final band = entry.bandId == null
-                      ? null
-                      : app.band(entry.bandId!);
-                  if (band == null) return const SizedBox.shrink();
-                  return SizedBox(
-                    width: 168,
-                    child: Center(
-                      child: ExploreBandTile(
-                        key: Key('explore-band-card-${entry.bandId}'),
-                        band: band,
-                        onTap: () => app.openBand(entry.bandId!),
-                      ),
-                    ),
+                  final id = bandIds[i];
+                  return ExploreBandTile(
+                    key: Key('explore-band-card-$id'),
+                    band: app.band(id)!,
+                    width: 120,
+                    onTap: () => app.openBand(id),
                   );
                 },
               ),
@@ -348,12 +367,23 @@ class _ExploreScreenState extends State<ExploreScreen> {
         slivers.add(
           SliverToBoxAdapter(
             child: _gutter(
-              EpMenuRow(
-                key: const Key('explore-toggle-venues'),
-                icon: Icons.place_outlined,
-                label: 'All venues',
-                onTap: () => app.go(Screen.exploreCollection, 'venues'),
-              ),
+              app.authed
+                  ? EpMenuRow(
+                      key: const Key('explore-find-people'),
+                      icon: Icons.group_outlined,
+                      label: 'Find people',
+                      sub: 'Follow people to see where they are going',
+                      onTap: () => app.go(Screen.people),
+                    )
+                  : EpMenuRow(
+                      key: const Key('explore-friends-sign-in'),
+                      icon: Icons.group_outlined,
+                      label: 'Sign in to see friends',
+                      sub: 'See where friends are going',
+                      onTap: () => app.needAuth(
+                        const PendingAuth(PendingKind.myGigs),
+                      ),
+                    ),
             ),
           ),
         );

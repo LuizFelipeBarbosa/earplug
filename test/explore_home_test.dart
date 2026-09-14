@@ -136,9 +136,6 @@ Finder _browseScrollable() => find
       matching: find.byType(Scrollable),
     )
     .first;
-Finder _railScrollable(Key key) => find
-    .descendant(of: find.byKey(key), matching: find.byType(Scrollable))
-    .first;
 Future<void> _scrollTo(WidgetTester tester, Finder target) async {
   await tester.scrollUntilVisible(target, 400, scrollable: _browseScrollable());
   await tester.pumpAndSettle();
@@ -290,123 +287,116 @@ void main() {
     expect(h.app.current.param, 'gWeekend');
   });
 
-  testWidgets(
-    'friends section shows the find-people row when the fan has no friends and opens People',
-    (tester) async {
-      final h = await _pumpExplore(
-        tester,
-        signedIn: true,
-        gigs: _gigs,
-        bands: _bands,
-      );
-      await _scrollTo(tester, find.byKey(const Key('explore-find-people')));
-      await tester.tap(find.byKey(const Key('explore-find-people')));
-      expect(h.app.current.screen, Screen.people);
-    },
-  );
+  testWidgets('featured card shows a friends cue', (tester) async {
+    await _pumpExplore(
+      tester,
+      signedIn: true,
+      gigs: _gigs,
+      bands: _bands,
+      social: _social(),
+      friends: _friendsFor(const ['gWeekend']),
+    );
+    final card = find.byKey(const Key('explore-featured-gWeekend'));
+    await _scrollTo(tester, card);
+    expect(
+      find.descendant(of: card, matching: find.byType(ExploreAvatarStack)),
+      findsOneWidget,
+    );
+  });
 
-  testWidgets(
-    "friends section lists a friend's weekend gig with an avatar stack and opens the gig",
-    (tester) async {
-      final h = await _pumpExplore(
-        tester,
-        signedIn: true,
-        gigs: _gigs,
-        bands: _bands,
-        social: _social(),
-        friends: _friendsFor(const ['gWeekend']),
-      );
-      await _scrollTo(
-        tester,
-        find.byKey(const Key('explore-friends-gig-gWeekend')),
-      );
-      final row = find.byKey(const Key('explore-friends-gig-gWeekend'));
-      expect(
-        find.descendant(of: row, matching: find.byType(ExploreAvatarStack)),
-        findsOneWidget,
-      );
-      await tester.tap(row);
-      expect(h.app.current.screen, Screen.gig);
-      expect(h.app.current.param, 'gWeekend');
-    },
-  );
+  testWidgets('just for you row shows a friends cue', (tester) async {
+    await _pumpExplore(
+      tester,
+      signedIn: true,
+      gigs: _gigs,
+      bands: _bands,
+      friends: _friendsFor(const ['gLater']),
+    );
+    final row = find.byKey(const Key('explore-for-you-gLater'));
+    await _scrollTo(tester, row);
+    expect(
+      find.descendant(of: row, matching: find.byType(ExploreAvatarStack)),
+      findsOneWidget,
+    );
+  });
 
-  testWidgets('friends section gates behind sign-in when signed out', (
+  testWidgets('a friends attending gig outranks an otherwise equal gig', (
+    tester,
+  ) async {
+    final gigs = [
+      _gig('gPlain', DateTime(2026, 1, 8, 20)),
+      _gig('gFriend', DateTime(2026, 1, 8, 20), venueId: 'v2'),
+    ];
+    final h = await _pumpExplore(
+      tester,
+      signedIn: true,
+      gigs: gigs,
+      friends: _friendsFor(const ['gFriend']),
+    );
+    final home = h.app.exploreHome;
+    final ordered = [...home.featured, ...home.forYou];
+    expect(ordered.indexWhere((gig) => gig.id == 'gFriend'), 0);
+  });
+
+  testWidgets('venues rail lists scheduled venues and opens a venue', (
     tester,
   ) async {
     final h = await _pumpExplore(tester, gigs: _gigs, bands: _bands);
-    await _scrollTo(tester, find.byKey(const Key('explore-friends-sign-in')));
-    await tester.tap(find.byKey(const Key('explore-friends-sign-in')));
-    expect(h.app.pending?.kind, PendingKind.myGigs);
+    await _scrollTo(tester, find.byKey(const Key('explore-venues')));
+    expect(find.byKey(const Key('explore-venue-tile-v1')), findsOneWidget);
+    expect(find.byKey(const Key('explore-venue-tile-v2')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('explore-venue-tile-v1')));
+    expect(h.app.current.screen, Screen.venue);
+    expect(h.app.current.param, 'v1');
   });
 
-  testWidgets(
-    'friends SEE ALL appears only above three entries and opens the friends collection',
-    (tester) async {
-      final h3 = await _pumpExplore(
-        tester,
-        signedIn: true,
-        gigs: _gigs,
-        bands: _bands,
-        social: _social(),
-        friends: _friendsFor(const ['gFollowed', 'gSaved', 'gWeekend']),
-      );
-      await _scrollTo(tester, find.byKey(const Key('explore-friends')));
-      expect(find.text('SEE ALL'), findsNothing);
-      final h4 = await _pumpExplore(
-        tester,
-        signedIn: true,
-        gigs: _gigs,
-        bands: _bands,
-        social: _social(),
-        friends: _friendsFor(const [
-          'gFollowed',
-          'gSaved',
-          'gWeekend',
-          'gLater',
-        ]),
-      );
-      await _scrollTo(tester, find.byKey(const Key('explore-friends')));
-      expect(find.text('SEE ALL'), findsOneWidget);
-      await tester.tap(find.text('SEE ALL'));
-      expect(h4.app.current.screen, Screen.exploreCollection);
-      expect(h4.app.current.param, 'friends');
-      expect(h3.app.current.screen, Screen.home);
-    },
-  );
+  testWidgets('bands rail shows recommended bands and opens a band', (
+    tester,
+  ) async {
+    final h = await _pumpExplore(
+      tester,
+      signedIn: true,
+      gigs: _gigs,
+      bands: _bands,
+      followed: const {'bFollow'},
+    );
+    await _scrollTo(tester, find.byKey(const Key('explore-bands')));
+    final band = find.byKey(const Key('explore-band-card-bFollow'));
+    expect(band, findsOneWidget);
+    expect(
+      find.descendant(of: band, matching: find.text('punk')),
+      findsOneWidget,
+    );
+    await tester.tap(band);
+    expect(h.app.current.screen, Screen.band);
+    expect(h.app.current.param, 'bFollow');
+  });
 
-  testWidgets(
-    'discover rail interleaves venue tiles and band tiles and opens each',
-    (tester) async {
-      final h = await _pumpExplore(
-        tester,
-        signedIn: true,
-        gigs: _gigs,
-        bands: _bands,
-        followed: const {'bFollow'},
-      );
-      await _scrollTo(tester, find.byKey(const Key('explore-discover')));
-      final venue = find.byKey(const Key('explore-venue-tile-v1'));
-      final band = find.byKey(const Key('explore-band-card-bExtra1'));
-      expect(venue, findsOneWidget);
-      await tester.tap(venue);
-      expect(h.app.current.screen, Screen.venue);
-      expect(h.app.current.param, 'v1');
-      h.app.go(Screen.home);
-      await tester.pumpAndSettle();
-      await _scrollTo(tester, find.byKey(const Key('explore-discover')));
-      await tester.scrollUntilVisible(
-        band,
-        200,
-        scrollable: _railScrollable(const Key('explore-discover')),
-      );
-      await tester.ensureVisible(band);
-      await tester.pumpAndSettle();
-      await tester.tap(band);
-      expect(h.app.current.screen, Screen.band);
-      expect(h.app.current.param, 'bExtra1');
-    },
-  );
+  testWidgets('find people row is at the bottom and opens People', (
+    tester,
+  ) async {
+    final h = await _pumpExplore(
+      tester,
+      signedIn: true,
+      gigs: _gigs,
+      bands: _bands,
+    );
+    final findPeople = find.byKey(const Key('explore-find-people'));
+    await _scrollTo(tester, findPeople);
+    expect(h.app.current.screen, Screen.home);
+    await tester.tap(findPeople);
+    expect(h.app.current.screen, Screen.people);
+  });
+
+  testWidgets('sign-in row appears at the bottom when signed out', (
+    tester,
+  ) async {
+    final h = await _pumpExplore(tester, gigs: _gigs, bands: _bands);
+    final signIn = find.byKey(const Key('explore-friends-sign-in'));
+    await _scrollTo(tester, signIn);
+    await tester.tap(signIn);
+    expect(h.app.pending?.kind, PendingKind.myGigs);
+  });
 
   testWidgets('all bands and all venues rows open their collections', (
     tester,
@@ -494,7 +484,7 @@ void main() {
     );
     expect(tester.takeException(), isNull);
     expect(find.byKey(const Key('explore-featured')), findsOneWidget);
-    expect(find.byKey(const Key('explore-friends')), findsOneWidget);
+    expect(find.byKey(const Key('explore-find-people')), findsOneWidget);
   });
 
   testWidgets('large text scale wraps the rails and renders without overflow', (
@@ -515,7 +505,7 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
-    await _scrollTo(tester, find.byKey(const Key('explore-friends')));
-    expect(find.byKey(const Key('explore-friends')), findsOneWidget);
+    await _scrollTo(tester, find.byKey(const Key('explore-find-people')));
+    expect(find.byKey(const Key('explore-find-people')), findsOneWidget);
   });
 }

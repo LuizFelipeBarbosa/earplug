@@ -111,7 +111,7 @@ int gigRelevance({
   var score = 0;
   if (gig.lineup.any(signals.followedBandIds.contains)) score += 4;
   if (signals.savedGigIds.contains(gig.id)) score += 3;
-  if (signals.friendGigIds.contains(gig.id)) score += 3;
+  if (signals.friendGigIds.contains(gig.id)) score += 6;
   if (signals.boostedGigIds.contains(gig.id)) score += 2;
 
   final userGenres = signals.userGenres.map(canonicalGenre).toSet();
