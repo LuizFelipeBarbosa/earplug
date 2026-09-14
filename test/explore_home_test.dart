@@ -4,6 +4,7 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/explore_friends.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -229,10 +230,17 @@ void main() {
   testWidgets(
     'just for you lists the remaining events in date order without the featured pair',
     (tester) async {
+      final gigs = [
+        for (final gig in _gigs)
+          if (gig.id == 'gWeekend')
+            _gig(gig.id, gig.startsAt, lineup: const ['bFollow'])
+          else
+            gig,
+      ];
       await _pumpExplore(
         tester,
         signedIn: true,
-        gigs: _gigs,
+        gigs: gigs,
         bands: _bands,
         followed: const {'bFollow'},
         saved: const {'gSaved'},
@@ -250,6 +258,19 @@ void main() {
         lessThan(
           tester.getTopLeft(find.byKey(const Key('explore-for-you-gLater'))).dy,
         ),
+      );
+      final row = find.byKey(const Key('explore-for-you-gWeekend'));
+      expect(
+        find.descendant(of: row, matching: find.byType(EpAvatarTile)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text('Followed Band')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.textContaining(_v1.name)),
+        findsOneWidget,
       );
     },
   );

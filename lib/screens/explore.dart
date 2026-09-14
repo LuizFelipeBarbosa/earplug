@@ -248,6 +248,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     key: Key('explore-for-you-${gig.id}'),
                     gig: gig,
                     venueName: app.venue(gig.venueId).name,
+                    lineup: exploreLineupFor(gig, app),
                     onTap: () => app.openGig(gig.id),
                   ),
                 );

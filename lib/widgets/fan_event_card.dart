@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_links.dart';
 import '../app_state.dart';
+import '../date_names.dart';
 import '../models.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
@@ -60,21 +61,18 @@ class FanEventCard extends StatelessWidget {
         actions: actions,
       );
     }
-    final compactLineup = lineup.isNotEmpty
-        ? lineup
-        : [for (final performer in gig.performers) performer.name];
     final meta = [
-      gig.dateShort.split(' ').first,
+      _metaDateLabel(gig),
       gig.doorsLabel,
       gig.priceLabel,
-      if (showDistance) app.distanceOf(venue),
+      if (showDistance) _distanceLabel(app.distanceOf(venue)),
     ].join(' · ');
     final row = ExploreEventRow(
       key: ValueKey('fan-event-${gig.id}'),
       gig: gig,
       venueName: venue.name,
       meta: meta,
-      sub: compactLineup.isEmpty ? null : compactLineup.join(' · '),
+      lineup: exploreLineupFor(gig, app),
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 104),
         child: actions,
@@ -96,6 +94,19 @@ class FanEventCard extends StatelessWidget {
       ],
     );
   }
+}
+
+String _metaDateLabel(Gig gig) =>
+    '${gig.startsAt.day} ${monthNamesUpper[gig.startsAt.month - 1]}';
+
+/// Reformats a distance such as "3.4 mi" as "3.4 MI" or "11 MI".
+String _distanceLabel(String raw) {
+  final miles = double.tryParse(raw.split(' ').first);
+  if (miles == null) return raw.toUpperCase();
+  final value = miles < 10
+      ? miles.toStringAsFixed(1)
+      : miles.round().toString();
+  return '$value MI';
 }
 
 /// "SUN · DOORS 8PM · $10 · ALL AGES" — the mono facts both presentations

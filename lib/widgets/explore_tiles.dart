@@ -57,6 +57,73 @@ class _ExploreHairlineRow extends StatelessWidget {
   }
 }
 
+/// A resolved lineup entry for compact and JUST-FOR-YOU gig rows.
+class ExploreLineupBand {
+  const ExploreLineupBand({
+    required this.name,
+    required this.initials,
+    this.avatarUrl,
+  });
+
+  final String name;
+  final String initials;
+  final String? avatarUrl;
+}
+
+/// Resolves a gig's band lineup, falling back to free-text performers.
+List<ExploreLineupBand> exploreLineupFor(Gig gig, AppState app) {
+  final resolved = [
+    for (final bandId in gig.lineup)
+      if (app.band(bandId) case final Band band)
+        ExploreLineupBand(
+          name: band.name,
+          initials: band.initials,
+          avatarUrl: band.profileImageUrl,
+        ),
+  ];
+  if (resolved.isNotEmpty) return resolved;
+  return [
+    for (final performer in gig.performers)
+      ExploreLineupBand(
+        name: performer.name,
+        initials: _initialsFor(performer.name),
+      ),
+  ];
+}
+
+class _ExploreLineupChip extends StatelessWidget {
+  const _ExploreLineupChip({required this.band});
+
+  final ExploreLineupBand band;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => SizedBox(
+      width: constraints.maxWidth,
+      child: Row(
+        children: [
+          EpAvatarTile(
+            initials: band.initials,
+            size: 20,
+            image: band.avatarUrl == null || band.avatarUrl!.isEmpty
+                ? null
+                : NetworkImage(band.avatarUrl!),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              band.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.epBody,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 /// Compact recommendation-feed event row.
 class ExploreEventRow extends StatelessWidget {
   const ExploreEventRow({
@@ -66,6 +133,7 @@ class ExploreEventRow extends StatelessWidget {
     required this.onTap,
     this.trailing,
     this.sub,
+    this.lineup,
     this.meta,
     this.thumbnailSize = 56,
   });
@@ -75,18 +143,19 @@ class ExploreEventRow extends StatelessWidget {
   final VoidCallback onTap;
   final Widget? trailing;
   final String? sub;
+  final List<ExploreLineupBand>? lineup;
   final String? meta;
   final double thumbnailSize;
 
   @override
   Widget build(BuildContext context) {
     final style = flyerStyles[gig.flyKey] ?? flyerStyles['paper']!;
-    final imageUrl = gig.flyKey == 'custom' ? gig.flyerUrl : null;
+    final imageUrl = gig.flyerUrl;
     final dateLine =
-        '${weekdayNamesUpper[gig.startsAt.weekday - 1]} ${gig.startsAt.day} '
-        '${monthNamesUpper[gig.startsAt.month - 1]} · $venueName'
-        '${gig.free ? ' · FREE' : ''}';
+        '${gig.startsAt.day} ${monthNamesUpper[gig.startsAt.month - 1]}'
+        ' · ${gig.doorsLabel} · $venueName';
     final monoLine = meta ?? dateLine;
+    final bands = lineup ?? const <ExploreLineupBand>[];
     final thumbnail = SizedBox(
       width: thumbnailSize,
       height: thumbnailSize,
@@ -131,15 +200,24 @@ class ExploreEventRow extends StatelessWidget {
                 Text(
                   meta == null ? monoLine : monoLine.toUpperCase(),
                   semanticsLabel: monoLine,
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.epChipLabel.copyWith(
-                    fontSize: 11,
+                  style: Theme.of(context).textTheme.epMeta.copyWith(
+                    letterSpacing: 0.4,
                     color: context.epColors.muted,
                   ),
                 ),
-                if (sub != null) ...[
-                  const SizedBox(height: 2),
+                if (bands.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 6,
+                    children: [
+                      for (final band in bands) _ExploreLineupChip(band: band),
+                    ],
+                  ),
+                ] else if (sub != null) ...[
+                  const SizedBox(height: 12),
                   Text(
                     sub!,
                     maxLines: 1,
@@ -189,7 +267,7 @@ class ExploreFeaturedCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = flyerStyles[gig.flyKey] ?? flyerStyles['paper']!;
-    final imageUrl = gig.flyKey == 'custom' ? gig.flyerUrl : null;
+    final imageUrl = gig.flyerUrl;
     final cue = switch (gig.tix) {
       Ticketing.rsvp => 'RSVP',
       Ticketing.paid => 'TICKETS',
@@ -276,11 +354,7 @@ class ExploreFeaturedCard extends StatelessWidget {
       color: context.epColors.muted,
     );
     return [
-      Positioned(
-        top: 16,
-        left: 16,
-        child: EpDateBlock(date: gig.startsAt),
-      ),
+      Positioned(top: 16, left: 16, child: EpDateBlock(date: gig.startsAt)),
       Positioned(
         left: 16,
         right: 16,

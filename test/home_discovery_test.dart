@@ -2,6 +2,7 @@ import 'dart:ui' show PointerDeviceKind;
 
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/repository.dart';
+import 'package:earplug/date_names.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/home.dart';
@@ -10,6 +11,7 @@ import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
@@ -639,13 +641,20 @@ void main() {
     );
     expect(tester.getSize(thumbnail), const Size(56, 56));
     expect(find.byType(GigFlyer), findsNothing);
-    // Weekday, time and price make up the row's mono meta line.
+    // Day, month, doors time and price make up the row's mono meta line.
     expect(
       find.textContaining(
-        '${gig.dateShort.split(' ').first} · '
+        '${gig.startsAt.day} ${monthNamesUpper[gig.startsAt.month - 1]} · '
         '${gig.doorsLabel} · ${gig.priceLabel}',
       ),
       findsOne,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(FanEventCard),
+        matching: find.byType(EpAvatarTile),
+      ),
+      findsWidgets,
     );
     expect(
       find.textContaining(gig.ageRequirement.label.toUpperCase()),

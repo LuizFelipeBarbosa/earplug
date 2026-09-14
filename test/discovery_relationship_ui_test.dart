@@ -206,15 +206,21 @@ void main() {
     );
 
     expect(find.text(gig.title.toUpperCase()), findsWidgets);
-    // Time and price share the row's mono meta line; the lineup is its
-    // separate sub line.
+    // Time and price share the row's mono meta line; the lineup is rendered
+    // as separate avatar and name items.
     expect(find.textContaining(gig.doorsLabel), findsOne);
     expect(find.textContaining('FREE'), findsOne);
     expect(find.textContaining('DOORS ${gig.doorsLabel}'), findsNothing);
     expect(find.textContaining(gig.ageRequirement.label), findsNothing);
+    expect(find.textContaining('Mission Creep'), findsOne);
+    expect(find.textContaining('Dial Tone Grief'), findsOne);
+    expect(find.textContaining('Static Bloom'), findsOne);
     expect(
-      find.textContaining('Mission Creep · Dial Tone Grief · Static Bloom'),
-      findsOne,
+      find.descendant(
+        of: find.byType(FanEventCard),
+        matching: find.byType(EpAvatarTile),
+      ),
+      findsWidgets,
     );
     expect(
       find.textContaining(DemoData.venues[gig.venueId]!.addr),

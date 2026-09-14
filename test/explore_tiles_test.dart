@@ -3,6 +3,7 @@ import 'package:earplug/explore_ranking.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -74,46 +75,44 @@ void main() {
     expect(tapped, isTrue);
   });
 
-  testWidgets(
-    'event row shows metadata, fallback initials, free label, and taps',
-    (tester) async {
-      var tapped = false;
-      final gig = gigFixture(
-        id: 'event-row',
-        title: 'Neon Nights',
-        startsAt: DateTime(2026, 9, 19),
-        flyKey: 'paper',
-        price: 0,
-      );
-      await tester.pumpWidget(
-        plain(
-          ExploreEventRow(
-            gig: gig,
-            venueName: 'The Foghorn',
-            onTap: () => tapped = true,
-          ),
+  testWidgets('event row shows metadata, fallback initials, and taps', (
+    tester,
+  ) async {
+    var tapped = false;
+    final gig = gigFixture(
+      id: 'event-row',
+      title: 'Neon Nights',
+      startsAt: DateTime(2026, 9, 19),
+      flyKey: 'paper',
+      price: 0,
+    );
+    await tester.pumpWidget(
+      plain(
+        ExploreEventRow(
+          gig: gig,
+          venueName: 'The Foghorn',
+          onTap: () => tapped = true,
         ),
-      );
-      expect(find.text('NEON NIGHTS'), findsOneWidget);
-      expect(find.text('NN'), findsOneWidget);
-      expect(find.textContaining('SAT 19 SEP'), findsOneWidget);
-      expect(find.textContaining('The Foghorn'), findsOneWidget);
-      expect(find.textContaining(' · FREE'), findsOneWidget);
-      await tester.tap(find.text('NEON NIGHTS'));
-      expect(tapped, isTrue);
+      ),
+    );
+    expect(find.text('NEON NIGHTS'), findsOneWidget);
+    expect(find.text('NN'), findsOneWidget);
+    expect(find.textContaining('19 SEP'), findsOneWidget);
+    expect(find.textContaining('The Foghorn'), findsOneWidget);
+    await tester.tap(find.text('NEON NIGHTS'));
+    expect(tapped, isTrue);
 
-      await tester.pumpWidget(
-        plain(
-          ExploreEventRow(
-            gig: gigFixture(id: 'paid-row', title: 'Paid Night', price: 12),
-            venueName: 'The Foghorn',
-            onTap: () {},
-          ),
+    await tester.pumpWidget(
+      plain(
+        ExploreEventRow(
+          gig: gigFixture(id: 'paid-row', title: 'Paid Night', price: 12),
+          venueName: 'The Foghorn',
+          onTap: () {},
         ),
-      );
-      expect(find.textContaining('FREE'), findsNothing);
-    },
-  );
+      ),
+    );
+    expect(find.textContaining('FREE'), findsNothing);
+  });
 
   testWidgets('event row supports custom metadata and thumbnail size', (
     tester,
@@ -135,7 +134,7 @@ void main() {
       find.text('WED 23 SEP · 8PM · FREE · 11.2 MI'),
     );
     expect(metaText.semanticsLabel, meta);
-    expect(metaText.maxLines, 2);
+    expect(metaText.maxLines, 1);
     expect(find.textContaining('The Foghorn'), findsNothing);
     final thumbnail = find.descendant(
       of: find.byType(ExploreEventRow),
@@ -145,6 +144,65 @@ void main() {
     final image = tester.widget<EpNetworkImage>(thumbnail);
     expect(image.cacheWidth, 73);
     expect(image.cacheHeight, 73);
+  });
+
+  testWidgets('event imagery uses flyer photos for every fly key', (
+    tester,
+  ) async {
+    const flyerUrl = 'https://example.com/flyer.jpg';
+    final gig = gigFixture(
+      id: 'photo-row',
+      title: 'Photo Event',
+      flyKey: 'paper',
+      flyerUrl: flyerUrl,
+    );
+    await tester.pumpWidget(
+      plain(
+        Column(
+          children: [
+            ExploreEventRow(gig: gig, venueName: 'The Foghorn', onTap: () {}),
+            ExploreFeaturedCard(
+              gig: gig,
+              venueName: 'The Foghorn',
+              onTap: () {},
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final images = tester.widgetList<EpNetworkImage>(
+      find.byType(EpNetworkImage),
+    );
+    expect(images, hasLength(2));
+    expect(images.every((image) => image.url == flyerUrl), isTrue);
+  });
+
+  testWidgets('event row renders lineup avatars and names', (tester) async {
+    final gig = gigFixture(id: 'lineup-row', title: 'Lineup Event');
+    await tester.pumpWidget(
+      plain(
+        ExploreEventRow(
+          gig: gig,
+          venueName: 'The Foghorn',
+          lineup: const [
+            ExploreLineupBand(name: 'Mission Creep', initials: 'MC'),
+            ExploreLineupBand(name: 'Static Bloom', initials: 'SB'),
+          ],
+          onTap: () {},
+        ),
+      ),
+    );
+
+    expect(find.text('Mission Creep'), findsOneWidget);
+    expect(find.text('Static Bloom'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(ExploreEventRow),
+        matching: find.byType(EpAvatarTile),
+      ),
+      findsNWidgets(2),
+    );
   });
 
   testWidgets('featured card shows details, ticket cue, and taps', (
