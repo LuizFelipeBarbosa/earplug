@@ -12,6 +12,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
+import '../widgets/explore_friends.dart';
 import '../widgets/map_view.dart';
 import '../widgets/ticket_purchase_sheet.dart';
 
@@ -26,6 +27,12 @@ class GigDetailScreen extends StatefulWidget {
 
 class _GigDetailScreenState extends State<GigDetailScreen> {
   bool _checkedPendingTicketPurchase = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(context.read<AppState>().loadKnownAttendees(widget.gigId));
+  }
 
   @override
   void didChangeDependencies() {
@@ -172,6 +179,7 @@ class GigDetailPresentation extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               const SectionBar(label: "WHO'S GOING"),
+                              _KnownPeopleGoing(gig: gig, app: app),
                               _WhosGoing(gig: gig, app: app),
                             ],
                           )
@@ -622,6 +630,90 @@ class _VenueMapSection extends StatelessWidget {
       ],
     ),
   );
+}
+
+String _knownPeopleGoingLine(List<String> names) {
+  if (names.length == 1) return '${names[0]} is going';
+  if (names.length == 2) return '${names[0]} and ${names[1]} are going';
+  if (names.length == 3) {
+    return '${names[0]}, ${names[1]} and ${names[2]} are going';
+  }
+  return '${names[0]}, ${names[1]} and ${names.length - 2} others are going';
+}
+
+class _KnownPeopleGoing extends StatelessWidget {
+  const _KnownPeopleGoing({required this.gig, required this.app});
+
+  final Gig gig;
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    final known = app.knownAttendeesFor(gig.id);
+    final people = known?.people ?? const <KnownAttendee>[];
+    if (people.isEmpty) return const SizedBox.shrink();
+
+    final mapped = [
+      for (final person in people)
+        SocialUserCard(
+          userId: person.userId,
+          name: person.name,
+          avatarUrl: person.avatarUrl,
+        ),
+    ];
+    final line = _knownPeopleGoingLine([
+      for (final person in people)
+        person.name.trim().split(RegExp(r'\s+')).first,
+    ]);
+
+    return Column(
+      key: ValueKey('known-people-${gig.id}'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(
+            children: [
+              ExploreAvatarStack(people: mapped, size: 28, max: 5),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  line,
+                  style: Theme.of(context).textTheme.epBody,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                ),
+              ),
+            ],
+          ),
+        ),
+        for (final person in people)
+          EpEntityRow(
+            key: ValueKey('known-person-${person.userId}'),
+            leading: EpFanAvatar(
+              name: person.name,
+              imageUrl: person.avatarUrl,
+              size: 32,
+            ),
+            title: person.name,
+            sub: person.relation == KnownRelation.friend
+                ? 'Friend'
+                : 'Seen at ${person.sharedShows} show${person.sharedShows == 1 ? '' : 's'}',
+          ),
+        if (known?.truncated == true)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'and more people you may know',
+              style: Theme.of(
+                context,
+              ).textTheme.epCaption.copyWith(color: context.epColors.muted),
+            ),
+          ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
 }
 
 class _WhosGoing extends StatelessWidget {

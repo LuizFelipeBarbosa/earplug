@@ -294,6 +294,83 @@ void main() {
     expect(harness.app.pending?.id, 'g8');
     expect(find.byKey(const Key('ticket-hold')), findsNothing);
   });
+
+  testWidgets(
+    'gig detail shows known people who are going, with relation subtitles and the summary line',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        home: const Scaffold(body: GigDetailScreen(gigId: 'g9')),
+      );
+
+      harness.app.toggleRsvp('g9');
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('known-people-g9')), findsOneWidget);
+      expect(find.text('Maya and Theo are going'), findsOneWidget);
+      expect(find.byKey(const ValueKey('known-person-u-maya')), findsOneWidget);
+      expect(find.byKey(const ValueKey('known-person-u-theo')), findsOneWidget);
+      expect(find.text('Friend'), findsOneWidget);
+      expect(find.text('Seen at 2 shows'), findsOneWidget);
+      expect(find.text('25+ GOING'), findsOneWidget);
+    },
+  );
+
+  testWidgets('gig detail shows nothing extra when signed out', (tester) async {
+    await pumpApp(
+      tester,
+      home: const Scaffold(body: GigDetailScreen(gigId: 'g9')),
+    );
+
+    expect(find.byKey(const ValueKey('known-people-g9')), findsNothing);
+  });
+
+  testWidgets('gig detail shows nothing extra when no known people are going', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      home: const Scaffold(body: GigDetailScreen(gigId: 'g1')),
+    );
+
+    harness.app.toggleRsvp('g1');
+    await tester.pump();
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('known-people-g1')), findsNothing);
+    expect(find.text("WHO'S GOING"), findsOneWidget);
+    expect(find.text('44+ GOING'), findsOneWidget);
+  });
+
+  testWidgets('loadKnownAttendees is requested once per open', (tester) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _KnownAttendeesCountingRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: GigDetailScreen(gigId: 'g9')),
+    );
+
+    expect(repository.knownAttendeesCalls, 1);
+    harness.app.notifyListeners();
+    await tester.pump();
+    harness.app.toggleRsvp('g9');
+    await tester.pump();
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(repository.knownAttendeesCalls, 1);
+  });
 }
 
 Gig _textOnlyGig({
@@ -416,5 +493,20 @@ class _AttendanceRepository extends DemoRepository {
   Future<void> close() async {
     await _interactions.close();
     await _publicGig.close();
+  }
+}
+
+class _KnownAttendeesCountingRepository extends DemoRepository {
+  _KnownAttendeesCountingRepository({required super.auth});
+
+  int knownAttendeesCalls = 0;
+
+  @override
+  Future<KnownAttendees> knownAttendees(
+    String gigId, {
+    required DateTime now,
+  }) async {
+    knownAttendeesCalls++;
+    return super.knownAttendees(gigId, now: now);
   }
 }
