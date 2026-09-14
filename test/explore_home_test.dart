@@ -117,10 +117,18 @@ Finder _scopeTab(String label) => find.descendant(
   matching: find.text(label),
 );
 
-Finder _browseScrollable() => find.byType(Scrollable).last;
+Finder _browseScrollable() => find.byWidgetPredicate(
+  (widget) =>
+      widget is Scrollable &&
+      widget.key is ValueKey<String> &&
+      (widget.key! as ValueKey<String>).value.startsWith('explore-browse-'),
+);
 
 Future<void> _scrollTo(WidgetTester tester, Finder target) async {
+  await tester.pumpAndSettle();
   await tester.scrollUntilVisible(target, 500, scrollable: _browseScrollable());
+  await tester.ensureVisible(target);
+  await tester.pump();
 }
 
 void main() {
@@ -158,9 +166,10 @@ void main() {
 
   testWidgets('events block caps tonight at three and links SEE ALL to the tonight collection', (tester) async {
     final harness = await _pumpExplore(tester, gigs: [for (var i = 0; i < 4; i++) _gig('g$i')]);
-    await _scrollTo(tester, find.byKey(const Key('explore-events-tonight')));
+    await _scrollTo(tester, find.byKey(const ValueKey('fan-event-g2')));
     expect(find.byType(FanEventCard), findsNWidgets(3));
     final seeAll = find.descendant(of: find.byKey(const Key('explore-events-tonight')), matching: find.text('SEE ALL'));
+    await _scrollTo(tester, seeAll);
     await tester.tap(seeAll);
     expect(harness.app.current.screen, Screen.exploreCollection);
     expect(harness.app.current.param, 'tonight');
@@ -171,6 +180,7 @@ void main() {
     await _scrollTo(tester, find.byKey(const Key('explore-venue-tile-v1')));
     expect(find.byKey(const Key('explore-venue-tile-v1')), findsOneWidget);
     expect(find.byKey(const Key('explore-venue-tile-v2')), findsNothing);
+    await tester.ensureVisible(find.byKey(const Key('explore-venue-tile-v1')));
     await tester.tap(find.byKey(const Key('explore-venue-tile-v1')));
     expect(harness.app.current.screen, Screen.venue);
     expect(harness.app.current.param, 'v1');
@@ -179,6 +189,7 @@ void main() {
   testWidgets('venues SEE ALL opens the venues collection', (tester) async {
     final harness = await _pumpExplore(tester, gigs: [_gig('g1')]);
     await _scrollTo(tester, find.byKey(const Key('explore-toggle-venues')));
+    await tester.ensureVisible(find.byKey(const Key('explore-toggle-venues')));
     await tester.tap(find.byKey(const Key('explore-toggle-venues')));
     expect(harness.app.current.screen, Screen.exploreCollection);
     expect(harness.app.current.param, 'venues');
@@ -189,6 +200,7 @@ void main() {
     await _scrollTo(tester, find.byKey(const Key('explore-bands')));
     expect(find.descendant(of: find.byKey(const Key('explore-bands')), matching: find.byKey(const Key('explore-band-card-b2'))), findsOneWidget);
     expect(find.descendant(of: find.byKey(const Key('explore-bands')), matching: find.byKey(const Key('explore-band-card-b1'))), findsNothing);
+    await tester.ensureVisible(find.byKey(const Key('explore-toggle-bands')));
     await tester.tap(find.byKey(const Key('explore-toggle-bands')));
     expect(harness.app.current.screen, Screen.exploreCollection);
     expect(harness.app.current.param, 'bands');
@@ -196,6 +208,7 @@ void main() {
 
   testWidgets('friends section shows Find people when the fan has no friends and opens People', (tester) async {
     final harness = await _pumpExplore(tester, signedIn: true, gigs: [_gig('g1')]);
+    await _scrollTo(tester, find.byKey(const Key('explore-find-people')));
     await tester.tap(find.byKey(const Key('explore-find-people')));
     expect(harness.app.current.screen, Screen.people);
   });
@@ -212,6 +225,7 @@ void main() {
 
   testWidgets('friends section gates behind sign-in when signed out', (tester) async {
     final harness = await _pumpExplore(tester, gigs: [_gig('g1')]);
+    await _scrollTo(tester, find.byKey(const Key('explore-friends-sign-in')));
     expect(find.byKey(const Key('explore-friends-sign-in')), findsOneWidget);
     await tester.tap(find.byKey(const Key('explore-friends-sign-in')));
     expect(harness.app.pending?.kind, PendingKind.myGigs);
@@ -271,6 +285,7 @@ void main() {
       ..returns('listBands', BandPage(items: [_band('b1', 'Band')], continueCursor: null, isDone: true));
     final harness = await pumpApp(tester, auth: auth, repository: repo, size: const Size(360, 800), home: Builder(builder: (context) => MediaQuery(data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(1.5)), child: const Scaffold(body: ExploreScreen()))), beforePump: (app) => app.loadMoreExploreBands());
     expect(tester.takeException(), isNull);
+    await _scrollTo(tester, find.byKey(const Key('explore-friends')));
     expect(find.byKey(const Key('explore-friends')), findsOneWidget);
     expect(harness.app.current.screen, Screen.home);
   });

@@ -721,7 +721,7 @@ class _SearchResults extends StatelessWidget {
     final out = <_SearchResultRow>[];
     if (type == ExploreResultType.all || type == ExploreResultType.events) {
       out.add(_SearchSectionRow('Events · ${gigs.length}'));
-      if (gigs.isEmpty)
+      if (gigs.isEmpty) {
         out.add(
           _SearchMessageRow(
             type == ExploreResultType.events
@@ -729,22 +729,25 @@ class _SearchResults extends StatelessWidget {
                 : 'No gigs found.',
           ),
         );
-      else
+      } else {
         out.addAll(gigs.map(_SearchGigRow.new));
+      }
     }
     if (type == ExploreResultType.all || type == ExploreResultType.bands) {
       out.add(_SearchSectionRow('Bands · ${bandIds.length}'));
-      if (bandIds.isEmpty)
+      if (bandIds.isEmpty) {
         out.add(const _SearchMessageRow('No bands found.'));
-      else
+      } else {
         out.addAll(bandIds.map(_SearchBandRow.new));
+      }
     }
     if (type == ExploreResultType.all || type == ExploreResultType.venues) {
       out.add(_SearchSectionRow('Venues · ${venues.length}'));
-      if (venues.isEmpty)
+      if (venues.isEmpty) {
         out.add(const _SearchMessageRow('No venues found.'));
-      else
+      } else {
         out.addAll(venues.map(_SearchVenueRow.new));
+      }
     }
     return out;
   }

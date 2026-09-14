@@ -102,6 +102,7 @@ void main() {
     );
     expect(find.text('FOGHORN DIET'), findsOne);
 
+    await _scrollToTop(tester);
     await tester.tap(find.byKey(const Key('explore-search-clear')));
     await tester.pumpAndSettle();
 
@@ -564,6 +565,13 @@ Finder _allResultsScrollable() => find.descendant(
   of: find.byKey(const Key('explore-results-search')),
   matching: find.byType(Scrollable),
 ).first;
+
+Future<void> _scrollToTop(WidgetTester tester) async {
+  final scrollable = _allResultsScrollable();
+  final state = tester.state<ScrollableState>(scrollable);
+  state.position.jumpTo(0);
+  await tester.pump();
+}
 
 Finder _browseScrollable() => find
     .descendant(

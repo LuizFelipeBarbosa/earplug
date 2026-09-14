@@ -42,6 +42,7 @@ void main() {
     await _scrollResultsTo(tester, find.text('FOGHORN DIET'));
     expect(find.text('FOGHORN DIET'), findsWidgets);
 
+    await _scrollToTop(tester);
     await tester.enterText(
       find.byKey(const Key('explore-search-field')),
       'unsubmitted draft',
@@ -65,6 +66,7 @@ void main() {
     expect(find.text('THE FOGHORN CLUB'), findsOne);
     expect(find.text('FOGHORN DIET'), findsNothing);
 
+    await _scrollToTop(tester);
     await tester.tap(find.byKey(const Key('explore-search-clear')));
     await tester.pumpAndSettle();
     expect(harness.app.query, isEmpty);
@@ -337,6 +339,13 @@ Future<void> _selectExploreTab(WidgetTester tester, String label) async {
 /// Result rows are tall enough that later sections start below the fold.
 Future<void> _scrollResultsTo(WidgetTester tester, Finder target) =>
     tester.scrollUntilVisible(target, 200, scrollable: _resultsScrollable());
+
+Future<void> _scrollToTop(WidgetTester tester) async {
+  final scrollable = _resultsScrollable();
+  final state = tester.state<ScrollableState>(scrollable);
+  state.position.jumpTo(0);
+  await tester.pump();
+}
 
 Finder _resultsScrollable() {
   bool isResultsList(Widget widget) {
