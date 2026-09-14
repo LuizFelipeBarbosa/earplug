@@ -41,10 +41,6 @@ class FanEventCard extends StatelessWidget {
       if (venue.area.trim().isNotEmpty) venue.area,
       if (showDistance) app.distanceOf(venue),
     ].join(' · ');
-    final lineup = [
-      for (final bandId in gig.lineup)
-        if (app.band(bandId) case final Band band) band.name,
-    ];
     final actions = _EventActions(
       gig: gig,
       app: app,
@@ -57,16 +53,12 @@ class FanEventCard extends StatelessWidget {
         gig: gig,
         app: app,
         place: place,
-        lineup: lineup,
+        lineup: exploreLineupFor(gig, app),
+        showDistance: showDistance,
         actions: actions,
       );
     }
-    final meta = [
-      _metaDateLabel(gig),
-      gig.doorsLabel,
-      gig.priceLabel,
-      if (showDistance) _distanceLabel(app.distanceOf(venue)),
-    ].join(' · ');
+    final meta = compactGigMeta(gig, app, showDistance: showDistance);
     final row = ExploreEventRow(
       key: ValueKey('fan-event-${gig.id}'),
       gig: gig,
@@ -96,6 +88,16 @@ class FanEventCard extends StatelessWidget {
   }
 }
 
+String compactGigMeta(Gig gig, AppState app, {required bool showDistance}) {
+  final venue = app.venue(gig.venueId);
+  return [
+    _metaDateLabel(gig),
+    gig.doorsLabel,
+    gig.priceLabel,
+    if (showDistance) _distanceLabel(app.distanceOf(venue)),
+  ].join(' · ');
+}
+
 String _metaDateLabel(Gig gig) =>
     '${gig.startsAt.day} ${monthNamesUpper[gig.startsAt.month - 1]}';
 
@@ -109,11 +111,6 @@ String _distanceLabel(String raw) {
   return '$value MI';
 }
 
-/// "SUN · DOORS 8PM · $10 · ALL AGES" — the mono facts both presentations
-/// lead with.
-String _factsLine(Gig gig) =>
-    [gig.dateLine, gig.priceLabel, gig.ageRequirement.label].join(' · ');
-
 /// The lead show: flyer art with the title over it, then a facts row.
 class _FeaturedPoster extends StatelessWidget {
   const _FeaturedPoster({
@@ -121,13 +118,15 @@ class _FeaturedPoster extends StatelessWidget {
     required this.app,
     required this.place,
     required this.lineup,
+    required this.showDistance,
     required this.actions,
   });
 
   final Gig gig;
   final AppState app;
   final String place;
-  final List<String> lineup;
+  final List<ExploreLineupBand> lineup;
+  final bool showDistance;
   final Widget actions;
 
   @override
@@ -176,9 +175,9 @@ class _FeaturedPoster extends StatelessWidget {
                     ),
                     if (lineup.isNotEmpty) ...[
                       const SizedBox(height: 12),
-                      EpMonoText(
-                        lineup.join(' + '),
-                        color: flyer.fg.withValues(alpha: .85),
+                      ExploreLineupWrap(
+                        bands: lineup,
+                        textColor: flyer.fg.withValues(alpha: .85),
                       ),
                     ],
                   ],
@@ -187,7 +186,12 @@ class _FeaturedPoster extends StatelessWidget {
             ),
           ),
         ),
-        _FactsRow(gig: gig, app: app, actions: actions),
+        _FactsRow(
+          gig: gig,
+          app: app,
+          showDistance: showDistance,
+          actions: actions,
+        ),
         const EpHairline(),
       ],
     );
@@ -200,11 +204,13 @@ class _FactsRow extends StatelessWidget {
   const _FactsRow({
     required this.gig,
     required this.app,
+    required this.showDistance,
     required this.actions,
   });
 
   final Gig gig;
   final AppState app;
+  final bool showDistance;
   final Widget actions;
 
   @override
@@ -213,7 +219,7 @@ class _FactsRow extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        EpMonoText(_factsLine(gig)),
+        EpMonoText(compactGigMeta(gig, app, showDistance: showDistance)),
         const SizedBox(height: 4),
         Text(
           gig.lifecycle == GigLifecycle.cancelled

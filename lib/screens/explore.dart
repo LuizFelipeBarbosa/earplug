@@ -13,6 +13,7 @@ import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/explore_genres.dart';
 import '../widgets/explore_tiles.dart';
+import '../widgets/fan_event_card.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -251,6 +252,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     key: Key('explore-for-you-${gig.id}'),
                     gig: gig,
                     venueName: app.venue(gig.venueId).name,
+                    meta: compactGigMeta(gig, app, showDistance: true),
                     lineup: exploreLineupFor(gig, app),
                     onTap: () => app.openGig(gig.id),
                     friends: friendsByGig[gig.id] ?? const [],

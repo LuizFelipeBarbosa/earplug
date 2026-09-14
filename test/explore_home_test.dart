@@ -1,5 +1,6 @@
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/repository.dart';
+import 'package:earplug/date_names.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/services/auth_service.dart';
@@ -234,6 +235,7 @@ void main() {
           else
             gig,
       ];
+      final weekendGig = gigs.firstWhere((gig) => gig.id == 'gWeekend');
       await _pumpExplore(
         tester,
         signedIn: true,
@@ -266,8 +268,19 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: row, matching: find.textContaining(_v1.name)),
+        find.descendant(
+          of: row,
+          matching: find.textContaining(
+            '${weekendGig.startsAt.day} '
+            '${monthNamesUpper[weekendGig.startsAt.month - 1]} · '
+            '${weekendGig.doorsLabel} · ${weekendGig.priceLabel}',
+          ),
+        ),
         findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.textContaining(_v1.name)),
+        findsNothing,
       );
     },
   );

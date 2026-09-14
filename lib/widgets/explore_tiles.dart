@@ -76,6 +76,23 @@ class ExploreLineupBand {
   final String? avatarUrl;
 }
 
+class ExploreLineupWrap extends StatelessWidget {
+  const ExploreLineupWrap({super.key, required this.bands, this.textColor});
+
+  final List<ExploreLineupBand> bands;
+  final Color? textColor;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: 12,
+    runSpacing: 6,
+    children: [
+      for (final band in bands)
+        _ExploreLineupChip(band: band, textColor: textColor),
+    ],
+  );
+}
+
 /// Resolves a gig's band lineup, falling back to free-text performers.
 List<ExploreLineupBand> exploreLineupFor(Gig gig, AppState app) {
   final resolved = [
@@ -98,34 +115,40 @@ List<ExploreLineupBand> exploreLineupFor(Gig gig, AppState app) {
 }
 
 class _ExploreLineupChip extends StatelessWidget {
-  const _ExploreLineupChip({required this.band});
+  const _ExploreLineupChip({required this.band, this.textColor});
 
   final ExploreLineupBand band;
+  final Color? textColor;
 
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      EpAvatarTile(
-        initials: band.initials,
-        size: 20,
-        image: band.avatarUrl == null || band.avatarUrl!.isEmpty
-            ? null
-            : NetworkImage(band.avatarUrl!),
-      ),
-      const SizedBox(width: 6),
-      Flexible(
-        fit: FlexFit.loose,
-        child: Text(
-          band.name,
-          softWrap: false,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.epBody,
+  Widget build(BuildContext context) {
+    final textStyle = Theme.of(context).textTheme.epBody;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        EpAvatarTile(
+          initials: band.initials,
+          size: 20,
+          image: band.avatarUrl == null || band.avatarUrl!.isEmpty
+              ? null
+              : NetworkImage(band.avatarUrl!),
         ),
-      ),
-    ],
-  );
+        const SizedBox(width: 6),
+        Flexible(
+          fit: FlexFit.loose,
+          child: Text(
+            band.name,
+            softWrap: false,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: textColor == null
+                ? textStyle
+                : textStyle.copyWith(color: textColor),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// Compact recommendation-feed event row.
@@ -215,14 +238,7 @@ class ExploreEventRow extends StatelessWidget {
                   ),
                   if (bands.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 6,
-                      children: [
-                        for (final band in bands)
-                          _ExploreLineupChip(band: band),
-                      ],
-                    ),
+                    ExploreLineupWrap(bands: bands),
                   ] else if (sub != null) ...[
                     const SizedBox(height: 12),
                     Text(
