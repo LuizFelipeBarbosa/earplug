@@ -129,7 +129,7 @@ void main() {
     await tester.tap(_scopeTab('EVENTS'));
     await tester.pump();
 
-    expect(find.byKey(const Key('explore-results-events')), findsOne);
+    expect(find.byKey(const Key('explore-results-search')), findsOne);
     expect(find.byKey(const Key('explore-scope-progress')), findsOne);
 
     await tester.pump(const Duration(milliseconds: 250));
@@ -296,15 +296,24 @@ void main() {
       scrollable: find.descendant(
         of: find.byKey(const Key('explore-browse-events')),
         matching: find.byType(Scrollable),
-      ),
+      ).first,
     );
     expect(find.text('TESS'), findsOne);
 
-    harness.app.toggleGenre('noise');
-    await tester.pump();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('explore-genre-noise')),
+      200,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('explore-genre-rail-list')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('explore-genre-noise')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('explore-genre-page')), findsOne);
     expect(find.text('TESS'), findsNothing);
-    harness.app.toggleGenre('noise');
-    await tester.pump();
+    await tester.tap(find.byKey(const Key('explore-genre-all')));
+    await tester.pumpAndSettle();
     expect(
       harness.app.feed.map((gig) => gig.id),
       contains('tess-september-23'),
@@ -371,9 +380,10 @@ void main() {
     await tester.tap(find.byKey(const Key('explore-search-submit')));
     await tester.pumpAndSettle();
 
-    final results = find.byKey(const Key('explore-results-all'));
-    final list = tester.widget<ListView>(results);
-    expect(list.childrenDelegate, isA<SliverChildBuilderDelegate>());
+    final results = find.byKey(const Key('explore-results-search'));
+    final scroll = tester.widget<CustomScrollView>(results);
+    final lists = scroll.slivers.whereType<SliverList>();
+    expect(lists.single.delegate, isA<SliverChildBuilderDelegate>());
     expect(find.text('SUNSET BUNKER'), findsNothing);
 
     await tester.scrollUntilVisible(
@@ -551,9 +561,9 @@ Finder _scopeTab(String label) => find.descendant(
 );
 
 Finder _allResultsScrollable() => find.descendant(
-  of: find.byKey(const Key('explore-results-all')),
+  of: find.byKey(const Key('explore-results-search')),
   matching: find.byType(Scrollable),
-);
+).first;
 
 Finder _browseScrollable() => find
     .descendant(

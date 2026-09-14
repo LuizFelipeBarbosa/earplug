@@ -63,15 +63,98 @@ class _ExploreScreenState extends State<ExploreScreen> {
     }
     final q = app.query.trim().toLowerCase();
     final searching = q.isNotEmpty;
-    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.3;
-    return Column(
+    final modeKey = searching
+        ? const ValueKey('explore-results-search')
+        : app.exploreGenrePage != null
+        ? ValueKey('explore-genre-${app.exploreGenre}')
+        : ValueKey('explore-browse-${app.exploreResultType.name}');
+    return Stack(
       children: [
-        Padding(
+        Positioned.fill(
+          child: CustomScrollView(
+            key: modeKey,
+            slivers: _slivers(context, app, searching, q),
+          ),
+        ),
+        if (_showScopeFeedback)
+          Positioned(
+            top: 0,
+            left: EpLayout.gutter,
+            right: EpLayout.gutter,
+            child: Semantics(
+              liveRegion: true,
+              label: 'Updating search results',
+              child: const LinearProgressIndicator(
+                key: Key('explore-scope-progress'),
+                minHeight: 2,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  List<Widget> _slivers(
+    BuildContext context,
+    AppState app,
+    bool searching,
+    String q,
+  ) {
+    final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.6);
+    final baseExtent = (44 + 8 + 52 + 8 + 40 + 12 + 1) * scale;
+    final maxHeader = MediaQuery.sizeOf(context).height * .45;
+    // At extreme text scales, keep tabs and filters pinned and move the rail into content.
+    final pinRail = baseExtent <= maxHeader;
+    final extent = pinRail ? baseExtent : (44 + 8 + 52 + 12 + 1) * scale;
+    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+    final controls = DecoratedBox(
+      decoration: BoxDecoration(color: context.epColors.background),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
+            child: SizedBox(
+              key: const Key('explore-result-tabs'),
+              width: double.infinity,
+              child: EpSegmentTabs(
+                labels: const ['All', 'Events', 'Bands', 'Venues'],
+                selected: ExploreResultType.values.indexOf(
+                  app.exploreResultType,
+                ),
+                onSelect: (i) => _selectScope(app, ExploreResultType.values[i]),
+                scrollable: largeText,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
+            child: DiscoveryQuickFilters(
+              filterButtonKey: const Key('explore-filter-button'),
+              badgeKey: const Key('explore-filters-count'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (pinRail)
+            ExploreGenreRail(
+              chips: app.exploreGenres,
+              selected: app.exploreGenre,
+              onSelect: app.setExploreGenre,
+            ),
+          if (pinRail) const SizedBox(height: 12),
+          const EpHairline(),
+        ],
+      ),
+    );
+    final slivers = <Widget>[
+      SliverToBoxAdapter(
+        child: Padding(
           padding: EdgeInsets.fromLTRB(
             EpLayout.gutter,
             MediaQuery.paddingOf(context).top + 22,
             EpLayout.gutter,
-            0,
+            18,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -114,124 +197,104 @@ class _ExploreScreenState extends State<ExploreScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
-              SizedBox(
-                key: const Key('explore-result-tabs'),
-                width: double.infinity,
-                child: EpSegmentTabs(
-                  labels: const ['All', 'Events', 'Bands', 'Venues'],
-                  selected: ExploreResultType.values.indexOf(
-                    app.exploreResultType,
-                  ),
-                  onSelect: (i) =>
-                      _selectScope(app, ExploreResultType.values[i]),
-                  scrollable: largeText,
-                ),
-              ),
-              const SizedBox(height: 8),
-              DiscoveryQuickFilters(
-                filterButtonKey: const Key('explore-filter-button'),
-                badgeKey: const Key('explore-filters-count'),
-              ),
-              const SizedBox(height: 8),
-              ExploreGenreRail(
-                chips: app.exploreGenres,
-                selected: app.exploreGenre,
-                onSelect: app.setExploreGenre,
-              ),
             ],
           ),
         ),
-        Expanded(
-          child: Stack(
-            children: [
-              Positioned.fill(child: _body(context, app, searching, q)),
-              if (_showScopeFeedback)
-                Positioned(
-                  top: 0,
-                  left: EpLayout.gutter,
-                  right: EpLayout.gutter,
-                  child: Semantics(
-                    liveRegion: true,
-                    label: 'Updating search results',
-                    child: const LinearProgressIndicator(
-                      key: Key('explore-scope-progress'),
-                      minHeight: 2,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _body(BuildContext context, AppState app, bool searching, String q) {
-    if (searching) return _SearchResults(app: app, q: q);
-    final page = app.exploreGenrePage;
-    if (page != null) {
-      return ListView(
-        key: ValueKey('explore-genre-${app.exploreGenre}'),
-        padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
-        children: [
-          ExploreGenrePageBody(
-            page: page,
-            app: app,
-            bandTile: (id) => switch (app.band(id)) {
-              final band? => ExploreBandTile(
-                key: Key('explore-band-card-$id'),
-                band: band,
-                onTap: () => app.openBand(id),
-              ),
-              null => const SizedBox.shrink(),
-            },
-            onAllBands: () => app.go(Screen.exploreCollection, 'bands'),
-          ),
-          const SizedBox(height: tabBarClearance),
-        ],
-      );
-    }
-    return _browse(context, app);
-  }
-
-  Widget _browse(BuildContext context, AppState app) {
-    final scope = app.exploreResultType;
-    final blocks = _browseBlocks(context, app);
-    final key = ValueKey('explore-browse-${scope.name}');
-    if (!EpLayout.isDesktop(context)) {
-      return ListView(
-        key: key,
-        padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
-        children: [
-          for (final block in blocks) block.widget,
-          const SizedBox(height: tabBarClearance),
-        ],
-      );
-    }
-    Widget column(Iterable<_BrowseBlock> source) => Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [for (final block in source) block.widget],
-    );
-    return SingleChildScrollView(
-      key: key,
-      padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: column(blocks.where((b) => !b.right))),
-              const SizedBox(width: 40),
-              Expanded(child: column(blocks.where((b) => b.right))),
-            ],
-          ),
-          const SizedBox(height: tabBarClearance),
-        ],
       ),
+      SliverPersistentHeader(
+        pinned: true,
+        delegate: _PinnedExploreControls(child: controls, extent: extent),
+      ),
+    ];
+    if (!pinRail) {
+      slivers.add(
+        SliverToBoxAdapter(
+          child: ExploreGenreRail(
+            chips: app.exploreGenres,
+            selected: app.exploreGenre,
+            onSelect: app.setExploreGenre,
+          ),
+        ),
+      );
+    }
+    if (searching) {
+      final rows = _SearchResults(app: app, q: q).rows;
+      slivers.add(
+        SliverList.builder(
+          itemCount: rows.length,
+          itemBuilder: (context, i) =>
+              _SearchResults(app: app, q: q).buildRow(context, rows[i]),
+        ),
+      );
+    } else {
+      final page = app.exploreGenrePage;
+      if (page != null) {
+        slivers.add(
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
+              child: ExploreGenrePageBody(
+                page: page,
+                app: app,
+                bandTile: (id) => switch (app.band(id)) {
+                  final band? => ExploreBandTile(
+                    key: Key('explore-band-card-$id'),
+                    band: band,
+                    onTap: () => app.openBand(id),
+                  ),
+                  null => const SizedBox.shrink(),
+                },
+                onAllBands: () => app.go(Screen.exploreCollection, 'bands'),
+              ),
+            ),
+          ),
+        );
+      } else {
+        final blocks = _browseBlocks(context, app);
+        final left = blocks.where((b) => !b.right).toList();
+        final right = blocks.where((b) => b.right).toList();
+        if (!EpLayout.isDesktop(context) || left.isEmpty || right.isEmpty) {
+          final single = left.isEmpty
+              ? right
+              : right.isEmpty
+              ? left
+              : blocks;
+          slivers.add(
+            SliverList.builder(
+              itemCount: single.length,
+              itemBuilder: (_, i) => single[i].widget,
+            ),
+          );
+        } else {
+          slivers.add(
+            SliverToBoxAdapter(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(children: [for (final b in left) b.widget]),
+                  ),
+                  const SizedBox(width: 40),
+                  Expanded(
+                    child: Column(children: [for (final b in right) b.widget]),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+      }
+    }
+    slivers.add(
+      const SliverToBoxAdapter(child: SizedBox(height: tabBarClearance)),
     );
+    return slivers;
   }
+
+  Widget _gutter(Widget child) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
+    child: child,
+  );
 
   List<_BrowseBlock> _browseBlocks(BuildContext context, AppState app) {
     final home = app.exploreHome;
@@ -251,10 +314,25 @@ class _ExploreScreenState extends State<ExploreScreen> {
         if (!home.recommendedBandIds.contains(id) && app.band(id) != null) id,
     ].take(12).toList();
     final out = <_BrowseBlock>[];
+    final friendsBlock = _gutter(
+      ExploreFriendsSection(
+        entries: app.friendsGoing,
+        signedIn: app.authed,
+        hasFriends: app.hasFriends,
+        onFindPeople: () => app.go(Screen.people),
+        onSignIn: () => app.needAuth(const PendingAuth(PendingKind.myGigs)),
+        onOpenGig: app.openGig,
+        onSeeAll: () => app.go(Screen.exploreCollection, 'friends'),
+        venueLine: (g) => app.venue(g.venueId).name,
+      ),
+    );
+    final friendsEarly = app.hasFriends && app.friendsGoing.isNotEmpty;
     if (bands && recIds.isNotEmpty) {
       out.add((
-        widget: EpSectionHeader(
-          label: home.personalised ? 'RECOMMENDED FOR YOU' : 'BANDS TO KNOW',
+        widget: _gutter(
+          EpSectionHeader(
+            label: home.personalised ? 'RECOMMENDED FOR YOU' : 'BANDS TO KNOW',
+          ),
         ),
         right: false,
       ));
@@ -278,23 +356,14 @@ class _ExploreScreenState extends State<ExploreScreen> {
         right: false,
       ));
     }
-    if (events || scope == ExploreResultType.all) {
-      out.add((
-        widget: ExploreFriendsSection(
-          entries: app.friendsGoing,
-          signedIn: app.authed,
-          hasFriends: app.hasFriends,
-          onFindPeople: () => app.go(Screen.people),
-          onSignIn: () => app.needAuth(const PendingAuth(PendingKind.myGigs)),
-          onOpenGig: app.openGig,
-          onSeeAll: () => app.go(Screen.exploreCollection, 'friends'),
-          venueLine: (g) => app.venue(g.venueId).name,
-        ),
-        right: true,
-      ));
+    if (events && friendsEarly) {
+      out.add((widget: friendsBlock, right: true));
     }
     if (events && home.collections.isNotEmpty) {
-      out.add((widget: EpSectionHeader(label: 'COLLECTIONS'), right: false));
+      out.add((
+        widget: _gutter(EpSectionHeader(label: 'COLLECTIONS')),
+        right: false,
+      ));
       out.add((
         widget: EpCarousel(
           key: const Key('explore-collections'),
@@ -322,11 +391,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
         final gigs = spec.$1;
         if (gigs.isEmpty) continue;
         out.add((
-          widget: EpSectionHeader(
-            key: Key('explore-events-${spec.$4}'),
-            label: '${spec.$2} · ${gigs.length}',
-            action: gigs.length > spec.$3 ? 'SEE ALL' : null,
-            onAction: () => app.go(Screen.exploreCollection, spec.$4),
+          widget: _gutter(
+            EpSectionHeader(
+              key: Key('explore-events-${spec.$4}'),
+              label: '${spec.$2} · ${gigs.length}',
+              action: gigs.length > spec.$3 ? 'SEE ALL' : null,
+              onAction: () => app.go(Screen.exploreCollection, spec.$4),
+            ),
           ),
           right: false,
         ));
@@ -335,32 +406,55 @@ class _ExploreScreenState extends State<ExploreScreen> {
               .take(spec.$3)
               .map(
                 (g) => (
-                  widget: FanEventCard(gig: g, app: app, showDistance: true),
+                  widget: _gutter(
+                    FanEventCard(gig: g, app: app, showDistance: true),
+                  ),
                   right: false,
                 ),
               ),
         );
       }
     }
+    if (events &&
+        home.tonight.isEmpty &&
+        home.week.isEmpty &&
+        home.upcoming.isEmpty) {
+      out.add((
+        widget: _gutter(
+          Text(
+            'No nearby events in the loaded feed.',
+            style: Theme.of(
+              context,
+            ).textTheme.epBody.copyWith(color: context.epColors.muted),
+          ),
+        ),
+        right: false,
+      ));
+    }
     if (venues) {
       final label = scope == ExploreResultType.all
           ? 'VENUES WITH SHOWS · ${home.venues.length}'
           : 'VENUES · ${home.venues.length}';
       out.add((
-        widget: _VenueHeader(
-          label: label,
-          action: scope == ExploreResultType.all
-              ? () => app.go(Screen.exploreCollection, 'venues')
-              : null,
+        widget: _gutter(
+          _VenueHeader(
+            label: label,
+            action: scope == ExploreResultType.all
+                ? () => app.go(Screen.exploreCollection, 'venues')
+                : null,
+          ),
         ),
         right: true,
       ));
       if (home.venues.isEmpty) {
-        out.add((widget: _buildVenueState(context, app), right: true));
+        out.add((widget: _gutter(_buildVenueState(context, app)), right: true));
       } else if (scope == ExploreResultType.venues) {
         out.addAll(
           home.venues.map(
-            (e) => (widget: _VenueRow(venue: e.venue, app: app), right: true),
+            (e) => (
+              widget: _gutter(_VenueRow(venue: e.venue, app: app)),
+              right: true,
+            ),
           ),
         );
       } else {
@@ -385,11 +479,18 @@ class _ExploreScreenState extends State<ExploreScreen> {
         ));
       }
     }
+    if (events && !friendsEarly) {
+      out.add((widget: friendsBlock, right: true));
+    }
     if (bands) {
       if (directoryIds.isNotEmpty) {
         out.add((
-          widget: EpSectionHeader(
-            label: 'BANDS · ${app.exploreBandIds.length}',
+          widget: _gutter(
+            EpSectionHeader(
+              label: app.hasMoreExploreBands
+                  ? 'BANDS'
+                  : 'BANDS · ${app.exploreBandIds.length}',
+            ),
           ),
           right: true,
         ));
@@ -413,46 +514,40 @@ class _ExploreScreenState extends State<ExploreScreen> {
         ));
       }
       out.add((
-        widget: EpMenuRow(
-          key: const Key('explore-toggle-bands'),
-          icon: Icons.groups_outlined,
-          label: 'All bands',
-          trailingText: '${app.exploreBandIds.length}',
-          onTap: () => app.go(Screen.exploreCollection, 'bands'),
+        widget: _gutter(
+          EpMenuRow(
+            key: const Key('explore-toggle-bands'),
+            icon: Icons.groups_outlined,
+            label: 'All bands',
+            trailingText: app.hasMoreExploreBands
+                ? null
+                : '${app.exploreBandIds.length}',
+            onTap: () => app.go(Screen.exploreCollection, 'bands'),
+          ),
         ),
         right: true,
       ));
     }
-    if (events &&
-        home.tonight.isEmpty &&
-        home.week.isEmpty &&
-        home.upcoming.isEmpty) {
-      out.add((
-        widget: Text(
-          'No nearby events in the loaded feed.',
-          style: Theme.of(
-            context,
-          ).textTheme.epBody.copyWith(color: context.epColors.muted),
-        ),
-        right: false,
-      ));
-    }
     if (events && home.upcoming.isNotEmpty) {
       out.add((
-        widget: EpSectionHeader(
-          key: const Key('explore-upcoming'),
-          label: 'UPCOMING · ${home.upcoming.length}',
-          action: home.upcoming.length > 8 ? 'SEE ALL' : null,
-          onAction: () => app.go(Screen.exploreCollection, 'upcoming'),
+        widget: _gutter(
+          EpSectionHeader(
+            key: const Key('explore-upcoming'),
+            label: 'UPCOMING · ${home.upcoming.length}',
+            action: home.upcoming.length > 4 ? 'SEE ALL' : null,
+            onAction: () => app.go(Screen.exploreCollection, 'upcoming'),
+          ),
         ),
         right: false,
       ));
       out.addAll(
         home.upcoming
-            .take(8)
+            .take(4)
             .map(
               (g) => (
-                widget: FanEventCard(gig: g, app: app, showDistance: true),
+                widget: _gutter(
+                  FanEventCard(gig: g, app: app, showDistance: true),
+                ),
                 right: false,
               ),
             ),
@@ -522,6 +617,35 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 }
 
+class _PinnedExploreControls extends SliverPersistentHeaderDelegate {
+  const _PinnedExploreControls({required this.child, required this.extent});
+  final Widget child;
+  final double extent;
+
+  @override
+  double get minExtent => extent;
+
+  @override
+  double get maxExtent => extent;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) => SizedBox.expand(
+    child: OverflowBox(
+      alignment: Alignment.topCenter,
+      maxHeight: extent + 80,
+      child: child,
+    ),
+  );
+
+  @override
+  bool shouldRebuild(covariant _PinnedExploreControls oldDelegate) =>
+      oldDelegate.extent != extent || oldDelegate.child != child;
+}
+
 class _VenueHeader extends StatelessWidget {
   const _VenueHeader({required this.label, this.action});
   final String label;
@@ -546,11 +670,9 @@ class _VenueHeader extends StatelessWidget {
 class _SearchResults extends StatelessWidget {
   final AppState app;
   final String q;
-
   const _SearchResults({required this.app, required this.q});
 
-  @override
-  Widget build(BuildContext context) {
+  List<_SearchResultRow> get rows {
     final selectedGenre = app.exploreGenre;
     bool gigMatchesGenre(Gig gig) =>
         selectedGenre == null ||
@@ -574,101 +696,96 @@ class _SearchResults extends StatelessWidget {
                   band.genres.any((genre) => genre.toLowerCase().contains(q))))
             id,
     ];
-    final gigs = app.allGigs.where((g) {
-      if (!gigMatchesGenre(g)) return false;
-      return g.title.toLowerCase().contains(q) ||
-          app.venue(g.venueId).name.toLowerCase().contains(q) ||
-          g.genres.any((genre) => genre.toLowerCase().contains(q)) ||
-          g.lineup.any(
-            (bandId) =>
-                app.band(bandId)?.name.toLowerCase().contains(q) ?? false,
-          );
-    }).toList();
-    final venues = app.venues.where((venue) {
-      return venue.name.toLowerCase().contains(q) ||
-          venue.area.toLowerCase().contains(q) ||
-          venue.addr.toLowerCase().contains(q);
-    }).toList();
-
+    final gigs = app.allGigs
+        .where(
+          (g) =>
+              gigMatchesGenre(g) &&
+              (g.title.toLowerCase().contains(q) ||
+                  app.venue(g.venueId).name.toLowerCase().contains(q) ||
+                  g.genres.any((genre) => genre.toLowerCase().contains(q)) ||
+                  g.lineup.any(
+                    (id) =>
+                        app.band(id)?.name.toLowerCase().contains(q) ?? false,
+                  )),
+        )
+        .toList();
+    final venues = app.venues
+        .where(
+          (v) =>
+              v.name.toLowerCase().contains(q) ||
+              v.area.toLowerCase().contains(q) ||
+              v.addr.toLowerCase().contains(q),
+        )
+        .toList();
     final type = app.exploreResultType;
-    final showEvents =
-        type == ExploreResultType.all || type == ExploreResultType.events;
-    final showBands =
-        type == ExploreResultType.all || type == ExploreResultType.bands;
-    final showVenues =
-        type == ExploreResultType.all || type == ExploreResultType.venues;
-    final rows = <_SearchResultRow>[];
-
-    if (showEvents) {
-      rows.add(_SearchSectionRow('Events · ${gigs.length}'));
-      if (gigs.isEmpty) {
-        rows.add(
+    final out = <_SearchResultRow>[];
+    if (type == ExploreResultType.all || type == ExploreResultType.events) {
+      out.add(_SearchSectionRow('Events · ${gigs.length}'));
+      if (gigs.isEmpty)
+        out.add(
           _SearchMessageRow(
             type == ExploreResultType.events
                 ? 'No events found.'
                 : 'No gigs found.',
           ),
         );
-      } else {
-        for (final gig in gigs) {
-          rows.add(_SearchGigRow(gig));
-        }
-      }
+      else
+        out.addAll(gigs.map(_SearchGigRow.new));
     }
-
-    if (showBands) {
-      rows.add(_SearchSectionRow('Bands · ${bandIds.length}'));
-      if (bandIds.isEmpty) {
-        rows.add(const _SearchMessageRow('No bands found.'));
-      } else {
-        for (final id in bandIds) {
-          rows.add(_SearchBandRow(id));
-        }
-      }
+    if (type == ExploreResultType.all || type == ExploreResultType.bands) {
+      out.add(_SearchSectionRow('Bands · ${bandIds.length}'));
+      if (bandIds.isEmpty)
+        out.add(const _SearchMessageRow('No bands found.'));
+      else
+        out.addAll(bandIds.map(_SearchBandRow.new));
     }
-
-    if (showVenues) {
-      rows.add(_SearchSectionRow('Venues · ${venues.length}'));
-      if (venues.isEmpty) {
-        rows.add(const _SearchMessageRow('No venues found.'));
-      } else {
-        for (final venue in venues) {
-          rows.add(_SearchVenueRow(venue));
-        }
-      }
+    if (type == ExploreResultType.all || type == ExploreResultType.venues) {
+      out.add(_SearchSectionRow('Venues · ${venues.length}'));
+      if (venues.isEmpty)
+        out.add(const _SearchMessageRow('No venues found.'));
+      else
+        out.addAll(venues.map(_SearchVenueRow.new));
     }
+    return out;
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    final rows = this.rows;
     return ListView.builder(
-      key: ValueKey('explore-results-${type.name}'),
-      padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
+      key: const ValueKey('explore-results-search'),
       itemCount: rows.length + 1,
       itemBuilder: (context, index) => index == rows.length
           ? const SizedBox(height: tabBarClearance)
-          : _buildRow(context, rows[index]),
+          : buildRow(context, rows[index]),
     );
   }
 
-  Widget _buildRow(BuildContext context, _SearchResultRow row) {
-    return switch (row) {
-      _SearchSectionRow(:final label) => EpSectionHeader(label: label),
-      _SearchMessageRow(:final message) => Text(
-        message,
-        style: Theme.of(
-          context,
-        ).textTheme.epBody.copyWith(color: context.epColors.muted),
-      ),
-      _SearchGigRow(:final gig) => KeyedSubtree(
-        key: ValueKey('fan-event-${gig.id}'),
-        child: _ExploreEventRow(gig: gig, app: app, showActions: true),
-      ),
-      _SearchBandRow(:final bandId) => ExploreBandRow(
-        key: ValueKey('explore-band-card-$bandId'),
-        bandId: bandId,
-        app: app,
-      ),
-      _SearchVenueRow(:final venue) => _VenueRow(venue: venue, app: app),
-    };
-  }
+  Widget buildRow(BuildContext context, _SearchResultRow row) =>
+      _gutterRow(context, switch (row) {
+        _SearchSectionRow(:final label) => EpSectionHeader(label: label),
+        _SearchMessageRow(:final message) => Text(
+          message,
+          style: Theme.of(
+            context,
+          ).textTheme.epBody.copyWith(color: context.epColors.muted),
+        ),
+        _SearchGigRow(:final gig) => KeyedSubtree(
+          key: ValueKey('fan-event-${gig.id}'),
+          child: _ExploreEventRow(gig: gig, app: app, showActions: true),
+        ),
+        _SearchBandRow(:final bandId) => ExploreBandRow(
+          key: ValueKey('explore-band-card-$bandId'),
+          bandId: bandId,
+          app: app,
+        ),
+        _SearchVenueRow(:final venue) => _VenueRow(venue: venue, app: app),
+      });
+
+  Widget _gutterRow(BuildContext context, Widget child) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
+    child: child,
+  );
 }
 
 sealed class _SearchResultRow {
@@ -820,7 +937,6 @@ class _VenueRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => EpEntityRow(
-    leading: const SizedBox.shrink(),
     title: venue.name,
     sub: [venue.area, venue.addr].where((part) => part.isNotEmpty).join(', '),
     // EpEntityRow accepts a string title, so verification sits beside the
