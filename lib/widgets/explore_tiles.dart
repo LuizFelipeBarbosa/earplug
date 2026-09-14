@@ -433,7 +433,8 @@ class ExploreFeaturedCard extends StatelessWidget {
       ExploreAvatarStack(people: friends, size: 20),
       const SizedBox(width: 7),
       Text(
-        _friendsCue(friends),
+        _friendsCue(friends).toUpperCase(),
+        semanticsLabel: _friendsCue(friends),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.epChipLabel.copyWith(
@@ -684,25 +685,29 @@ class ExploreVenueTile extends StatelessWidget {
                     EpMonoText(nextLine, color: context.epColors.muted),
                     if (venue.verified || distance != null) ...[
                       const SizedBox(height: 4),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (venue.verified)
-                            EpBadge(
-                              key: Key(
-                                'explore-venue-tile-verified-${venue.id}',
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (venue.verified)
+                              EpBadge(
+                                key: Key(
+                                  'explore-venue-tile-verified-${venue.id}',
+                                ),
+                                label: 'Verified',
+                                variant: EpBadgeVariant.outline,
                               ),
-                              label: 'Verified',
-                              variant: EpBadgeVariant.outline,
-                            ),
-                          if (venue.verified && distance != null)
-                            const SizedBox(width: 6),
-                          if (distance != null)
-                            EpMonoText(
-                              distance!,
-                              color: context.epColors.muted,
-                            ),
-                        ],
+                            if (venue.verified && distance != null)
+                              const SizedBox(width: 6),
+                            if (distance != null)
+                              EpMonoText(
+                                distance!,
+                                color: context.epColors.muted,
+                              ),
+                          ],
+                        ),
                       ),
                     ],
                   ],

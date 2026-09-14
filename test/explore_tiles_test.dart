@@ -461,8 +461,12 @@ void main() {
         ),
       ),
     );
-    expect(find.byType(EpNetworkImage), findsOneWidget);
-    expect(find.text('NO PHOTO YET'), findsNothing);
+    final photoImage = find.byType(EpNetworkImage);
+    expect(photoImage, findsOneWidget);
+    expect(
+      tester.widget<EpNetworkImage>(photoImage).url,
+      'https://example.com/venue.jpg',
+    );
 
     final emptyVenue = Venue(
       id: 'venue-no-photo',
@@ -482,6 +486,7 @@ void main() {
         ),
       ),
     );
+    expect(find.byType(EpNetworkImage), findsNothing);
     expect(find.text('NO PHOTO YET'), findsOneWidget);
   });
 
