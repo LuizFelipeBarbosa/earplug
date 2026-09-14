@@ -4,6 +4,7 @@ import 'package:earplug/models.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/explore_friends.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,9 +42,41 @@ void main() {
 
     expect(find.text('TB'), findsOneWidget);
     expect(find.text('The Tile Band'), findsOneWidget);
-    expect(find.text('garage · surf punk'), findsOneWidget);
+    expect(find.text('garage · surf punk · noise'), findsOneWidget);
+    final genreText = tester.widget<Text>(
+      find.text('garage · surf punk · noise'),
+    );
+    expect(genreText.maxLines, 2);
+    expect(genreText.softWrap, isTrue);
+    final nameText = tester.widget<Text>(find.text('The Tile Band'));
+    expect(nameText.maxLines, 3);
+    expect(nameText.softWrap, isTrue);
     await tester.tap(find.text('The Tile Band'));
     expect(tapped, isTrue);
+
+    await tester.pumpWidget(
+      plain(
+        ExploreBandTile(
+          band: bandFixture(
+            id: 'long-tile-band',
+            name:
+                'The Very Long Band Name That Should Wrap Across Several Lines',
+            genres: ['garage'],
+          ),
+          onTap: () {},
+        ),
+      ),
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.text(
+              'The Very Long Band Name That Should Wrap Across Several Lines',
+            ),
+          )
+          .maxLines,
+      3,
+    );
   });
 
   testWidgets('collection card shows title, show count, and handles taps', (
@@ -112,6 +145,33 @@ void main() {
       ),
     );
     expect(find.textContaining('FREE'), findsNothing);
+  });
+
+  testWidgets('event row shows known friends and hides them by default', (
+    tester,
+  ) async {
+    final gig = gigFixture(id: 'friends-row');
+    final friends = [
+      const SocialUserCard(userId: 'a', name: 'Maya'),
+      const SocialUserCard(userId: 'b', name: 'Dev'),
+    ];
+    await tester.pumpWidget(
+      plain(
+        ExploreEventRow(
+          gig: gig,
+          venueName: 'The Foghorn',
+          friends: friends,
+          onTap: () {},
+        ),
+      ),
+    );
+    expect(find.byType(ExploreAvatarStack), findsOneWidget);
+    expect(find.text('Maya and Dev are going'), findsOneWidget);
+
+    await tester.pumpWidget(
+      plain(ExploreEventRow(gig: gig, venueName: 'The Foghorn', onTap: () {})),
+    );
+    expect(find.byType(ExploreAvatarStack), findsNothing);
   });
 
   testWidgets('event row supports custom metadata and thumbnail size', (
@@ -244,6 +304,33 @@ void main() {
     expect(tapped, isTrue);
   });
 
+  testWidgets('featured card shows known friends and hides them by default', (
+    tester,
+  ) async {
+    final gig = gigFixture(id: 'friends-featured');
+    final friends = [const SocialUserCard(userId: 'a', name: 'Maya')];
+    await tester.pumpWidget(
+      plain(
+        ExploreFeaturedCard(
+          gig: gig,
+          venueName: 'The Foghorn',
+          friends: friends,
+          onTap: () {},
+        ),
+      ),
+    );
+    expect(find.byType(ExploreAvatarStack), findsOneWidget);
+    expect(find.text('MAYA GOING'), findsOneWidget);
+
+    await tester.pumpWidget(
+      plain(
+        ExploreFeaturedCard(gig: gig, venueName: 'The Foghorn', onTap: () {}),
+      ),
+    );
+    expect(find.byType(ExploreAvatarStack), findsNothing);
+    expect(find.text('MAYA GOING'), findsNothing);
+  });
+
   testWidgets(
     'landscape featured card fits its title, venue line and cue at 1.0 and 1.5',
     (tester) async {
@@ -351,6 +438,53 @@ void main() {
     },
   );
 
+  testWidgets('venue tile uses photos and a no-photo placeholder', (
+    tester,
+  ) async {
+    final date = DateTime(2026, 9, 19);
+    final photoVenue = Venue(
+      id: 'venue-photo',
+      name: 'Photo Room',
+      area: 'Oakland',
+      addr: '1 Main St',
+      point: const LatLng(0, 0),
+      photoUrls: const ['https://example.com/venue.jpg'],
+    );
+    await tester.pumpWidget(
+      plain(
+        ExploreVenueTile(
+          entry: VenueWithShows(
+            venue: photoVenue,
+            gigs: [gigFixture(id: 'photo-show', startsAt: date)],
+          ),
+          onTap: () {},
+        ),
+      ),
+    );
+    expect(find.byType(EpNetworkImage), findsOneWidget);
+    expect(find.text('NO PHOTO YET'), findsNothing);
+
+    final emptyVenue = Venue(
+      id: 'venue-no-photo',
+      name: 'Empty Room',
+      area: 'Oakland',
+      addr: '2 Main St',
+      point: const LatLng(0, 0),
+    );
+    await tester.pumpWidget(
+      plain(
+        ExploreVenueTile(
+          entry: VenueWithShows(
+            venue: emptyVenue,
+            gigs: [gigFixture(id: 'empty-show', startsAt: date)],
+          ),
+          onTap: () {},
+        ),
+      ),
+    );
+    expect(find.text('NO PHOTO YET'), findsOneWidget);
+  });
+
   testWidgets('band row preserves follow pill and directory copy', (
     tester,
   ) async {
@@ -449,15 +583,18 @@ void main() {
       ExploreEventRow(
         gig: gig,
         venueName: 'A Venue With A Long Name',
+        friends: const [SocialUserCard(userId: 'a', name: 'Maya')],
         onTap: () {},
       ),
       ExploreFeaturedCard(
         gig: gig,
         venueName: 'A Venue With A Long Name',
+        friends: const [SocialUserCard(userId: 'a', name: 'Maya')],
         onTap: () {},
       ),
       ExploreLocationRow(label: 'A Location With A Long Name', onTap: () {}),
     ]) {
+      debugPrint('scale child: ${child.runtimeType}');
       await tester.pumpWidget(plain(child, textScaler: scaler));
       await tester.pump();
       expect(tester.takeException(), isNull);

@@ -7,6 +7,18 @@ import 'ep_rows.dart';
 import 'ep_text.dart';
 import 'explore_tiles.dart';
 
+String friendsGoingLine(List<SocialUserCard> friends) {
+  if (friends.isEmpty) return 'No friends are going';
+  if (friends.length == 1) return '${friends[0].name} is going';
+  if (friends.length == 2) {
+    return '${friends[0].name} and ${friends[1].name} are going';
+  }
+  if (friends.length == 3) {
+    return '${friends[0].name}, ${friends[1].name} and ${friends[2].name} are going';
+  }
+  return '${friends[0].name}, ${friends[1].name} and ${friends.length - 2} others are going';
+}
+
 /// "Where your friends are going this weekend" for the Explore page.
 class ExploreFriendsSection extends StatelessWidget {
   const ExploreFriendsSection({
@@ -76,25 +88,13 @@ class ExploreFriendsSection extends StatelessWidget {
                   gig: entry.gig,
                   venueName: venueLine(entry.gig),
                   trailing: ExploreAvatarStack(people: entry.friends),
-                  sub: _friendsLine(entry.friends),
+                  sub: friendsGoingLine(entry.friends),
                   onTap: () => onOpenGig(entry.gig.id),
                 ),
             ],
           );
 
     return Container(key: const Key('explore-friends'), child: content);
-  }
-
-  String _friendsLine(List<SocialUserCard> friends) {
-    if (friends.isEmpty) return 'No friends are going';
-    if (friends.length == 1) return '${friends[0].name} is going';
-    if (friends.length == 2) {
-      return '${friends[0].name} and ${friends[1].name} are going';
-    }
-    if (friends.length == 3) {
-      return '${friends[0].name}, ${friends[1].name} and ${friends[2].name} are going';
-    }
-    return '${friends[0].name}, ${friends[1].name} and ${friends.length - 2} others are going';
   }
 }
 

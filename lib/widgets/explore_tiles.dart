@@ -9,6 +9,7 @@ import '../theme.dart';
 import 'common.dart';
 import 'ep_rows.dart';
 import 'ep_text.dart';
+import 'explore_friends.dart';
 
 String _initialsFor(String title) {
   final words = title
@@ -19,6 +20,11 @@ String _initialsFor(String title) {
   if (words.isEmpty) return '?';
   if (words.length == 1) return words.first.characters.first;
   return '${words.first.characters.first}${words.last.characters.first}';
+}
+
+String _friendsCue(List<SocialUserCard> friends) {
+  final suffix = friends.length > 1 ? ' +${friends.length - 1}' : '';
+  return '${friends.first.name}$suffix going';
 }
 
 class _ExploreHairlineRow extends StatelessWidget {
@@ -133,6 +139,7 @@ class ExploreEventRow extends StatelessWidget {
     this.sub,
     this.lineup,
     this.meta,
+    this.friends = const <SocialUserCard>[],
     this.thumbnailSize = 64,
   });
 
@@ -143,6 +150,7 @@ class ExploreEventRow extends StatelessWidget {
   final String? sub;
   final List<ExploreLineupBand>? lineup;
   final String? meta;
+  final List<SocialUserCard> friends;
   final double thumbnailSize;
 
   @override
@@ -211,7 +219,8 @@ class ExploreEventRow extends StatelessWidget {
                       spacing: 12,
                       runSpacing: 6,
                       children: [
-                        for (final band in bands) _ExploreLineupChip(band: band),
+                        for (final band in bands)
+                          _ExploreLineupChip(band: band),
                       ],
                     ),
                   ] else if (sub != null) ...[
@@ -220,9 +229,27 @@ class ExploreEventRow extends StatelessWidget {
                       sub!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.epBody.copyWith(color: context.epColors.muted),
+                      style: Theme.of(context).textTheme.epBody.copyWith(
+                        color: context.epColors.muted,
+                      ),
+                    ),
+                  ],
+                  if (friends.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        ExploreAvatarStack(people: friends, size: 20),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            friendsGoingLine(friends),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.epCaption
+                                .copyWith(color: context.epColors.muted),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ],
@@ -253,6 +280,7 @@ class ExploreFeaturedCard extends StatelessWidget {
     required this.gig,
     required this.venueName,
     required this.onTap,
+    this.friends = const <SocialUserCard>[],
     this.width = 300,
     this.height = 380,
   });
@@ -260,6 +288,7 @@ class ExploreFeaturedCard extends StatelessWidget {
   final Gig gig;
   final String venueName;
   final VoidCallback onTap;
+  final List<SocialUserCard> friends;
   final double width;
   final double height;
 
@@ -326,6 +355,10 @@ class ExploreFeaturedCard extends StatelessWidget {
           children: [
             EpDateBlock(date: gig.startsAt),
             const Spacer(),
+            if (friends.isNotEmpty) ...[
+              _friendsCueRow(context),
+              const SizedBox(height: 8),
+            ],
             EpDisplay(
               gig.title,
               size: 28,
@@ -354,6 +387,8 @@ class ExploreFeaturedCard extends StatelessWidget {
     );
     return [
       Positioned(top: 16, left: 16, child: EpDateBlock(date: gig.startsAt)),
+      if (friends.isNotEmpty)
+        Positioned(top: 16, right: 16, child: _friendsCueRow(context)),
       Positioned(
         left: 16,
         right: 16,
@@ -391,6 +426,23 @@ class ExploreFeaturedCard extends StatelessWidget {
       ),
     ];
   }
+
+  Widget _friendsCueRow(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      ExploreAvatarStack(people: friends, size: 20),
+      const SizedBox(width: 7),
+      Text(
+        _friendsCue(friends),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.epChipLabel.copyWith(
+          fontSize: 11,
+          color: context.epColors.muted,
+        ),
+      ),
+    ],
+  );
 }
 
 /// Location search-result row.
@@ -414,32 +466,34 @@ class ExploreLocationRow extends StatelessWidget {
 }
 
 /// Square avatar + name + genre line, for RECOMMENDED / BANDS rails.
-/// Total width 88 wrapping a 72px avatar column by default.
+/// Total width 120 wrapping a 72px avatar column by default.
 class ExploreBandTile extends StatelessWidget {
   const ExploreBandTile({
     super.key,
     required this.band,
     required this.onTap,
+    this.width = 120,
     this.avatarSize = 72,
   });
 
   final Band band;
   final VoidCallback onTap;
+  final double width;
   final double avatarSize;
 
   @override
   Widget build(BuildContext context) {
     final imageUrl = band.profileImageUrl;
-    final genres = band.genres.take(2).join(' · ');
+    final genres = band.genres.join(' · ');
     return SizedBox(
-      width: 88,
+      width: width,
       child: Semantics(
         button: true,
         label: band.name,
         child: GestureDetector(
           onTap: onTap,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               EpAvatarTile(
                 initials: band.initials,
@@ -451,16 +505,20 @@ class ExploreBandTile extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 band.name,
-                maxLines: 2,
+                maxLines: 3,
+                softWrap: true,
                 overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.epLabel,
               ),
               if (genres.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(
                   genres,
-                  maxLines: 1,
+                  maxLines: 2,
+                  softWrap: true,
                   overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
                   style: Theme.of(
                     context,
                   ).textTheme.epMeta.copyWith(color: context.epColors.muted),
@@ -552,17 +610,19 @@ class ExploreCollectionCard extends StatelessWidget {
   }
 }
 
-/// 168x120 typographic venue tile.
+/// Image-backed venue card with venue details below the image.
 class ExploreVenueTile extends StatelessWidget {
   const ExploreVenueTile({
     super.key,
     required this.entry,
     this.distance,
+    this.width = 220,
     required this.onTap,
   });
 
   final VenueWithShows entry;
   final String? distance;
+  final double width;
   final VoidCallback onTap;
 
   @override
@@ -573,83 +633,81 @@ class ExploreVenueTile extends StatelessWidget {
         '${weekdayNamesUpper[entry.next.startsAt.weekday - 1]} '
         '${entry.next.startsAt.day} · ${entry.gigs.length} SHOW'
         '${entry.gigs.length == 1 ? '' : 'S'}';
+    final placeholder = EpPanel(
+      color: context.epColors.panel,
+      child: const Center(child: EpEyebrow('NO PHOTO YET')),
+    );
     return SizedBox(
-      width: 168,
-      height: 120,
+      width: width,
       child: Semantics(
         button: true,
         label: venue.name,
         child: GestureDetector(
           onTap: onTap,
-          child: Stack(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Positioned.fill(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    8,
-                    8,
-                    8,
-                    venue.verified || distance != null ? 30 : 8,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Flexible(
-                        fit: FlexFit.loose,
-                        child: EpDisplay(
-                          venue.name,
-                          size: 20,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+              AspectRatio(
+                aspectRatio: 4 / 3,
+                child: entry.venue.photoUrls.isNotEmpty
+                    ? EpNetworkImage(
+                        url: entry.venue.photoUrls.first,
+                        fit: BoxFit.cover,
+                        cacheWidth: width.round(),
+                        fallback: placeholder,
+                      )
+                    : placeholder,
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    EpDisplay(
+                      venue.name,
+                      size: 20,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      area,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.epMeta.copyWith(
+                        color: context.epColors.muted,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        area,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.epMeta.copyWith(
-                          color: context.epColors.muted,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      FittedBox(
-                        alignment: Alignment.centerLeft,
-                        fit: BoxFit.scaleDown,
-                        child: EpMonoText(
-                          nextLine,
-                          color: context.epColors.muted,
-                        ),
+                    ),
+                    const SizedBox(height: 2),
+                    EpMonoText(nextLine, color: context.epColors.muted),
+                    if (venue.verified || distance != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (venue.verified)
+                            EpBadge(
+                              key: Key(
+                                'explore-venue-tile-verified-${venue.id}',
+                              ),
+                              label: 'Verified',
+                              variant: EpBadgeVariant.outline,
+                            ),
+                          if (venue.verified && distance != null)
+                            const SizedBox(width: 6),
+                          if (distance != null)
+                            EpMonoText(
+                              distance!,
+                              color: context.epColors.muted,
+                            ),
+                        ],
                       ),
                     ],
-                  ),
+                  ],
                 ),
               ),
-              if (venue.verified || distance != null)
-                Positioned(
-                  left: 8,
-                  right: 8,
-                  bottom: 8,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (venue.verified)
-                          EpBadge(
-                            key: Key('explore-venue-tile-verified-${venue.id}'),
-                            label: 'Verified',
-                            variant: EpBadgeVariant.outline,
-                          ),
-                        if (venue.verified && distance != null)
-                          const SizedBox(width: 6),
-                        if (distance != null)
-                          EpMonoText(distance!, color: context.epColors.muted),
-                      ],
-                    ),
-                  ),
-                ),
             ],
           ),
         ),
