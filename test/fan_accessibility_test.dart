@@ -42,10 +42,18 @@ void main() {
     final filters = find.byKey(const Key('explore-filter-button'));
     expect(filters, findsOne);
     expect(tester.getSize(filters), const Size(44, 44));
-    expect(find.text('PUNK'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('explore-genre-punk')),
+      200,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('explore-genre-rail-list')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    expect(find.byKey(const Key('explore-genre-punk')), findsOne);
     await tester.tap(filters);
     await tester.pumpAndSettle();
-    expect(find.text('PUNK'), findsOne);
+    expect(find.byKey(const Key('clear-discovery-filters')), findsOne);
     expect(tester.takeException(), isNull);
   });
 

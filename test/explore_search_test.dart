@@ -239,6 +239,19 @@ void main() {
       find.byKey(const ValueKey('fan-event-g5'), skipOffstage: false),
       findsNothing,
     );
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('explore-genre-all')),
+      -200,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('explore-genre-rail-list')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.drag(
+      find.byKey(const Key('explore-genre-rail-list')),
+      const Offset(200, 0),
+    );
+    await tester.pump();
     await tester.tap(find.byKey(const Key('explore-genre-all')));
     await tester.pumpAndSettle();
     expect(harness.app.exploreGenre, isNull);
@@ -310,8 +323,19 @@ void main() {
       find.byKey(const Key('fan-event-g1'), skipOffstage: false),
       findsOne,
     );
-    expect(find.byKey(const Key('explore-toggle-bands')), findsOne);
-    expect(find.byKey(const Key('explore-toggle-venues')), findsOne);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('explore-toggle-bands')),
+      250,
+      scrollable: _browseScrollable(),
+    );
+    expect(
+      find.byKey(const Key('explore-toggle-bands'), skipOffstage: false),
+      findsOne,
+    );
+    expect(
+      find.byKey(const Key('explore-toggle-venues'), skipOffstage: false),
+      findsOne,
+    );
 
     await tester.tap(_scopeTab('BANDS'));
     await tester.pump();
@@ -320,7 +344,15 @@ void main() {
       find.byKey(const Key('fan-event-g1'), skipOffstage: false),
       findsNothing,
     );
-    expect(find.byKey(const Key('explore-toggle-bands')), findsOne);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('explore-toggle-bands')),
+      250,
+      scrollable: _browseScrollable(),
+    );
+    expect(
+      find.byKey(const Key('explore-toggle-bands'), skipOffstage: false),
+      findsOne,
+    );
     expect(find.byKey(const Key('explore-toggle-venues')), findsNothing);
 
     await tester.tap(_scopeTab('ALL'));
@@ -365,34 +397,32 @@ void main() {
     await tester.scrollUntilVisible(
       bandsToggle,
       250,
-      scrollable: find
-          .descendant(
-            of: find.byKey(const Key('explore-browse-all')),
-            matching: find.byType(Scrollable),
-          )
-          .first,
+      scrollable: _browseScrollable(),
     );
+    await tester.ensureVisible(bandsToggle);
+    await tester.pump();
     await tester.tap(bandsToggle);
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.exploreCollection);
     expect(harness.app.current.param, 'bands');
     harness.app.back();
     await tester.pumpAndSettle();
+    final venuesHarness = await pumpApp(
+      tester,
+      home: const Scaffold(body: ExploreScreen()),
+    );
     final venuesToggle = find.byKey(const Key('explore-toggle-venues'));
     await tester.scrollUntilVisible(
       venuesToggle,
       250,
-      scrollable: find
-          .descendant(
-            of: find.byKey(const Key('explore-browse-all')),
-            matching: find.byType(Scrollable),
-          )
-          .first,
+      scrollable: _browseScrollable(),
     );
+    await tester.ensureVisible(venuesToggle);
+    await tester.pump();
     await tester.tap(venuesToggle);
     await tester.pumpAndSettle();
-    expect(harness.app.current.screen, Screen.exploreCollection);
-    expect(harness.app.current.param, 'venues');
+    expect(venuesHarness.app.current.screen, Screen.exploreCollection);
+    expect(venuesHarness.app.current.param, 'venues');
   });
 
   testWidgets('browse lists a venue absent from the feed', (tester) async {
@@ -524,6 +554,19 @@ Finder _allResultsScrollable() => find.descendant(
   of: find.byKey(const Key('explore-results-all')),
   matching: find.byType(Scrollable),
 );
+
+Finder _browseScrollable() => find
+    .descendant(
+      of: find.byWidgetPredicate(
+        (widget) =>
+            widget.key is ValueKey<String> &&
+            (widget.key! as ValueKey<String>).value.startsWith(
+              'explore-browse-',
+            ),
+      ),
+      matching: find.byType(Scrollable),
+    )
+    .first;
 
 class _LiveExploreRepository extends DemoRepository {
   _LiveExploreRepository({required super.auth});

@@ -336,16 +336,23 @@ Future<void> _selectExploreTab(WidgetTester tester, String label) async {
 
 /// Result rows are tall enough that later sections start below the fold.
 Future<void> _scrollResultsTo(WidgetTester tester, Finder target) =>
-    tester.scrollUntilVisible(
-      target,
-      200,
-      scrollable: find
-          .descendant(
-            of: find.byType(ListView),
-            matching: find.byType(Scrollable),
-          )
-          .first,
-    );
+    tester.scrollUntilVisible(target, 200, scrollable: _resultsScrollable());
+
+Finder _resultsScrollable() {
+  bool isResultsList(Widget widget) {
+    final key = widget.key;
+    return key is ValueKey<String> &&
+        (key.value.startsWith('explore-browse-') ||
+            key.value.startsWith('explore-results-'));
+  }
+
+  return find
+      .descendant(
+        of: find.byWidgetPredicate(isResultsList),
+        matching: find.byType(Scrollable),
+      )
+      .first;
+}
 
 /// Venue events are keyed `fan-event-<gigId>`; read the id back off the row.
 String _gigIdOf(Finder row, WidgetTester tester) {

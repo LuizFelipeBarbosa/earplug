@@ -20,6 +20,8 @@ import '../widgets/explore_tiles.dart';
 import '../widgets/fan_event_card.dart';
 import '../widgets/location_eyebrow.dart';
 
+typedef _BrowseBlock = ({Widget widget, bool right});
+
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
 
@@ -196,25 +198,42 @@ class _ExploreScreenState extends State<ExploreScreen> {
   Widget _browse(BuildContext context, AppState app) {
     final scope = app.exploreResultType;
     final blocks = _browseBlocks(context, app);
-    final child = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: blocks,
-    );
+    final key = ValueKey('explore-browse-${scope.name}');
     if (!EpLayout.isDesktop(context)) {
       return ListView(
-        key: ValueKey('explore-browse-${scope.name}'),
+        key: key,
         padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
-        children: blocks,
+        children: [
+          for (final block in blocks) block.widget,
+          const SizedBox(height: tabBarClearance),
+        ],
       );
     }
+    Widget column(Iterable<_BrowseBlock> source) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [for (final block in source) block.widget],
+    );
     return SingleChildScrollView(
-      key: ValueKey('explore-browse-${scope.name}'),
+      key: key,
       padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
-      child: child,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: column(blocks.where((b) => !b.right))),
+              const SizedBox(width: 40),
+              Expanded(child: column(blocks.where((b) => b.right))),
+            ],
+          ),
+          const SizedBox(height: tabBarClearance),
+        ],
+      ),
     );
   }
 
-  List<Widget> _browseBlocks(BuildContext context, AppState app) {
+  List<_BrowseBlock> _browseBlocks(BuildContext context, AppState app) {
     final home = app.exploreHome;
     final scope = app.exploreResultType;
     final events =
@@ -231,15 +250,16 @@ class _ExploreScreenState extends State<ExploreScreen> {
       for (final id in app.exploreBandIds)
         if (!home.recommendedBandIds.contains(id) && app.band(id) != null) id,
     ].take(12).toList();
-    final out = <Widget>[];
+    final out = <_BrowseBlock>[];
     if (bands && recIds.isNotEmpty) {
-      out.add(
-        EpSectionHeader(
+      out.add((
+        widget: EpSectionHeader(
           label: home.personalised ? 'RECOMMENDED FOR YOU' : 'BANDS TO KNOW',
         ),
-      );
-      out.add(
-        EpCarousel(
+        right: false,
+      ));
+      out.add((
+        widget: EpCarousel(
           key: const Key('explore-recommended'),
           itemExtent: 88,
           height: 136,
@@ -255,11 +275,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
             );
           },
         ),
-      );
+        right: false,
+      ));
     }
     if (events || scope == ExploreResultType.all) {
-      out.add(
-        ExploreFriendsSection(
+      out.add((
+        widget: ExploreFriendsSection(
           entries: app.friendsGoing,
           signedIn: app.authed,
           hasFriends: app.hasFriends,
@@ -269,12 +290,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
           onSeeAll: () => app.go(Screen.exploreCollection, 'friends'),
           venueLine: (g) => app.venue(g.venueId).name,
         ),
-      );
+        right: true,
+      ));
     }
     if (events && home.collections.isNotEmpty) {
-      out.add(EpSectionHeader(label: 'COLLECTIONS'));
-      out.add(
-        EpCarousel(
+      out.add((widget: EpSectionHeader(label: 'COLLECTIONS'), right: false));
+      out.add((
+        widget: EpCarousel(
           key: const Key('explore-collections'),
           itemExtent: 160,
           height: 200,
@@ -289,7 +311,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
             );
           },
         ),
-      );
+        right: false,
+      ));
     }
     if (events) {
       for (final spec in [
@@ -298,18 +321,24 @@ class _ExploreScreenState extends State<ExploreScreen> {
       ]) {
         final gigs = spec.$1;
         if (gigs.isEmpty) continue;
-        out.add(
-          EpSectionHeader(
+        out.add((
+          widget: EpSectionHeader(
             key: Key('explore-events-${spec.$4}'),
             label: '${spec.$2} · ${gigs.length}',
             action: gigs.length > spec.$3 ? 'SEE ALL' : null,
             onAction: () => app.go(Screen.exploreCollection, spec.$4),
           ),
-        );
+          right: false,
+        ));
         out.addAll(
           gigs
               .take(spec.$3)
-              .map((g) => FanEventCard(gig: g, app: app, showDistance: true)),
+              .map(
+                (g) => (
+                  widget: FanEventCard(gig: g, app: app, showDistance: true),
+                  right: false,
+                ),
+              ),
         );
       }
     }
@@ -317,21 +346,26 @@ class _ExploreScreenState extends State<ExploreScreen> {
       final label = scope == ExploreResultType.all
           ? 'VENUES WITH SHOWS · ${home.venues.length}'
           : 'VENUES · ${home.venues.length}';
-      out.add(
-        _VenueHeader(
+      out.add((
+        widget: _VenueHeader(
           label: label,
           action: scope == ExploreResultType.all
               ? () => app.go(Screen.exploreCollection, 'venues')
               : null,
         ),
-      );
+        right: true,
+      ));
       if (home.venues.isEmpty) {
-        out.add(_buildVenueState(context, app));
-      } else if (scope == ExploreResultType.venues)
-        out.addAll(home.venues.map((e) => _VenueRow(venue: e.venue, app: app)));
-      else
-        out.add(
-          EpCarousel(
+        out.add((widget: _buildVenueState(context, app), right: true));
+      } else if (scope == ExploreResultType.venues) {
+        out.addAll(
+          home.venues.map(
+            (e) => (widget: _VenueRow(venue: e.venue, app: app), right: true),
+          ),
+        );
+      } else {
+        out.add((
+          widget: EpCarousel(
             key: const Key('explore-venues'),
             itemExtent: 168,
             height: 120,
@@ -347,66 +381,83 @@ class _ExploreScreenState extends State<ExploreScreen> {
               );
             },
           ),
-        );
+          right: true,
+        ));
+      }
     }
-    if (bands && directoryIds.isNotEmpty) {
-      out.add(EpSectionHeader(label: 'BANDS · ${app.exploreBandIds.length}'));
-      out.add(
-        EpCarousel(
-          key: const Key('explore-bands'),
-          itemExtent: 88,
-          height: 136,
-          wrapWhenScaled: true,
-          itemCount: directoryIds.length,
-          itemBuilder: (_, i) {
-            final id = directoryIds[i];
-            return ExploreBandTile(
-              key: Key('explore-band-card-$id'),
-              band: app.band(id)!,
-              onTap: () => app.openBand(id),
-            );
-          },
-        ),
-      );
-      out.add(
-        EpMenuRow(
+    if (bands) {
+      if (directoryIds.isNotEmpty) {
+        out.add((
+          widget: EpSectionHeader(
+            label: 'BANDS · ${app.exploreBandIds.length}',
+          ),
+          right: true,
+        ));
+        out.add((
+          widget: EpCarousel(
+            key: const Key('explore-bands'),
+            itemExtent: 88,
+            height: 136,
+            wrapWhenScaled: true,
+            itemCount: directoryIds.length,
+            itemBuilder: (_, i) {
+              final id = directoryIds[i];
+              return ExploreBandTile(
+                key: Key('explore-band-card-$id'),
+                band: app.band(id)!,
+                onTap: () => app.openBand(id),
+              );
+            },
+          ),
+          right: true,
+        ));
+      }
+      out.add((
+        widget: EpMenuRow(
           key: const Key('explore-toggle-bands'),
           icon: Icons.groups_outlined,
           label: 'All bands',
           trailingText: '${app.exploreBandIds.length}',
           onTap: () => app.go(Screen.exploreCollection, 'bands'),
         ),
-      );
-    }
-    if (events && home.upcoming.isNotEmpty) {
-      out.add(
-        EpSectionHeader(
-          key: const Key('explore-upcoming'),
-          label: 'UPCOMING · ${home.upcoming.length}',
-          action: home.upcoming.length > 8 ? 'SEE ALL' : null,
-          onAction: () => app.go(Screen.exploreCollection, 'upcoming'),
-        ),
-      );
-      out.addAll(
-        home.upcoming
-            .take(8)
-            .map((g) => FanEventCard(gig: g, app: app, showDistance: true)),
-      );
+        right: true,
+      ));
     }
     if (events &&
         home.tonight.isEmpty &&
         home.week.isEmpty &&
         home.upcoming.isEmpty) {
-      out.add(
-        Text(
+      out.add((
+        widget: Text(
           'No nearby events in the loaded feed.',
           style: Theme.of(
             context,
           ).textTheme.epBody.copyWith(color: context.epColors.muted),
         ),
+        right: false,
+      ));
+    }
+    if (events && home.upcoming.isNotEmpty) {
+      out.add((
+        widget: EpSectionHeader(
+          key: const Key('explore-upcoming'),
+          label: 'UPCOMING · ${home.upcoming.length}',
+          action: home.upcoming.length > 8 ? 'SEE ALL' : null,
+          onAction: () => app.go(Screen.exploreCollection, 'upcoming'),
+        ),
+        right: false,
+      ));
+      out.addAll(
+        home.upcoming
+            .take(8)
+            .map(
+              (g) => (
+                widget: FanEventCard(gig: g, app: app, showDistance: true),
+                right: false,
+              ),
+            ),
       );
     }
-    out.add(const SizedBox(height: tabBarClearance));
     return out;
   }
 

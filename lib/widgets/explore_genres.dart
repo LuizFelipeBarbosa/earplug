@@ -44,6 +44,8 @@ class ExploreGenreRail extends StatelessWidget {
           scrollbars: false,
         ),
         child: ListView.separated(
+          key: const Key('explore-genre-rail-list'),
+          primary: false,
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
           itemCount: chips.length + 1,
