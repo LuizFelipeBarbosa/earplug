@@ -129,9 +129,7 @@ class BandRecap {
     shows: [
       for (final show in asMapList(json['shows'])) RecapShow.fromJson(show),
     ],
-    newReturningSuppressed: asBool(
-      asMap(json['newReturning'])['suppressed'],
-    ),
+    newReturningSuppressed: asBool(asMap(json['newReturning'])['suppressed']),
     leadTime: RecapLeadTime.fromJson(asMap(json['leadTime'])),
     venues: RecapVenues.fromJson(asMap(json['venues'])),
     weekdays: RecapWeekdays.fromJson(asMap(json['weekdays'])),
@@ -277,10 +275,8 @@ class RecapBucket {
 
   const RecapBucket({required this.key, required this.count});
 
-  factory RecapBucket.fromJson(Map<String, dynamic> json) => RecapBucket(
-    key: asString(json['key']),
-    count: asInt(json['count']),
-  );
+  factory RecapBucket.fromJson(Map<String, dynamic> json) =>
+      RecapBucket(key: asString(json['key']), count: asInt(json['count']));
 }
 
 class RecapVenue {
@@ -353,9 +349,7 @@ class RecapVenues {
   const RecapVenues({required this.rows, required this.suppressed});
 
   factory RecapVenues.fromJson(Map<String, dynamic> json) => RecapVenues(
-    rows: [
-      for (final row in asMapList(json['rows'])) RecapVenue.fromJson(row),
-    ],
+    rows: [for (final row in asMapList(json['rows'])) RecapVenue.fromJson(row)],
     suppressed: asBool(json['suppressed']),
   );
 }
@@ -679,6 +673,14 @@ abstract class EarplugRepository {
 
   Future<void> toggleRsvp(String gigId, {bool? on});
   Future<void> toggleFollow(String bandId);
+  Future<List<SocialUserCard>> searchUsers(String q);
+  Future<void> toggleFollowUser(String userId, {bool? on});
+  Future<SocialGraph> mySocial();
+  Future<FriendsGoing> friendsGoing({
+    required DateTime from,
+    required DateTime to,
+  });
+  Future<SocialUserDetail?> userCard(String userId);
   Future<void> toggleSave(String gigId);
   Future<RsvpTicket> ticketForGig(String gigId);
   Future<TicketReservation> reserveTickets({
@@ -736,6 +738,7 @@ abstract class EarplugRepository {
     required List<String> genres,
     required bool locationPersonalizationEnabled,
     required bool followedBandUpdatesEnabled,
+    bool? shareRsvpsWithFriends,
   });
   Future<String> generateAvatarUploadUrl();
   Future<void> setAvatar(String storageId);

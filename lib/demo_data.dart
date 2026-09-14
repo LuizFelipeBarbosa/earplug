@@ -3,10 +3,28 @@ import 'package:latlong2/latlong.dart';
 
 import 'models.dart';
 
+class DemoPerson {
+  final String id;
+  final String name;
+  final String? avatarUrl;
+
+  const DemoPerson({required this.id, required this.name, this.avatarUrl});
+}
+
 /// Demo dataset lifted verbatim from the design spec. This is the seam where
 /// Convex queries will plug in later — screens only ever see these shapes.
 abstract final class DemoData {
   static const demoUserId = 'demo-user';
+
+  static const people = <String, DemoPerson>{
+    'u-maya': DemoPerson(id: 'u-maya', name: 'Maya Okafor'),
+    'u-dev': DemoPerson(id: 'u-dev', name: 'Dev Patel'),
+    'u-lina': DemoPerson(id: 'u-lina', name: 'Lina Costa'),
+    'u-theo': DemoPerson(id: 'u-theo', name: 'Theo Brandt'),
+  };
+
+  static const demoFollowing = {'u-maya', 'u-dev'};
+  static const demoFollowers = {'u-maya', 'u-lina', 'u-theo'};
 
   static const venues = <String, Venue>{
     'v1': Venue(
@@ -193,6 +211,13 @@ abstract final class DemoData {
     final now = DateTime.now();
     return DateTime(now.year, now.month, now.day);
   }();
+
+  static final _demoComingSaturdayAt21 = DateTime(
+    _demoToday.year,
+    _demoToday.month,
+    _demoToday.day + ((DateTime.saturday - _demoToday.weekday) % 7),
+    21,
+  );
 
   static DateTime _demoStartsAt(int daysFromToday, int hour) => DateTime(
     _demoToday.year,
@@ -756,7 +781,44 @@ abstract final class DemoData {
       cap: '40',
       ownerKind: GigOwnerKind.organization,
     ),
+    Gig(
+      id: 'g9',
+      title: 'Saturday Static',
+      venueId: 'v2',
+      price: 8,
+      startsAt: _demoComingSaturdayAt21,
+      dateShort: Gig.dateShortFor(
+        _demoComingSaturdayAt21.millisecondsSinceEpoch,
+      ),
+      dateLine: Gig.dateLineFor(
+        _demoComingSaturdayAt21.millisecondsSinceEpoch,
+        '8PM / 9PM',
+        now: _demoToday,
+      ),
+      time: '8PM / 9PM',
+      when: GigWhen.week,
+      flyKey: 'black',
+      lineup: ['b2', 'b4'],
+      going: 24,
+      genres: ['post-punk', 'noise'],
+      desc: 'A Saturday night collision of sharp guitars and blown speakers.',
+      tix: Ticketing.rsvp,
+    ),
   ];
+
+  static const friendRsvps = <String, List<String>>{
+    'u-maya': ['g9', 'g2'],
+    'u-dev': ['g4'],
+    'u-lina': ['g5'],
+    'u-theo': ['g8'],
+  };
+
+  static const peopleBandFollows = <String, Set<String>>{
+    'u-maya': {'b2', 'b3'},
+    'u-dev': {'b1'},
+    'u-lina': {'b4'},
+    'u-theo': {'b6'},
+  };
 
   static const bands = <String, Band>{
     'b1': Band(

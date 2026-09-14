@@ -238,7 +238,9 @@ class ConvexRepository implements EarplugRepository {
   Stream<List<Venue>> watchVenues() => _convexService.subscribe(
     'venues:list',
     const {},
-    (result) => [for (final json in asCastMapList(result)) Venue.fromJson(json)],
+    (result) => [
+      for (final json in asCastMapList(result)) Venue.fromJson(json),
+    ],
   );
 
   @override
@@ -426,10 +428,7 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
-  Future<DisputesPage> openDisputes({
-    String? cursor,
-    int numItems = 25,
-  }) async {
+  Future<DisputesPage> openDisputes({String? cursor, int numItems = 25}) async {
     return _queryOne('disputes:listOpen', DisputesPage.fromJson, {
       'paginationOpts': {'numItems': numItems, 'cursor': cursor},
     });
@@ -1044,6 +1043,38 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<List<SocialUserCard>> searchUsers(String q) =>
+      _queryList('social:searchUsers', SocialUserCard.fromJson, {'q': q});
+
+  @override
+  Future<void> toggleFollowUser(String userId, {bool? on}) async {
+    await _convexService.mutation('social:toggleFollowUser', {
+      'userId': userId,
+      'on': ?on,
+    });
+  }
+
+  @override
+  Future<SocialGraph> mySocial() =>
+      _queryOne('social:mySocial', SocialGraph.fromJson);
+
+  @override
+  Future<FriendsGoing> friendsGoing({
+    required DateTime from,
+    required DateTime to,
+  }) => _queryOne('social:friendsGoing', FriendsGoing.fromJson, {
+    'from': from.millisecondsSinceEpoch,
+    'to': to.millisecondsSinceEpoch,
+  });
+
+  @override
+  Future<SocialUserDetail?> userCard(String userId) => _queryOptional(
+    'social:userCard',
+    SocialUserDetail.fromJson,
+    {'userId': userId},
+  );
+
+  @override
   Future<void> toggleSave(String gigId) async {
     await _convexService.mutation('interactions:toggleSave', {'gigId': gigId});
   }
@@ -1087,6 +1118,7 @@ class ConvexRepository implements EarplugRepository {
     required List<String> genres,
     required bool locationPersonalizationEnabled,
     required bool followedBandUpdatesEnabled,
+    bool? shareRsvpsWithFriends,
   }) async {
     await _convexService.mutation('users:updateProfile', {
       'name': name,
@@ -1095,6 +1127,7 @@ class ConvexRepository implements EarplugRepository {
       'genres': genres,
       'locationPersonalizationEnabled': locationPersonalizationEnabled,
       'followedBandUpdatesEnabled': followedBandUpdatesEnabled,
+      'shareRsvpsWithFriends': ?shareRsvpsWithFriends,
     });
   }
 
@@ -1833,7 +1866,9 @@ class ConvexRepository implements EarplugRepository {
     final decoded = await _convexService.query('tickets:orderStatus', {
       'sessionId': sessionId,
     });
-    return decoded == null ? null : TicketOrderState.fromJson(asCastMap(decoded));
+    return decoded == null
+        ? null
+        : TicketOrderState.fromJson(asCastMap(decoded));
   }
 
   @override
@@ -2004,7 +2039,9 @@ class ConvexRepository implements EarplugRepository {
       'financeActions:refreshBalance',
       {'organizationId': organizationId},
     );
-    return decoded == null ? null : FinanceSnapshot.fromJson(asCastMap(decoded));
+    return decoded == null
+        ? null
+        : FinanceSnapshot.fromJson(asCastMap(decoded));
   }
 
   @override
@@ -2294,7 +2331,8 @@ BandPage parseBandPage(dynamic decoded) {
   final cursor = json['continueCursor'];
   return BandPage(
     items: [
-      for (final bandJson in asCastMapList(json['page'])) Band.fromJson(bandJson),
+      for (final bandJson in asCastMapList(json['page']))
+        Band.fromJson(bandJson),
     ],
     continueCursor: cursor is String ? cursor : null,
     isDone: json['isDone'] == true,
@@ -2306,7 +2344,9 @@ VenueDetail? parseVenueDetail(dynamic decoded) {
   if (json.isEmpty) return null;
   return VenueDetail(
     venue: Venue.fromJson(asCastMap(json['venue'])),
-    gigs: [for (final gigJson in asCastMapList(json['gigs'])) Gig.fromJson(gigJson)],
+    gigs: [
+      for (final gigJson in asCastMapList(json['gigs'])) Gig.fromJson(gigJson),
+    ],
     bands: {
       for (final bandJson in asCastMapList(json['bands']))
         bandJson['_id'] as String: Band.fromJson(bandJson),
@@ -2353,7 +2393,9 @@ Interactions parseInteractions(dynamic decoded) {
     rsvpGigIds: Set<String>.from(json['rsvpGigIds'] as List? ?? const []),
     followBandIds: Set<String>.from(json['followBandIds'] as List? ?? const []),
     savedGigIds: Set<String>.from(json['savedGigIds'] as List? ?? const []),
-    gigs: [for (final gigJson in asCastMapList(json['gigs'])) Gig.fromJson(gigJson)],
+    gigs: [
+      for (final gigJson in asCastMapList(json['gigs'])) Gig.fromJson(gigJson),
+    ],
     attendedCount: (json['attendedCount'] as num?)?.toInt() ?? 0,
   );
 }

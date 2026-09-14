@@ -275,6 +275,8 @@ class DemoRepository implements EarplugRepository {
   final Map<String, GigProject> _gigProjects = {};
   final Set<String> _rsvpGigIds = {};
   final Set<String> _followBandIds = {};
+  final Set<String> _followingUserIds = {};
+  final Set<String> _followerUserIds = {};
   final Set<String> _savedGigIds = {};
   final Map<String, RsvpTicket> _ticketsByGigId = {};
   final Map<String, _DemoTicketOrder> _ticketOrders = {};
@@ -302,6 +304,7 @@ class DemoRepository implements EarplugRepository {
   String? _bio;
   FanCity? _homeLocation;
   bool _locationPersonalizationEnabled = false;
+  bool _shareRsvps = true;
   bool _followedBandUpdatesEnabled = true;
   bool _profileTutorialCompleted = false;
   int _attendedCount = 0;
@@ -352,6 +355,7 @@ class DemoRepository implements EarplugRepository {
       bio: _bio,
       homeLocation: _homeLocation,
       locationPersonalizationEnabled: _locationPersonalizationEnabled,
+      shareRsvpsWithFriends: _shareRsvps,
       followedBandUpdatesEnabled: _followedBandUpdatesEnabled,
       profileTutorialCompleted: _profileTutorialCompleted,
       fanOnboarding: _fanOnboarding,
@@ -601,6 +605,7 @@ class DemoRepository implements EarplugRepository {
           startsAt: now.subtract(Duration(days: 30 + index * 14)),
           venueName: '',
           bandNames: const [],
+          genres: const [],
           flyKey: 'paper',
           flyerUrl: null,
           status: FanHistoryStatus.rsvped,
@@ -1173,9 +1178,7 @@ class DemoRepository implements EarplugRepository {
     if (dispute.status != DisputeStatus.open) {
       throw StateError('Only open disputes can be put under review');
     }
-    _disputes[disputeId] = dispute.copyWith(
-      status: DisputeStatus.underReview,
-    );
+    _disputes[disputeId] = dispute.copyWith(status: DisputeStatus.underReview);
   }
 
   @override
@@ -2445,6 +2448,135 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
+  Future<List<SocialUserCard>> searchUsers(String q) async {
+    if (!_auth.signedIn || q.trim().isEmpty || q.contains('@')) return const [];
+    final query = q.trim().toLowerCase();
+    return [
+      for (final person in DemoData.people.values)
+        if (person.id != DemoData.demoUserId &&
+            person.name.toLowerCase().contains(query))
+          SocialUserCard(
+            userId: person.id,
+            name: person.name,
+            avatarUrl: person.avatarUrl,
+            isFollowing: _followingUserIds.contains(person.id),
+            followsMe: _followerUserIds.contains(person.id),
+            isFriend:
+                _followingUserIds.contains(person.id) &&
+                _followerUserIds.contains(person.id),
+          ),
+    ];
+  }
+
+  @override
+  Future<void> toggleFollowUser(String userId, {bool? on}) async {
+    if (userId == DemoData.demoUserId) {
+      throw Exception("You can't follow yourself");
+    }
+    final shouldBeOn = on ?? !_followingUserIds.contains(userId);
+    if (shouldBeOn) {
+      _followingUserIds.add(userId);
+    } else {
+      _followingUserIds.remove(userId);
+    }
+  }
+
+  @override
+  Future<SocialGraph> mySocial() async {
+    if (!_auth.signedIn) return SocialGraph.empty;
+    return SocialGraph(
+      following: Set.unmodifiable(_followingUserIds),
+      followers: Set.unmodifiable(_followerUserIds),
+      friends: _followingUserIds.intersection(_followerUserIds),
+      followingCount: _followingUserIds.length,
+      followerCount: _followerUserIds.length,
+      truncated: false,
+      shareRsvpsWithFriends: _shareRsvps,
+    );
+  }
+
+  @override
+  Future<FriendsGoing> friendsGoing({
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    if (!_auth.signedIn || to.isBefore(from) || to.isAtSameMomentAs(from)) {
+      return FriendsGoing.empty;
+    }
+    final mutualFriends = _followingUserIds.intersection(_followerUserIds);
+    final entries =
+        <String, ({DateTime startsAt, List<SocialUserCard> friends})>{};
+    for (final friendId in mutualFriends) {
+      final person = DemoData.people[friendId];
+      if (person == null) continue;
+      final friendCard = SocialUserCard(
+        userId: friendId,
+        name: person.name,
+        avatarUrl: person.avatarUrl,
+        isFollowing: _followingUserIds.contains(friendId),
+        followsMe: _followerUserIds.contains(friendId),
+        isFriend: true,
+      );
+      for (final gigId in DemoData.friendRsvps[friendId] ?? const <String>[]) {
+        final gig = [
+          ...DemoData.gigs,
+          ..._publishedGigs,
+        ].where((candidate) => candidate.id == gigId).firstOrNull;
+        if (gig == null ||
+            gig.startsAt.isBefore(from) ||
+            !gig.startsAt.isBefore(to)) {
+          continue;
+        }
+        final entry = entries[gig.id];
+        if (entry == null) {
+          entries[gig.id] = (startsAt: gig.startsAt, friends: [friendCard]);
+        } else {
+          entry.friends.add(friendCard);
+        }
+      }
+    }
+    final sorted = entries.entries.toList()
+      ..sort((a, b) => a.value.startsAt.compareTo(b.value.startsAt));
+    return FriendsGoing(
+      entries: [
+        for (final entry in sorted)
+          FriendsGoingEntry(
+            gigId: entry.key,
+            startsAt: entry.value.startsAt,
+            friends: entry.value.friends,
+          ),
+      ],
+      truncated: false,
+    );
+  }
+
+  @override
+  Future<SocialUserDetail?> userCard(String userId) async {
+    if (!_auth.signedIn) return null;
+    final person = DemoData.people[userId];
+    if (person == null) return null;
+    final followedBands =
+        DemoData.peopleBandFollows[userId] ?? const <String>{};
+    final mutualBandIds = _followBandIds.intersection(followedBands);
+    return SocialUserDetail(
+      userId: person.id,
+      name: person.name,
+      avatarUrl: person.avatarUrl,
+      isFollowing: _followingUserIds.contains(userId),
+      followsMe: _followerUserIds.contains(userId),
+      isFriend:
+          _followingUserIds.contains(userId) &&
+          _followerUserIds.contains(userId),
+      followedBandCount: followedBands.length,
+      mutualBands: [
+        for (final bandId in mutualBandIds)
+          if (DemoData.bands[bandId] case final band?)
+            (bandId: bandId, name: band.name),
+      ],
+    );
+  }
+
+  @override
   Future<void> toggleSave(String gigId) async {
     _toggle(_savedGigIds, gigId);
     _emitInteractionsIfSignedIn();
@@ -3063,6 +3195,7 @@ class DemoRepository implements EarplugRepository {
     required List<String> genres,
     required bool locationPersonalizationEnabled,
     required bool followedBandUpdatesEnabled,
+    bool? shareRsvpsWithFriends,
   }) async {
     _userName = name;
     _bio = bio;
@@ -3072,6 +3205,9 @@ class DemoRepository implements EarplugRepository {
       ..addAll(genres);
     _locationPersonalizationEnabled = locationPersonalizationEnabled;
     _followedBandUpdatesEnabled = followedBandUpdatesEnabled;
+    if (shareRsvpsWithFriends != null) {
+      _shareRsvps = shareRsvpsWithFriends;
+    }
   }
 
   @override
@@ -5281,9 +5417,7 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<void> unpublishGig(String projectId) async {
     final project = _requireGigProject(projectId);
-    _gigProjects[projectId] = project.copyWith(
-      status: GigProjectStatus.draft,
-    );
+    _gigProjects[projectId] = project.copyWith(status: GigProjectStatus.draft);
     _publishedGigs.removeWhere((gig) => gig.id == project.publicGigId);
     _emitFeed();
   }
@@ -6228,6 +6362,8 @@ class DemoRepository implements EarplugRepository {
     _interactionsSeeded = true;
     _rsvpGigIds.add('g5');
     _followBandIds.addAll({'b2', 'b4'});
+    _followingUserIds.addAll(DemoData.demoFollowing);
+    _followerUserIds.addAll(DemoData.demoFollowers);
     _savedGigIds.add('g6');
     _attendedCount = 12;
   }

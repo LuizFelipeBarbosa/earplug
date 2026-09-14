@@ -833,6 +833,7 @@ class StubRepository extends DemoRepository {
     required List<String> genres,
     required bool locationPersonalizationEnabled,
     required bool followedBandUpdatesEnabled,
+    bool? shareRsvpsWithFriends,
   }) => intercept(
     'updateFanProfile',
     () => super.updateFanProfile(
@@ -842,6 +843,7 @@ class StubRepository extends DemoRepository {
       genres: genres,
       locationPersonalizationEnabled: locationPersonalizationEnabled,
       followedBandUpdatesEnabled: followedBandUpdatesEnabled,
+      shareRsvpsWithFriends: shareRsvpsWithFriends,
     ),
   );
   @override
