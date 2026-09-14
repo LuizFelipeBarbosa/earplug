@@ -39,9 +39,9 @@ void main() {
     await pumpApp(tester, home: scaledScreen(const ExploreScreen()));
 
     expect(find.text('EXPLORE'), findsOne);
-    final filters = find.byKey(const Key('explore-filter-button'));
-    expect(filters, findsOne);
-    expect(tester.getSize(filters), const Size(44, 44));
+    final search = find.byKey(const Key('explore-search-field'));
+    expect(search, findsOne);
+    expect(tester.getSize(search).width, greaterThan(0));
     await tester.scrollUntilVisible(
       find.byKey(const Key('explore-genre-punk')),
       200,
@@ -51,9 +51,21 @@ void main() {
       ),
     );
     expect(find.byKey(const Key('explore-genre-punk')), findsOne);
-    await tester.tap(filters);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('clear-discovery-filters')), findsOne);
+    final forYou = find.byWidgetPredicate(
+      (widget) =>
+          widget.key is ValueKey<String> &&
+          (widget.key! as ValueKey<String>).value.startsWith(
+            'explore-for-you-',
+          ),
+    );
+    await tester.scrollUntilVisible(
+      forYou.first,
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final rowSize = tester.getSize(forYou.first);
+    expect(rowSize.width, greaterThanOrEqualTo(44));
+    expect(rowSize.height, greaterThanOrEqualTo(44));
     expect(tester.takeException(), isNull);
   });
 

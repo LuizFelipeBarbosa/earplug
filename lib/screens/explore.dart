@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -10,17 +8,12 @@ import '../models.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
-import '../widgets/discovery_quick_filters.dart';
 import '../widgets/ep_carousel.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/explore_friends.dart';
 import '../widgets/explore_genres.dart';
 import '../widgets/explore_tiles.dart';
-import '../widgets/fan_event_card.dart';
-import '../widgets/location_eyebrow.dart';
-
-typedef _BrowseBlock = ({Widget widget, bool right});
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -32,8 +25,6 @@ class ExploreScreen extends StatefulWidget {
 class _ExploreScreenState extends State<ExploreScreen> {
   late final TextEditingController _controller;
   late String _lastSubmittedQuery;
-  Timer? _scopeFeedbackTimer;
-  bool _showScopeFeedback = false;
 
   @override
   void initState() {
@@ -46,7 +37,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   @override
   void dispose() {
-    _scopeFeedbackTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -67,30 +57,10 @@ class _ExploreScreenState extends State<ExploreScreen> {
         ? const ValueKey('explore-results-search')
         : app.exploreGenrePage != null
         ? ValueKey('explore-genre-${app.exploreGenre}')
-        : ValueKey('explore-browse-${app.exploreResultType.name}');
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: CustomScrollView(
-            key: modeKey,
-            slivers: _slivers(context, app, searching, q),
-          ),
-        ),
-        if (_showScopeFeedback)
-          Positioned(
-            top: 0,
-            left: EpLayout.gutter,
-            right: EpLayout.gutter,
-            child: Semantics(
-              liveRegion: true,
-              label: 'Updating search results',
-              child: const LinearProgressIndicator(
-                key: Key('explore-scope-progress'),
-                minHeight: 2,
-              ),
-            ),
-          ),
-      ],
+        : const ValueKey('explore-browse-all');
+    return CustomScrollView(
+      key: modeKey,
+      slivers: _slivers(context, app, searching, q),
     );
   }
 
@@ -101,48 +71,23 @@ class _ExploreScreenState extends State<ExploreScreen> {
     String q,
   ) {
     final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.6);
-    final baseExtent = (44 + 8 + 52 + 8 + 40 + 12 + 1) * scale;
+    final baseExtent = (40 + 12 + 1) * scale;
     final maxHeader = MediaQuery.sizeOf(context).height * .45;
-    // At extreme text scales, keep tabs and filters pinned and move the rail into content.
     final pinRail = baseExtent <= maxHeader;
-    final extent = pinRail ? baseExtent : (44 + 8 + 52 + 12 + 1) * scale;
-    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+    final extent = pinRail ? baseExtent : 1 * scale;
     final controls = DecoratedBox(
       decoration: BoxDecoration(color: context.epColors.background),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
-            child: SizedBox(
-              key: const Key('explore-result-tabs'),
-              width: double.infinity,
-              child: EpSegmentTabs(
-                labels: const ['All', 'Events', 'Bands', 'Venues'],
-                selected: ExploreResultType.values.indexOf(
-                  app.exploreResultType,
-                ),
-                onSelect: (i) => _selectScope(app, ExploreResultType.values[i]),
-                scrollable: largeText,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
-            child: DiscoveryQuickFilters(
-              filterButtonKey: const Key('explore-filter-button'),
-              badgeKey: const Key('explore-filters-count'),
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (pinRail)
+          if (pinRail) ...[
             ExploreGenreRail(
               chips: app.exploreGenres,
               selected: app.exploreGenre,
               onSelect: app.setExploreGenre,
             ),
-          if (pinRail) const SizedBox(height: 12),
+            const SizedBox(height: 12),
+          ],
           const EpHairline(),
         ],
       ),
@@ -160,17 +105,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const EpDisplay('Explore', size: 44),
-              const SizedBox(height: 6),
-              const DiscoveryLocationEyebrow(
-                controlKey: ValueKey('explore-location-control'),
-                failureKey: ValueKey('explore-location-failure'),
-              ),
               const SizedBox(height: 16),
               EpUnderlineField(
                 fieldKey: const Key('explore-search-field'),
                 controller: _controller,
                 icon: Icons.search,
-                hint: 'Bands, venues, gigs…',
+                hint: 'Events, venues, bands, places…',
                 textInputAction: TextInputAction.search,
                 onSubmitted: (_) => _submitSearch(app),
                 trailing: ValueListenableBuilder<TextEditingValue>(
@@ -218,12 +158,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
       );
     }
     if (searching) {
-      final rows = _SearchResults(app: app, q: q).rows;
+      final results = _SearchResults(app: app, q: q);
+      final rows = results.rows;
       slivers.add(
         SliverList.builder(
           itemCount: rows.length,
-          itemBuilder: (context, i) =>
-              _SearchResults(app: app, q: q).buildRow(context, rows[i]),
+          itemBuilder: (context, i) => results.buildRow(context, rows[i]),
         ),
       );
     } else {
@@ -250,39 +190,159 @@ class _ExploreScreenState extends State<ExploreScreen> {
           ),
         );
       } else {
-        final blocks = _browseBlocks(context, app);
-        final left = blocks.where((b) => !b.right).toList();
-        final right = blocks.where((b) => b.right).toList();
-        if (!EpLayout.isDesktop(context) || left.isEmpty || right.isEmpty) {
-          final single = left.isEmpty
-              ? right
-              : right.isEmpty
-              ? left
-              : blocks;
-          slivers.add(
-            SliverList.builder(
-              itemCount: single.length,
-              itemBuilder: (_, i) => single[i].widget,
-            ),
-          );
-        } else {
+        final home = app.exploreHome;
+        if (home.featured.isNotEmpty) {
           slivers.add(
             SliverToBoxAdapter(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(children: [for (final b in left) b.widget]),
-                  ),
-                  const SizedBox(width: 40),
-                  Expanded(
-                    child: Column(children: [for (final b in right) b.widget]),
-                  ),
-                ],
+              child: _gutter(EpSectionHeader(label: 'FEATURED')),
+            ),
+          );
+          slivers.add(
+            SliverToBoxAdapter(
+              child: EpCarousel(
+                key: const Key('explore-featured'),
+                itemExtent: 300,
+                height: 380,
+                wrapWhenScaled: true,
+                itemCount: home.featured.length,
+                itemBuilder: (_, i) {
+                  final gig = home.featured[i];
+                  return ExploreFeaturedCard(
+                    key: Key('explore-featured-${gig.id}'),
+                    gig: gig,
+                    venueName: app.venue(gig.venueId).name,
+                    onTap: () => app.openGig(gig.id),
+                  );
+                },
               ),
             ),
           );
         }
+        slivers.add(
+          SliverToBoxAdapter(
+            child: _gutter(
+              EpSectionHeader(label: 'JUST FOR YOU · ${home.forYou.length}'),
+            ),
+          ),
+        );
+        if (home.forYou.isNotEmpty) {
+          slivers.add(
+            SliverList.builder(
+              itemCount: home.forYou.length,
+              itemBuilder: (_, i) {
+                final gig = home.forYou[i];
+                return _gutter(
+                  ExploreEventRow(
+                    key: Key('explore-for-you-${gig.id}'),
+                    gig: gig,
+                    venueName: app.venue(gig.venueId).name,
+                    onTap: () => app.openGig(gig.id),
+                  ),
+                );
+              },
+            ),
+          );
+        } else if (home.featured.isEmpty) {
+          slivers.add(
+            SliverToBoxAdapter(
+              child: _gutter(
+                Text(
+                  'No upcoming events yet.',
+                  key: const Key('explore-empty'),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.epBody.copyWith(color: context.epColors.muted),
+                ),
+              ),
+            ),
+          );
+        }
+        slivers.add(
+          SliverToBoxAdapter(
+            child: _gutter(
+              ExploreFriendsSection(
+                entries: app.friendsGoing,
+                signedIn: app.authed,
+                hasFriends: app.hasFriends,
+                onFindPeople: () => app.go(Screen.people),
+                onSignIn: () =>
+                    app.needAuth(const PendingAuth(PendingKind.myGigs)),
+                onOpenGig: app.openGig,
+                onSeeAll: () => app.go(Screen.exploreCollection, 'friends'),
+                venueLine: (g) => app.venue(g.venueId).name,
+                previewCount: 3,
+              ),
+            ),
+          ),
+        );
+        slivers.add(
+          SliverToBoxAdapter(
+            child: _gutter(EpSectionHeader(label: 'EXPLORE VENUES & BANDS')),
+          ),
+        );
+        if (home.discover.isNotEmpty) {
+          slivers.add(
+            SliverToBoxAdapter(
+              child: EpCarousel(
+                key: const Key('explore-discover'),
+                itemExtent: 168,
+                height: 132,
+                wrapWhenScaled: true,
+                itemCount: home.discover.length,
+                itemBuilder: (_, i) {
+                  final entry = home.discover[i];
+                  if (entry.kind == DiscoverKind.venue) {
+                    final venue = entry.venue!;
+                    return ExploreVenueTile(
+                      key: Key('explore-venue-tile-${venue.venue.id}'),
+                      entry: venue,
+                      distance: app.distanceOf(venue.venue),
+                      onTap: () => app.openVenue(venue.venue.id),
+                    );
+                  }
+                  final band = entry.bandId == null
+                      ? null
+                      : app.band(entry.bandId!);
+                  if (band == null) return const SizedBox.shrink();
+                  return SizedBox(
+                    width: 168,
+                    child: Center(
+                      child: ExploreBandTile(
+                        key: Key('explore-band-card-${entry.bandId}'),
+                        band: band,
+                        onTap: () => app.openBand(entry.bandId!),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+        }
+        slivers.add(
+          SliverToBoxAdapter(
+            child: _gutter(
+              EpMenuRow(
+                key: const Key('explore-toggle-bands'),
+                icon: Icons.groups_outlined,
+                label: 'All bands',
+                onTap: () => app.go(Screen.exploreCollection, 'bands'),
+              ),
+            ),
+          ),
+        );
+        slivers.add(
+          SliverToBoxAdapter(
+            child: _gutter(
+              EpMenuRow(
+                key: const Key('explore-toggle-venues'),
+                icon: Icons.place_outlined,
+                label: 'All venues',
+                onTap: () => app.go(Screen.exploreCollection, 'venues'),
+              ),
+            ),
+          ),
+        );
       }
     }
     slivers.add(
@@ -295,298 +355,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
     padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
     child: child,
   );
-
-  List<_BrowseBlock> _browseBlocks(BuildContext context, AppState app) {
-    final home = app.exploreHome;
-    final scope = app.exploreResultType;
-    final events =
-        scope == ExploreResultType.all || scope == ExploreResultType.events;
-    final bands =
-        scope == ExploreResultType.all || scope == ExploreResultType.bands;
-    final venues =
-        scope == ExploreResultType.all || scope == ExploreResultType.venues;
-    final recIds = [
-      for (final id in home.recommendedBandIds)
-        if (app.band(id) != null) id,
-    ];
-    final directoryIds = [
-      for (final id in app.exploreBandIds)
-        if (!home.recommendedBandIds.contains(id) && app.band(id) != null) id,
-    ].take(12).toList();
-    final out = <_BrowseBlock>[];
-    final friendsBlock = _gutter(
-      ExploreFriendsSection(
-        entries: app.friendsGoing,
-        signedIn: app.authed,
-        hasFriends: app.hasFriends,
-        onFindPeople: () => app.go(Screen.people),
-        onSignIn: () => app.needAuth(const PendingAuth(PendingKind.myGigs)),
-        onOpenGig: app.openGig,
-        onSeeAll: () => app.go(Screen.exploreCollection, 'friends'),
-        venueLine: (g) => app.venue(g.venueId).name,
-      ),
-    );
-    final friendsEarly = app.hasFriends && app.friendsGoing.isNotEmpty;
-    if (bands && recIds.isNotEmpty) {
-      out.add((
-        widget: _gutter(
-          EpSectionHeader(
-            label: home.personalised ? 'RECOMMENDED FOR YOU' : 'BANDS TO KNOW',
-          ),
-        ),
-        right: false,
-      ));
-      out.add((
-        widget: EpCarousel(
-          key: const Key('explore-recommended'),
-          itemExtent: 88,
-          height: 136,
-          wrapWhenScaled: true,
-          semanticsLabel: 'Recommended bands',
-          itemCount: recIds.length,
-          itemBuilder: (_, i) {
-            final id = recIds[i];
-            return ExploreBandTile(
-              key: Key('explore-recommended-$id'),
-              band: app.band(id)!,
-              onTap: () => app.openBand(id),
-            );
-          },
-        ),
-        right: false,
-      ));
-    }
-    if (events && friendsEarly) {
-      out.add((widget: friendsBlock, right: true));
-    }
-    if (events && home.collections.isNotEmpty) {
-      out.add((
-        widget: _gutter(EpSectionHeader(label: 'COLLECTIONS')),
-        right: false,
-      ));
-      out.add((
-        widget: EpCarousel(
-          key: const Key('explore-collections'),
-          itemExtent: 160,
-          height: 200,
-          wrapWhenScaled: true,
-          itemCount: home.collections.length,
-          itemBuilder: (_, i) {
-            final c = home.collections[i];
-            return ExploreCollectionCard(
-              key: Key('explore-collection-${c.key}'),
-              collection: c,
-              onTap: () => app.go(Screen.exploreCollection, c.key),
-            );
-          },
-        ),
-        right: false,
-      ));
-    }
-    if (events) {
-      for (final spec in [
-        (home.tonight, 'TONIGHT', 3, 'tonight'),
-        (home.week, 'THIS WEEK', 4, 'week'),
-      ]) {
-        final gigs = spec.$1;
-        if (gigs.isEmpty) continue;
-        out.add((
-          widget: _gutter(
-            EpSectionHeader(
-              key: Key('explore-events-${spec.$4}'),
-              label: '${spec.$2} · ${gigs.length}',
-              action: gigs.length > spec.$3 ? 'SEE ALL' : null,
-              onAction: () => app.go(Screen.exploreCollection, spec.$4),
-            ),
-          ),
-          right: false,
-        ));
-        out.addAll(
-          gigs
-              .take(spec.$3)
-              .map(
-                (g) => (
-                  widget: _gutter(
-                    FanEventCard(gig: g, app: app, showDistance: true),
-                  ),
-                  right: false,
-                ),
-              ),
-        );
-      }
-    }
-    if (events &&
-        home.tonight.isEmpty &&
-        home.week.isEmpty &&
-        home.upcoming.isEmpty) {
-      out.add((
-        widget: _gutter(
-          Text(
-            'No nearby events in the loaded feed.',
-            style: Theme.of(
-              context,
-            ).textTheme.epBody.copyWith(color: context.epColors.muted),
-          ),
-        ),
-        right: false,
-      ));
-    }
-    if (venues) {
-      final label = scope == ExploreResultType.all
-          ? 'VENUES WITH SHOWS · ${home.venues.length}'
-          : 'VENUES · ${home.venues.length}';
-      out.add((
-        widget: _gutter(
-          _VenueHeader(
-            label: label,
-            action: scope == ExploreResultType.all
-                ? () => app.go(Screen.exploreCollection, 'venues')
-                : null,
-          ),
-        ),
-        right: true,
-      ));
-      if (home.venues.isEmpty) {
-        out.add((widget: _gutter(_buildVenueState(context, app)), right: true));
-      } else if (scope == ExploreResultType.venues) {
-        out.addAll(
-          home.venues.map(
-            (e) => (
-              widget: _gutter(_VenueRow(venue: e.venue, app: app)),
-              right: true,
-            ),
-          ),
-        );
-      } else {
-        out.add((
-          widget: EpCarousel(
-            key: const Key('explore-venues'),
-            itemExtent: 168,
-            height: 120,
-            wrapWhenScaled: true,
-            itemCount: home.venues.length,
-            itemBuilder: (_, i) {
-              final e = home.venues[i];
-              return ExploreVenueTile(
-                key: Key('explore-venue-tile-${e.venue.id}'),
-                entry: e,
-                distance: app.distanceOf(e.venue),
-                onTap: () => app.openVenue(e.venue.id),
-              );
-            },
-          ),
-          right: true,
-        ));
-      }
-    }
-    if (events && !friendsEarly) {
-      out.add((widget: friendsBlock, right: true));
-    }
-    if (bands) {
-      if (directoryIds.isNotEmpty) {
-        out.add((
-          widget: _gutter(
-            EpSectionHeader(
-              label: app.hasMoreExploreBands
-                  ? 'BANDS'
-                  : 'BANDS · ${app.exploreBandIds.length}',
-            ),
-          ),
-          right: true,
-        ));
-        out.add((
-          widget: EpCarousel(
-            key: const Key('explore-bands'),
-            itemExtent: 88,
-            height: 136,
-            wrapWhenScaled: true,
-            itemCount: directoryIds.length,
-            itemBuilder: (_, i) {
-              final id = directoryIds[i];
-              return ExploreBandTile(
-                key: Key('explore-band-card-$id'),
-                band: app.band(id)!,
-                onTap: () => app.openBand(id),
-              );
-            },
-          ),
-          right: true,
-        ));
-      }
-      out.add((
-        widget: _gutter(
-          EpMenuRow(
-            key: const Key('explore-toggle-bands'),
-            icon: Icons.groups_outlined,
-            label: 'All bands',
-            trailingText: app.hasMoreExploreBands
-                ? null
-                : '${app.exploreBandIds.length}',
-            onTap: () => app.go(Screen.exploreCollection, 'bands'),
-          ),
-        ),
-        right: true,
-      ));
-    }
-    if (events && home.upcoming.isNotEmpty) {
-      out.add((
-        widget: _gutter(
-          EpSectionHeader(
-            key: const Key('explore-upcoming'),
-            label: 'UPCOMING · ${home.upcoming.length}',
-            action: home.upcoming.length > 4 ? 'SEE ALL' : null,
-            onAction: () => app.go(Screen.exploreCollection, 'upcoming'),
-          ),
-        ),
-        right: false,
-      ));
-      out.addAll(
-        home.upcoming
-            .take(4)
-            .map(
-              (g) => (
-                widget: _gutter(
-                  FanEventCard(gig: g, app: app, showDistance: true),
-                ),
-                right: false,
-              ),
-            ),
-      );
-    }
-    return out;
-  }
-
-  Widget _buildVenueState(BuildContext context, AppState app) {
-    if (app.venueStatus == DataStatus.connecting) {
-      return Text(
-        'Loading venues…',
-        style: Theme.of(
-          context,
-        ).textTheme.epBody.copyWith(color: context.epColors.muted),
-      );
-    }
-    if (app.venueStatus == DataStatus.error) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Couldn't load venues.",
-            style: Theme.of(
-              context,
-            ).textTheme.epBody.copyWith(color: context.epColors.muted),
-          ),
-          const SizedBox(height: 10),
-          EpPill(label: 'Retry', onPressed: app.retryVenues),
-        ],
-      );
-    }
-    return Text(
-      'No venues listed yet.',
-      style: Theme.of(
-        context,
-      ).textTheme.epBody.copyWith(color: context.epColors.muted),
-    );
-  }
 
   void _submitSearch(AppState app) {
     final query = _controller.text.trim();
@@ -604,16 +372,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
     _controller.clear();
     _lastSubmittedQuery = '';
     app.setQuery('');
-  }
-
-  void _selectScope(AppState app, ExploreResultType type) {
-    if (type == app.exploreResultType) return;
-    _scopeFeedbackTimer?.cancel();
-    setState(() => _showScopeFeedback = true);
-    app.setExploreResultType(type);
-    _scopeFeedbackTimer = Timer(const Duration(milliseconds: 250), () {
-      if (mounted) setState(() => _showScopeFeedback = false);
-    });
   }
 }
 
@@ -644,27 +402,6 @@ class _PinnedExploreControls extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(covariant _PinnedExploreControls oldDelegate) =>
       oldDelegate.extent != extent || oldDelegate.child != child;
-}
-
-class _VenueHeader extends StatelessWidget {
-  const _VenueHeader({required this.label, this.action});
-  final String label;
-  final VoidCallback? action;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 24, bottom: 4),
-    child: Row(
-      children: [
-        Expanded(child: EpEyebrow(label)),
-        if (action != null)
-          TextButton(
-            key: const Key('explore-toggle-venues'),
-            onPressed: action,
-            child: const EpMonoText('SEE ALL'),
-          ),
-      ],
-    ),
-  );
 }
 
 class _SearchResults extends StatelessWidget {
@@ -714,40 +451,49 @@ class _SearchResults extends StatelessWidget {
           (v) =>
               v.name.toLowerCase().contains(q) ||
               v.area.toLowerCase().contains(q) ||
-              v.addr.toLowerCase().contains(q),
+              v.addr.toLowerCase().contains(q) ||
+              (v.neighborhood?.toLowerCase().contains(q) ?? false) ||
+              (v.city?.toLowerCase().contains(q) ?? false),
         )
         .toList();
-    final type = app.exploreResultType;
+    final locations = <_LocationMatch>[];
+    final seenLocations = <String>{};
+    for (final city in FanCity.values) {
+      if (city.label.toLowerCase().contains(q) &&
+          seenLocations.add(city.label.toLowerCase())) {
+        locations.add(_LocationMatch(label: city.label, city: city));
+      }
+    }
+    for (final venue in app.venues) {
+      for (final value in [venue.neighborhood, venue.city]) {
+        final label = value?.trim() ?? '';
+        final normalized = label.toLowerCase();
+        if (label.isNotEmpty &&
+            normalized.contains(q) &&
+            seenLocations.add(normalized)) {
+          locations.add(_LocationMatch(label: label));
+        }
+      }
+    }
     final out = <_SearchResultRow>[];
-    if (type == ExploreResultType.all || type == ExploreResultType.events) {
-      out.add(_SearchSectionRow('Events · ${gigs.length}'));
-      if (gigs.isEmpty) {
-        out.add(
-          _SearchMessageRow(
-            type == ExploreResultType.events
-                ? 'No events found.'
-                : 'No gigs found.',
-          ),
-        );
-      } else {
-        out.addAll(gigs.map(_SearchGigRow.new));
-      }
+    if (locations.isNotEmpty) {
+      out.add(_SearchSectionRow('LOCATIONS · ${locations.length}'));
+      out.addAll(locations.map(_SearchLocationRow.new));
     }
-    if (type == ExploreResultType.all || type == ExploreResultType.bands) {
-      out.add(_SearchSectionRow('Bands · ${bandIds.length}'));
-      if (bandIds.isEmpty) {
-        out.add(const _SearchMessageRow('No bands found.'));
-      } else {
-        out.addAll(bandIds.map(_SearchBandRow.new));
-      }
+    if (gigs.isNotEmpty) {
+      out.add(_SearchSectionRow('EVENTS · ${gigs.length}'));
+      out.addAll(gigs.map(_SearchGigRow.new));
     }
-    if (type == ExploreResultType.all || type == ExploreResultType.venues) {
-      out.add(_SearchSectionRow('Venues · ${venues.length}'));
-      if (venues.isEmpty) {
-        out.add(const _SearchMessageRow('No venues found.'));
-      } else {
-        out.addAll(venues.map(_SearchVenueRow.new));
-      }
+    if (bandIds.isNotEmpty) {
+      out.add(_SearchSectionRow('BANDS · ${bandIds.length}'));
+      out.addAll(bandIds.map(_SearchBandRow.new));
+    }
+    if (venues.isNotEmpty) {
+      out.add(_SearchSectionRow('VENUES · ${venues.length}'));
+      out.addAll(venues.map(_SearchVenueRow.new));
+    }
+    if (out.isEmpty) {
+      out.add(const _SearchMessageRow('No results.'));
     }
     return out;
   }
@@ -767,6 +513,18 @@ class _SearchResults extends StatelessWidget {
   Widget buildRow(BuildContext context, _SearchResultRow row) =>
       _gutterRow(context, switch (row) {
         _SearchSectionRow(:final label) => EpSectionHeader(label: label),
+        _SearchLocationRow(:final location) => ExploreLocationRow(
+          key: Key('explore-location-${_locationSlug(location)}'),
+          label: location.label,
+          onTap: () {
+            if (location.city case final city?) {
+              app.setCity(city.name);
+              app.setQuery('');
+            } else {
+              app.setQuery(location.label);
+            }
+          },
+        ),
         _SearchMessageRow(:final message) => Text(
           message,
           style: Theme.of(
@@ -806,6 +564,27 @@ class _SearchMessageRow extends _SearchResultRow {
 
   final String message;
 }
+
+class _SearchLocationRow extends _SearchResultRow {
+  const _SearchLocationRow(this.location);
+
+  final _LocationMatch location;
+}
+
+class _LocationMatch {
+  const _LocationMatch({required this.label, this.city});
+
+  final String label;
+  final FanCity? city;
+}
+
+String _locationSlug(_LocationMatch location) =>
+    location.city?.name ??
+    location.label
+        .toLowerCase()
+        .trim()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-|-$'), '');
 
 class _SearchGigRow extends _SearchResultRow {
   const _SearchGigRow(this.gig);
