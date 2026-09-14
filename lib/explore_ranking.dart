@@ -100,6 +100,142 @@ class ExploreGenrePage {
   int get gigCount => tonight.length + week.length + later.length;
 }
 
+/// Relevance of a gig to the fan; shared by the genre page, the featured
+/// pair, and "just for you".
+int gigRelevance({
+  required Gig gig,
+  required Map<String, Band> bands,
+  required ExploreSignals signals,
+  required double distanceMiles,
+}) {
+  var score = 0;
+  if (gig.lineup.any(signals.followedBandIds.contains)) score += 4;
+  if (signals.savedGigIds.contains(gig.id)) score += 3;
+  if (signals.friendGigIds.contains(gig.id)) score += 3;
+  if (signals.boostedGigIds.contains(gig.id)) score += 2;
+
+  final userGenres = signals.userGenres.map(canonicalGenre).toSet();
+  for (final genre in gig.genres) {
+    if (_matchesAnyGenre(canonicalGenre(genre), userGenres)) score += 2;
+  }
+  for (final bandId in gig.lineup) {
+    final band = bands[bandId];
+    if (band == null) continue;
+    for (final genre in band.genres) {
+      if (_matchesAnyGenre(canonicalGenre(genre), userGenres)) score += 2;
+    }
+  }
+
+  if (_within(gig.startsAt, signals.now, const Duration(days: 3))) {
+    score += 2;
+  } else if (_within(gig.startsAt, signals.now, const Duration(days: 7))) {
+    score++;
+  }
+  if (gig.free) score++;
+  final penalty = (distanceMiles < 0 ? 0 : distanceMiles / 10).floor().clamp(0, 3);
+  return score - penalty;
+}
+
+({List<Gig> featured, List<Gig> forYou}) rankForYou({
+  required List<Gig> gigs,
+  required Map<String, Band> bands,
+  required ExploreSignals signals,
+  required double Function(Gig) distanceMiles,
+  int featuredCount = 2,
+}) {
+  final scored = [
+    for (final gig in gigs)
+      _ScoredGig(gig, gigRelevance(
+        gig: gig,
+        bands: bands,
+        signals: signals,
+        distanceMiles: distanceMiles(gig),
+      )),
+  ];
+  scored.sort((a, b) {
+    final score = b.score.compareTo(a.score);
+    if (score != 0) return score;
+    final starts = a.gig.startsAt.compareTo(b.gig.startsAt);
+    return starts == 0 ? a.gig.title.compareTo(b.gig.title) : starts;
+  });
+
+  final count = featuredCount < 0 ? 0 : featuredCount;
+  final featuredScored = <_ScoredGig>[];
+  if (gigs.length < count) {
+    featuredScored.addAll(scored);
+  } else {
+    final remaining = [...scored];
+    while (featuredScored.length < count && remaining.isNotEmpty) {
+      _ScoredGig? selected;
+      for (final candidate in remaining) {
+        final collides = featuredScored.any((picked) =>
+            picked.gig.venueId == candidate.gig.venueId &&
+            dayKey(picked.gig.startsAt) == dayKey(candidate.gig.startsAt));
+        if (!collides) {
+          selected = candidate;
+          break;
+        }
+      }
+      selected ??= remaining.first;
+      featuredScored.add(selected);
+      remaining.remove(selected);
+    }
+  }
+
+  final featuredIds = {for (final item in featuredScored) item.gig.id};
+  final featured = [for (final item in featuredScored) item.gig];
+  if (featured.isEmpty) return (featured: const [], forYou: const []);
+  final earliest = featured.map((gig) => gig.startsAt).reduce((a, b) => a.isBefore(b) ? a : b);
+  final forYouScored = scored.where((item) =>
+      !featuredIds.contains(item.gig.id) && !item.gig.startsAt.isBefore(earliest)).toList();
+  forYouScored.sort((a, b) {
+    final day = dayKey(a.gig.startsAt).compareTo(dayKey(b.gig.startsAt));
+    if (day != 0) return day;
+    final score = b.score.compareTo(a.score);
+    if (score != 0) return score;
+    final starts = a.gig.startsAt.compareTo(b.gig.startsAt);
+    return starts == 0 ? a.gig.title.compareTo(b.gig.title) : starts;
+  });
+  return (
+    featured: List.unmodifiable(featured),
+    forYou: List.unmodifiable([for (final item in forYouScored) item.gig]),
+  );
+}
+
+enum DiscoverKind { venue, band }
+
+class DiscoverEntry {
+  const DiscoverEntry.venue(this.venue)
+      : kind = DiscoverKind.venue, bandId = null;
+  const DiscoverEntry.band(this.bandId)
+      : kind = DiscoverKind.band, venue = null;
+
+  final DiscoverKind kind;
+  final VenueWithShows? venue;
+  final String? bandId;
+}
+
+List<DiscoverEntry> discoverRail({
+  required List<VenueWithShows> venues,
+  required List<String> recommendedBandIds,
+  int limit = 12,
+}) {
+  final result = <DiscoverEntry>[];
+  final max = limit < 0 ? 0 : limit;
+  var venueIndex = 0;
+  var bandIndex = 0;
+  var venueTurn = true;
+  while (result.length < max && (venueIndex < venues.length || bandIndex < recommendedBandIds.length)) {
+    if (venueTurn && venueIndex < venues.length || bandIndex >= recommendedBandIds.length) {
+      result.add(DiscoverEntry.venue(venues[venueIndex++]));
+    } else {
+      result.add(DiscoverEntry.band(recommendedBandIds[bandIndex++]));
+    }
+    venueTurn = !venueTurn;
+  }
+  return List.unmodifiable(result);
+}
+
 List<String> rankRecommendedBands({
   required Map<String, Band> bands,
   required List<Gig> feed,
@@ -393,20 +529,24 @@ ExploreGenrePage buildGenrePage({
       return bands[id]?.genres.any((g) => canonicalGenre(g) == canonical) == true;
     });
   }).toList();
-  int relevance(Gig gig) {
-    var score = 0;
-    if (gig.lineup.any(signals.followedBandIds.contains)) score += 4;
-    if (signals.savedGigIds.contains(gig.id)) score += 3;
-    if (signals.friendGigIds.contains(gig.id)) score += 3;
-    if (signals.boostedGigIds.contains(gig.id)) score += 2;
-    return score;
+  final relevance = <String, int>{};
+  final distances = <String, double>{};
+  for (final gig in candidates) {
+    final distance = distanceMiles(gig);
+    distances[gig.id] = distance;
+    relevance[gig.id] = gigRelevance(
+      gig: gig,
+      bands: bands,
+      signals: signals,
+      distanceMiles: distance,
+    );
   }
   candidates.sort((a, b) {
     final day = dayKey(a.startsAt).compareTo(dayKey(b.startsAt));
     if (day != 0) return day;
-    final score = relevance(b).compareTo(relevance(a));
+    final score = relevance[b.id]!.compareTo(relevance[a.id]!);
     if (score != 0) return score;
-    final distance = distanceMiles(a).compareTo(distanceMiles(b));
+    final distance = distances[a.id]!.compareTo(distances[b.id]!);
     return distance == 0 ? a.startsAt.compareTo(b.startsAt) : distance;
   });
   final tonight = candidates.where((gig) => gig.when == GigWhen.tonight).toList();
@@ -460,6 +600,12 @@ int fnv1a(String s) {
 class _ScoredBand {
   const _ScoredBand(this.id, this.score);
   final String id;
+  final int score;
+}
+
+class _ScoredGig {
+  const _ScoredGig(this.gig, this.score);
+  final Gig gig;
   final int score;
 }
 

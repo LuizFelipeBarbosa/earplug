@@ -10,6 +10,9 @@ final _now = DateTime(2026, 9, 14, 20);
 ExploreSignals _signals({
   Set<String> userGenres = const {},
   Set<String> followed = const {},
+  Set<String> saved = const {},
+  Set<String> friends = const {},
+  Set<String> boosted = const {},
   FanCity? city,
   bool signedIn = true,
   String seed = 'seed',
@@ -17,19 +20,21 @@ ExploreSignals _signals({
 }) => ExploreSignals(
       userGenres: userGenres,
       followedBandIds: followed,
-      savedGigIds: const {},
+      savedGigIds: saved,
       rsvpGigIds: const {},
       homeCity: city,
       signedIn: signedIn,
       seed: seed,
       now: now ?? _now,
+      friendGigIds: friends,
+      boostedGigIds: boosted,
     );
 
 Venue _venue(String id, {String area = 'Oakland', String? city, int? capacity, VenueType? type}) =>
     Venue(id: id, name: id, area: area, city: city, addr: '', point: const LatLng(0, 0), capacityPublic: capacity, venueType: type);
 
-Gig _gig(String id, DateTime at, {GigWhen when = GigWhen.week, String venueId = 'v1', List<String> genres = const ['punk'], List<String> lineup = const [], int price = 10, DateTime? doorsAt}) =>
-    gigFixture(id: id, startsAt: at, when: when, venueId: venueId, genres: genres, lineup: lineup, price: price, doorsAt: doorsAt);
+Gig _gig(String id, DateTime at, {String? title, GigWhen when = GigWhen.week, String venueId = 'v1', List<String> genres = const ['punk'], List<String> lineup = const [], int price = 10, DateTime? doorsAt}) =>
+    gigFixture(id: id, title: title, startsAt: at, when: when, venueId: venueId, genres: genres, lineup: lineup, price: price, doorsAt: doorsAt);
 
 void main() {
   test('recommends unfollowed bands sharing user genres ahead of others', () {
@@ -154,5 +159,60 @@ void main() {
   test('fnv1a is deterministic and non-negative', () {
     expect(fnv1a('hello'), fnv1a('hello'));
     expect(fnv1a('hello'), greaterThanOrEqualTo(0));
+  });
+
+  test('gigRelevance rewards fan signals, genres, timing, and free gigs', () {
+    final gig = _gig('saved', _now.add(const Duration(days: 1)), genres: ['Post Punk'], lineup: ['band'], price: 0);
+    final bands = {'band': bandFixture(id: 'band', genres: ['noise'])};
+    final base = gigRelevance(gig: gig, bands: bands, signals: _signals(), distanceMiles: 0);
+    expect(gigRelevance(gig: gig, bands: bands, signals: _signals(followed: {'band'}), distanceMiles: 0), greaterThan(base));
+    expect(gigRelevance(gig: gig, bands: bands, signals: _signals(saved: {'saved'}), distanceMiles: 0), greaterThan(base));
+    expect(gigRelevance(gig: gig, bands: bands, signals: _signals(friends: {'saved'}), distanceMiles: 0), greaterThan(base));
+    expect(gigRelevance(gig: gig, bands: bands, signals: _signals(boosted: {'saved'}), distanceMiles: 0), greaterThan(base));
+    expect(gigRelevance(gig: gig, bands: bands, signals: _signals(userGenres: {'punk'}), distanceMiles: 0), greaterThan(base));
+    final inThree = gigRelevance(gig: gig, bands: bands, signals: _signals(), distanceMiles: 0);
+    final inSeven = gigRelevance(gig: gig.copyWith(startsAt: _now.add(const Duration(days: 6))), bands: bands, signals: _signals(), distanceMiles: 0);
+    final later = gigRelevance(gig: gig.copyWith(startsAt: _now.add(const Duration(days: 8))), bands: bands, signals: _signals(), distanceMiles: 0);
+    expect(inThree, greaterThan(inSeven));
+    expect(inSeven, greaterThan(later));
+    expect(gigRelevance(gig: gig.copyWith(price: 10), bands: bands, signals: _signals(), distanceMiles: 0), lessThan(inThree));
+  });
+
+  test('gigRelevance distance penalty decreases and saturates', () {
+    final gig = _gig('g', _now);
+    int score(double miles) => gigRelevance(gig: gig, bands: const {}, signals: _signals(), distanceMiles: miles);
+    expect(score(0), greaterThan(score(10)));
+    expect(score(10), greaterThan(score(20)));
+    expect(score(30), equals(score(100)));
+  });
+
+  test('rankForYou avoids featured venue-day collisions', () {
+    final gigs = [
+      _gig('a', _now.add(const Duration(days: 1)), venueId: 'v1', title: 'A'),
+      _gig('b', _now.add(const Duration(days: 1)), venueId: 'v1', title: 'B'),
+      _gig('c', _now.add(const Duration(days: 1)), venueId: 'v2', title: 'C'),
+    ];
+    final ranked = rankForYou(gigs: gigs, bands: const {}, signals: _signals(), distanceMiles: (_) => 0);
+    expect(ranked.featured.map((gig) => gig.id), ['a', 'c']);
+    expect(ranked.forYou.map((gig) => gig.id), ['b']);
+  });
+
+  test('rankForYou filters and orders for-you gigs', () {
+    final gigs = [
+      _gig('featured', _now.add(const Duration(days: 2))),
+      _gig('before', _now.add(const Duration(days: 1))),
+      _gig('later-low', _now.add(const Duration(days: 3)), genres: ['noise']),
+      _gig('later-high', _now.add(const Duration(days: 3)), genres: ['punk']),
+    ];
+    final ranked = rankForYou(gigs: gigs, bands: const {}, signals: _signals(saved: {'featured', 'later-high'}), distanceMiles: (_) => 0, featuredCount: 1);
+    expect(ranked.featured.map((gig) => gig.id), ['featured']);
+    expect(ranked.forYou.map((gig) => gig.id), ['later-high', 'later-low']);
+    expect(rankForYou(gigs: [gigs.first], bands: const {}, signals: _signals(), distanceMiles: (_) => 0).forYou, isEmpty);
+  });
+
+  test('discoverRail interleaves and drains the remaining side', () {
+    final venues = [for (var i = 1; i <= 3; i++) VenueWithShows(venue: _venue('v$i'), gigs: [_gig('g$i', _now)])];
+    expect(discoverRail(venues: venues, recommendedBandIds: ['b1']).map((e) => e.kind), [DiscoverKind.venue, DiscoverKind.band, DiscoverKind.venue, DiscoverKind.venue]);
+    expect(discoverRail(venues: venues.take(1).toList(), recommendedBandIds: ['b1', 'b2', 'b3']).map((e) => e.kind), [DiscoverKind.venue, DiscoverKind.band, DiscoverKind.band, DiscoverKind.band]);
   });
 }

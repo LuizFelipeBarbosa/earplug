@@ -75,6 +75,27 @@ void main() {
     expect(home.upcoming.every((gig) => !grouped.contains(gig.id)), isTrue);
   });
 
+  test('exploreHome provides featured and non-overlapping for-you gigs', () async {
+    final app = await _createApp();
+    final home = app.exploreHome;
+    expect(home.featured.length, lessThanOrEqualTo(2));
+    expect(
+      {
+        ...home.featured.map((gig) => gig.id),
+      }.intersection(home.forYou.map((gig) => gig.id).toSet()),
+      isEmpty,
+    );
+  });
+
+  test('Explore recommendations ignore GIGS date and price filters', () async {
+    final app = await _createApp();
+    final before = app.exploreHome.forYou.map((gig) => gig.id).toSet();
+    app.toggleDateFilter(DateFilter.tonight);
+    expect(app.exploreHome.forYou.map((gig) => gig.id).toSet(), before);
+    app.toggleFree();
+    expect(app.exploreHome.forYou.map((gig) => gig.id).toSet(), before);
+  });
+
   test('Explore ignores the filter-sheet genre selection', () async {
     final app = await _createApp();
     app.toggleGenre('noise');
@@ -221,6 +242,15 @@ void main() {
     );
     expect(week!.gigs.map((gig) => gig.id), home.week.map((gig) => gig.id));
     expect(app.exploreCollection('does-not-exist'), isNull);
+  });
+
+  test('Explore synthetic just-for-you collection and discover rail resolve', () async {
+    final app = await _createApp();
+    final home = app.exploreHome;
+    final collection = app.exploreCollection('just-for-you');
+    expect(collection, isNotNull);
+    expect(collection!.gigs.map((gig) => gig.id), home.forYou.map((gig) => gig.id));
+    expect(home.discover, isNotEmpty);
   });
 
   test(
