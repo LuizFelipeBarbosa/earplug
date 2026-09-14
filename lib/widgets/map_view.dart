@@ -485,7 +485,7 @@ class _MapGigCard extends StatelessWidget {
     return EpCard(
       key: ValueKey('map-gig-card-${gig.id}'),
       variant: EpCardVariant.raised,
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(total > 1 ? 10 : 12),
       onTap: onOpen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -513,7 +513,7 @@ class _MapGigCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
           ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -525,7 +525,7 @@ class _MapGigCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     EpDisplay(gig.title, size: 18, maxLines: 2),
-                    const SizedBox(height: 4),
+                    SizedBox(height: total > 1 ? 2 : 4),
                     Text(
                       '${venue.name} · $areaLabel',
                       style: Theme.of(context).textTheme.epCaption,
@@ -536,7 +536,7 @@ class _MapGigCard extends StatelessWidget {
                       gig.dateLine,
                       style: Theme.of(context).textTheme.epCaption,
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: total > 1 ? 4 : 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [

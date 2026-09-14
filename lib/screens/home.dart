@@ -87,7 +87,7 @@ class _HomeHeader extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         hero,
-        const SizedBox(height: 14),
+        const SizedBox(height: 6),
         DiscoveryQuickFilters(),
       ],
     );
