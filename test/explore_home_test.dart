@@ -197,16 +197,21 @@ void main() {
       );
       final followedCard = find.byKey(const Key('explore-featured-gFollowed'));
       final cardRect = tester.getRect(followedCard);
-      for (final (index, action) in ['save', 'share'].indexed) {
-        final pill = find.descendant(
+      for (final action in ['save', 'share']) {
+        final button = find.descendant(
           of: followedCard,
           matching: find.byKey(ValueKey('$action-gFollowed')),
         );
-        expect(pill, findsOneWidget);
-        final offset = tester.getTopLeft(pill) - cardRect.topLeft;
-        expect(offset.dy, closeTo(12, 1));
-        expect(offset.dx, closeTo(14 + index * 32, 1));
-        expect(offset.dx, lessThan(cardRect.width / 2));
+        expect(button, findsOneWidget);
+        expect(tester.widget<ExploreCardIconButton>(button).ring, isFalse);
+        final rect = tester.getRect(button);
+        expect(rect.size, const Size(28, 28));
+        expect(rect.top - cardRect.top, closeTo(8, 1));
+        expect(
+          cardRect.right - rect.right,
+          closeTo(action == 'share' ? 8 : 8 + 28 + 4, 1),
+        );
+        expect(rect.right, greaterThan(cardRect.center.dx));
       }
       final gig = _gigs.first;
       final date =

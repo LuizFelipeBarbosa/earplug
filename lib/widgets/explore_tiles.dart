@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../app_state.dart';
 import '../date_names.dart';
@@ -26,6 +27,147 @@ String _friendsCue(List<SocialUserCard> friends) {
   final suffix = friends.length > 1 ? ' +${friends.length - 1}' : '';
   return '${friends.first.name}$suffix going';
 }
+
+/// A 28px gig-card action with a centered 44px interaction target.
+class ExploreCardIconButton extends StatelessWidget {
+  const ExploreCardIconButton({
+    super.key,
+    required this.icon,
+    this.fillIcon,
+    required this.semanticLabel,
+    required this.onPressed,
+    this.ring = false,
+    this.active = false,
+  });
+
+  final IconData icon;
+  final IconData? fillIcon;
+  final String semanticLabel;
+  final VoidCallback? onPressed;
+  final bool ring;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.epColors;
+    final ink = onPressed == null ? colors.contentDisabled : colors.ink;
+    final button = SizedBox.square(
+      dimension: 28,
+      child: OverflowBox(
+        minWidth: 44,
+        maxWidth: 44,
+        minHeight: 44,
+        maxHeight: 44,
+        child: _ExploreCardActionTarget(
+          child: Material(
+            color: colors.background.withValues(alpha: 0),
+            shape: const CircleBorder(),
+            child: InkWell(
+              onTap: onPressed,
+              customBorder: const CircleBorder(),
+              child: Semantics(
+                button: true,
+                enabled: onPressed != null,
+                label: semanticLabel,
+                child: Center(
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: ring
+                        ? ShapeDecoration(
+                            shape: CircleBorder(
+                              side: BorderSide(color: ink, width: 1),
+                            ),
+                          )
+                        : null,
+                    child: Center(
+                      child: SizedBox.square(
+                        dimension: 16,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            if (fillIcon != null)
+                              Icon(
+                                fillIcon,
+                                size: 16,
+                                color: active
+                                    ? colors.accent.withValues(alpha: 0.60)
+                                    : colors.ink.withValues(alpha: 0.22),
+                              ),
+                            Icon(icon, size: 16, color: ink),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return _ExploreCardActionHitRegion(child: button);
+  }
+}
+
+// OverflowBox expands painting and semantics, but its 28px ancestors still
+// reject out-of-bounds pointers. At the card boundary, hit-test the actual
+// 44px targets first so the surrounding layout cannot discard those taps.
+class _ExploreCardActionHitRegion extends SingleChildRenderObjectWidget {
+  const _ExploreCardActionHitRegion({required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderExploreCardActionHitRegion();
+}
+
+class _RenderExploreCardActionHitRegion extends RenderProxyBox {
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    _RenderExploreCardActionTarget? nearest;
+    var nearestDistance = double.infinity;
+    void findTarget(RenderObject object) {
+      if (object is _RenderExploreCardActionTarget) {
+        final bounds = MatrixUtils.transformRect(
+          object.getTransformTo(this),
+          Offset.zero & object.size,
+        );
+        final distance = (bounds.center - position).distanceSquared;
+        // Adjacent targets overlap; let the closest button own the tap.
+        if (bounds.contains(position) && distance < nearestDistance) {
+          nearest = object;
+          nearestDistance = distance;
+        }
+      } else {
+        object.visitChildren(findTarget);
+      }
+    }
+
+    visitChildren(findTarget);
+    final target = nearest;
+    if (target != null &&
+        result.addWithPaintTransform(
+          transform: target.getTransformTo(this),
+          position: position,
+          hitTest: (result, position) =>
+              target.hitTest(result, position: position),
+        )) {
+      return true;
+    }
+    return super.hitTest(result, position: position);
+  }
+}
+
+class _ExploreCardActionTarget extends SingleChildRenderObjectWidget {
+  const _ExploreCardActionTarget({required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderExploreCardActionTarget();
+}
+
+class _RenderExploreCardActionTarget extends RenderProxyBox {}
 
 class _ExploreHairlineRow extends StatelessWidget {
   const _ExploreHairlineRow({
@@ -422,7 +564,7 @@ class ExploreEventRow extends StatelessWidget {
         ),
       ),
     );
-    return _ExploreHairlineRow(
+    final row = _ExploreHairlineRow(
       semanticLabel: gig.title,
       onTap: onTap,
       minHeight: 44,
@@ -509,25 +651,14 @@ class ExploreEventRow extends StatelessWidget {
             ),
             if (actions != null && actions!.isNotEmpty) ...[
               const SizedBox(width: 8),
-              Column(
+              Row(
                 mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (var i = 0; i < actions!.length; i++) ...[
-                        if (i > 0) const SizedBox(width: 4),
-                        SizedBox.square(
-                          dimension: 28,
-                          child: FittedBox(
-                            fit: BoxFit.contain,
-                            child: actions![i],
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+                  for (var i = 0; i < actions!.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 4),
+                    actions![i],
+                  ],
                 ],
               ),
             ],
@@ -551,6 +682,7 @@ class ExploreEventRow extends StatelessWidget {
         ),
       ),
     );
+    return _ExploreCardActionHitRegion(child: row);
   }
 }
 
@@ -585,7 +717,7 @@ class ExploreFeaturedCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = flyerStyles[gig.flyKey] ?? flyerStyles['paper']!;
     final imageUrl = gig.flyerUrl;
-    return SizedBox(
+    final card = SizedBox(
       width: width,
       height: height,
       child: Semantics(
@@ -625,28 +757,15 @@ class ExploreFeaturedCard extends StatelessWidget {
               if (actions.isNotEmpty)
                 Positioned(
                   top: 8,
-                  left: 8,
-                  child: Container(
-                    color: context.epColors.background.withValues(alpha: .55),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 4,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (var i = 0; i < actions.length; i++) ...[
-                          if (i > 0) const SizedBox(width: 4),
-                          SizedBox.square(
-                            dimension: 28,
-                            child: FittedBox(
-                              fit: BoxFit.contain,
-                              child: actions[i],
-                            ),
-                          ),
-                        ],
+                  right: 8,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < actions.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 4),
+                        actions[i],
                       ],
-                    ),
+                    ],
                   ),
                 ),
             ],
@@ -654,6 +773,7 @@ class ExploreFeaturedCard extends StatelessWidget {
         ),
       ),
     );
+    return _ExploreCardActionHitRegion(child: card);
   }
 
   String get _venueLine => '$venueName · doors ${gig.doorsLabel}';
@@ -705,7 +825,13 @@ class ExploreFeaturedCard extends StatelessWidget {
     );
     return [
       if (friends.isNotEmpty)
-        Positioned(top: 16, right: 16, child: _friendsCueRow(context)),
+        Positioned(
+          top: 8,
+          left: 8,
+          // Leave an 8px gap before the actions' extended hit targets.
+          right: actions.isEmpty ? 8 : 20 + actions.length * 32.0,
+          child: _friendsCueRow(context),
+        ),
       Positioned(
         left: 16,
         right: 16,
@@ -762,14 +888,16 @@ class ExploreFeaturedCard extends StatelessWidget {
     children: [
       ExploreAvatarStack(people: friends, size: 20),
       const SizedBox(width: 7),
-      Text(
-        _friendsCue(friends).toUpperCase(),
-        semanticsLabel: _friendsCue(friends),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.epChipLabel.copyWith(
-          fontSize: 11,
-          color: context.epColors.muted,
+      Flexible(
+        child: Text(
+          _friendsCue(friends).toUpperCase(),
+          semanticsLabel: _friendsCue(friends),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.epChipLabel.copyWith(
+            fontSize: 11,
+            color: context.epColors.muted,
+          ),
         ),
       ),
     ],

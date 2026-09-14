@@ -28,6 +28,223 @@ void main() {
     ),
   );
 
+  testWidgets('card icon button layers the fill beneath the ink outline', (
+    tester,
+  ) async {
+    for (final active in [false, true]) {
+      await tester.pumpWidget(
+        plain(
+          Center(
+            child: ExploreCardIconButton(
+              icon: Icons.bookmark_border,
+              fillIcon: Icons.bookmark,
+              semanticLabel: 'Save event',
+              active: active,
+              onPressed: () {},
+            ),
+          ),
+        ),
+      );
+      final button = find.byType(ExploreCardIconButton);
+      final colors = tester.element(button).epColors;
+      final fill = tester.widget<Icon>(find.byIcon(Icons.bookmark));
+      final outline = tester.widget<Icon>(find.byIcon(Icons.bookmark_border));
+      expect(
+        fill.color,
+        active
+            ? colors.accent.withValues(alpha: 0.60)
+            : colors.ink.withValues(alpha: 0.22),
+      );
+      expect(fill.color!.a, closeTo(active ? 0.60 : 0.22, 0.001));
+      expect(outline.color, colors.ink);
+      expect(outline.color!.a, 1);
+      expect(fill.size, 16);
+      expect(outline.size, 16);
+      expect(
+        tester.getRect(find.byIcon(Icons.bookmark)),
+        tester.getRect(find.byIcon(Icons.bookmark_border)),
+      );
+      final layers = tester.widget<Stack>(
+        find.descendant(of: button, matching: find.byType(Stack)),
+      );
+      expect((layers.children.first as Icon).icon, Icons.bookmark);
+      expect((layers.children.last as Icon).icon, Icons.bookmark_border);
+    }
+  });
+
+  testWidgets('card icon button has a flush 28px ring and a 44px target', (
+    tester,
+  ) async {
+    var taps = 0;
+    await tester.pumpWidget(
+      plain(
+        Center(
+          child: ExploreCardIconButton(
+            icon: Icons.bookmark_border,
+            fillIcon: Icons.bookmark,
+            semanticLabel: 'Save event',
+            ring: true,
+            onPressed: () => taps++,
+          ),
+        ),
+      ),
+    );
+    final button = find.byType(ExploreCardIconButton);
+    final buttonRect = tester.getRect(button);
+    final inkWell = find.descendant(of: button, matching: find.byType(InkWell));
+    final semantics = find.descendant(
+      of: button,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics && widget.properties.label == 'Save event',
+      ),
+    );
+    expect(buttonRect.size, const Size(28, 28));
+    expect(tester.getSize(inkWell), const Size(44, 44));
+    expect(tester.getRect(inkWell), buttonRect.inflate(8));
+    expect(tester.getRect(semantics), buttonRect.inflate(8));
+    final ring = find.descendant(
+      of: button,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is DecoratedBox && widget.decoration is ShapeDecoration,
+      ),
+    );
+    final decoration =
+        tester.widget<DecoratedBox>(ring).decoration as ShapeDecoration;
+    expect(decoration.color, isNull);
+    expect((decoration.shape as CircleBorder).side.width, 1);
+    expect(tester.getRect(ring).top, closeTo(buttonRect.top, 0.5));
+    expect(tester.getSize(ring), const Size(28, 28));
+    await tester.tap(button);
+    expect(taps, 1);
+    for (final offset in const [
+      Offset(-21, 0),
+      Offset(21, 0),
+      Offset(0, -21),
+      Offset(0, 21),
+    ]) {
+      await tester.tapAt(buttonRect.center + offset);
+    }
+    expect(taps, 5);
+  });
+
+  testWidgets('card actions receive overflow taps without opening the gig', (
+    tester,
+  ) async {
+    final gig = gigFixture(id: 'action-hit-targets');
+    for (final featured in [false, true]) {
+      var saves = 0;
+      var shares = 0;
+      var opens = 0;
+      final actions = [
+        ExploreCardIconButton(
+          key: const Key('hit-save'),
+          icon: Icons.bookmark_border,
+          fillIcon: Icons.bookmark,
+          semanticLabel: 'Save event',
+          ring: !featured,
+          onPressed: () => saves++,
+        ),
+        ExploreCardIconButton(
+          key: const Key('hit-share'),
+          icon: Icons.ios_share,
+          semanticLabel: 'Share event',
+          ring: !featured,
+          onPressed: () => shares++,
+        ),
+      ];
+      await tester.pumpWidget(
+        plain(
+          Center(
+            child: SizedBox(
+              width: 320,
+              child: featured
+                  ? ExploreFeaturedCard(
+                      gig: gig,
+                      venueName: 'The Foghorn',
+                      width: 320,
+                      height: 200,
+                      actions: actions,
+                      onTap: () => opens++,
+                    )
+                  : ExploreEventRow(
+                      gig: gig,
+                      venueName: 'The Foghorn',
+                      actions: actions,
+                      onTap: () => opens++,
+                    ),
+            ),
+          ),
+        ),
+      );
+      final saveRect = tester.getRect(find.byKey(const Key('hit-save')));
+      final shareRect = tester.getRect(find.byKey(const Key('hit-share')));
+      for (final offset in const [
+        Offset(-21, 0),
+        Offset(0, -21),
+        Offset(0, 21),
+      ]) {
+        await tester.tapAt(saveRect.center + offset);
+      }
+      for (final offset in const [Offset(0, -21), Offset(0, 21)]) {
+        await tester.tapAt(shareRect.center + offset);
+      }
+      expect(saves, 3);
+      expect(shares, 2);
+      expect(opens, 0);
+      // The overlapping part of the targets belongs to the nearest button.
+      await tester.tapAt(saveRect.center + const Offset(17, 0));
+      expect(saves, 3);
+      expect(shares, 3);
+      if (featured) {
+        await tester.tapAt(shareRect.center + const Offset(21, 0));
+        expect(shares, 4);
+      }
+      expect(opens, 0);
+    }
+  });
+
+  testWidgets('disabled share button has only its outline and no ring', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      plain(
+        const Center(
+          child: ExploreCardIconButton(
+            icon: Icons.ios_share,
+            semanticLabel: 'Share event',
+            onPressed: null,
+          ),
+        ),
+      ),
+    );
+    final button = find.byType(ExploreCardIconButton);
+    expect(
+      find.descendant(of: button, matching: find.byType(Icon)),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<Icon>(find.byIcon(Icons.ios_share)).color,
+      tester.element(button).epColors.contentDisabled,
+    );
+    expect(
+      find.descendant(of: button, matching: find.byType(DecoratedBox)),
+      findsNothing,
+    );
+    final semantics = tester.widget<Semantics>(
+      find.descendant(
+        of: button,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Semantics && widget.properties.label == 'Share event',
+        ),
+      ),
+    );
+    expect(semantics.properties.button, isTrue);
+    expect(semantics.properties.enabled, isFalse);
+  });
+
   testWidgets('band tile shows fallback, genres, and handles taps', (
     tester,
   ) async {
@@ -497,6 +714,35 @@ void main() {
     expect(find.byIcon(Icons.chevron_right), findsNothing);
   });
 
+  testWidgets('compact card action rings align exactly with the poster top', (
+    tester,
+  ) async {
+    final gig = gigFixture(id: 'compact-action-alignment');
+    await pumpApp(
+      tester,
+      home: Scaffold(
+        body: Consumer<AppState>(
+          builder: (context, app, _) => FanEventCard(gig: gig, app: app),
+        ),
+      ),
+    );
+    final poster = tester.getRect(find.byType(EpNetworkImage));
+    for (final action in ['save', 'share']) {
+      final button = find.byKey(ValueKey('$action-${gig.id}'));
+      expect(tester.widget<ExploreCardIconButton>(button).ring, isTrue);
+      expect(tester.getSize(button), const Size(28, 28));
+      final ring = find.descendant(
+        of: button,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is DecoratedBox && widget.decoration is ShapeDecoration,
+        ),
+      );
+      expect(tester.getRect(button).top, closeTo(poster.top, 0.5));
+      expect(tester.getRect(ring).top, closeTo(poster.top, 0.5));
+    }
+  });
+
   testWidgets('event row wraps long titles beside actions', (tester) async {
     const title =
         'A Very Long Event Title That Must Wrap Within A Narrow Card Width';
@@ -889,6 +1135,84 @@ void main() {
     expect(find.byType(ExploreAvatarStack), findsNothing);
     expect(find.text('MAYA GOING'), findsNothing);
   });
+
+  testWidgets(
+    'featured actions and bounded friends cue occupy opposite corners',
+    (tester) async {
+      const friendName = 'Maya With A Very Long Name That Must Be Ellipsized';
+      for (final width in [360.0, 240.0]) {
+        await tester.pumpWidget(
+          plain(
+            Center(
+              child: ExploreFeaturedCard(
+                gig: gigFixture(
+                  id: 'featured-action-corners',
+                  title: 'Live Music',
+                ),
+                venueName: 'The Foghorn',
+                friends: const [SocialUserCard(userId: 'a', name: friendName)],
+                width: width,
+                height: 180,
+                actions: [
+                  ExploreCardIconButton(
+                    key: const Key('featured-save'),
+                    icon: Icons.bookmark_border,
+                    fillIcon: Icons.bookmark,
+                    semanticLabel: 'Save event',
+                    onPressed: () {},
+                  ),
+                  ExploreCardIconButton(
+                    key: const Key('featured-share'),
+                    icon: Icons.ios_share,
+                    semanticLabel: 'Share event',
+                    onPressed: () {},
+                  ),
+                ],
+                onTap: () {},
+              ),
+            ),
+            textScaler: TextScaler.linear(1.5),
+          ),
+        );
+        expect(tester.takeException(), isNull, reason: 'width $width');
+        final cardRect = tester.getRect(find.byType(ExploreFeaturedCard));
+        final save = find.byKey(const Key('featured-save'));
+        final share = find.byKey(const Key('featured-share'));
+        for (final button in [save, share]) {
+          expect(tester.getRect(button).top - cardRect.top, closeTo(8, 1));
+          expect(tester.getSize(button), const Size(28, 28));
+          // Between each action and the card stack there is only its Row and
+          // Positioned, with no colored container or decoration behind it.
+          var reachedStack = false;
+          tester.element(button).visitAncestorElements((element) {
+            if (element.widget is Stack) {
+              reachedStack = true;
+              return false;
+            }
+            expect(element.widget, isNot(isA<Container>()));
+            expect(element.widget, isNot(isA<DecoratedBox>()));
+            return true;
+          });
+          expect(reachedStack, isTrue);
+        }
+        expect(cardRect.right - tester.getRect(share).right, closeTo(8, 1));
+        expect(
+          tester.getRect(share).left - tester.getRect(save).right,
+          closeTo(4, 0.5),
+        );
+        final avatars = tester.getRect(find.byType(ExploreAvatarStack));
+        expect(avatars.left - cardRect.left, closeTo(8, 1));
+        expect(avatars.top - cardRect.top, closeTo(8, 1));
+        final cueText = find.text('$friendName going'.toUpperCase());
+        expect(tester.widget<Text>(cueText).maxLines, 1);
+        expect(tester.widget<Text>(cueText).overflow, TextOverflow.ellipsis);
+        expect(
+          tester.getRect(cueText).right,
+          lessThan(tester.getRect(save).left - 8),
+        );
+      }
+    },
+  );
 
   testWidgets(
     'landscape featured card fits its title, meta and lineup at 1.0 and 1.5',

@@ -239,7 +239,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                         venueName: app.venue(gig.venueId).name,
                         info: compactGigInfo(gig, app, showDistance: true),
                         lineup: exploreLineupFor(gig, app),
-                        actions: gigCardActions(context, gig, app),
+                        actions: gigCardActions(context, gig, app, ring: false),
                         onTap: () => app.openGig(gig.id),
                         width: extent,
                         height: height,

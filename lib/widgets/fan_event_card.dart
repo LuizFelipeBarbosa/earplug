@@ -49,7 +49,7 @@ class FanEventCard extends StatelessWidget {
             venueName: venue.name,
             info: compactGigInfo(gig, app, showDistance: showDistance),
             lineup: exploreLineupFor(gig, app),
-            actions: gigCardActions(context, gig, app),
+            actions: gigCardActions(context, gig, app, ring: false),
             friends: friends,
             onTap: () => app.openGig(gig.id),
             width: width,
@@ -94,12 +94,17 @@ class FanEventCard extends StatelessWidget {
   }
 }
 
-List<Widget> gigCardActions(BuildContext context, Gig gig, AppState app) =>
-    _EventActions(
-      gig: gig,
-      app: app,
-      trailingAction: null,
-    ).posterActions(context);
+List<Widget> gigCardActions(
+  BuildContext context,
+  Gig gig,
+  AppState app, {
+  bool ring = true,
+}) => _EventActions(
+  gig: gig,
+  app: app,
+  trailingAction: null,
+  ring: ring,
+).posterActions(context);
 
 String compactGigMeta(Gig gig, AppState app, {required bool showDistance}) {
   final venue = app.venue(gig.venueId);
@@ -143,11 +148,13 @@ class _EventActions extends StatelessWidget {
     required this.gig,
     required this.app,
     required this.trailingAction,
+    this.ring = true,
   });
 
   final Gig gig;
   final AppState app;
   final Widget? trailingAction;
+  final bool ring;
 
   List<Widget> posterActions(BuildContext context) => [
     _saveAction,
@@ -168,20 +175,23 @@ class _EventActions extends StatelessWidget {
 
   Widget get _saveAction {
     final saved = app.saved.contains(gig.id);
-    return EpIconPill(
+    return ExploreCardIconButton(
       key: ValueKey('save-${gig.id}'),
-      icon: saved ? Icons.bookmark : Icons.bookmark_border,
+      icon: Icons.bookmark_border,
+      fillIcon: Icons.bookmark,
       semanticLabel: saved ? 'Remove saved event' : 'Save event',
-      filled: saved,
+      active: saved,
       onPressed: () => app.requestSave(gig.id),
+      ring: ring,
     );
   }
 
-  Widget _shareAction(BuildContext context) => EpIconPill(
+  Widget _shareAction(BuildContext context) => ExploreCardIconButton(
     key: ValueKey('share-${gig.id}'),
     icon: Icons.ios_share,
     semanticLabel: 'Share event',
     onPressed: () => _share(context, gig),
+    ring: ring,
   );
 }
 
