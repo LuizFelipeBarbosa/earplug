@@ -62,7 +62,8 @@ class _MyGigsScreenState extends State<MyGigsScreen> {
             ? _ProfileList.tickets
             : _ProfileList.going);
 
-    return Center(
+    return Align(
+      alignment: Alignment.topCenter,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: EpLayout.workspaceWidth),
         child: SingleChildScrollView(
