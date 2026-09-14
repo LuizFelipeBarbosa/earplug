@@ -14,6 +14,10 @@ mixin _SocialState on _AppStateCore {
   bool friendsGoingTruncated = false;
   List<SocialUserCard> peopleResults = const [];
   bool peopleSearching = false;
+  Map<String, KnownAttendees> knownAttendeesByGig = const {};
+  final Map<String, Object> _knownAttendeesLoadTokens = {};
+
+  KnownAttendees? knownAttendeesFor(String gigId) => knownAttendeesByGig[gigId];
 
   List<FriendsGoingEntry> _friendsGoingEntries = const [];
   bool _friendsGoingLoaded = false;
@@ -99,15 +103,11 @@ mixin _SocialState on _AppStateCore {
     final sessionToken = _socialSessionToken;
     final loadToken = Object();
     _friendsGoingLoadToken = loadToken;
-    final window = weekendWindow(_now());
-    final from = DateTime(
-      window.start.year,
-      window.start.month,
-      window.start.day,
-      window.start.hour,
-    );
+    final now = _now();
+    final from = DateTime(now.year, now.month, now.day, now.hour);
+    final to = from.add(const Duration(days: 14));
     try {
-      final result = await repository.friendsGoing(from: from, to: window.end);
+      final result = await repository.friendsGoing(from: from, to: to);
       if (_disposed ||
           !identical(_socialSessionToken, sessionToken) ||
           !identical(_friendsGoingLoadToken, loadToken)) {
@@ -126,6 +126,29 @@ mixin _SocialState on _AppStateCore {
         return;
       }
       logError('friendsGoing', error);
+    }
+  }
+
+  Future<KnownAttendees> loadKnownAttendees(String gigId) async {
+    final cached = knownAttendeesByGig[gigId];
+    if (cached != null) return cached;
+    if (_disposed || !authed) return KnownAttendees.empty;
+    final sessionToken = _socialSessionToken;
+    final token = Object();
+    _knownAttendeesLoadTokens[gigId] = token;
+    try {
+      final result = await repository.knownAttendees(gigId, now: _now());
+      if (_disposed ||
+          !identical(_socialSessionToken, sessionToken) ||
+          !identical(_knownAttendeesLoadTokens[gigId], token)) {
+        return knownAttendeesByGig[gigId] ?? result;
+      }
+      knownAttendeesByGig = {...knownAttendeesByGig, gigId: result};
+      notifyListeners();
+      return result;
+    } catch (error) {
+      logError('knownAttendees', error);
+      return knownAttendeesByGig[gigId] ?? KnownAttendees.empty;
     }
   }
 
@@ -257,6 +280,8 @@ mixin _SocialState on _AppStateCore {
     friendsGoingTruncated = false;
     peopleResults = const [];
     peopleSearching = false;
+    knownAttendeesByGig = const {};
+    _knownAttendeesLoadTokens.clear();
     _socialEnsured = false;
     _socialSessionToken = Object();
     _socialLoadToken = Object();

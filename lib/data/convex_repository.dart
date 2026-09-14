@@ -1068,6 +1068,15 @@ class ConvexRepository implements EarplugRepository {
   });
 
   @override
+  Future<KnownAttendees> knownAttendees(
+    String gigId, {
+    required DateTime now,
+  }) => _queryOne('social:knownAttendees', KnownAttendees.fromJson, {
+    'gigId': gigId,
+    'now': now.millisecondsSinceEpoch,
+  });
+
+  @override
   Future<SocialUserDetail?> userCard(String userId) => _queryOptional(
     'social:userCard',
     SocialUserDetail.fromJson,

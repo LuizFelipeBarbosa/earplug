@@ -2551,6 +2551,44 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
+  Future<KnownAttendees> knownAttendees(
+    String gigId, {
+    required DateTime now,
+  }) async {
+    if (!_auth.signedIn) return KnownAttendees.empty;
+    final mutualFriends = _followingUserIds.intersection(_followerUserIds);
+    final people = <KnownAttendee>[
+      for (final friendId in mutualFriends)
+        if (DemoData.friendRsvps[friendId]?.contains(gigId) ?? false)
+          KnownAttendee(
+            userId: friendId,
+            name: DemoData.people[friendId]?.name ?? friendId,
+            avatarUrl: DemoData.people[friendId]?.avatarUrl,
+            relation: KnownRelation.friend,
+          ),
+      for (final seen in
+          DemoData.seenAttendees[gigId] ??
+              const <({String userId, int sharedShows})>[])
+        KnownAttendee(
+          userId: seen.userId,
+          name: DemoData.people[seen.userId]?.name ?? seen.userId,
+          avatarUrl: DemoData.people[seen.userId]?.avatarUrl,
+          relation: KnownRelation.seen,
+          sharedShows: seen.sharedShows,
+        ),
+    ];
+    final gig = [
+      ...DemoData.gigs,
+      ..._publishedGigs,
+    ].where((candidate) => candidate.id == gigId).firstOrNull;
+    return KnownAttendees(
+      people: people,
+      goingCount: gig?.going ?? 0,
+      truncated: false,
+    );
+  }
+
+  @override
   Future<SocialUserDetail?> userCard(String userId) async {
     if (!_auth.signedIn) return null;
     final person = DemoData.people[userId];

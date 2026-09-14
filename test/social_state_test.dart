@@ -19,9 +19,13 @@ class _SocialRepository extends DemoRepository {
 
   int mySocialCalls = 0;
   int friendsGoingCalls = 0;
+  int knownAttendeesCalls = 0;
   bool failToggle = false;
   bool failProfile = false;
   FriendsGoing friendsGoingResult = FriendsGoing.empty;
+  KnownAttendees? knownAttendeesResult;
+  DateTime? lastFriendsGoingFrom;
+  DateTime? lastFriendsGoingTo;
   final Map<String, Completer<List<SocialUserCard>>> searchGates = {};
 
   @override
@@ -36,9 +40,20 @@ class _SocialRepository extends DemoRepository {
     required DateTime to,
   }) async {
     friendsGoingCalls++;
+    lastFriendsGoingFrom = from;
+    lastFriendsGoingTo = to;
     return friendsGoingResult.entries.isEmpty && !friendsGoingResult.truncated
         ? super.friendsGoing(from: from, to: to)
         : friendsGoingResult;
+  }
+
+  @override
+  Future<KnownAttendees> knownAttendees(
+    String gigId, {
+    required DateTime now,
+  }) async {
+    knownAttendeesCalls++;
+    return knownAttendeesResult ?? super.knownAttendees(gigId, now: now);
   }
 
   @override
@@ -137,6 +152,74 @@ void main() {
     expect(app.friendsGoing, hasLength(1));
     expect(app.friendsGoing.single.gig.id, gig.id);
   });
+
+  test(
+    'loadFriendsGoing requests a 14-day window that includes an entry 10 days out',
+    () async {
+      final auth = FakeAuthService();
+      final repository = _SocialRepository(auth: auth);
+      final gig = DemoData.gigs.first;
+      final tenDaysOut = DateTime.now().add(const Duration(days: 10));
+      repository.friendsGoingResult = FriendsGoing(
+        entries: [
+          FriendsGoingEntry(
+            gigId: gig.id,
+            startsAt: tenDaysOut,
+            friends: const [
+              SocialUserCard(
+                userId: 'u-maya',
+                name: 'Maya Okafor',
+                isFriend: true,
+              ),
+            ],
+          ),
+        ],
+        truncated: false,
+      );
+      final app = await _signedInApp(repository);
+      app.ensureSocial();
+      await flushAsyncWork();
+      expect(app.friendsGoing, hasLength(1));
+      final from = repository.lastFriendsGoingFrom!;
+      final to = repository.lastFriendsGoingTo!;
+      expect(to.difference(from).inDays, 14);
+      expect(tenDaysOut.isAfter(from) && tenDaysOut.isBefore(to), isTrue);
+    },
+  );
+
+  test('loadKnownAttendees caches per gig and clears on sign-out', () async {
+    final auth = FakeAuthService();
+    final repository = _SocialRepository(auth: auth);
+    final app = await _signedInApp(repository);
+    await flushAsyncWork();
+    final first = await app.loadKnownAttendees('g9');
+    expect(first.people.map((person) => person.userId), contains('u-maya'));
+    expect(repository.knownAttendeesCalls, 1);
+    final second = await app.loadKnownAttendees('g9');
+    expect(second, same(first));
+    expect(repository.knownAttendeesCalls, 1);
+    expect(app.knownAttendeesFor('g9'), same(first));
+    await app.signOut();
+    expect(app.knownAttendeesFor('g9'), isNull);
+  });
+
+  test(
+    'DemoRepository.knownAttendees lists Maya as a friend on her gig',
+    () async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = DemoRepository(auth: auth);
+      final result = await repository.knownAttendees(
+        'g9',
+        now: DateTime.now(),
+      );
+      final maya = result.people.firstWhere((person) => person.userId == 'u-maya');
+      expect(maya.relation, KnownRelation.friend);
+      final theo = result.people.firstWhere((person) => person.userId == 'u-theo');
+      expect(theo.relation, KnownRelation.seen);
+      expect(theo.sharedShows, 2);
+    },
+  );
 
   test(
     'friendsGoing memo survives notifications and invalidates on reload',

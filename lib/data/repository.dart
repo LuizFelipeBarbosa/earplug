@@ -680,6 +680,7 @@ abstract class EarplugRepository {
     required DateTime from,
     required DateTime to,
   });
+  Future<KnownAttendees> knownAttendees(String gigId, {required DateTime now});
   Future<SocialUserDetail?> userCard(String userId);
   Future<void> toggleSave(String gigId);
   Future<RsvpTicket> ticketForGig(String gigId);

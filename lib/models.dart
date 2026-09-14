@@ -154,6 +154,7 @@ class Venue {
   final String? managedByOrganizationId;
   final String? exactAddress;
   final bool supportsApproxLocation;
+  final List<String> photoUrls;
 
   const Venue({
     required this.id,
@@ -173,6 +174,7 @@ class Venue {
     this.managedByOrganizationId,
     String? exactAddress,
     this.supportsApproxLocation = false,
+    this.photoUrls = const [],
   }) : // `approx` is the public constructor argument for the private override.
        // ignore: prefer_initializing_formals
        _approx = approx,
@@ -206,6 +208,7 @@ class Venue {
         description: description,
         venueType: venueType,
         capacityPublic: capacityPublic,
+        photoUrls: asStringList(json['photoUrls']),
       );
     }
 
@@ -235,6 +238,7 @@ class Venue {
       ),
       exactAddress: exactAddress,
       supportsApproxLocation: true,
+      photoUrls: asStringList(json['photoUrls']),
     );
   }
 
@@ -258,6 +262,7 @@ class Venue {
     Object? managedByOrganizationId = _unchanged,
     Object? exactAddress = _unchanged,
     bool? supportsApproxLocation,
+    List<String>? photoUrls,
   }) => Venue(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -289,6 +294,7 @@ class Venue {
         : exactAddress as String?,
     supportsApproxLocation:
         supportsApproxLocation ?? this.supportsApproxLocation,
+    photoUrls: photoUrls ?? this.photoUrls,
   );
 }
 
@@ -1503,6 +1509,69 @@ class FriendsGoing {
         FriendsGoingEntry.fromJson(Map<String, dynamic>.from(entry as Map)),
     ],
     truncated: json['truncated'] as bool,
+  );
+}
+
+enum KnownRelation {
+  friend('friend'),
+  seen('seen');
+
+  const KnownRelation(this.wireValue);
+
+  final String wireValue;
+
+  static KnownRelation fromWire(Object? value) =>
+      value == 'friend' ? KnownRelation.friend : KnownRelation.seen;
+}
+
+class KnownAttendee {
+  final String userId;
+  final String name;
+  final String? avatarUrl;
+  final KnownRelation relation;
+  final int sharedShows;
+
+  const KnownAttendee({
+    required this.userId,
+    required this.name,
+    this.avatarUrl,
+    required this.relation,
+    this.sharedShows = 0,
+  });
+
+  factory KnownAttendee.fromJson(Map<String, dynamic> json) => KnownAttendee(
+    userId: asString(json['userId']),
+    name: asString(json['name']),
+    avatarUrl: asOptionalString(json['avatarUrl']),
+    relation: KnownRelation.fromWire(json['relation']),
+    sharedShows: asFiniteInt(json['sharedShows']),
+  );
+}
+
+class KnownAttendees {
+  final List<KnownAttendee> people;
+  final int goingCount;
+  final bool truncated;
+
+  const KnownAttendees({
+    required this.people,
+    required this.goingCount,
+    required this.truncated,
+  });
+
+  static const empty = KnownAttendees(
+    people: [],
+    goingCount: 0,
+    truncated: false,
+  );
+
+  factory KnownAttendees.fromJson(Map<String, dynamic> json) => KnownAttendees(
+    people: [
+      for (final person in (json['people'] as List))
+        KnownAttendee.fromJson(Map<String, dynamic>.from(person as Map)),
+    ],
+    goingCount: asFiniteInt(json['goingCount']),
+    truncated: json['truncated'] == true,
   );
 }
 

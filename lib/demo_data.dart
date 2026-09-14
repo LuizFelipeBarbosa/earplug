@@ -47,6 +47,10 @@ abstract final class DemoData {
       verified: true,
       managedByOrganizationId: 'org1',
       supportsApproxLocation: true,
+      photoUrls: [
+        'https://picsum.photos/seed/foghorn-1/800/600',
+        'https://picsum.photos/seed/foghorn-2/800/600',
+      ],
     ),
     'v2': Venue(
       id: 'v2',
@@ -54,6 +58,10 @@ abstract final class DemoData {
       area: 'Temescal, Oakland',
       addr: '486 40th St, Oakland',
       point: LatLng(37.8180, -122.2690),
+      photoUrls: [
+        'https://picsum.photos/seed/nightcrawler-1/800/600',
+        'https://picsum.photos/seed/nightcrawler-2/800/600',
+      ],
     ),
     'v3': Venue(
       id: 'v3',
@@ -815,6 +823,13 @@ abstract final class DemoData {
     'u-lina': ['g5'],
     'u-theo': ['g8'],
   };
+
+  /// Gigs where a non-friend has crossed paths with the demo fan at two or
+  /// more past shows — the `social:knownAttendees` "seen" relation.
+  static const seenAttendees =
+      <String, List<({String userId, int sharedShows})>>{
+        'g9': [(userId: 'u-theo', sharedShows: 2)],
+      };
 
   static const peopleBandFollows = <String, Set<String>>{
     'u-maya': {'b2', 'b3'},
