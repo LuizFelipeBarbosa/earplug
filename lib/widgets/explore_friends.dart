@@ -20,6 +20,7 @@ class ExploreFriendsSection extends StatelessWidget {
     required this.venueLine,
     this.onSeeAll,
     this.previewCount = 3,
+    this.title = 'THIS WEEKEND · FRIENDS',
   });
 
   final List<({Gig gig, List<SocialUserCard> friends})> entries;
@@ -31,6 +32,7 @@ class ExploreFriendsSection extends StatelessWidget {
   final String Function(Gig gig) venueLine;
   final VoidCallback? onSeeAll;
   final int previewCount;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +64,7 @@ class ExploreFriendsSection extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               EpSectionHeader(
-                label: 'THIS WEEKEND · FRIENDS',
+                label: title,
                 action: onSeeAll != null && entries.length > previewCount
                     ? 'SEE ALL'
                     : null,

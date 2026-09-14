@@ -58,11 +58,17 @@ void main() {
             'explore-for-you-',
           ),
     );
-    await tester.scrollUntilVisible(
-      forYou.first,
-      240,
-      scrollable: find.byType(Scrollable).first,
-    );
+    final browseState = tester.state<ScrollableState>(_browseScrollable());
+    browseState.position.jumpTo(0);
+    await tester.pump();
+    // The featured carousel wraps at this scale, so no row is built yet;
+    // page down until the lazy list has built one, then bring it on screen.
+    for (var step = 0; step < 12 && forYou.evaluate().isEmpty; step++) {
+      browseState.position.jumpTo(browseState.position.pixels + 240);
+      await tester.pump();
+    }
+    await tester.ensureVisible(forYou.first);
+    await tester.pumpAndSettle();
     final rowSize = tester.getSize(forYou.first);
     expect(rowSize.width, greaterThanOrEqualTo(44));
     expect(rowSize.height, greaterThanOrEqualTo(44));
@@ -226,3 +232,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
+Finder _browseScrollable() => find
+    .descendant(
+      of: find.byKey(const ValueKey('explore-browse-all')),
+      matching: find.byType(Scrollable),
+    )
+    .first;

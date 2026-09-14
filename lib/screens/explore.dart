@@ -271,6 +271,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 onSeeAll: () => app.go(Screen.exploreCollection, 'friends'),
                 venueLine: (g) => app.venue(g.venueId).name,
                 previewCount: 3,
+                title: 'People you know are attending',
               ),
             ),
           ),

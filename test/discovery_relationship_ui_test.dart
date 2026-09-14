@@ -19,7 +19,7 @@ import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
 void main() {
-  testWidgets('submitted search tabs filter without changing a draft', (
+  testWidgets('submitted search stays while an unsubmitted draft is typed', (
     tester,
   ) async {
     final harness = await pumpApp(
@@ -36,21 +36,19 @@ void main() {
     await tester.tap(find.byKey(const Key('explore-search-submit')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('explore-result-tabs')), findsOne);
     // The event matches through its Foghorn Diet lineup relationship.
     expect(find.text('RIPTIDE RELEASE SHOW'), findsWidgets);
     await _scrollResultsTo(tester, find.text('FOGHORN DIET'));
     expect(find.text('FOGHORN DIET'), findsWidgets);
+    await _scrollResultsTo(tester, find.text('THE FOGHORN CLUB'));
+    expect(find.text('THE FOGHORN CLUB'), findsWidgets);
 
     await _scrollToTop(tester);
     await tester.enterText(
       find.byKey(const Key('explore-search-field')),
       'unsubmitted draft',
     );
-    await _selectExploreTab(tester, 'BANDS');
-
     expect(harness.app.query, 'Foghorn');
-    expect(harness.app.exploreResultType, ExploreResultType.bands);
     expect(
       tester
           .widget<TextField>(find.byKey(const Key('explore-search-field')))
@@ -58,20 +56,17 @@ void main() {
           .text,
       'unsubmitted draft',
     );
-    // The scope tab keeps its label; only the events section goes away.
-    expect(find.textContaining('EVENTS ·'), findsNothing);
-    expect(find.text('FOGHORN DIET'), findsOne);
-
-    await _selectExploreTab(tester, 'VENUES');
-    expect(find.text('THE FOGHORN CLUB'), findsOne);
-    expect(find.text('FOGHORN DIET'), findsNothing);
+    expect(find.text('RIPTIDE RELEASE SHOW'), findsWidgets);
+    await _scrollResultsTo(tester, find.text('FOGHORN DIET'));
+    expect(find.text('FOGHORN DIET'), findsWidgets);
+    await _scrollResultsTo(tester, find.text('THE FOGHORN CLUB'));
+    expect(find.text('THE FOGHORN CLUB'), findsWidgets);
 
     await _scrollToTop(tester);
     await tester.tap(find.byKey(const Key('explore-search-clear')));
     await tester.pumpAndSettle();
     expect(harness.app.query, isEmpty);
-    expect(find.text('GENRES'), findsNothing);
-    expect(find.byKey(const Key('explore-filter-button')), findsOne);
+    expect(find.byKey(const ValueKey('explore-browse-all')), findsOne);
   });
 
   testWidgets('venue search rows navigate without replacing the query', (
@@ -85,7 +80,6 @@ void main() {
     await tester.pumpAndSettle();
     harness.app.setQuery('Foghorn Club');
     await tester.pumpAndSettle();
-    await _selectExploreTab(tester, 'VENUES');
     await tester.tap(find.text('THE FOGHORN CLUB'));
     await tester.pump();
 
@@ -322,18 +316,6 @@ void main() {
     expect(find.byTooltip('Show QR code'), findsNothing);
     expect(find.byKey(const ValueKey('show-qr-g4')), findsNothing);
   });
-}
-
-/// Explore's scope tabs are a shared [EpSegmentTabs]: no per-tab keys, so a
-/// tab is selected by the uppercase label it renders inside the tab strip.
-Future<void> _selectExploreTab(WidgetTester tester, String label) async {
-  await tester.tap(
-    find.descendant(
-      of: find.byKey(const Key('explore-result-tabs')),
-      matching: find.text(label),
-    ),
-  );
-  await tester.pump();
 }
 
 /// Result rows are tall enough that later sections start below the fold.

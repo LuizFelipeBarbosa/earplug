@@ -188,17 +188,31 @@ void main() {
     final tess = find.byKey(const Key('explore-for-you-tess-september-23'));
     await tester.scrollUntilVisible(tess, 300, scrollable: _browseScrollable());
     expect(tess, findsOneWidget);
-    await tester.ensureVisible(find.byKey(const Key('explore-genre-noise')));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('explore-genre-noise')),
+      200,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('explore-genre-rail-list')),
+        matching: find.byType(Scrollable),
+      ),
+    );
     await tester.tap(find.byKey(const Key('explore-genre-noise')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('explore-genre-page')), findsOne);
     expect(find.text('TESS'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('explore-genre-all')),
+      -200,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('explore-genre-rail-list')),
+        matching: find.byType(Scrollable),
+      ),
+    );
     await tester.tap(find.byKey(const Key('explore-genre-all')));
     await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('explore-for-you-tess-september-23')),
-      findsOne,
-    );
+    // Leaving genre mode remounts the feed at the top; the row is lazy.
+    await tester.scrollUntilVisible(tess, 300, scrollable: _browseScrollable());
+    expect(tess, findsOne);
   });
 
   testWidgets('search results construct off-screen rows lazily', (
