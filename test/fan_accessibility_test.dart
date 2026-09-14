@@ -3,6 +3,7 @@ import 'package:earplug/screens/edit_profile.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/screens/my_gigs.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/services/location_service.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/tab_bars.dart';
@@ -159,25 +160,12 @@ void main() {
         180,
         scrollable: find.byType(Scrollable).first,
       );
-      expect(
-        tester
-            .getSize(find.byKey(const Key('use-current-home-location')))
-            .height,
-        greaterThanOrEqualTo(48),
+      final locationSize = tester.getSize(
+        find.byKey(const Key('use-current-home-location')),
       );
+      expect(locationSize.width, greaterThanOrEqualTo(48));
+      expect(locationSize.height, greaterThanOrEqualTo(48));
 
-      await tester.scrollUntilVisible(
-        find.byKey(const Key('fan-bio-field')),
-        240,
-        scrollable: find.byType(Scrollable).first,
-      );
-      expect(find.byKey(const Key('fan-bio-field')), findsOne);
-      await tester.scrollUntilVisible(
-        find.byKey(const Key('fan-favorite-genres-field')),
-        240,
-        scrollable: find.byType(Scrollable).first,
-      );
-      expect(find.byKey(const Key('fan-favorite-genres-field')), findsOne);
       await tester.scrollUntilVisible(
         find.byKey(const Key('followed-band-updates')),
         240,
@@ -188,6 +176,52 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  for (final reason in [
+    LocationFailureReason.servicesDisabled,
+    LocationFailureReason.permissionDeniedForever,
+  ]) {
+    testWidgets('location recovery links retain touch targets for $reason', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        locationService: _RecoveryLocationService(reason),
+        home: scaledScreen(
+          const EditProfileScreen(),
+          size: const Size(320, 900),
+        ),
+      );
+      tester.view.physicalSize = const Size(320, 900);
+      await tester.pumpAndSettle();
+      final currentLocation = find.byKey(
+        const Key('use-current-home-location'),
+      );
+      await tester.scrollUntilVisible(
+        currentLocation,
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(currentLocation);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('home-location-error')), findsOne);
+      for (final key in const [
+        Key('use-current-home-location'),
+        Key('retry-current-home-location'),
+        Key('open-home-location-settings'),
+      ]) {
+        final control = find.byKey(key);
+        await tester.ensureVisible(control);
+        await tester.pumpAndSettle();
+        expect(tester.widget(control), isA<TextButton>());
+        final size = tester.getSize(control);
+        expect(size.width, greaterThanOrEqualTo(48));
+        expect(size.height, greaterThanOrEqualTo(48));
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('Profile visibly qualifies RSVP history at phone width', (
     tester,
@@ -231,3 +265,19 @@ Finder _browseScrollable() => find
       matching: find.byType(Scrollable),
     )
     .first;
+
+class _RecoveryLocationService implements LocationService {
+  const _RecoveryLocationService(this.reason);
+
+  final LocationFailureReason reason;
+
+  @override
+  Future<LocationResult> requestCurrentLocation() async =>
+      LocationFailure(reason);
+
+  @override
+  Future<bool> openAppSettings() async => true;
+
+  @override
+  Future<bool> openLocationSettings() async => true;
+}

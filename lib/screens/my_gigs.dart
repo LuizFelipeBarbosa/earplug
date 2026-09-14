@@ -469,34 +469,37 @@ class _ProfileDetails extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final profile = app.profile;
+    final genres = app.exploreGenres.take(3).toList(growable: false);
+    if (genres.isEmpty) return const SizedBox.shrink();
+
     return Padding(
       padding: const EdgeInsets.only(top: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (profile?.bio case final String bio
-              when bio.trim().isNotEmpty) ...[
-            Text(bio, style: Theme.of(context).textTheme.epBody),
-            const SizedBox(height: 12),
-          ],
-          if (profile != null && profile.genres.isNotEmpty)
-            Wrap(
-              key: const Key('fan-profile-genres'),
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final genre in profile.genres)
-                  EpChip(
-                    key: ValueKey('fan-profile-genre-$genre'),
-                    label: genre,
-                    active: true,
-                    neutralSelected: true,
-                    semanticLabel: '$genre. Edit favorite genres.',
-                    onTap: app.openEditProfile,
-                  ),
-              ],
-            ),
+          const EpEyebrow('YOUR GENRES'),
+          const SizedBox(height: 4),
+          Text(
+            'From the shows you go to.',
+            style: Theme.of(context).textTheme.epCaption,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            key: const Key('fan-profile-genres'),
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final genre in genres)
+                EpChip(
+                  key: ValueKey('fan-profile-genre-${genre.genre}'),
+                  label: genre.label,
+                  active: true,
+                  neutralSelected: true,
+                  readOnly: true,
+                  onTap: null,
+                ),
+            ],
+          ),
         ],
       ),
     );

@@ -28,6 +28,8 @@ class _ProfileCaptureRepository extends DemoRepository {
   _ProfileCaptureRepository({required super.auth});
 
   bool? capturedShareRsvps;
+  String? capturedBio;
+  List<String>? capturedGenres;
 
   @override
   Future<void> updateFanProfile({
@@ -40,6 +42,8 @@ class _ProfileCaptureRepository extends DemoRepository {
     bool? shareRsvpsWithFriends,
   }) async {
     capturedShareRsvps = shareRsvpsWithFriends;
+    capturedBio = bio;
+    capturedGenres = List.of(genres);
     await super.updateFanProfile(
       name: name,
       bio: bio,
@@ -67,23 +71,24 @@ void main() {
     tester.view.physicalSize = const Size(1280, 900);
     await tester.pumpAndSettle();
     final name = find.byKey(const Key('fan-name-field'));
-    final bio = find.byKey(const Key('fan-bio-field'));
+    final location = find.byKey(const Key('home-location-input'));
     await tester.enterText(name, 'Rae Booker');
-    await tester.enterText(bio, 'Small venues and loud guitars.');
+    await tester.ensureVisible(location);
+    await tester.enterText(location, 'Berkeley, CA');
 
     for (final size in [const Size(390, 844), const Size(1280, 900)]) {
       tester.view.physicalSize = size;
       await tester.pumpAndSettle();
       expect(tester.widget<TextField>(name).controller!.text, 'Rae Booker');
       expect(
-        tester.widget<TextField>(bio).controller!.text,
-        'Small venues and loud guitars.',
+        tester.widget<TextField>(location).controller!.text,
+        'Berkeley, CA',
       );
     }
     await tester.tap(find.text('SAVE CHANGES'));
     await tester.pumpAndSettle();
     expect(harness.app.profile!.name, 'Rae Booker');
-    expect(harness.app.profile!.bio, 'Small venues and loud guitars.');
+    expect(harness.app.profile!.homeLocation, FanCity.berkeley);
   });
 
   testWidgets('profile fields use labelled form grammar and keep semantics', (
@@ -102,35 +107,24 @@ void main() {
     expect(editorDecoration.color, Ep.surfaceRaised);
     expect(editorDecoration.gradient, isNull);
     expect(editorDecoration.border!.top.color, Ep.border);
-    final previewName = tester.widget<Text>(
-      find.byKey(const Key('fan-preview-name')),
-    );
-    final previewScene = tester.widget<Text>(
-      find.byKey(const Key('fan-preview-scene')),
-    );
-    expect(previewName.style!.color, Ep.contentPrimary);
-    expect(previewName.style!.fontSize, 25);
-    expect(previewScene.style!.color, Ep.contentSecondary);
-    expect(previewScene.style!.fontSize, 13);
+    expect(find.byKey(const Key('fan-preview-name')), findsNothing);
+    expect(find.byKey(const Key('fan-preview-scene')), findsNothing);
     expect(find.bySemanticsLabel('Edit profile photo'), findsOne);
     expect(find.text('IDENTITY'), findsOne);
-    expect(find.text('SCENE & TASTE'), findsOne);
+    expect(find.text('SCENE'), findsOne);
     expect(find.text('DISPLAY NAME · REQUIRED'), findsOne);
     expect(find.bySemanticsLabel(RegExp('^DISPLAY NAME · REQUIRED')), findsOne);
     expect(find.text('HOME LOCATION'), findsOne);
-    expect(find.text('ABOUT'), findsOne);
-    expect(find.bySemanticsLabel(RegExp('^ABOUT')), findsOne);
-    expect(find.textContaining('FAVORITE GENRES'), findsOne);
+    expect(find.text('ABOUT'), findsNothing);
+    expect(find.textContaining('FAVORITE GENRES'), findsNothing);
     expect(find.text('PREFERENCES'), findsOne);
-    expect(find.byType(EpLabeledField), findsNWidgets(2));
+    expect(find.byType(EpLabeledField), findsOne);
     expect(find.byType(StickyActionBar), findsOne);
 
     final orderedFields = [
       find.byKey(const Key('fan-identity-preview')),
       find.byKey(const Key('fan-name-field')),
-      find.byKey(const Key('fan-bio-field')),
       find.byKey(const Key('fan-home-location-field')),
-      find.byKey(const Key('fan-favorite-genres-field')),
       find.byKey(const Key('location-personalization')),
     ];
     for (var index = 1; index < orderedFields.length; index++) {
@@ -139,7 +133,7 @@ void main() {
         greaterThan(tester.getTopLeft(orderedFields[index - 1]).dy),
       );
     }
-    for (final key in const [Key('fan-name-field'), Key('fan-bio-field')]) {
+    for (final key in const [Key('fan-name-field')]) {
       final field = tester.widget<TextField>(find.byKey(key));
       expect(field.style!.fontFamily, 'PP Telegraf');
       final decoration = field.decoration!.applyDefaults(
@@ -148,6 +142,66 @@ void main() {
       expect(decoration.enabledBorder, isA<UnderlineInputBorder>());
     }
     semantics.dispose();
+  });
+
+  testWidgets('current location is a discreet text button under the field', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      size: const Size(402, 1800),
+      home: const Scaffold(body: EditProfileScreen()),
+    );
+    final control = find.byKey(const Key('use-current-home-location'));
+    final button = tester.widget<TextButton>(control);
+    expect(button.child, isA<Text>());
+    expect(button.style!.textStyle!.resolve({})!.fontSize, 11);
+    expect(button.style!.textStyle!.resolve({})!.fontFamily, 'Azeret Mono');
+    expect(button.style!.foregroundColor!.resolve({}), Ep.contentSecondary);
+    for (final type in [EpPill, FilledButton]) {
+      expect(
+        find.ancestor(of: control, matching: find.byType(type)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: control, matching: find.byType(type)),
+        findsNothing,
+      );
+    }
+    final input = find.byKey(const Key('home-location-input'));
+    expect(
+      tester.widget<TextField>(input).decoration!.hintText,
+      'City or neighbourhood',
+    );
+    expect(
+      tester.getTopLeft(control).dy,
+      greaterThanOrEqualTo(tester.getBottomLeft(input).dy),
+    );
+    expect(tester.getTopRight(control).dx, tester.getTopRight(input).dx);
+  });
+
+  testWidgets('saving preserves bio and genres from the current profile', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _ProfileCaptureRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: EditProfileScreen()),
+    );
+    // Simulate a profile refresh while the editor is open.
+    harness.app.profile = harness.app.profile!.copyWith(
+      bio: 'An existing bio updated elsewhere.',
+      genres: const ['techno', 'punk'],
+    );
+    await tester.enterText(find.byKey(const Key('fan-name-field')), 'New Name');
+    await tester.tap(find.byKey(const Key('save-fan-profile')));
+    await tester.pumpAndSettle();
+    expect(repository.capturedBio, 'An existing bio updated elsewhere.');
+    expect(repository.capturedGenres, ['techno', 'punk']);
   });
 
   testWidgets('home location autocompletes scenes and the current position', (
@@ -319,18 +373,6 @@ void main() {
       home: const Scaffold(body: EditProfileScreen()),
     );
     final barTop = tester.getTopLeft(find.byType(StickyActionBar)).dy;
-
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('fan-bio-field')),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('fan-bio-field')))
-          .maxLength,
-      280,
-    );
 
     await tester.scrollUntilVisible(
       find.byKey(const Key('followed-band-updates')),
@@ -998,11 +1040,66 @@ void main() {
     expect(harness.app.current.screen, isNot(Screen.editProfile));
   });
 
-  testWidgets('profile surfaces favorite genres as a shortcut into editing', (
+  for (final key in const [
+    Key('fan-name-field'),
+    Key('home-location-input'),
+    Key('location-personalization'),
+    Key('followed-band-updates'),
+    Key('edit-profile-share-rsvps'),
+  ]) {
+    testWidgets('changing and reverting $key updates unsaved state', (
+      tester,
+    ) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        size: const Size(402, 1800),
+        beforePump: (app) => app.go(Screen.editProfile),
+        home: const Scaffold(body: EditProfileScreen()),
+      );
+      final field = find.byKey(key);
+      final widget = tester.widget(field);
+      final initialText = widget is TextField ? widget.controller!.text : null;
+      if (initialText != null) {
+        await tester.enterText(
+          field,
+          key == const Key('fan-name-field') ? 'New Name' : 'Berkeley, CA',
+        );
+      } else {
+        await tester.tap(field);
+      }
+      await tester.pump();
+      expect(
+        tester.widget<StickyActionBar>(find.byType(StickyActionBar)).onPrimary,
+        isNotNull,
+      );
+      await tester.tap(find.byTooltip('Back to profile'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('discard-profile-dialog')), findsOne);
+      await tester.tap(find.byKey(const Key('keep-editing-profile')));
+      await tester.pumpAndSettle();
+
+      if (initialText != null) {
+        await tester.enterText(field, initialText);
+      } else {
+        await tester.tap(field);
+      }
+      await tester.pump();
+      await tester.tap(find.byTooltip('Back to profile'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('discard-profile-dialog')), findsNothing);
+      expect(harness.app.current.screen, isNot(Screen.editProfile));
+    });
+  }
+
+  testWidgets('profile shows the top three inferred genres without editing', (
     tester,
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
+    const bio = 'This saved bio must stay off the profile page.';
     final harness = await pumpApp(
       tester,
       auth: auth,
@@ -1012,21 +1109,57 @@ void main() {
           UserProfile.fromJson({
             'name': 'Genre Fan',
             'email': 'genre@example.com',
-            'genres': <String>['punk', 'techno'],
-            'attendedCount': 0,
+            'bio': bio,
+            'genres': <String>['punk'],
+            'attendedCount': 4,
             'createdAt': 1234,
           }),
-        ),
+        )
+        ..returns('history', [
+          for (var index = 0; index < 4; index++)
+            FanHistoryItem(
+              gigId: 'attended-$index',
+              title: 'Attended show $index',
+              startsAt: DateTime(2026, 1, index + 1),
+              venueName: 'Local venue',
+              bandNames: const [],
+              flyKey: 'paper',
+              flyerUrl: null,
+              status: FanHistoryStatus.rsvped,
+              genres: const ['jazz', 'ambient', 'soul', 'techno'],
+            ),
+        ]),
       home: const Scaffold(body: MyGigsScreen()),
     );
 
-    expect(find.byKey(const Key('fan-profile-genres')), findsOne);
-    await _tapProfileControl(
-      tester,
-      find.byKey(const ValueKey('fan-profile-genre-punk')),
-    );
+    final expected = harness.app.exploreGenres.take(3).toList();
+    expect(harness.app.exploreGenres.length, greaterThan(3));
+    expect(expected.map((genre) => genre.genre), isNot(contains('punk')));
+    final genres = find.byKey(const Key('fan-profile-genres'));
+    await tester.ensureVisible(genres);
     await tester.pumpAndSettle();
-    expect(harness.app.current.screen, Screen.editProfile);
+    expect(find.text('YOUR GENRES'), findsOne);
+    expect(find.text('From the shows you go to.'), findsOne);
+    expect(find.text(bio), findsNothing);
+    final chips = tester
+        .widgetList<EpChip>(
+          find.descendant(of: genres, matching: find.byType(EpChip)),
+        )
+        .toList();
+    expect(chips, hasLength(3));
+    expect(
+      chips.map((chip) => chip.label),
+      expected.map((genre) => genre.label),
+    );
+    expect(chips.map((chip) => chip.key), [
+      for (final genre in expected)
+        ValueKey('fan-profile-genre-${genre.genre}'),
+    ]);
+    for (final chip in chips) {
+      expect(chip.onTap, isNull);
+      expect(chip.readOnly, isTrue);
+      expect(chip.semanticLabel, isNull);
+    }
   });
 
   testWidgets('failed unfollow rolls the Following row back', (tester) async {
