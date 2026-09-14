@@ -103,10 +103,10 @@ class _HeroTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.epColors;
     final (numeral, labelSize) = EpLayout.isDesktop(context)
-        ? (72.0, 32.0)
+        ? (72.0, 48.0)
         : MediaQuery.textScalerOf(context).scale(1) > 1.3
-        ? (32.0, 16.0)
-        : (44.0, 22.0);
+        ? (32.0, 24.0)
+        : (44.0, 32.0);
     return Semantics(
       key: const ValueKey('home-hero'),
       label: '$count ${count == 1 ? 'show' : 'shows'} near you.',
