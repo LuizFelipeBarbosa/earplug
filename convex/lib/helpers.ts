@@ -538,6 +538,7 @@ export const userPayloadValidator = v.object({
   homeLocation: v.union(fanCityValidator, v.null()),
   locationPersonalizationEnabled: v.boolean(),
   followedBandUpdatesEnabled: v.boolean(),
+  shareRsvpsWithFriends: v.boolean(),
   profileTutorialCompleted: v.boolean(),
   fanOnboarding: v.union(
     v.object({
@@ -866,6 +867,7 @@ export async function toUserPayload(ctx: QueryCtx, user: Doc<"users">) {
     locationPersonalizationEnabled:
       user.locationPersonalizationEnabled ?? false,
     followedBandUpdatesEnabled: user.followedBandUpdatesEnabled ?? true,
+    shareRsvpsWithFriends: user.shareRsvpsWithFriends ?? true,
     profileTutorialCompleted: user.profileTutorialCompleted ?? false,
     fanOnboarding:
       user.fanOnboarding === undefined
@@ -905,6 +907,11 @@ export const MAX_RECAP_GIGS = 40;
 
 /** Maximum RSVP rows measured for one gig in a fan recap. */
 export const MAX_RSVPS_PER_GIG = 300;
+
+/** Ceiling on gigRsvps rows read across all friends in one social:friendsGoing
+ * call, before the 4096-queries-per-function transaction limit is hit — see
+ * the comment in convex/social.ts for the arithmetic. */
+export const MAX_FRIEND_RSVP_ROWS = 2500;
 
 /** Minimum distinct fans required in every row of a private partition. */
 export const K_ANON_FANS = 5;

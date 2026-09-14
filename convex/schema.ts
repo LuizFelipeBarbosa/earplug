@@ -347,6 +347,7 @@ export default defineSchema({
     locationPersonalizationEnabled: v.optional(v.boolean()),
     followedBandUpdatesEnabled: v.optional(v.boolean()),
     profileTutorialCompleted: v.optional(v.boolean()),
+    shareRsvpsWithFriends: v.optional(v.boolean()),
     // Clerk user.deleted tombstone; milliseconds since epoch.
     deletedAt: v.optional(v.number()),
     // Clerk's updated_at (ms epoch) from the last applied webhook guards
@@ -354,7 +355,8 @@ export default defineSchema({
     clerkUpdatedAt: v.optional(v.number()),
   })
     .index("by_clerk_id", ["clerkId"])
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .searchIndex("search_name", { searchField: "name" }),
 
   platformAdmins: defineTable({
     userId: v.id("users"),
@@ -1267,6 +1269,14 @@ export default defineSchema({
     .index("by_user_band", ["userId", "bandId"])
     .index("by_user", ["userId"])
     .index("by_band", ["bandId"]),
+
+  userFollows: defineTable({
+    followerId: v.id("users"),
+    followeeId: v.id("users"),
+  })
+    .index("by_follower_followee", ["followerId", "followeeId"])
+    .index("by_follower", ["followerId"])
+    .index("by_followee", ["followeeId"]),
 
   gigRsvps: defineTable({
     userId: v.id("users"),
