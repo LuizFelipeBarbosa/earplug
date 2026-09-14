@@ -91,8 +91,9 @@ class ExploreFriendsSection extends StatelessWidget {
 
   String _friendsLine(List<SocialUserCard> friends) {
     if (friends.length == 1) return '${friends[0].name} is going';
-    if (friends.length == 2)
+    if (friends.length == 2) {
       return '${friends[0].name}, ${friends[1].name} going';
+    }
     return '${friends[0].name}, ${friends[1].name} +${friends.length - 2} going';
   }
 }
