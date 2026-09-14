@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.31)
+# EarPlug Convex function contract (FROZEN — v1.32)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -1088,6 +1088,25 @@ accepts optional `shareRsvpsWithFriends`; `users:me`/`UserPayload` now require
 it (default true for legacy rows), and `interactions:history` rows now carry
 `genres: string[]` copied from the gig.
 
+**v1.32 — venue photos and known attendees.** `venuePayloadValidator` now
+requires `photoUrls: string[]`, resolved owner-uploaded storage URLs capped at
+`MAX_VENUE_PHOTOS = 4` and `[]` when the venue has none; the shared
+`VenuePayload` shape applies to every venue read, including `venues:list`,
+`venues:detail`, `venues:resolvePublic`, `gigs:feedV2`'s `venues` array, and
+organizer reads in `organizations.ts`. The new `social:knownAttendees({ gigId,
+now })` query returns `{ people: Array<{ userId, name, avatarUrl,
+relation: "friend"|"seen", sharedShows: number }>, goingCount: number,
+truncated: boolean }` for mutual friends who RSVP'd or non-friends who share at
+least `MIN_SHARED_PAST_SHOWS = 2` past RSVPed gigs, while `sharesRsvps()` allows
+only attendees whose `shareRsvpsWithFriends` is not false; it reads at most
+`MAX_KNOWN_ATTENDEE_ROWS = 300` attendee rows, performs at most
+`MAX_KNOWN_ATTENDEE_CHECKS = 60` non-friend checks, consumes at most
+`MAX_KNOWN_ATTENDEE_RSVP_ROWS = 2500` RSVP rows overall, and returns at most
+`MAX_KNOWN_ATTENDEES = 20` people. Results sort friends first, then shared-show
+count descending and name; unauthenticated or missing gigs return empty zeroed
+values, and an unpublished gig returns no people with only its `goingCount`
+populated.
+
 ## Reconciliation
 
 Verified against the current source as of v1.17; these deployed, client-required contract surfaces were previously undocumented:
@@ -1131,7 +1150,8 @@ Verified against the current source as of v1.17; these deployed, client-required
 
 // VenuePayload
 { "_id": "...", "name": "...", "area": "...", "addr": "...",
-  "distSF": "0.8 mi", "distOak": "6.3 mi", "lat": 37.75, "lng": -122.41 }
+  "distSF": "0.8 mi", "distOak": "6.3 mi", "lat": 37.75, "lng": -122.41,
+  "photoUrls": [] }
 
 // BandPayload — one shape everywhere; every key is always present
 { "_id": "...", "name": "...", "genres": ["garage"], "area": "...",
@@ -1239,6 +1259,13 @@ Verified against the current source as of v1.17; these deployed, client-required
   ],
   "truncated": false }
 
+// KnownAttendees — social:knownAttendees's return shape
+{ "people": [
+    { "userId": "...", "name": "...", "avatarUrl": null,
+      "relation": "friend", "sharedShows": 0 }
+  ],
+  "goingCount": 12, "truncated": false }
+
 // BandRecap — shows are newest first; weekday is Monday=1 through Sunday=7
 { "window": { "showsAnalyzed": 2, "scanned": 14, "truncated": false,
                "firstStartsAt": 1784000000000, "lastStartsAt": 1785000000000 },
@@ -1318,6 +1345,7 @@ Verified against the current source as of v1.17; these deployed, client-required
 | `social:mySocial`               | `{}`                 | `{ following: Id<"users">[], followers: Id<"users">[], friends: Id<"users">[], followingCount: number, followerCount: number, truncated: boolean, shareRsvpsWithFriends: boolean }` — authenticated follow graph with 200 ids per direction and mutual-friend intersection; unauthenticated returns empty/zeroed values with sharing true.                                                                                                                                                                                                                                                                                 |
 | `social:friendsGoing`           | `{ from: number, to: number }` | `{ entries: Array<{ gigId: Id<"gigs">, startsAt: number, friends: SocialPerson[] }>, truncated: boolean }` — published gigs where mutual friends who allow RSVP sharing are going; unauthenticated or invalid windows return empty. Requires `to > from`, a window ≤14 days, and clamps `from` to the shared feed cutoff. Friend-major scan is capped at 100 friends, 50 RSVPs each, and 2,500 rows overall.                                                                                                                                                                                        |
 | `social:userCard`               | `{ userId }`         | `SocialUserCard & { followedBandCount: number, mutualBands: Array<{ bandId: Id<"bands">, name: string }> }` or `null` — authenticated target lookup with follow state and up to 10 mutual bands; null unauthenticated or for a missing/deleted target.                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `social:knownAttendees`          | `{ gigId, now }`     | `{ people: Array<{ userId, name, avatarUrl, relation: "friend"\|"seen", sharedShows: number }>, goingCount: number, truncated: boolean }` — published-gig attendees known through mutual friendship or at least two shared past shows, subject to RSVP sharing; friends first, then shared-show count descending and name. Unauthenticated or missing gigs return empty zeroed values; unpublished gigs return no people and the gig's `goingCount`.                                                                                                                                                                                                 |
 | `analytics:bandRecap`           | `{ bandId }`         | `BandRecap` — signed-in band members only (admin or member); throws otherwise. Reads the 200 most recent globally past gigs, analyzes at most the first 30 whose lineup contains the band, and returns shows newest first. `window.truncated` covers both the matching-show cap and a full global scan. The five-distinct-fan floor suppresses `leadTime`, `repeatFans`, `newReturning` and the per-show new/returning columns; `leadTime.unmeasurable` is also independently zeroed for 1–4 distinct fans. `venues`, `weekdays` and `pricing` always publish because they are exactly recomputable from `shows[]`. |
 
 ## Mutations
@@ -1387,6 +1415,7 @@ the creating band republishes.
   read, so "the whole ordered list fits in one read" holds by construction.
 - `MAX_VENUE_GIGS = 200`; `venues:detail` reads one extra indexed row only to
   compute `truncated`, and hydrates gigs/bands from the returned 200-row page.
+- `MAX_VENUE_PHOTOS = 4` resolved photo URLs per venue payload.
 - `interactions:myInteractions` reads at most 500 RSVP, 500 follow and 500 save
   rows, then point-reads at most 1,000 deduplicated RSVP/save gigs. Only gigs at
   or after the shared six-hour feed cutoff are returned, but those hydrated
@@ -1400,6 +1429,9 @@ the creating band republishes.
   because of the queries-per-function transaction limit.
 - `MAX_USER_SEARCH_RESULTS = 20` and `MIN_USER_SEARCH_QUERY = 2` cap
   `social:searchUsers` results and name-search query length.
+- `MIN_SHARED_PAST_SHOWS = 2`, `MAX_KNOWN_ATTENDEE_ROWS = 300`,
+  `MAX_KNOWN_ATTENDEE_CHECKS = 60`, `MAX_KNOWN_ATTENDEE_RSVP_ROWS = 2500`,
+  and `MAX_KNOWN_ATTENDEES = 20` bound `social:knownAttendees`.
 - `MAX_MEDIA_BYTES = 100 MiB`.
 - Band invitation tokens carry 256 bits of strong pseudo-randomness. Creation
   and rotation schedule `bandInvites:expire` for seven days later; its band and
@@ -1417,7 +1449,7 @@ the creating band republishes.
 
 ## Invariants
 
-- Only `social:friendsGoing` reveals another user's RSVPs, only to mutual followers, and only while that user's `shareRsvpsWithFriends` is not false; no social payload carries an email.
+- Only `social:friendsGoing` and `social:knownAttendees` reveal another user's RSVPs: `social:friendsGoing` shows them only to mutual followers, while `social:knownAttendees` shows an attendee only when they are a mutual friend of the caller or share at least two past shows with them, and both queries do so only while that user's `shareRsvpsWithFriends` is not false; no social payload carries an email.
 - `bands.followerCount == count(follows by bandId) + count(bandMembers by
 bandId)`. Its permitted live writers are `interactions:toggleFollow` (±1 with
   its follow row), `bands:createBand` (seeds 1 with its admin member row), and

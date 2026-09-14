@@ -144,6 +144,7 @@ export const requiredClientFunctions = Object.freeze({
   "social.js:mySocial": "Query",
   "social.js:friendsGoing": "Query",
   "social.js:userCard": "Query",
+  "social.js:knownAttendees": "Query",
 });
 
 export const requiredClientFields = Object.freeze([
@@ -162,8 +163,10 @@ export const requiredClientFields = Object.freeze([
   ["bands.js:archiveStatus", "return", "bandId", false],
   ["bands.js:archiveStatus", "return", "archivedAt", false],
   ["gigs.js:feedV2", "return", "bands", false],
+  ["gigs.js:feedV2", "return", "venues", false],
   ["venues.js:list", "arrayReturn", "venueType", false],
   ["venues.js:list", "arrayReturn", "approxLocation", false],
+  ["venues.js:list", "arrayReturn", "photoUrls", false],
   ["talentOpportunitiesRead.js:resolvePublic", "return", "opportunity", false],
   ["gigs.js:writePolicy", "return", "bandGigWrites", false],
   ["bookings.js:sendOffer", "args", "grossMinor", false],
@@ -244,6 +247,8 @@ export const requiredClientFields = Object.freeze([
   ["social.js:mySocial", "return", "shareRsvpsWithFriends", false],
   ["social.js:friendsGoing", "return", "entries", false],
   ["social.js:friendsGoing", "return", "truncated", false],
+  ["social.js:knownAttendees", "return", "people", false],
+  ["social.js:knownAttendees", "return", "goingCount", false],
   ["social.js:searchUsers", "arrayReturn", "isFriend", false],
   ["social.js:toggleFollowUser", "args", "on", true],
 ]);
