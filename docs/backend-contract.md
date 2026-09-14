@@ -1113,7 +1113,7 @@ Verified against the current source as of v1.17; these deployed, client-required
   "doorsTime": "8PM / 9PM", "lifecycle": "published|cancelled",
   // saveDraft accepts all eleven; maintenance:publishRealGig accepts the first six
   // custom implies a non-null flyerUrl once valid flyStorageId was supplied
-  "flyKey": "xerox|riso|marquee|blueprint|sunburst|custom|paper|blue|black|yellow|bluetype",
+  "flyKey": "ink|panel|accent|xerox|riso|marquee|blueprint|sunburst|custom|paper|blue|black|yellow|bluetype",
   // resolved from flyStorageId; null when no custom flyer is stored/live
   "flyerUrl": null,
   "lineup": ["<bandId>"],

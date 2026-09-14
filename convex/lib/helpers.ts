@@ -210,12 +210,16 @@ export const bandPayloadValidator = v.object({
   reviewSummary: v.union(reviewSummaryValidator, v.null()),
 });
 
-/** The six presses offered by the client's gig-create picker. "custom" means
+/** The presses offered by the client's gig-create picker (ink, panel and
+ * accent since the 2026-09 redesign; the older six stay valid). "custom" means
  * band-supplied art backed by gigs.flyStorageId; clients render a placeholder
  * plate when flyerUrl resolves null. The gigs.flyKey schema column stays
  * v.string() because legacy rows/seeds use older keys: paper, blue, black,
  * yellow, and bluetype. */
 const flyKeyValidator = v.union(
+  v.literal("ink"),
+  v.literal("panel"),
+  v.literal("accent"),
   v.literal("xerox"),
   v.literal("riso"),
   v.literal("marquee"),
@@ -226,6 +230,9 @@ const flyKeyValidator = v.union(
 
 /** Every flyer key the client can render, including legacy styles. */
 export const knownFlyKeyValidator = v.union(
+  v.literal("ink"),
+  v.literal("panel"),
+  v.literal("accent"),
   v.literal("xerox"),
   v.literal("riso"),
   v.literal("marquee"),
