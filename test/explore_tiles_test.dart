@@ -4,8 +4,10 @@ import 'package:earplug/models.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/explore_friends.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
+import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
@@ -99,7 +101,9 @@ void main() {
       // height instead of filling the screen.
       await tester.pumpWidget(
         plain(
-          Column(children: [ExploreBandTile(band: band, onTap: () {})]),
+          Column(
+            children: [ExploreBandTile(band: band, onTap: () {})],
+          ),
           textScaler: TextScaler.linear(scale),
         ),
       );
@@ -382,9 +386,140 @@ void main() {
     );
   });
 
-  testWidgets('featured card renders meta and up to three lineup chips', (
+  testWidgets('event row overlays poster actions at the poster corner', (
     tester,
   ) async {
+    await tester.pumpWidget(
+      plain(
+        ExploreEventRow(
+          gig: gigFixture(id: 'poster-actions'),
+          venueName: 'The Foghorn',
+          posterActions: const [Icon(Icons.bookmark, key: Key('poster-save'))],
+          onTap: () {},
+        ),
+      ),
+    );
+    final poster = tester.getRect(
+      find.descendant(
+        of: find.byType(ExploreEventRow),
+        matching: find.byType(EpNetworkImage),
+      ),
+    );
+    final action = tester.getRect(find.byKey(const Key('poster-save')));
+    expect(action.left, closeTo(poster.left + 8, 1));
+    expect(action.top, closeTo(poster.top + 8, 1));
+  });
+
+  testWidgets('event row info wraps and emphasizes date and time', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      plain(
+        ExploreEventRow(
+          gig: gigFixture(id: 'structured-info'),
+          venueName: 'The Foghorn',
+          info: const ExploreGigInfo(
+            dateTime: '23 SEP · 8PM',
+            distance: 'A VERY LONG DISTANCE LABEL',
+            price: 'A VERY LONG PRICE LABEL',
+          ),
+          onTap: () {},
+        ),
+      ),
+    );
+    final infoText = tester.widget<Text>(
+      find.byWidgetPredicate(
+        (widget) => widget is Text && widget.textSpan != null,
+      ),
+    );
+    expect(infoText.softWrap, isTrue);
+    expect(infoText.overflow, isNot(TextOverflow.ellipsis));
+    final firstSpan =
+        (infoText.textSpan! as TextSpan).children!.first as TextSpan;
+    expect(firstSpan.style?.fontWeight, FontWeight.bold);
+  });
+
+  testWidgets('lineup row shows all chips when wide and see all when narrow', (
+    tester,
+  ) async {
+    const bands = [
+      ExploreLineupBand(name: 'Aster', initials: 'AS'),
+      ExploreLineupBand(name: 'Briar', initials: 'BR'),
+      ExploreLineupBand(name: 'Cinder', initials: 'CI'),
+    ];
+    await tester.pumpWidget(
+      plain(SizedBox(width: 700, child: ExploreLineupRow(bands: bands))),
+    );
+    expect(find.text('Aster'), findsOneWidget);
+    expect(find.text('Briar'), findsOneWidget);
+    expect(find.text('Cinder'), findsOneWidget);
+    expect(find.byKey(const Key('lineup-see-all')), findsNothing);
+
+    var tapped = false;
+    await tester.pumpWidget(
+      plain(
+        SizedBox(
+          width: 300,
+          child: ExploreLineupRow(
+            bands: const [
+              ExploreLineupBand(name: 'A Very Long Band Name', initials: 'AL'),
+              ExploreLineupBand(name: 'Another Long Band Name', initials: 'AN'),
+              ExploreLineupBand(name: 'Third Long Band Name', initials: 'TL'),
+            ],
+            onSeeAll: () => tapped = true,
+          ),
+        ),
+      ),
+    );
+    expect(find.byKey(const Key('lineup-see-all')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('lineup-see-all')));
+    expect(tapped, isTrue);
+  });
+
+  testWidgets('lineup is pinned to the poster bottom edge', (tester) async {
+    await tester.pumpWidget(
+      plain(
+        ExploreEventRow(
+          gig: gigFixture(id: 'lineup-bottom'),
+          venueName: 'The Foghorn',
+          lineup: const [ExploreLineupBand(name: 'Aster', initials: 'AS')],
+          onTap: () {},
+        ),
+      ),
+    );
+    final poster = tester.getRect(find.byType(EpNetworkImage));
+    final lineup = tester.getRect(find.byType(ExploreLineupRow));
+    expect(lineup.bottom, closeTo(poster.bottom, 1));
+  });
+
+  testWidgets('compact and featured cards have no ticket pills', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      home: Scaffold(
+        body: Consumer<AppState>(
+          builder: (context, app, _) => FanEventCard(
+            gig: gigFixture(id: 'compact-no-ticket'),
+            app: app,
+          ),
+        ),
+      ),
+    );
+    expect(find.byType(EpPill), findsNothing);
+    await tester.pumpWidget(
+      plain(
+        ExploreFeaturedCard(
+          gig: gigFixture(id: 'featured-no-ticket'),
+          venueName: 'The Foghorn',
+          onTap: () {},
+        ),
+      ),
+    );
+    expect(find.byType(EpPill), findsNothing);
+  });
+
+  testWidgets('featured card renders meta and lineup chips', (tester) async {
     final gig = gigFixture(id: 'featured-lineup', title: 'Featured Event');
     await tester.pumpWidget(
       plain(
@@ -406,10 +541,10 @@ void main() {
     );
 
     expect(find.textContaining('23 SEP · 8PM · FREE · 11 MI'), findsOneWidget);
-    for (final name in ['Aster', 'Briar', 'Cinder']) {
-      expect(find.text(name), findsOneWidget);
-    }
-    expect(find.text('Fourth'), findsNothing);
+    expect(find.text('Aster'), findsOneWidget);
+    expect(find.text('Briar'), findsNothing);
+    expect(find.text('Cinder'), findsNothing);
+    expect(find.byKey(const Key('lineup-see-all')), findsOneWidget);
   });
 
   testWidgets('featured card uses generated flyer without duplicating title', (
@@ -422,11 +557,7 @@ void main() {
     );
     await tester.pumpWidget(
       plain(
-        ExploreFeaturedCard(
-          gig: gig,
-          venueName: 'The Foghorn',
-          onTap: () {},
-        ),
+        ExploreFeaturedCard(gig: gig, venueName: 'The Foghorn', onTap: () {}),
       ),
     );
 
@@ -440,16 +571,9 @@ void main() {
     expect(find.text('GENERATED FLYER EVENT'), findsOneWidget);
   });
 
-  testWidgets('featured card shows details, ticket cue, and taps', (
-    tester,
-  ) async {
+  testWidgets('featured card shows details and taps', (tester) async {
     var tapped = false;
     for (final tix in Ticketing.values) {
-      final cue = switch (tix) {
-        Ticketing.rsvp => 'RSVP',
-        Ticketing.paid => 'TICKETS',
-        Ticketing.external => 'DETAILS',
-      };
       await tester.pumpWidget(
         plain(
           ExploreFeaturedCard(
@@ -466,7 +590,9 @@ void main() {
       );
       expect(find.text('A LONG FEATURED EVENT TITLE'), findsOneWidget);
       expect(find.textContaining('THE FOGHORN · DOORS 8PM'), findsOneWidget);
-      expect(find.text(cue), findsOneWidget);
+      expect(find.text('RSVP'), findsNothing);
+      expect(find.text('TICKETS'), findsNothing);
+      expect(find.text('GOING'), findsNothing);
       await tester.tap(find.text('A LONG FEATURED EVENT TITLE'));
     }
     expect(tapped, isTrue);
@@ -500,7 +626,7 @@ void main() {
   });
 
   testWidgets(
-    'landscape featured card fits its title, meta, lineup and cue at 1.0 and 1.5',
+    'landscape featured card fits its title, meta and lineup at 1.0 and 1.5',
     (tester) async {
       final gig = gigFixture(
         id: 'featured-landscape',
@@ -541,7 +667,7 @@ void main() {
           find.textContaining('23 SEP · 8PM · FREE · 11 MI'),
           findsOneWidget,
         );
-        expect(find.text('TICKETS'), findsOneWidget);
+        expect(find.text('TICKETS'), findsNothing);
       }
     },
   );
@@ -579,7 +705,8 @@ void main() {
       );
       expect(find.text('THE FOGHORN'), findsOneWidget);
       expect(find.text('The Mission'), findsOneWidget);
-      expect(find.text('SAT 19 · 1 SHOW'), findsOneWidget);
+      expect(find.text('19 SEP'), findsOneWidget);
+      expect(find.text('1 SHOW'), findsOneWidget);
       expect(find.text('VERIFIED'), findsOneWidget);
 
       final unverified = Venue(
@@ -607,7 +734,8 @@ void main() {
           ),
         ),
       );
-      expect(find.text('SAT 19 · 2 SHOWS'), findsOneWidget);
+      expect(find.text('19 SEP'), findsOneWidget);
+      expect(find.text('2 SHOWS'), findsOneWidget);
       expect(find.text('VERIFIED'), findsNothing);
     },
   );

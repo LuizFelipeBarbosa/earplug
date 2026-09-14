@@ -45,7 +45,6 @@ class FanEventCard extends StatelessWidget {
       gig: gig,
       app: app,
       trailingAction: trailingAction,
-      prominent: presentation == FanEventCardPresentation.featured,
     );
 
     if (presentation == FanEventCardPresentation.featured) {
@@ -58,24 +57,17 @@ class FanEventCard extends StatelessWidget {
         actions: actions,
       );
     }
-    final meta = compactGigMeta(gig, app, showDistance: showDistance);
     final row = ExploreEventRow(
       key: ValueKey('fan-event-${gig.id}'),
       gig: gig,
       venueName: venue.name,
-      meta: meta,
-      lineup: exploreLineupFor(gig, app),
-      trailing: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 104),
-        child: _EventActions(
-          gig: gig,
-          app: app,
-          trailingAction: trailingAction,
-          prominent: false,
-          stretch: true,
-        ),
+      info: ExploreGigInfo(
+        dateTime: '${_metaDateLabel(gig)} · ${gig.doorsLabel}',
+        distance: showDistance ? _distanceLabel(app.distanceOf(venue)) : null,
+        price: gig.priceLabel,
       ),
-      stretchTrailing: true,
+      lineup: exploreLineupFor(gig, app),
+      posterActions: actions.posterActions(context),
       onTap: () => app.openGig(gig.id),
     );
     if (!app.isDiscoveryBoosted(gig)) return row;
@@ -258,50 +250,32 @@ class _FactsRow extends StatelessWidget {
   }
 }
 
-/// Save, share, the RSVP/ticket control and one caller-supplied action.
+/// Save, share, and one caller-supplied action.
 class _EventActions extends StatelessWidget {
   const _EventActions({
     required this.gig,
     required this.app,
     required this.trailingAction,
-    required this.prominent,
-    this.stretch = false,
   });
 
   final Gig gig;
   final AppState app;
   final Widget? trailingAction;
-  final bool prominent;
-  final bool stretch;
+
+  List<Widget> posterActions(BuildContext context) => [
+    _saveAction,
+    _shareAction(context),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    if (stretch) {
-      return Column(
-        key: ValueKey('event-actions-${gig.id}'),
-        mainAxisSize: MainAxisSize.max,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _saveAction,
-              const SizedBox(width: 4),
-              _shareAction(context),
-            ],
-          ),
-          ..._ticketActions,
-        ],
-      );
-    }
     return Wrap(
       key: ValueKey('event-actions-${gig.id}'),
       alignment: WrapAlignment.end,
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: 4,
       runSpacing: 4,
-      children: [_saveAction, _shareAction(context), ..._ticketActions],
+      children: [...posterActions(context), ?trailingAction],
     );
   }
 
@@ -322,53 +296,6 @@ class _EventActions extends StatelessWidget {
     semanticLabel: 'Share event',
     onPressed: () => _share(context, gig),
   );
-
-  List<Widget> get _ticketActions {
-    if (gig.lifecycle == GigLifecycle.cancelled) {
-      return [const EpBadge(label: 'Cancelled')];
-    }
-    final actions = <Widget>[
-      _TicketAction(gig: gig, app: app, prominent: prominent),
-      ?trailingAction,
-    ];
-    if (!stretch) return actions;
-    return [
-      Wrap(
-        alignment: WrapAlignment.end,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 4,
-        runSpacing: 4,
-        children: actions,
-      ),
-    ];
-  }
-}
-
-class _TicketAction extends StatelessWidget {
-  const _TicketAction({
-    required this.gig,
-    required this.app,
-    required this.prominent,
-  });
-
-  final Gig gig;
-  final AppState app;
-  final bool prominent;
-
-  @override
-  Widget build(BuildContext context) {
-    final external = gig.tix == Ticketing.external;
-    final going = app.rsvps.contains(gig.id);
-    return EpPill(
-      key: ValueKey('ticket-action-${gig.id}'),
-      label: external ? 'Tickets ↗' : (going ? 'Going ✓' : 'RSVP'),
-      variant: going ? EpPillVariant.outline : EpPillVariant.primary,
-      size: prominent ? EpPillSize.regular : EpPillSize.chip,
-      onPressed: external
-          ? () => _openTickets(context, app, gig)
-          : () => going ? app.toggleRsvp(gig.id) : app.requestRsvp(gig.id),
-    );
-  }
 }
 
 Future<void> _share(BuildContext context, Gig gig) => copyForUser(
@@ -376,12 +303,3 @@ Future<void> _share(BuildContext context, Gig gig) => copyForUser(
   publicWebUrl('g/${gig.publicRef}'),
   successMessage: 'Link copied: ${publicWebDisplayUrl('g/${gig.publicRef}')}',
 );
-
-Future<void> _openTickets(BuildContext context, AppState app, Gig gig) async {
-  final url = gig.externalUrl;
-  if (url == null || url.isEmpty) {
-    app.say('No ticket link listed for this gig.');
-    return;
-  }
-  await openExternalForUser(context, url);
-}

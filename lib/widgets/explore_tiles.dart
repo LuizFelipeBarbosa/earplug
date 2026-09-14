@@ -93,6 +93,136 @@ class ExploreLineupWrap extends StatelessWidget {
   );
 }
 
+class ExploreGigInfo {
+  const ExploreGigInfo({required this.dateTime, this.distance, this.price});
+
+  final String dateTime;
+  final String? distance;
+  final String? price;
+}
+
+class ExploreLineupRow extends StatelessWidget {
+  const ExploreLineupRow({
+    super.key,
+    required this.bands,
+    this.tint,
+    this.onSeeAll,
+  });
+
+  final List<ExploreLineupBand> bands;
+  final Color? tint;
+  final VoidCallback? onSeeAll;
+
+  double _textWidth(BuildContext context, String text, TextStyle style) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    return painter.width;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (bands.isEmpty) return const SizedBox.shrink();
+    final style = Theme.of(context).textTheme.epBody.copyWith(color: tint);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final widths = [
+          for (final band in bands) 26 + _textWidth(context, band.name, style),
+        ];
+        final seeAllStyle = Theme.of(
+          context,
+        ).textTheme.epChipLabel.copyWith(color: tint ?? context.epColors.ink);
+        final seeAllWidth = _textWidth(context, 'See all', seeAllStyle);
+        var used = 0.0;
+        var count = bands.length;
+        var allFit = true;
+        for (var i = 0; i < bands.length; i++) {
+          final next = used + (i == 0 ? 0 : 12) + widths[i];
+          if (next > constraints.maxWidth) {
+            count = i;
+            allFit = false;
+            break;
+          }
+          used = next;
+        }
+        if (!allFit) {
+          while (count > 0 && used + 12 + seeAllWidth > constraints.maxWidth) {
+            count--;
+            used -= widths[count] + (count == 0 ? 0 : 12);
+          }
+        }
+        final visible = bands.take(count).toList();
+        return Row(
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            for (var i = 0; i < visible.length; i++) ...[
+              if (i > 0) const SizedBox(width: 12),
+              _ExploreLineupChip(
+                band: visible[i],
+                textColor: tint,
+                allowOverflow: false,
+              ),
+            ],
+            if (!allFit) ...[
+              if (visible.isNotEmpty) const SizedBox(width: 12),
+              GestureDetector(
+                key: const Key('lineup-see-all'),
+                onTap: onSeeAll,
+                child: Text('See all', style: seeAllStyle),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ExploreGigInfoLine extends StatelessWidget {
+  const _ExploreGigInfoLine({required this.info});
+
+  final ExploreGigInfo info;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = Theme.of(context).textTheme.epLabel;
+    final muted = Theme.of(
+      context,
+    ).textTheme.epMeta.copyWith(color: context.epColors.muted);
+    final spans = <InlineSpan>[
+      TextSpan(
+        text: info.dateTime,
+        style: label.copyWith(
+          color: context.epColors.ink,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      if (info.distance != null) ...[
+        const TextSpan(text: ' · '),
+        TextSpan(
+          text: info.distance,
+          style: label.copyWith(color: context.epColors.ink),
+        ),
+      ],
+      if (info.price != null) ...[
+        const TextSpan(text: ' · '),
+        TextSpan(text: info.price, style: muted),
+      ],
+    ];
+    return Text.rich(
+      TextSpan(children: spans),
+      softWrap: true,
+      semanticsLabel: [
+        info.dateTime,
+        if (info.distance != null) info.distance!,
+        if (info.price != null) info.price!,
+      ].join(' · '),
+    );
+  }
+}
+
 /// Resolves a gig's band lineup, falling back to free-text performers.
 List<ExploreLineupBand> exploreLineupFor(Gig gig, AppState app) {
   final resolved = [
@@ -115,10 +245,15 @@ List<ExploreLineupBand> exploreLineupFor(Gig gig, AppState app) {
 }
 
 class _ExploreLineupChip extends StatelessWidget {
-  const _ExploreLineupChip({required this.band, this.textColor});
+  const _ExploreLineupChip({
+    required this.band,
+    this.textColor,
+    this.allowOverflow = true,
+  });
 
   final ExploreLineupBand band;
   final Color? textColor;
+  final bool allowOverflow;
 
   @override
   Widget build(BuildContext context) {
@@ -134,17 +269,14 @@ class _ExploreLineupChip extends StatelessWidget {
               : NetworkImage(band.avatarUrl!),
         ),
         const SizedBox(width: 6),
-        Flexible(
-          fit: FlexFit.loose,
-          child: Text(
-            band.name,
-            softWrap: false,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: textColor == null
-                ? textStyle
-                : textStyle.copyWith(color: textColor),
-          ),
+        Text(
+          band.name,
+          softWrap: false,
+          maxLines: 1,
+          overflow: allowOverflow ? TextOverflow.ellipsis : TextOverflow.clip,
+          style: textColor == null
+              ? textStyle
+              : textStyle.copyWith(color: textColor),
         ),
       ],
     );
@@ -163,8 +295,10 @@ class ExploreEventRow extends StatelessWidget {
     this.sub,
     this.lineup,
     this.meta,
+    this.info,
+    this.posterActions,
     this.friends = const <SocialUserCard>[],
-    this.thumbnailSize = 64,
+    this.thumbnailSize = 96,
   });
 
   final Gig gig;
@@ -175,6 +309,8 @@ class ExploreEventRow extends StatelessWidget {
   final String? sub;
   final List<ExploreLineupBand>? lineup;
   final String? meta;
+  final ExploreGigInfo? info;
+  final List<Widget>? posterActions;
   final List<SocialUserCard> friends;
   final double thumbnailSize;
 
@@ -187,7 +323,7 @@ class ExploreEventRow extends StatelessWidget {
         ' · ${gig.doorsLabel} · $venueName';
     final monoLine = meta ?? dateLine;
     final bands = lineup ?? const <ExploreLineupBand>[];
-    final thumbnail = SizedBox(
+    final poster = SizedBox(
       width: thumbnailSize,
       height: double.infinity,
       child: EpNetworkImage(
@@ -210,6 +346,44 @@ class ExploreEventRow extends StatelessWidget {
         ),
       ),
     );
+    final thumbnail = posterActions == null
+        ? poster
+        : Stack(
+            children: [
+              poster,
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < posterActions!.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 4),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: context.epColors.background.withValues(
+                            alpha: .72,
+                          ),
+                          shape: BoxShape.circle,
+                        ),
+                        child: SizedBox.square(
+                          dimension: 30,
+                          child: Material(
+                            color: Colors.transparent,
+                            shape: const CircleBorder(),
+                            child: FittedBox(
+                              fit: BoxFit.contain,
+                              child: posterActions![i],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          );
     return _ExploreHairlineRow(
       semanticLabel: gig.title,
       onTap: onTap,
@@ -222,57 +396,63 @@ class ExploreEventRow extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisSize: MainAxisSize.max,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  EpDisplay(
-                    gig.title,
-                    size: 18,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    meta == null ? monoLine : monoLine.toUpperCase(),
-                    semanticsLabel: monoLine,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.epMeta.copyWith(
-                      letterSpacing: 0.4,
-                      color: context.epColors.muted,
-                    ),
-                  ),
-                  if (bands.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    ExploreLineupWrap(bands: bands),
-                  ] else if (sub != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      sub!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.epBody.copyWith(
-                        color: context.epColors.muted,
-                      ),
-                    ),
-                  ],
-                  if (friends.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        ExploreAvatarStack(people: friends, size: 20),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            friendsGoingLine(friends),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.epCaption
-                                .copyWith(color: context.epColors.muted),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      EpDisplay(gig.title, size: 18),
+                      const SizedBox(height: 2),
+                      if (info != null)
+                        _ExploreGigInfoLine(info: info!)
+                      else
+                        Text(
+                          meta == null ? monoLine : monoLine.toUpperCase(),
+                          semanticsLabel: monoLine,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.epMeta.copyWith(
+                            letterSpacing: 0.4,
+                            color: context.epColors.muted,
                           ),
                         ),
+                      if (friends.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            ExploreAvatarStack(people: friends, size: 20),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                friendsGoingLine(friends),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.epCaption
+                                    .copyWith(color: context.epColors.muted),
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
-                    ),
+                    ],
+                  ),
+                  if (bands.isNotEmpty || sub != null) ...[
+                    const Spacer(),
+                    if (bands.isNotEmpty)
+                      SizedBox(
+                        height: 20,
+                        child: ExploreLineupRow(bands: bands, onSeeAll: onTap),
+                      )
+                    else
+                      Text(
+                        sub!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.epBody.copyWith(
+                          color: context.epColors.muted,
+                        ),
+                      ),
                   ],
                 ],
               ),
@@ -325,11 +505,6 @@ class ExploreFeaturedCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = flyerStyles[gig.flyKey] ?? flyerStyles['paper']!;
     final imageUrl = gig.flyerUrl;
-    final cue = switch (gig.tix) {
-      Ticketing.rsvp => 'RSVP',
-      Ticketing.paid => 'TICKETS',
-      Ticketing.external => 'DETAILS',
-    };
     return SizedBox(
       width: width,
       height: height,
@@ -364,9 +539,9 @@ class ExploreFeaturedCard extends StatelessWidget {
                 ),
               ),
               if (height < width)
-                ..._landscapeContent(context, style, cue)
+                ..._landscapeContent(context, style)
               else
-                _portraitContent(context, style, cue),
+                _portraitContent(context, style),
             ],
           ),
         ),
@@ -376,44 +551,40 @@ class ExploreFeaturedCard extends StatelessWidget {
 
   String get _venueLine => '$venueName · doors ${gig.doorsLabel}';
 
-  Widget _portraitContent(BuildContext context, FlyerStyle style, String cue) =>
-      Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            EpDateBlock(date: gig.startsAt),
-            const Spacer(),
-            if (friends.isNotEmpty) ...[
-              _friendsCueRow(context),
-              const SizedBox(height: 8),
-            ],
-            EpDisplay(
-              gig.title,
-              size: 28,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              color: style.fg,
-            ),
-            const SizedBox(height: 6),
-            EpMonoText(meta ?? _venueLine, color: context.epColors.muted),
-            if (lineup.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              _lineupRow(context, style.fg.withValues(alpha: .85)),
-            ],
-            const SizedBox(height: 8),
-            EpPill(label: cue, onPressed: null, size: EpPillSize.chip),
-          ],
+  Widget _portraitContent(BuildContext context, FlyerStyle style) => Padding(
+    padding: const EdgeInsets.all(16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        EpDateBlock(date: gig.startsAt),
+        const Spacer(),
+        if (friends.isNotEmpty) ...[
+          _friendsCueRow(context),
+          const SizedBox(height: 8),
+        ],
+        EpDisplay(
+          gig.title,
+          size: 28,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          color: style.fg,
         ),
-      );
+        const SizedBox(height: 6),
+        EpMonoText(meta ?? _venueLine, color: context.epColors.muted),
+        if (lineup.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          ExploreLineupRow(
+            bands: lineup,
+            tint: style.fg.withValues(alpha: .85),
+            onSeeAll: onTap,
+          ),
+        ],
+      ],
+    ),
+  );
 
-  /// Date block pinned top-left; title and venue line bottom-left with the
-  /// ticket cue sharing the venue line's baseline on the right.
-  List<Widget> _landscapeContent(
-    BuildContext context,
-    FlyerStyle style,
-    String cue,
-  ) {
+  /// Date block pinned top-left; title and venue line bottom-left.
+  List<Widget> _landscapeContent(BuildContext context, FlyerStyle style) {
     final venueStyle = Theme.of(context).textTheme.epChipLabel.copyWith(
       fontSize: 11,
       color: context.epColors.muted,
@@ -450,33 +621,20 @@ class ExploreFeaturedCard extends StatelessWidget {
                     style: venueStyle,
                   ),
                 ),
-                const SizedBox(width: 12),
-                EpPill(label: cue, onPressed: null, size: EpPillSize.chip),
               ],
             ),
             if (lineup.isNotEmpty) ...[
               const SizedBox(height: 8),
-              _lineupRow(context, style.fg.withValues(alpha: .85)),
+              ExploreLineupRow(
+                bands: lineup,
+                tint: style.fg.withValues(alpha: .85),
+                onSeeAll: onTap,
+              ),
             ],
           ],
         ),
       ),
     ];
-  }
-
-  Widget _lineupRow(BuildContext context, Color tint) {
-    final bands = lineup.take(3).toList();
-    return Row(
-      children: [
-        for (var i = 0; i < bands.length; i++) ...[
-          if (i > 0) const SizedBox(width: 12),
-          Flexible(
-            fit: FlexFit.loose,
-            child: _ExploreLineupChip(band: bands[i], textColor: tint),
-          ),
-        ],
-      ],
-    );
   }
 
   Widget _friendsCueRow(BuildContext context) => Row(
@@ -710,10 +868,11 @@ class ExploreVenueTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final venue = entry.venue;
     final area = venue.neighborhood ?? venue.area;
-    final nextLine =
-        '${weekdayNamesUpper[entry.next.startsAt.weekday - 1]} '
-        '${entry.next.startsAt.day} · ${entry.gigs.length} SHOW'
-        '${entry.gigs.length == 1 ? '' : 'S'}';
+    final nextDate =
+        '${entry.next.startsAt.day} '
+        '${monthNamesUpper[entry.next.startsAt.month - 1]}';
+    final showCount =
+        '${entry.gigs.length} SHOW${entry.gigs.length == 1 ? '' : 'S'}';
     final placeholder = EpPanel(
       color: context.epColors.panel,
       child: const Center(child: EpEyebrow('NO PHOTO YET')),
@@ -741,7 +900,7 @@ class ExploreVenueTile extends StatelessWidget {
                     : placeholder,
               ),
               Padding(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -762,7 +921,8 @@ class ExploreVenueTile extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    EpMonoText(nextLine, color: context.epColors.muted),
+                    EpDisplay(nextDate, size: 20),
+                    EpMonoText(showCount, color: context.epColors.muted),
                     if (venue.verified || distance != null) ...[
                       const SizedBox(height: 4),
                       FittedBox(
