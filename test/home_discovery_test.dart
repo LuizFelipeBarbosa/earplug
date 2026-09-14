@@ -627,14 +627,19 @@ void main() {
     expect(card.presentation, FanEventCardPresentation.compact);
     expect(find.byType(EpDateBlock), findsOne);
     expect(find.byType(GigFlyer), findsNothing);
-    // Price, age and the going count fold into the row's mono meta line.
+    // Weekday, time and price make up the row's mono meta line.
     expect(
       find.textContaining(
-        '${gig.ageRequirement.label.toUpperCase()} · '
-        '${gig.going} GOING',
+        '${gig.dateShort.split(' ').first} · '
+        '${gig.doorsLabel} · ${gig.priceLabel}',
       ),
       findsOne,
     );
+    expect(
+      find.textContaining(gig.ageRequirement.label.toUpperCase()),
+      findsNothing,
+    );
+    expect(find.textContaining('${gig.going} GOING'), findsNothing);
     expect(find.byKey(ValueKey('save-${gig.id}')), findsOne);
     expect(find.byKey(ValueKey('share-${gig.id}')), findsOne);
     expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsOne);

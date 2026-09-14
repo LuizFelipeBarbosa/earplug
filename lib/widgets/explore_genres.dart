@@ -106,6 +106,7 @@ class ExploreGenrePageBody extends StatelessWidget {
         ? '${page.bandIds.length} band'
         : '${page.bandIds.length} bands';
     final children = <Widget>[
+      const SizedBox(height: 24),
       EpDisplay(page.label, size: 36),
       EpEyebrow('$gigPhrase · $bandPhrase'),
     ];

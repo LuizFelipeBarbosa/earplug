@@ -60,19 +60,23 @@ class FanEventCard extends StatelessWidget {
         actions: actions,
       );
     }
-    final row = EpGigRow(
+    final compactLineup = lineup.isNotEmpty
+        ? lineup
+        : [for (final performer in gig.performers) performer.name];
+    final meta = [
+      gig.dateShort.split(' ').first,
+      gig.doorsLabel,
+      gig.priceLabel,
+      if (showDistance) app.distanceOf(venue),
+    ].join(' · ');
+    final row = _CompactFanEventRow(
       key: ValueKey('fan-event-${gig.id}'),
-      date: gig.startsAt,
-      title: gig.title,
+      gig: gig,
+      meta: meta,
+      lineup: compactLineup,
       titleSize: EpLayout.isDesktop(context) ? 30 : 24,
-      meta: [
-        _factsLine(gig),
-        if (gig.lifecycle != GigLifecycle.cancelled)
-          '${app.rsvpCount(gig)} going',
-      ].join(' · '),
-      sub: [place, ...lineup].join(' · '),
       onTap: () => app.openGig(gig.id),
-      trailing: ConstrainedBox(
+      actions: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 104),
         child: actions,
       ),
@@ -90,6 +94,78 @@ class FanEventCard extends StatelessWidget {
         ),
         row,
       ],
+    );
+  }
+}
+
+class _CompactFanEventRow extends StatelessWidget {
+  const _CompactFanEventRow({
+    super.key,
+    required this.gig,
+    required this.meta,
+    required this.lineup,
+    required this.titleSize,
+    required this.onTap,
+    required this.actions,
+  });
+
+  final Gig gig;
+  final String meta;
+  final List<String> lineup;
+  final double titleSize;
+  final VoidCallback onTap;
+  final Widget actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.epColors;
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  EpDateBlock(date: gig.startsAt),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        EpDisplay(gig.title, size: titleSize, maxLines: 3),
+                        const SizedBox(height: 8),
+                        EpMonoText(meta, color: palette.muted),
+                        const SizedBox(height: 4),
+                        Text(
+                          lineup.join(' · '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.epBody.copyWith(color: palette.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Align(alignment: Alignment.centerRight, child: actions),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const EpHairline(),
+      ],
+    );
+    return Semantics(
+      button: true,
+      enabled: true,
+      child: InkWell(onTap: onTap, child: content),
     );
   }
 }

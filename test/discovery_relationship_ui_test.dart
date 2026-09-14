@@ -206,14 +206,19 @@ void main() {
     );
 
     expect(find.text(gig.title.toUpperCase()), findsWidgets);
-    // Doors, price and age share the row's mono meta line; the lineup is
-    // appended to the venue sub line.
-    expect(find.textContaining('DOORS 8PM'), findsOne);
+    // Time and price share the row's mono meta line; the lineup is its
+    // separate sub line.
+    expect(find.textContaining(gig.doorsLabel), findsOne);
     expect(find.textContaining('FREE'), findsOne);
-    expect(find.textContaining('18+'), findsOne);
+    expect(find.textContaining('DOORS ${gig.doorsLabel}'), findsNothing);
+    expect(find.textContaining(gig.ageRequirement.label), findsNothing);
     expect(
       find.textContaining('Mission Creep · Dial Tone Grief · Static Bloom'),
       findsOne,
+    );
+    expect(
+      find.textContaining(DemoData.venues[gig.venueId]!.addr),
+      findsNothing,
     );
 
     await tester.tap(find.byKey(ValueKey('share-${gig.id}')));
