@@ -79,7 +79,7 @@ mixin _NavigationState on _AppStateCore {
       _syncPublicGigSubscriptionForCurrentScreen();
     });
     pushBrowserPath(_browserPathFor(s, param));
-    if (current.screen == Screen.explore) ensureExploreBands();
+    if (_showsBandDirectory(current)) ensureExploreBands();
   }
 
   void back() {
@@ -100,7 +100,7 @@ mixin _NavigationState on _AppStateCore {
       _syncPublicGigSubscriptionForCurrentScreen();
     });
     _refreshVisibleBandDashboard();
-    if (current.screen == Screen.explore) ensureExploreBands();
+    if (_showsBandDirectory(current)) ensureExploreBands();
   }
 
   void resetTo(Screen s) {
@@ -112,13 +112,21 @@ mixin _NavigationState on _AppStateCore {
     _refreshVisibleBandDashboard();
     _onBandChanged();
     _onOrganizationChanged();
-    if (current.screen == Screen.explore) ensureExploreBands();
+    if (_showsBandDirectory(current)) ensureExploreBands();
   }
+
+  /// Explore and its bands collection both page the band directory.
+  static bool _showsBandDirectory(ScreenEntry entry) =>
+      entry.screen == Screen.explore ||
+      (entry.screen == Screen.exploreCollection && entry.param == 'bands');
 
   String _browserPathFor(Screen screen, String? param) => switch (screen) {
     Screen.gig => '/g/${gig(param ?? '')?.publicRef ?? param ?? ''}',
     Screen.band => '/${_bands[param]?.publicRef ?? param ?? ''}',
     Screen.venue => _venueBrowserPath(param),
+    Screen.exploreCollection =>
+      param == null || param.isEmpty ? '/explore' : '/explore/$param',
+    Screen.people => '/people',
     Screen.orgJoin => '/apply/${param ?? ''}',
     Screen.opportunityDetail => '/opportunities/${param ?? ''}',
     Screen.bookingDetail => '/bookings/${param ?? ''}',

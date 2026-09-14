@@ -30,6 +30,7 @@ import 'screens/booking_detail.dart';
 import 'screens/checkout_return.dart';
 import 'screens/edit_profile.dart';
 import 'screens/explore.dart';
+import 'screens/explore_collection.dart';
 import 'screens/gig_create.dart';
 import 'screens/gig_detail.dart';
 import 'screens/gig_invite.dart';
@@ -51,6 +52,7 @@ import 'screens/org_team.dart';
 import 'screens/org_transactions.dart';
 import 'screens/org_venue_edit.dart';
 import 'screens/org_venues.dart';
+import 'screens/people.dart';
 import 'screens/private_locations.dart';
 import 'screens/review_compose.dart';
 import 'screens/settings.dart';
@@ -322,6 +324,8 @@ String? bandSlugFromUri(Uri uri) {
         'check-in',
         't',
         'tickets',
+        'explore',
+        'people',
       }.contains(slug)) {
     return null;
   }
@@ -756,6 +760,11 @@ class RootShell extends StatelessWidget {
       Screen.gigInvite => GigInviteScreen(key: key),
       Screen.venue => VenueDetailScreen(key: key, venueId: entry.param!),
       Screen.explore => ExploreScreen(key: key),
+      Screen.exploreCollection => ExploreCollectionScreen(
+        key: key,
+        collectionKey: entry.param,
+      ),
+      Screen.people => PeopleScreen(key: key),
       Screen.myGigs => MyGigsScreen(key: key),
       Screen.editProfile => EditProfileScreen(key: key),
       Screen.settings => SettingsScreen(key: key),

@@ -166,6 +166,8 @@ void main() {
               app.go(screen, 'application-review-1');
             case Screen.orgJoin:
               app.go(screen, 'design-preview');
+            case Screen.exploreCollection:
+              app.go(screen, 'tonight');
             default:
               app.go(screen);
           }

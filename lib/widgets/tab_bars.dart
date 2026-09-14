@@ -172,7 +172,10 @@ class FanTabBar extends StatelessWidget {
           vertical: vertical,
           icon: Icons.search,
           label: 'EXPLORE',
-          selected: scr == Screen.explore,
+          selected:
+              scr == Screen.explore ||
+              scr == Screen.exploreCollection ||
+              scr == Screen.people,
           onPressed: () => app.resetTo(Screen.explore),
         ),
         EpNavigationItem(

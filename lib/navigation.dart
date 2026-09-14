@@ -55,6 +55,8 @@ enum Screen {
   adminSafety,
   adminDisputes,
   adminBookings,
+  exploreCollection,
+  people,
 }
 
 sealed class ActiveIdentity {
@@ -86,6 +88,8 @@ const fanTabScreens = {
   Screen.hostApply,
   Screen.home,
   Screen.explore,
+  Screen.exploreCollection,
+  Screen.people,
   Screen.myGigs,
   Screen.myTickets,
   Screen.ticket,
