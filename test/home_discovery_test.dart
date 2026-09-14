@@ -65,7 +65,7 @@ void main() {
 
       expect(harness.app.mapMode, isFalse);
       expect(find.byType(GigMapView), findsNothing);
-      expect(_hero('8 shows near you.'), findsOne);
+      expect(_hero('9 shows near you.'), findsOne);
       final cards = tester.widgetList<FanEventCard>(find.byType(FanEventCard));
       final featured = cards.first;
       expect(featured.gig.id, harness.app.feed.first.id);
@@ -147,8 +147,8 @@ void main() {
     expect(harness.app.feed.map((gig) => gig.id), ['g2', 'g1', 'g4']);
     expect(harness.app.homeFeed.length, harness.app.allGigs.length);
     await tester.pump(const Duration(seconds: 1));
-    await _expandClusterContaining(tester, 'gig-marker-g3');
-    expect(find.byKey(const Key('gig-marker-g3')), findsOne);
+    await _expandClusterContaining(tester, 'venue-marker-v2');
+    expect(find.byKey(const Key('venue-marker-v2')), findsOne);
   });
 
   testWidgets('map marker hover stays on the pin inside its 48px target', (

@@ -212,10 +212,13 @@ abstract final class DemoData {
     return DateTime(now.year, now.month, now.day);
   }();
 
+  static final _demoDaysUntilSaturday =
+      (DateTime.saturday - _demoToday.weekday) % 7;
+
   static final _demoComingSaturdayAt21 = DateTime(
     _demoToday.year,
     _demoToday.month,
-    _demoToday.day + ((DateTime.saturday - _demoToday.weekday) % 7),
+    _demoToday.day + _demoDaysUntilSaturday,
     21,
   );
 
@@ -796,7 +799,7 @@ abstract final class DemoData {
         now: _demoToday,
       ),
       time: '8PM / 9PM',
-      when: GigWhen.week,
+      when: _demoDaysUntilSaturday == 0 ? GigWhen.tonight : GigWhen.week,
       flyKey: 'black',
       lineup: ['b2', 'b4'],
       going: 24,
