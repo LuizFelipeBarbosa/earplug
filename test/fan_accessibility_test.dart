@@ -101,23 +101,17 @@ void main() {
     expect(find.byTooltip('Edit profile'), findsOne);
     expect(find.byTooltip('Share profile summary'), findsOne);
     expect(find.byTooltip('Privacy and account settings'), findsOne);
-    final followed = find.text('FOLLOWED');
-    await tester.ensureVisible(followed);
-    await tester.tap(followed);
-    await tester.pumpAndSettle();
-    expect(
-      tester.widget<EpSegmentTabs>(find.byType(EpSegmentTabs)).selected,
-      3,
-    );
-    expect(find.byType(EpEntityRow), findsWidgets);
-
-    final browse = find.byKey(const Key('fan-following-stat'));
+    final browse = find.byKey(const Key('fan-stat-following'));
     await tester.ensureVisible(browse);
     await tester.pumpAndSettle();
     await tester.tap(browse);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('following-search-field')), findsOne);
     final sheet = find.byKey(const Key('fan-following-sheet'));
+    expect(
+      find.descendant(of: sheet, matching: find.byType(EpEntityRow)),
+      findsWidgets,
+    );
     final followingButton = tester.widget<EpPill>(
       find
           .descendant(
@@ -211,7 +205,7 @@ void main() {
 
     const qualification = 'RSVP RECORD — ATTENDANCE NOT VERIFIED';
     const qualificationKey = Key('history-qualification');
-    final past = find.text('PAST');
+    final past = find.byKey(const Key('fan-stat-history'));
     await tester.ensureVisible(past);
     await tester.tap(past);
     await tester.pumpAndSettle();

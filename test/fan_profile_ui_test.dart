@@ -416,14 +416,14 @@ void main() {
       find.byKey(const Key('fan-profile-avatar')),
     );
     expect(avatar.initials, 'EF');
-    expect(avatar.size, 40);
+    expect(avatar.size, 64);
     final name = tester.widget<EpDisplay>(
       find.byKey(const Key('fan-profile-name')),
     );
     expect(name.text, harness.app.profile!.name);
     expect(name.keepCase, isTrue);
     expect(name.size, 20);
-    expect(find.byKey(const Key('fan-profile-scene')), findsOne);
+    expect(find.byKey(const Key('fan-profile-scene')), findsNothing);
     for (final key in const [
       Key('edit-profile-action'),
       Key('profile-settings-action'),
@@ -441,12 +441,12 @@ void main() {
     expect(stats.stats.map((stat) => stat.label), [
       'Following',
       'Past RSVPs',
-      'Saved',
+      'Friends',
     ]);
     expect(stats.stats.map((stat) => stat.value), [
       '${harness.app.follows.length}',
       '${harness.app.history.length}',
-      '${harness.app.saved.length}',
+      '${harness.app.friendIds.length}',
     ]);
     await _tapProfileControl(
       tester,
@@ -476,8 +476,6 @@ void main() {
       'Going · 0',
       'Tickets · 0',
       'Saved · 0',
-      'Followed',
-      'Past',
     ]);
     expect(
       find.text('Nothing saved. Bookmark a show to keep it handy.'),
@@ -505,34 +503,24 @@ void main() {
       await _tapProfileControl(tester, find.text('FIND A SHOW'));
       expect(harness.app.current.screen, Screen.home);
 
-      await _selectProfileList(tester, 'FOLLOWED');
-      expect(
-        find.text('Follow a band to see its upcoming shows here.'),
-        findsOne,
+      await _tapProfileControl(
+        tester,
+        find.byKey(const Key('fan-stat-following')),
       );
       expect(find.text('Follow bands to keep their profiles close.'), findsOne);
-      await _tapProfileControl(
-        tester,
-        find.byKey(const Key('fan-following-stat')),
-      );
       expect(find.byKey(const Key('fan-following-sheet')), findsOne);
       expect(find.byKey(const Key('following-search-field')), findsNothing);
-      await tester.tap(find.byTooltip('Close Following'));
-      await tester.pumpAndSettle();
-      await _tapProfileControl(tester, find.text('EXPLORE BANDS').first);
+      await _tapProfileControl(tester, find.text('EXPLORE BANDS'));
       expect(harness.app.current.screen, Screen.explore);
+      harness.app.resetTo(Screen.myGigs);
+      await tester.pumpAndSettle();
 
-      await _selectProfileList(tester, 'PAST');
-      expect(
-        find.text('Past RSVPs will build your private event history.'),
-        findsOne,
-      );
-      expect(find.byKey(const Key('history-qualification')), findsOne);
       await _tapProfileControl(
         tester,
-        find.byKey(const Key('fan-history-stat')),
+        find.byKey(const Key('fan-stat-history')),
       );
       expect(find.byKey(const Key('fan-history-sheet')), findsOne);
+      expect(find.byKey(const Key('history-qualification')), findsOne);
       expect(
         find.descendant(
           of: find.byKey(const Key('fan-history-sheet')),
@@ -542,6 +530,16 @@ void main() {
         ),
         findsOne,
       );
+      await tester.tap(find.byTooltip('Close RSVP History'));
+      await tester.pumpAndSettle();
+
+      await _tapProfileControl(
+        tester,
+        find.byKey(const Key('fan-stat-friends')),
+      );
+      expect(find.byKey(const Key('fan-friends-sheet')), findsOne);
+      expect(find.byKey(const Key('fan-friends-find-people')), findsOne);
+      expect(find.text('No friends yet.'), findsOne);
     },
   );
 
@@ -561,7 +559,7 @@ void main() {
     expect(find.byKey(const Key('history-qualification')), findsNothing);
     await _tapProfileControl(
       tester,
-      find.byKey(const Key('fan-following-stat')),
+      find.byKey(const Key('fan-stat-following')),
     );
     await tester.pumpAndSettle();
 
@@ -629,7 +627,7 @@ void main() {
 
     harness.app.back();
     await tester.pumpAndSettle();
-    await _tapProfileControl(tester, find.byKey(const Key('fan-history-stat')));
+    await _tapProfileControl(tester, find.byKey(const Key('fan-stat-history')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('fan-history-sheet')), findsOne);
     expect(find.text('RSVP RECORD — ATTENDANCE NOT VERIFIED'), findsOne);
@@ -685,6 +683,25 @@ void main() {
     expect(find.text('Profile summary copied.'), findsOne);
   });
 
+  testWidgets('fan-stat-friends opens the friends sheet with Maya', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      home: const Scaffold(body: MyGigsScreen()),
+    );
+
+    await _tapProfileControl(tester, find.byKey(const Key('fan-stat-friends')));
+    expect(find.byKey(const Key('fan-friends-sheet')), findsOne);
+    expect(harness.app.friendIds, contains('u-maya'));
+    await tester.pump();
+    expect(find.text('MAYA OKAFOR'), findsOne);
+  });
+
   testWidgets('long history titles and venues wrap within compact rows', (
     tester,
   ) async {
@@ -711,7 +728,7 @@ void main() {
     tester.view.physicalSize = const Size(320, 700);
     await tester.pumpAndSettle();
 
-    await _tapProfileControl(tester, find.byKey(const Key('fan-history-stat')));
+    await _tapProfileControl(tester, find.byKey(const Key('fan-stat-history')));
     await tester.pumpAndSettle();
     final title = tester.widget<Text>(
       find.text(_longHistoryTitle.toUpperCase()),
@@ -1087,35 +1104,6 @@ void main() {
     expect(harness.app.current.screen, Screen.editProfile);
   });
 
-  testWidgets('followed-band shows open their gig details', (tester) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: DemoRepository(auth: auth),
-      home: const Scaffold(body: MyGigsScreen()),
-    );
-    final shows = harness.app.followedBandShows;
-    expect(shows, isNotEmpty);
-    final show = shows.firstWhere(
-      (gig) =>
-          !harness.app.rsvps.contains(gig.id) &&
-          !harness.app.saved.contains(gig.id),
-      orElse: () => shows.first,
-    );
-
-    tester.view.physicalSize = const Size(402, 5000);
-    await tester.pumpAndSettle();
-    await _selectProfileList(tester, 'FOLLOWED');
-    final card = find.byKey(ValueKey('fan-event-${show.id}'));
-    expect(card, findsOne);
-    await tester.tap(card);
-    await tester.pump();
-    expect(harness.app.current.screen, Screen.gig);
-    expect(harness.app.current.param, show.id);
-  });
-
   testWidgets('failed unfollow rolls the Following row back', (tester) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
@@ -1132,7 +1120,7 @@ void main() {
     expect(harness.app.follows, contains('b1'));
     await _tapProfileControl(
       tester,
-      find.byKey(const Key('fan-following-stat')),
+      find.byKey(const Key('fan-stat-following')),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('FOLLOWING ✓'));

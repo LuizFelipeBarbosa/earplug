@@ -24,10 +24,16 @@ class MyGigsScreen extends StatefulWidget {
   State<MyGigsScreen> createState() => _MyGigsScreenState();
 }
 
-enum _ProfileList { going, tickets, saved, followed, past }
+enum _ProfileList { going, tickets, saved }
 
 class _MyGigsScreenState extends State<MyGigsScreen> {
   _ProfileList? _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    context.read<AppState>().ensureSocial();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,27 +77,40 @@ class _MyGigsScreenState extends State<MyGigsScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _ProfileHeader(app: app),
-              if (upcoming.isNotEmpty || tickets.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                _NextShow(app: app, upcoming: upcoming, tickets: tickets),
-              ],
               const SizedBox(height: 24),
               EpStatGrid(
                 topLine: false,
                 stats: [
-                  EpStat('${app.follows.length}', 'Following'),
-                  EpStat('${app.history.length}', 'Past RSVPs'),
-                  EpStat('${app.saved.length}', 'Saved'),
+                  EpStat(
+                    '${app.follows.length}',
+                    'Following',
+                    key: const Key('fan-stat-following'),
+                    onTap: () => _showFollowingSheet(context),
+                  ),
+                  EpStat(
+                    '${app.history.length}',
+                    'Past RSVPs',
+                    key: const Key('fan-stat-history'),
+                    onTap: () => _showHistorySheet(context),
+                  ),
+                  EpStat(
+                    '${app.friendIds.length}',
+                    'Friends',
+                    key: const Key('fan-stat-friends'),
+                    onTap: () => _showFriendsSheet(context),
+                  ),
                 ],
               ),
+              if (upcoming.isNotEmpty || tickets.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                _NextShow(app: app, upcoming: upcoming, tickets: tickets),
+              ],
               const SizedBox(height: 20),
               EpSegmentTabs(
                 labels: [
                   'Going · ${upcoming.length}',
                   'Tickets · ${tickets.length}',
                   'Saved · ${savedGigs.length}',
-                  'Followed',
-                  'Past',
                 ],
                 selected: selected.index,
                 scrollable: true,
@@ -151,57 +170,6 @@ class _MyGigsScreenState extends State<MyGigsScreen> {
                   for (final gig in savedGigs)
                     _GigActionsRow(gig: gig, app: app),
                 ],
-                _ProfileList.followed => [
-                  if (app.follows.isEmpty)
-                    _ListNote(
-                      message: 'Follow bands to keep their profiles close.',
-                      actionLabel: 'Explore bands',
-                      onAction: () => app.resetTo(Screen.explore),
-                    ),
-                  for (final bandId in app.follows)
-                    _FollowRow(
-                      bandId: bandId,
-                      app: app,
-                      onOpen: () => app.openBand(bandId),
-                    ),
-                  const EpSectionHeader(
-                    label: 'Upcoming shows from followed bands',
-                  ),
-                  if (app.followedBandShows.isEmpty)
-                    _ListNote(
-                      message: app.profile?.followedBandUpdatesEnabled == false
-                          ? 'Followed-band updates are turned off.'
-                          : app.follows.isEmpty
-                          ? 'Follow a band to see its upcoming shows here.'
-                          : 'No followed bands have an upcoming show yet.',
-                      actionLabel:
-                          app.profile?.followedBandUpdatesEnabled == false
-                          ? 'Edit preferences'
-                          : 'Explore bands',
-                      onAction: app.profile?.followedBandUpdatesEnabled == false
-                          ? app.openEditProfile
-                          : () => app.resetTo(Screen.explore),
-                    ),
-                  for (final gig in app.followedBandShows)
-                    _GigActionsRow(gig: gig, app: app),
-                ],
-                _ProfileList.past => [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 20),
-                    child: EpEyebrow(
-                      'RSVP record — attendance not verified',
-                      key: Key('history-qualification'),
-                    ),
-                  ),
-                  if (app.history.isEmpty)
-                    _ListNote(
-                      message:
-                          'Past RSVPs will build your private event history.',
-                      actionLabel: 'Find a show',
-                      onAction: () => app.resetTo(Screen.home),
-                    ),
-                  for (final item in app.history) _HistoryRow(item: item),
-                ],
               },
               _ProfileDetails(app: app),
               if (app.profileTutorialVisible) ...[
@@ -238,10 +206,6 @@ class _ProfileHeader extends StatelessWidget {
     final profile = app.profile;
     final name = profile?.name.trim();
     final displayName = name == null || name.isEmpty ? 'Your profile' : name;
-    final scene = [
-      if (profile?.homeLocation case final location?) '${location.label} scene',
-      if (profile != null) 'since ${monthLabel(profile.createdAt)}',
-    ].join(' · ');
     return Column(
       key: const Key('fan-profile-header'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -259,6 +223,7 @@ class _ProfileHeader extends StatelessWidget {
               child: EpAvatarTile(
                 key: const Key('fan-profile-avatar'),
                 initials: _initials(name),
+                size: 64,
                 image: profile?.avatarUrl == null
                     ? null
                     : NetworkImage(profile!.avatarUrl!),
@@ -275,10 +240,6 @@ class _ProfileHeader extends StatelessWidget {
                     size: 20,
                     keepCase: true,
                   ),
-                  if (scene.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    EpEyebrow(scene, key: const Key('fan-profile-scene')),
-                  ],
                 ],
               ),
             ),
@@ -543,22 +504,6 @@ class _ProfileDetails extends StatelessWidget {
                         historyCount: app.history.length,
                       ),
               ),
-              EpPill(
-                key: const Key('fan-following-stat'),
-                label: 'Browse following',
-                variant: EpPillVariant.ghost,
-                semanticLabel:
-                    'Following, ${app.follows.length} ${app.follows.length == 1 ? 'band' : 'bands'}. Open followed bands.',
-                onPressed: () => _showFollowingSheet(context),
-              ),
-              EpPill(
-                key: const Key('fan-history-stat'),
-                label: 'RSVP history',
-                variant: EpPillVariant.ghost,
-                semanticLabel:
-                    'RSVP History, ${app.history.length} past ${app.history.length == 1 ? 'event' : 'events'}. Open RSVP history.',
-                onPressed: () => _showHistorySheet(context),
-              ),
             ],
           ),
         ],
@@ -595,6 +540,21 @@ void _showHistorySheet(BuildContext context) {
         onFindShow: () {
           Navigator.pop(sheetContext);
           app.resetTo(Screen.home);
+        },
+      ),
+    ),
+  );
+}
+
+void _showFriendsSheet(BuildContext context) {
+  showEpSheet(
+    context,
+    (sheetContext) => Consumer<AppState>(
+      builder: (context, app, _) => _FriendsSheet(
+        app: app,
+        onFindPeople: () {
+          Navigator.pop(sheetContext);
+          app.go(Screen.people);
         },
       ),
     ),
@@ -785,6 +745,92 @@ class _HistorySheet extends StatelessWidget {
             ),
     );
   }
+}
+
+class _FriendsSheet extends StatelessWidget {
+  const _FriendsSheet({required this.app, required this.onFindPeople});
+
+  final AppState app;
+  final VoidCallback onFindPeople;
+
+  @override
+  Widget build(BuildContext context) {
+    final friendIds = app.friendIds.toList();
+    return _ProfileDetailSheet(
+      key: const Key('fan-friends-sheet'),
+      title: 'Friends',
+      subtitle:
+          '${friendIds.length} ${friendIds.length == 1 ? 'friend' : 'friends'}',
+      child: friendIds.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'No friends yet.',
+                      style: Theme.of(context).textTheme.epBody.copyWith(
+                        color: context.epColors.muted,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    EpPill(
+                      key: const Key('fan-friends-find-people'),
+                      label: 'Find people',
+                      variant: EpPillVariant.ghost,
+                      onPressed: onFindPeople,
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.only(top: 8),
+              itemCount: friendIds.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) =>
+                  _FriendRow(userId: friendIds[index]),
+            ),
+    );
+  }
+}
+
+class _FriendRow extends StatefulWidget {
+  const _FriendRow({required this.userId});
+
+  final String userId;
+
+  @override
+  State<_FriendRow> createState() => _FriendRowState();
+}
+
+class _FriendRowState extends State<_FriendRow> {
+  late final Future<SocialUserDetail?> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = context.read<AppState>().loadUserCard(widget.userId);
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<SocialUserDetail?>(
+    future: _future,
+    builder: (context, snapshot) {
+      final detail = snapshot.data;
+      return EpEntityRow(
+        key: ValueKey('friend-${widget.userId}'),
+        leading: EpFanAvatar(
+          name: detail?.name,
+          imageUrl: detail?.avatarUrl,
+          size: 40,
+        ),
+        title: detail?.name ?? '...',
+        sub: 'Friend',
+      );
+    },
+  );
 }
 
 class _ProfileDetailSheet extends StatelessWidget {

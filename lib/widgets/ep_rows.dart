@@ -205,10 +205,40 @@ class EpAvatarTile extends StatelessWidget {
 }
 
 class EpStat {
-  const EpStat(this.value, this.label);
+  const EpStat(this.value, this.label, {this.onTap, this.key});
 
   final String value;
   final String label;
+  final VoidCallback? onTap;
+  final Key? key;
+}
+
+class _EpStatCell extends StatelessWidget {
+  const _EpStatCell({required this.stat, required this.valueSize});
+
+  final EpStat stat;
+  final double valueSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final column = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        EpDisplay(stat.value, size: valueSize),
+        const SizedBox(height: 4),
+        EpEyebrow(stat.label),
+      ],
+    );
+    final child = stat.onTap == null
+        ? column
+        : Semantics(
+            button: true,
+            label: '${stat.label}, ${stat.value}',
+            child: InkWell(onTap: stat.onTap, child: column),
+          );
+    return KeyedSubtree(key: stat.key, child: child);
+  }
 }
 
 class EpStatGrid extends StatelessWidget {
@@ -236,15 +266,7 @@ class EpStatGrid extends StatelessWidget {
           builder: (context, constraints) {
             final cells = [
               for (final stat in stats)
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    EpDisplay(stat.value, size: valueSize),
-                    const SizedBox(height: 4),
-                    EpEyebrow(stat.label),
-                  ],
-                ),
+                _EpStatCell(stat: stat, valueSize: valueSize),
             ];
             final useTwoColumns =
                 constraints.maxWidth < 340 ||
