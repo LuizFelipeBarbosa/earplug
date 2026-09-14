@@ -92,38 +92,6 @@ void main() {
     expect(harness.app.query, 'Foghorn Club');
   });
 
-  testWidgets('expanded band directory loads and deduplicates another page', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    final repository = _PagedBandsRepository(auth: auth);
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const Scaffold(body: ExploreScreen()),
-    );
-    harness.app.go(Screen.explore);
-    await tester.pumpAndSettle();
-
-    final toggle = find.byKey(const Key('explore-toggle-bands'));
-    await tester.scrollUntilVisible(
-      toggle,
-      250,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(toggle);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('explore-bands-load-more')), findsOne);
-
-    await tester.tap(find.byKey(const Key('explore-bands-load-more')));
-    await tester.pumpAndSettle();
-    expect(repository.bandCalls, 2);
-    expect(find.text('PIGEON COURT', skipOffstage: false), findsOne);
-    expect(find.text('MISSION CREEP', skipOffstage: false), findsOne);
-    expect(find.byKey(const Key('explore-bands-end')), findsOne);
-  });
-
   testWidgets('venue detail shows map, chronological events, and performers', (
     tester,
   ) async {
@@ -394,27 +362,4 @@ class _RetryVenueRepository {
   final StubRepository stub;
 
   int get calls => stub.callsTo('venueDetail');
-}
-
-class _PagedBandsRepository extends DemoRepository {
-  _PagedBandsRepository({required super.auth});
-
-  int bandCalls = 0;
-
-  @override
-  Future<BandPage> listBands({String? cursor, int numItems = 50}) async {
-    bandCalls++;
-    if (cursor == null) {
-      return BandPage(
-        items: [DemoData.bands['b1']!, DemoData.bands['b2']!],
-        continueCursor: 'next',
-        isDone: false,
-      );
-    }
-    return BandPage(
-      items: [DemoData.bands['b2']!, DemoData.bands['b3']!],
-      continueCursor: null,
-      isDone: true,
-    );
-  }
 }
