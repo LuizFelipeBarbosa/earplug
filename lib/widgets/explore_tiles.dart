@@ -163,34 +163,57 @@ class ExploreLineupRow extends StatelessWidget {
             !allFit &&
             visible.isEmpty &&
             constraints.maxWidth >= 26 + 40 + 12 + seeAllWidth;
+        final chips = <Widget>[
+          if (firstChipOverflows)
+            SizedBox(
+              width: (constraints.maxWidth - 12 - seeAllWidth).clamp(
+                0.0,
+                double.infinity,
+              ),
+              child: _ExploreLineupChip(
+                band: bands.first,
+                textColor: tint,
+                allowOverflow: true,
+                shrinkToFit: true,
+              ),
+            ),
+          for (var i = 0; i < visible.length; i++) ...[
+            if (i > 0) const SizedBox(width: 12),
+            _ExploreLineupChip(
+              band: visible[i],
+              textColor: tint,
+              allowOverflow: false,
+            ),
+          ],
+        ];
+        // The chip group sits in a non-scrolling horizontal viewport so a
+        // font-metric mismatch between measurement and layout clips instead
+        // of overflowing the row.
         return Row(
           mainAxisSize: MainAxisSize.max,
           children: [
-            if (firstChipOverflows)
+            if (chips.isNotEmpty)
               Flexible(
-                fit: FlexFit.tight,
-                child: _ExploreLineupChip(
-                  band: bands.first,
-                  textColor: tint,
-                  allowOverflow: true,
-                  shrinkToFit: true,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const NeverScrollableScrollPhysics(),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: chips),
                 ),
               ),
-            for (var i = 0; i < visible.length; i++) ...[
-              if (i > 0) const SizedBox(width: 12),
-              _ExploreLineupChip(
-                band: visible[i],
-                textColor: tint,
-                allowOverflow: false,
-              ),
-            ],
             if (!allFit) ...[
-              if (visible.isNotEmpty || firstChipOverflows)
-                const SizedBox(width: 12),
-              GestureDetector(
-                key: const Key('lineup-see-all'),
-                onTap: onSeeAll,
-                child: Text('See all', style: seeAllStyle),
+              if (chips.isNotEmpty) const SizedBox(width: 12),
+              // Scales down rather than overflowing when the slot is narrower
+              // than the link at large text sizes.
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: GestureDetector(
+                    key: const Key('lineup-see-all'),
+                    onTap: onSeeAll,
+                    child: Text('See all', style: seeAllStyle),
+                  ),
+                ),
               ),
             ],
           ],

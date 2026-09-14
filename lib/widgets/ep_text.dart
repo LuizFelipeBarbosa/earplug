@@ -25,6 +25,7 @@ class EpDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Text(
+    softWrap: true,
     keepCase ? text : text.toUpperCase(),
     semanticsLabel: text,
     style: Theme.of(context).textTheme
