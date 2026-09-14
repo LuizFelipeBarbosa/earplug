@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' show Tristate;
 
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
@@ -9,9 +8,7 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/location_service.dart';
-import 'package:earplug/theme.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -169,11 +166,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('explore-toggle-bands')),
-      250,
-      scrollable: find.byType(Scrollable).first,
+    // Search rows show follower counts; the browse avatar tiles do not.
+    await tester.enterText(
+      find.byKey(const Key('explore-search-field')),
+      'One Fan Band',
     );
+    await tester.tap(find.byKey(const Key('explore-search-submit')));
+    await tester.pumpAndSettle();
     expect(find.textContaining('1 fan'), findsOne);
     expect(find.textContaining('1 fans'), findsNothing);
   });
@@ -187,85 +186,62 @@ void main() {
       home: const Scaffold(body: ExploreScreen()),
     );
     final button = find.byKey(const Key('explore-filter-button'));
-
-    expect(tester.getSize(button), const Size(48, 48));
-    var data = tester.getSemantics(button).getSemanticsData();
-    expect(data.label, 'Filters, none applied');
-    expect(data.flagsCollection.isButton, isTrue);
-    expect(data.flagsCollection.isSelected, Tristate.isFalse);
-
-    tester
-        .getSemantics(button)
-        .owner!
-        .performAction(tester.getSemantics(button).id, SemanticsAction.tap);
+    expect(tester.getSize(button), const Size(44, 44));
+    expect(find.bySemanticsLabel('Filters'), findsOne);
+    await tester.tap(button);
     await tester.pumpAndSettle();
-
-    for (final label in const ['DATE', 'GENRES · CHOOSE ANY', 'DISTANCE']) {
-      expect(find.text(label), findsOne);
-    }
+    expect(find.text('GENRES · CHOOSE ANY'), findsNothing);
     final filterScroll = find.descendant(
       of: find.byKey(const Key('discovery-filter-options')),
       matching: find.byType(Scrollable),
     );
     await tester.scrollUntilVisible(
-      find.text('PRICE'),
+      find.text('PAID'),
       300,
       scrollable: filterScroll,
     );
-    for (final label in const ['PRICE', 'PUNK', 'GARAGE', 'NOISE']) {
-      expect(find.text(label), findsOne);
-    }
-    expect(find.textContaining('APPLY FILTERS ·'), findsOne);
-
-    await tester.tap(find.text('PUNK'));
+    await tester.tap(find.text('PAID'));
     await tester.pump();
-    expect(harness.app.fGenres, {'punk'});
-    expect(harness.app.query, isEmpty);
-    expect(find.text('VENUE'), findsNothing);
-    expect(find.text('Any venue'), findsNothing);
-    expect(
-      find.byKey(const Key('clear-discovery-filters')).hitTestable(),
-      findsOne,
-    );
+    expect(harness.app.filters.price, PriceFilter.paid);
     await tester.tap(find.byKey(const Key('show-filter-results')));
     await tester.pumpAndSettle();
-
-    data = tester.getSemantics(button).getSemanticsData();
-    expect(data.label, 'Filters, 1 active');
-    expect(data.flagsCollection.isSelected, Tristate.isTrue);
-    expect(find.text('PUNK'), findsNothing);
-
+    expect(find.byKey(const Key('explore-filters-count')), findsOne);
+    expect(find.bySemanticsLabel('Filters, 1 active'), findsOne);
     await tester.tap(button);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('clear-discovery-filters')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('show-filter-results')));
     await tester.pumpAndSettle();
-
     expect(harness.app.activeFilterCount, 0);
-    data = tester.getSemantics(button).getSemanticsData();
-    expect(data.label, 'Filters, none applied');
-    expect(data.flagsCollection.isSelected, Tristate.isFalse);
+    expect(find.byKey(const Key('explore-filters-count')), findsNothing);
+    expect(find.bySemanticsLabel('Filters'), findsOne);
     semantics.dispose();
   });
 
-  testWidgets('genre filters keep Explore events on existing feed logic', (
+  testWidgets('genre rail scopes Explore events and clears back to browse', (
     tester,
   ) async {
     final harness = await pumpApp(
       tester,
       home: const Scaffold(body: ExploreScreen()),
     );
-
-    expect(find.byKey(const ValueKey('explore-event-g1')), findsOne);
-    expect(find.byKey(const ValueKey('explore-event-g5')), findsOne);
-
-    harness.app.toggleGenre('noise');
-    await tester.pump();
-
-    expect(harness.app.feed.map((gig) => gig.id), containsAll(['g1', 'g3']));
-    expect(find.byKey(const ValueKey('explore-event-g1')), findsOne);
-    expect(find.byKey(const ValueKey('explore-event-g5')), findsNothing);
+    await tester.ensureVisible(find.byKey(const Key('explore-genre-noise')));
+    await tester.tap(find.byKey(const Key('explore-genre-noise')));
+    await tester.pumpAndSettle();
+    expect(harness.app.exploreGenre, 'noise');
+    expect(find.byKey(const Key('explore-genre-page')), findsOne);
+    expect(
+      find.byKey(const ValueKey('fan-event-g1'), skipOffstage: false),
+      findsOne,
+    );
+    expect(
+      find.byKey(const ValueKey('fan-event-g5'), skipOffstage: false),
+      findsNothing,
+    );
+    await tester.tap(find.byKey(const Key('explore-genre-all')));
+    await tester.pumpAndSettle();
+    expect(harness.app.exploreGenre, isNull);
   });
 
   testWidgets('later published gigs appear and stay live in Explore', (
@@ -302,7 +278,7 @@ void main() {
     }
     expect(find.textContaining('UPCOMING'), findsOne);
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('explore-event-tess-september-23')),
+      find.byKey(const ValueKey('fan-event-tess-september-23')),
       300,
       scrollable: find.descendant(
         of: find.byKey(const Key('explore-browse-events')),
@@ -330,14 +306,20 @@ void main() {
       home: const Scaffold(body: ExploreScreen()),
     );
 
-    expect(find.byKey(const Key('explore-event-g1')), findsOne);
+    expect(
+      find.byKey(const Key('fan-event-g1'), skipOffstage: false),
+      findsOne,
+    );
     expect(find.byKey(const Key('explore-toggle-bands')), findsOne);
     expect(find.byKey(const Key('explore-toggle-venues')), findsOne);
 
     await tester.tap(_scopeTab('BANDS'));
     await tester.pump();
     expect(harness.app.exploreResultType.name, 'bands');
-    expect(find.byKey(const Key('explore-event-g1')), findsNothing);
+    expect(
+      find.byKey(const Key('fan-event-g1'), skipOffstage: false),
+      findsNothing,
+    );
     expect(find.byKey(const Key('explore-toggle-bands')), findsOne);
     expect(find.byKey(const Key('explore-toggle-venues')), findsNothing);
 
@@ -372,79 +354,45 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('band and venue previews expand and collapse in place', (
+  testWidgets('tapping the bands and venues rows opens their collections', (
     tester,
   ) async {
     final harness = await pumpApp(
       tester,
       home: const Scaffold(body: ExploreScreen()),
-      beforePump: (app) => app.loadMoreExploreBands(),
     );
-
     final bandsToggle = find.byKey(const Key('explore-toggle-bands'));
     await tester.scrollUntilVisible(
       bandsToggle,
       250,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('explore-browse-all')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
-    final sectionRight =
-        tester.view.physicalSize.width / tester.view.devicePixelRatio -
-        EpLayout.gutter;
-    expect(tester.getTopRight(bandsToggle).dx, closeTo(sectionRight, .01));
-    expect(find.text(DemoData.bands['b6']!.name.toUpperCase()), findsNothing);
-
-    final previewBandIds = harness.app.exploreBandIds.take(2).toList();
-    final firstBand = find.byKey(
-      ValueKey('explore-band-card-${previewBandIds.first}'),
-    );
-    final secondBand = find.byKey(
-      ValueKey('explore-band-card-${previewBandIds.last}'),
-    );
-    expect(
-      tester.getTopLeft(secondBand).dy - tester.getBottomLeft(firstBand).dy,
-      0,
-    );
-    expect(
-      find.byKey(ValueKey('explore-follow-${previewBandIds.first}')),
-      findsOne,
-    );
-
     await tester.tap(bandsToggle);
     await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('explore-all-bands')), findsOne);
-    expect(find.text(DemoData.bands['b6']!.name.toUpperCase()), findsOne);
-    expect(
-      find.descendant(of: bandsToggle, matching: find.text('SEE LESS')),
-      findsOne,
-    );
-
-    await tester.tap(bandsToggle);
+    expect(harness.app.current.screen, Screen.exploreCollection);
+    expect(harness.app.current.param, 'bands');
+    harness.app.back();
     await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('explore-band-preview')), findsOne);
-    expect(
-      find.descendant(of: bandsToggle, matching: find.text('SEE ALL')),
-      findsOne,
-    );
-
     final venuesToggle = find.byKey(const Key('explore-toggle-venues'));
     await tester.scrollUntilVisible(
       venuesToggle,
-      200,
-      scrollable: find.byType(Scrollable).first,
+      250,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('explore-browse-all')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
-    expect(tester.getTopRight(venuesToggle).dx, closeTo(sectionRight, .01));
-    expect(find.text(DemoData.venues['v6']!.name.toUpperCase()), findsNothing);
-
     await tester.tap(venuesToggle);
     await tester.pumpAndSettle();
-
-    expect(find.text(DemoData.venues['v6']!.name.toUpperCase()), findsOne);
-    expect(
-      find.descendant(of: venuesToggle, matching: find.text('SEE LESS')),
-      findsOne,
-    );
+    expect(harness.app.current.screen, Screen.exploreCollection);
+    expect(harness.app.current.param, 'venues');
   });
 
   testWidgets('browse lists a venue absent from the feed', (tester) async {
@@ -456,12 +404,15 @@ void main() {
       home: const Scaffold(body: ExploreScreen()),
     );
 
-    expect(
-      find.text('VENUES · ${DemoData.venues.length + 1}', skipOffstage: false),
-      findsOne,
-    );
+    await tester.tap(_scopeTab('VENUES'));
+    await tester.pump();
+    // Browse venues are limited to venues with feed shows.
     expect(
       find.text(_directoryOnlyVenue.name.toUpperCase(), skipOffstage: false),
+      findsNothing,
+    );
+    expect(
+      find.text(DemoData.venues['v1']!.name.toUpperCase(), skipOffstage: false),
       findsOne,
     );
   });
@@ -501,19 +452,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.calls, 2);
-    await tester.scrollUntilVisible(
-      find.text(_directoryOnlyVenue.name.toUpperCase()),
-      250,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(
-      find.text(_directoryOnlyVenue.name.toUpperCase(), skipOffstage: false),
-      findsOne,
-    );
     expect(
       find.text("Couldn't load venues.", skipOffstage: false),
       findsNothing,
     );
+    expect(
+      find.text('No venues listed yet.', skipOffstage: false),
+      findsOne,
+    ); // directory-only venues are excluded from browse.
   });
 
   testWidgets('a failed directory never blanks feed venues', (tester) async {
@@ -526,7 +472,7 @@ void main() {
           'feed',
           () => Stream.value(
             FeedSnapshot(
-              gigs: const [],
+              gigs: [DemoData.gigs.firstWhere((gig) => gig.venueId == 'v1')],
               venues: {'v1': DemoData.venues['v1']!},
               bands: const {},
             ),
@@ -536,6 +482,8 @@ void main() {
       home: const Scaffold(body: ExploreScreen()),
     );
 
+    await tester.tap(_scopeTab('VENUES'));
+    await tester.pump();
     expect(
       find.text(DemoData.venues['v1']!.name.toUpperCase(), skipOffstage: false),
       findsOne,

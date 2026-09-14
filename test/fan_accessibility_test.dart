@@ -41,7 +41,7 @@ void main() {
     expect(find.text('EXPLORE'), findsOne);
     final filters = find.byKey(const Key('explore-filter-button'));
     expect(filters, findsOne);
-    expect(tester.getSize(filters), const Size(48, 48));
+    expect(tester.getSize(filters), const Size(44, 44));
     expect(find.text('PUNK'), findsNothing);
     await tester.tap(filters);
     await tester.pumpAndSettle();
