@@ -199,19 +199,31 @@ class _ExploreScreenState extends State<ExploreScreen> {
           );
           slivers.add(
             SliverToBoxAdapter(
-              child: EpCarousel(
-                key: const Key('explore-featured'),
-                itemExtent: 300,
-                height: 380,
-                wrapWhenScaled: true,
-                itemCount: home.featured.length,
-                itemBuilder: (_, i) {
-                  final gig = home.featured[i];
-                  return ExploreFeaturedCard(
-                    key: Key('explore-featured-${gig.id}'),
-                    gig: gig,
-                    venueName: app.venue(gig.venueId).name,
-                    onTap: () => app.openGig(gig.id),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  // One landscape card spans the width, leaving a sliver of
+                  // the next card visible so the rail reads as a carousel.
+                  const peek = 36.0;
+                  final extent = (constraints.maxWidth - EpLayout.gutter - peek)
+                      .clamp(240.0, 640.0);
+                  final height = (extent * 0.6).roundToDouble();
+                  return EpCarousel(
+                    key: const Key('explore-featured'),
+                    itemExtent: extent,
+                    height: height,
+                    wrapWhenScaled: true,
+                    itemCount: home.featured.length,
+                    itemBuilder: (_, i) {
+                      final gig = home.featured[i];
+                      return ExploreFeaturedCard(
+                        key: Key('explore-featured-${gig.id}'),
+                        gig: gig,
+                        venueName: app.venue(gig.venueId).name,
+                        onTap: () => app.openGig(gig.id),
+                        width: extent,
+                        height: height,
+                      );
+                    },
                   );
                 },
               ),

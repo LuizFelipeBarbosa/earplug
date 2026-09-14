@@ -218,35 +218,95 @@ class ExploreFeaturedCard extends StatelessWidget {
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    EpDateBlock(date: gig.startsAt),
-                    const Spacer(),
-                    EpDisplay(
-                      gig.title,
-                      size: 28,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      color: style.fg,
-                    ),
-                    const SizedBox(height: 6),
-                    EpMonoText(
-                      '$venueName · doors ${gig.doorsLabel}',
-                      color: context.epColors.muted,
-                    ),
-                    const SizedBox(height: 8),
-                    EpPill(label: cue, onPressed: null, size: EpPillSize.chip),
-                  ],
-                ),
-              ),
+              if (height < width)
+                ..._landscapeContent(context, style, cue)
+              else
+                _portraitContent(context, style, cue),
             ],
           ),
         ),
       ),
     );
+  }
+
+  String get _venueLine => '$venueName · doors ${gig.doorsLabel}';
+
+  Widget _portraitContent(BuildContext context, FlyerStyle style, String cue) =>
+      Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            EpDateBlock(date: gig.startsAt),
+            const Spacer(),
+            EpDisplay(
+              gig.title,
+              size: 28,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              color: style.fg,
+            ),
+            const SizedBox(height: 6),
+            EpMonoText(_venueLine, color: context.epColors.muted),
+            const SizedBox(height: 8),
+            EpPill(label: cue, onPressed: null, size: EpPillSize.chip),
+          ],
+        ),
+      );
+
+  /// Date block pinned top-left; title and venue line bottom-left with the
+  /// ticket cue sharing the venue line's baseline on the right.
+  List<Widget> _landscapeContent(
+    BuildContext context,
+    FlyerStyle style,
+    String cue,
+  ) {
+    final venueStyle = Theme.of(context).textTheme.epChipLabel.copyWith(
+      fontSize: 11,
+      color: context.epColors.muted,
+    );
+    return [
+      Positioned(
+        top: 16,
+        left: 16,
+        child: EpDateBlock(date: gig.startsAt),
+      ),
+      Positioned(
+        left: 16,
+        right: 16,
+        bottom: 16,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            EpDisplay(
+              gig.title,
+              size: 24,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              color: style.fg,
+            ),
+            const SizedBox(height: 6),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Text(
+                    _venueLine.toUpperCase(),
+                    semanticsLabel: _venueLine,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: venueStyle,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                EpPill(label: cue, onPressed: null, size: EpPillSize.chip),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ];
   }
 }
 

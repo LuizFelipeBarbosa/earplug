@@ -3,6 +3,7 @@ import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/explore_friends.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -195,6 +196,20 @@ void main() {
       );
       expect(find.byKey(const Key('explore-featured-gSaved')), findsOneWidget);
       expect(find.byKey(const Key('explore-featured-gWeekend')), findsNothing);
+
+      // One landscape card spans the width; the next one peeks in on the right.
+      final viewportWidth =
+          tester.view.physicalSize.width / tester.view.devicePixelRatio;
+      final first = tester.getSize(
+        find.byKey(const Key('explore-featured-gFollowed')),
+      );
+      expect(first.width, closeTo(viewportWidth - EpLayout.gutter - 36, 1));
+      expect(first.height, lessThan(first.width));
+      final secondLeft = tester
+          .getTopLeft(find.byKey(const Key('explore-featured-gSaved')))
+          .dx;
+      expect(secondLeft, lessThan(viewportWidth));
+
       await tester.tap(find.byKey(const Key('explore-featured-gFollowed')));
       expect(h.app.current.screen, Screen.gig);
       expect(h.app.current.param, 'gFollowed');

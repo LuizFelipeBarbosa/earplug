@@ -146,6 +146,47 @@ void main() {
     expect(tapped, isTrue);
   });
 
+  testWidgets(
+    'landscape featured card fits its title, venue line and cue at 1.0 and 1.5',
+    (tester) async {
+      final gig = gigFixture(
+        id: 'featured-landscape',
+        title: 'A Very Long Featured Event Title That Needs Trimming',
+        time: '8PM / 9PM',
+        tix: Ticketing.paid,
+      );
+      for (final scale in [1.0, 1.5]) {
+        await tester.pumpWidget(
+          plain(
+            ExploreFeaturedCard(
+              gig: gig,
+              venueName: 'A Venue With A Long Name',
+              onTap: () {},
+              width: 334,
+              height: 200,
+            ),
+            textScaler: TextScaler.linear(scale),
+          ),
+        );
+        await tester.pump();
+        expect(tester.takeException(), isNull, reason: 'scale $scale');
+        expect(
+          tester.getSize(find.byType(ExploreFeaturedCard)),
+          const Size(334, 200),
+        );
+        expect(
+          find.text('A VERY LONG FEATURED EVENT TITLE THAT NEEDS TRIMMING'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('A VENUE WITH A LONG NAME · DOORS 8PM'),
+          findsOneWidget,
+        );
+        expect(find.text('TICKETS'), findsOneWidget);
+      }
+    },
+  );
+
   testWidgets('location row shows copy and handles taps', (tester) async {
     var tapped = false;
     await tester.pumpWidget(
