@@ -5,6 +5,7 @@ import '../theme.dart';
 import 'common.dart';
 import 'ep_rows.dart';
 import 'ep_text.dart';
+import 'explore_tiles.dart';
 
 /// "Where your friends are going this weekend" for the Explore page.
 class ExploreFriendsSection extends StatelessWidget {
@@ -18,7 +19,7 @@ class ExploreFriendsSection extends StatelessWidget {
     required this.onOpenGig,
     required this.venueLine,
     this.onSeeAll,
-    this.previewCount = 4,
+    this.previewCount = 3,
   });
 
   final List<({Gig gig, List<SocialUserCard> friends})> entries;
@@ -68,13 +69,12 @@ class ExploreFriendsSection extends StatelessWidget {
                 onAction: onSeeAll,
               ),
               for (final entry in entries.take(previewCount))
-                EpGigRow(
+                ExploreEventRow(
                   key: Key('explore-friends-gig-${entry.gig.id}'),
-                  date: entry.gig.startsAt,
-                  title: entry.gig.title,
-                  meta: venueLine(entry.gig),
-                  sub: _friendsLine(entry.friends),
+                  gig: entry.gig,
+                  venueName: venueLine(entry.gig),
                   trailing: ExploreAvatarStack(people: entry.friends),
+                  sub: _friendsLine(entry.friends),
                   onTap: () => onOpenGig(entry.gig.id),
                 ),
             ],

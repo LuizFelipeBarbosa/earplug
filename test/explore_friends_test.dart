@@ -2,6 +2,7 @@ import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/explore_friends.dart';
+import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -114,6 +115,7 @@ void main() {
       find.byKey(Key('explore-friends-gig-${DemoData.gigs[1].id}')),
       findsOneWidget,
     );
+    expect(find.byType(ExploreEventRow), findsNWidgets(2));
     expect(find.byType(ExploreAvatarStack), findsNWidgets(2));
     expect(find.text('Maya is going'), findsOneWidget);
     expect(find.text('Maya and Dev are going'), findsOneWidget);
@@ -122,5 +124,39 @@ void main() {
     await tester.tap(find.byKey(Key('explore-friends-gig-${gig.id}')));
     expect(seeAll, isTrue);
     expect(opened, gig.id);
+  });
+
+  testWidgets('friend rows fit at larger text scale', (tester) async {
+    final entries = [
+      (gig: gig, friends: [person('a', 'Maya')]),
+      (
+        gig: DemoData.gigs[1],
+        friends: [person('a', 'Maya'), person('b', 'Dev')],
+      ),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildEpTheme(),
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(400, 800),
+            textScaler: TextScaler.linear(1.5),
+          ),
+          child: Scaffold(
+            body: ExploreFriendsSection(
+              entries: entries,
+              signedIn: true,
+              hasFriends: true,
+              onFindPeople: () {},
+              onSignIn: () {},
+              onOpenGig: (_) {},
+              venueLine: (_) => 'Venue',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
   });
 }

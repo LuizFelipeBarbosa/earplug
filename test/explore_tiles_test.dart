@@ -74,6 +74,90 @@ void main() {
   });
 
   testWidgets(
+    'event row shows metadata, fallback initials, free label, and taps',
+    (tester) async {
+      var tapped = false;
+      final gig = gigFixture(
+        id: 'event-row',
+        title: 'Neon Nights',
+        startsAt: DateTime(2026, 9, 19),
+        flyKey: 'paper',
+        price: 0,
+      );
+      await tester.pumpWidget(
+        plain(
+          ExploreEventRow(
+            gig: gig,
+            venueName: 'The Foghorn',
+            onTap: () => tapped = true,
+          ),
+        ),
+      );
+      expect(find.text('NEON NIGHTS'), findsOneWidget);
+      expect(find.text('NN'), findsOneWidget);
+      expect(find.textContaining('SAT 19 SEP'), findsOneWidget);
+      expect(find.textContaining('The Foghorn'), findsOneWidget);
+      expect(find.textContaining(' · FREE'), findsOneWidget);
+      await tester.tap(find.text('NEON NIGHTS'));
+      expect(tapped, isTrue);
+
+      await tester.pumpWidget(
+        plain(
+          ExploreEventRow(
+            gig: gigFixture(id: 'paid-row', title: 'Paid Night', price: 12),
+            venueName: 'The Foghorn',
+            onTap: () {},
+          ),
+        ),
+      );
+      expect(find.textContaining('FREE'), findsNothing);
+    },
+  );
+
+  testWidgets('featured card shows details, ticket cue, and taps', (
+    tester,
+  ) async {
+    var tapped = false;
+    for (final tix in Ticketing.values) {
+      final cue = switch (tix) {
+        Ticketing.rsvp => 'RSVP',
+        Ticketing.paid => 'TICKETS',
+        Ticketing.external => 'DETAILS',
+      };
+      await tester.pumpWidget(
+        plain(
+          ExploreFeaturedCard(
+            gig: gigFixture(
+              id: 'featured-${tix.name}',
+              title: 'A Long Featured Event Title',
+              time: '8PM / 9PM',
+              tix: tix,
+            ),
+            venueName: 'The Foghorn',
+            onTap: () => tapped = true,
+          ),
+        ),
+      );
+      expect(find.text('A LONG FEATURED EVENT TITLE'), findsOneWidget);
+      expect(find.textContaining('THE FOGHORN · DOORS 8PM'), findsOneWidget);
+      expect(find.text(cue), findsOneWidget);
+      await tester.tap(find.text('A LONG FEATURED EVENT TITLE'));
+    }
+    expect(tapped, isTrue);
+  });
+
+  testWidgets('location row shows copy and handles taps', (tester) async {
+    var tapped = false;
+    await tester.pumpWidget(
+      plain(ExploreLocationRow(label: 'Oakland', onTap: () => tapped = true)),
+    );
+    expect(find.text('OAKLAND'), findsOneWidget);
+    expect(find.text('Set as your location'), findsOneWidget);
+    await tester.tap(find.text('OAKLAND'));
+    expect(tapped, isTrue);
+  });
+
+  testWidgets(
     'venue tile renders metadata, singular/plural, and verification',
     (tester) async {
       final date = DateTime(2026, 9, 19); // Saturday.
@@ -208,6 +292,10 @@ void main() {
       verified: true,
     );
     final scaler = TextScaler.linear(1.5);
+    final gig = gigFixture(
+      id: 'large-event',
+      title: 'A Very Long Event Recommendation Title',
+    );
     for (final child in [
       ExploreBandTile(band: band, onTap: () {}),
       ExploreCollectionCard(collection: collection, onTap: () {}),
@@ -219,6 +307,17 @@ void main() {
         distance: '12 MI',
         onTap: () {},
       ),
+      ExploreEventRow(
+        gig: gig,
+        venueName: 'A Venue With A Long Name',
+        onTap: () {},
+      ),
+      ExploreFeaturedCard(
+        gig: gig,
+        venueName: 'A Venue With A Long Name',
+        onTap: () {},
+      ),
+      ExploreLocationRow(label: 'A Location With A Long Name', onTap: () {}),
     ]) {
       await tester.pumpWidget(plain(child, textScaler: scaler));
       await tester.pump();

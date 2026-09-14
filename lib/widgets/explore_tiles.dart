@@ -6,8 +6,269 @@ import '../explore_ranking.dart';
 import '../flyer_styles.dart';
 import '../models.dart';
 import '../theme.dart';
+import 'common.dart';
 import 'ep_rows.dart';
 import 'ep_text.dart';
+
+String _initialsFor(String title) {
+  final words = title
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((word) => word.isNotEmpty)
+      .toList();
+  if (words.isEmpty) return '?';
+  if (words.length == 1) return words.first.characters.first;
+  return '${words.first.characters.first}${words.last.characters.first}';
+}
+
+class _ExploreHairlineRow extends StatelessWidget {
+  const _ExploreHairlineRow({
+    required this.child,
+    required this.onTap,
+    this.semanticLabel,
+    this.minHeight = 44,
+  });
+
+  final Widget child;
+  final VoidCallback onTap;
+  final String? semanticLabel;
+  final double minHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ConstrainedBox(
+          constraints: BoxConstraints(minHeight: minHeight),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: child,
+          ),
+        ),
+        const EpHairline(),
+      ],
+    );
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      child: InkWell(onTap: onTap, child: content),
+    );
+  }
+}
+
+/// Compact recommendation-feed event row.
+class ExploreEventRow extends StatelessWidget {
+  const ExploreEventRow({
+    super.key,
+    required this.gig,
+    required this.venueName,
+    required this.onTap,
+    this.trailing,
+    this.sub,
+  });
+
+  final Gig gig;
+  final String venueName;
+  final VoidCallback onTap;
+  final Widget? trailing;
+  final String? sub;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = flyerStyles[gig.flyKey] ?? flyerStyles['paper']!;
+    final imageUrl = gig.flyKey == 'custom' ? gig.flyerUrl : null;
+    final dateLine =
+        '${weekdayNamesUpper[gig.startsAt.weekday - 1]} ${gig.startsAt.day} '
+        '${monthNamesUpper[gig.startsAt.month - 1]} · $venueName'
+        '${gig.free ? ' · FREE' : ''}';
+    final thumbnail = SizedBox(
+      width: 56,
+      height: 56,
+      child: EpNetworkImage(
+        url: imageUrl,
+        fit: BoxFit.cover,
+        cacheWidth: 56,
+        cacheHeight: 56,
+        fallback: ColoredBox(
+          color: style.base,
+          child: Center(
+            child: EpDisplay(
+              _initialsFor(gig.title),
+              size: 16,
+              color: style.fg,
+            ),
+          ),
+        ),
+      ),
+    );
+    return _ExploreHairlineRow(
+      semanticLabel: gig.title,
+      onTap: onTap,
+      minHeight: 56,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          thumbnail,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                EpDisplay(
+                  gig.title,
+                  size: 18,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                EpMonoText(
+                  dateLine,
+                  color: context.epColors.muted,
+                  keepCase: true,
+                ),
+                if (sub != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    sub!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epBody.copyWith(color: context.epColors.muted),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child:
+                trailing ??
+                Icon(
+                  Icons.chevron_right,
+                  size: 16,
+                  color: context.epColors.muted,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Large featured card used by the Explore recommendation carousel.
+class ExploreFeaturedCard extends StatelessWidget {
+  const ExploreFeaturedCard({
+    super.key,
+    required this.gig,
+    required this.venueName,
+    required this.onTap,
+    this.width = 300,
+    this.height = 380,
+  });
+
+  final Gig gig;
+  final String venueName;
+  final VoidCallback onTap;
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = flyerStyles[gig.flyKey] ?? flyerStyles['paper']!;
+    final imageUrl = gig.flyKey == 'custom' ? gig.flyerUrl : null;
+    final cue = switch (gig.tix) {
+      Ticketing.rsvp => 'RSVP',
+      Ticketing.paid => 'TICKETS',
+      Ticketing.external => 'DETAILS',
+    };
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Semantics(
+        button: true,
+        label: gig.title,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (imageUrl != null && imageUrl.isNotEmpty)
+                EpNetworkImage(
+                  url: imageUrl,
+                  fit: BoxFit.cover,
+                  cacheWidth: width.round(),
+                  cacheHeight: height.round(),
+                  fallback: EpPanel(color: style.base, striped: true),
+                )
+              else
+                EpPanel(color: style.base, striped: true),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      context.epColors.background.withValues(alpha: 0),
+                      context.epColors.background.withValues(alpha: .86),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    EpDateBlock(date: gig.startsAt),
+                    const Spacer(),
+                    EpDisplay(
+                      gig.title,
+                      size: 28,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      color: style.fg,
+                    ),
+                    const SizedBox(height: 6),
+                    EpMonoText(
+                      '$venueName · doors ${gig.doorsLabel}',
+                      color: context.epColors.muted,
+                    ),
+                    const SizedBox(height: 8),
+                    EpPill(label: cue, onPressed: null, size: EpPillSize.chip),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Location search-result row.
+class ExploreLocationRow extends StatelessWidget {
+  const ExploreLocationRow({
+    super.key,
+    required this.label,
+    required this.onTap,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => EpMenuRow(
+    icon: Icons.place_outlined,
+    label: label,
+    sub: 'Set as your location',
+    onTap: onTap,
+  );
+}
 
 /// Square avatar + name + genre line, for RECOMMENDED / BANDS rails.
 /// Total width 88 wrapping a 72px avatar column by default.
