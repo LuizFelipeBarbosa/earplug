@@ -25,6 +25,8 @@ class FanEventCard extends StatelessWidget {
     this.showDistance = false,
     this.trailingAction,
     this.presentation = FanEventCardPresentation.compact,
+    this.friends = const <SocialUserCard>[],
+    this.rowKey,
   });
 
   final Gig gig;
@@ -32,6 +34,8 @@ class FanEventCard extends StatelessWidget {
   final bool showDistance;
   final Widget? trailingAction;
   final FanEventCardPresentation presentation;
+  final List<SocialUserCard> friends;
+  final Key? rowKey;
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +62,7 @@ class FanEventCard extends StatelessWidget {
       );
     }
     final row = ExploreEventRow(
-      key: ValueKey('fan-event-${gig.id}'),
+      key: rowKey ?? ValueKey('fan-event-${gig.id}'),
       gig: gig,
       venueName: venue.name,
       info: ExploreGigInfo(
@@ -68,6 +72,7 @@ class FanEventCard extends StatelessWidget {
       ),
       lineup: exploreLineupFor(gig, app),
       actions: actions.posterActions(context),
+      friends: friends,
       onTap: () => app.openGig(gig.id),
     );
     if (!app.isDiscoveryBoosted(gig)) return row;

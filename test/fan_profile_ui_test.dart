@@ -403,9 +403,8 @@ void main() {
     final titleBottom = tester.getBottomLeft(title).dy;
     final headerTop = tester.getTopLeft(header).dy;
     expect((headerTop - titleBottom).abs(), lessThanOrEqualTo(8));
-    final avatar = tester.widget<EpAvatarTile>(
-      find.byKey(const Key('fan-profile-avatar')),
-    );
+    final avatarFinder = find.byKey(const Key('fan-profile-avatar'));
+    final avatar = tester.widget<EpAvatarTile>(avatarFinder);
     expect(avatar.initials, 'EF');
     expect(avatar.size, 64);
     final name = tester.widget<EpDisplay>(
@@ -429,6 +428,15 @@ void main() {
       expect(find.descendant(of: header, matching: action), findsOne);
       expect(tester.getSize(action), const Size(44, 44));
     }
+    final avatarTop = tester.getTopLeft(avatarFinder).dy;
+    expect(
+      tester.getTopLeft(find.byKey(const Key('edit-profile-action'))).dy,
+      closeTo(avatarTop, 1.0),
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const Key('profile-settings-action'))).dy,
+      closeTo(avatarTop, 1.0),
+    );
     expect(find.byTooltip('Edit profile'), findsOne);
     expect(find.byTooltip('Privacy and account settings'), findsOne);
     final stats = tester.widget<EpStatGrid>(find.byType(EpStatGrid));

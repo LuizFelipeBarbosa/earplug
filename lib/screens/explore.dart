@@ -265,14 +265,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
               itemBuilder: (_, i) {
                 final gig = home.forYou[i];
                 return _gutter(
-                  ExploreEventRow(
-                    key: Key('explore-for-you-${gig.id}'),
+                  FanEventCard(
                     gig: gig,
-                    venueName: app.venue(gig.venueId).name,
-                    meta: compactGigMeta(gig, app, showDistance: true),
-                    lineup: exploreLineupFor(gig, app),
-                    onTap: () => app.openGig(gig.id),
+                    app: app,
+                    showDistance: true,
                     friends: friendsByGig[gig.id] ?? const [],
+                    rowKey: Key('explore-for-you-${gig.id}'),
                   ),
                 );
               },

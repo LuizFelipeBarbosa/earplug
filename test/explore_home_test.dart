@@ -286,8 +286,15 @@ void main() {
           matching: find.textContaining(
             '${weekendGig.startsAt.day} '
             '${monthNamesUpper[weekendGig.startsAt.month - 1]} · '
-            '${weekendGig.doorsLabel} · ${weekendGig.priceLabel}',
+            '${weekendGig.doorsLabel}',
           ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.textContaining(weekendGig.priceLabel),
         ),
         findsOneWidget,
       );

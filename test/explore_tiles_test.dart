@@ -559,6 +559,37 @@ void main() {
     final firstSpan =
         (infoText.textSpan! as TextSpan).children!.first as TextSpan;
     expect(firstSpan.style?.fontWeight, FontWeight.bold);
+    final infoSpans = (infoText.textSpan! as TextSpan).children!
+        .whereType<TextSpan>()
+        .toList();
+    expect(infoSpans.last.style?.fontWeight, FontWeight.bold);
+    expect(infoSpans[2].style?.fontWeight, isNot(FontWeight.bold));
+  });
+
+  testWidgets('event row info uses uniform metric separators', (tester) async {
+    await tester.pumpWidget(
+      plain(
+        ExploreEventRow(
+          gig: gigFixture(id: 'uniform-info'),
+          venueName: 'The Foghorn',
+          info: const ExploreGigInfo(
+            dateTime: '6 NOV · 8PM',
+            distance: '11 MI',
+            price: 'FREE',
+          ),
+          onTap: () {},
+        ),
+      ),
+    );
+    final infoText = tester.widget<Text>(
+      find.byWidgetPredicate(
+        (widget) => widget is Text && widget.textSpan != null,
+      ),
+    );
+    expect(
+      (infoText.textSpan! as TextSpan).toPlainText(),
+      '6 NOV · 8PM · 11 MI · FREE',
+    );
   });
 
   testWidgets('lineup row shows all chips when wide and see all when narrow', (

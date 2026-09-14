@@ -234,7 +234,7 @@ class _ExploreGigInfoLine extends StatelessWidget {
     final muted = Theme.of(
       context,
     ).textTheme.epMeta.copyWith(color: context.epColors.muted);
-    final spans = <InlineSpan>[
+    final metricSpans = <TextSpan>[
       TextSpan(
         text: info.dateTime,
         style: label.copyWith(
@@ -242,18 +242,25 @@ class _ExploreGigInfoLine extends StatelessWidget {
           fontWeight: FontWeight.bold,
         ),
       ),
-      if (info.distance != null) ...[
-        const TextSpan(text: ' · '),
+      if (info.distance != null)
         TextSpan(
           text: info.distance,
           style: label.copyWith(color: context.epColors.ink),
         ),
-      ],
-      if (info.price != null) ...[
-        const TextSpan(text: ' · '),
-        TextSpan(text: info.price, style: muted),
-      ],
+      if (info.price != null)
+        TextSpan(
+          text: info.price,
+          style: label.copyWith(
+            color: context.epColors.ink,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
     ];
+    final spans = <InlineSpan>[];
+    for (var i = 0; i < metricSpans.length; i++) {
+      if (i > 0) spans.add(TextSpan(text: ' · ', style: muted));
+      spans.add(metricSpans[i]);
+    }
     return Text.rich(
       TextSpan(children: spans),
       softWrap: true,
@@ -918,10 +925,7 @@ const _venueTilePaddingHorizontal = 8.0;
 const _venueTilePaddingTop = 6.0;
 const _venueTilePaddingBottom = 4.0;
 const _venueTileNameMaxLines = 2;
-const _venueTileAreaGap = 2.0;
-const _venueTileNextDateGap = 2.0;
-const _venueTileShowCountGap = 2.0;
-const _venueTileOptionalRowGap = 4.0;
+const _venueTileLineGap = 2.0;
 const _venueTileBadgeVerticalPadding = 4.0;
 const _venueTileBadgeBorderHeight = 2.0;
 
@@ -939,26 +943,26 @@ double exploreVenueRailHeight(BuildContext context) {
       lineHeight(textTheme.epDisplayAt(20)) * _venueTileNameMaxLines;
   final areaHeight = lineHeight(textTheme.epMeta);
   final nextDateHeight = lineHeight(textTheme.epDisplayAt(20));
-  // EpMonoText uses epChipLabel for its default weight. The badge adds its
-  // vertical padding and one-pixel border on each side to that same line.
   final showCountHeight = lineHeight(textTheme.epChipLabel);
-  final optionalRowHeight =
+  // EpBadge uses epChipLabel with two pixels of vertical padding and a
+  // one-pixel border on each side.
+  final badgeHeight =
       showCountHeight +
       _venueTileBadgeVerticalPadding +
       _venueTileBadgeBorderHeight;
+  final line2Height = areaHeight > badgeHeight ? areaHeight : badgeHeight;
+  final line3Height = nextDateHeight > showCountHeight
+      ? nextDateHeight
+      : showCountHeight;
 
   return (imageHeight +
           _venueTilePaddingTop +
           _venueTilePaddingBottom +
           venueNameHeight +
-          _venueTileAreaGap +
-          areaHeight +
-          _venueTileNextDateGap +
-          nextDateHeight +
-          _venueTileShowCountGap +
-          showCountHeight +
-          _venueTileOptionalRowGap +
-          optionalRowHeight)
+          _venueTileLineGap +
+          line2Height +
+          _venueTileLineGap +
+          line3Height)
       .ceilToDouble();
 }
 
@@ -1029,46 +1033,38 @@ class ExploreVenueTile extends StatelessWidget {
                       maxLines: _venueTileNameMaxLines,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: _venueTileAreaGap),
-                    Text(
-                      area,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.epMeta.copyWith(
-                        color: context.epColors.muted,
-                      ),
-                    ),
-                    const SizedBox(height: _venueTileNextDateGap),
-                    EpDisplay(nextDate, size: 20),
-                    const SizedBox(height: _venueTileShowCountGap),
-                    EpMonoText(showCount, color: context.epColors.muted),
-                    if (venue.verified || distance != null) ...[
-                      const SizedBox(height: _venueTileOptionalRowGap),
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (venue.verified)
-                              EpBadge(
-                                key: Key(
-                                  'explore-venue-tile-verified-${venue.id}',
-                                ),
-                                label: 'Verified',
-                                variant: EpBadgeVariant.outline,
-                              ),
-                            if (venue.verified && distance != null)
-                              const SizedBox(width: 6),
-                            if (distance != null)
-                              EpMonoText(
-                                distance!,
-                                color: context.epColors.muted,
-                              ),
-                          ],
+                    const SizedBox(height: _venueTileLineGap),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            [area, ?distance].join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.epMeta.copyWith(
+                              color: context.epColors.muted,
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                        if (venue.verified) ...[
+                          const SizedBox(width: 6),
+                          EpBadge(
+                            key: Key('explore-venue-tile-verified-${venue.id}'),
+                            label: 'Verified',
+                            variant: EpBadgeVariant.outline,
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: _venueTileLineGap),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(child: EpDisplay(nextDate, size: 20)),
+                        EpMonoText(showCount, color: context.epColors.muted),
+                      ],
+                    ),
                   ],
                 ),
               ),
