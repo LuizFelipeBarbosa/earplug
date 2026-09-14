@@ -296,7 +296,7 @@ class ExploreEventRow extends StatelessWidget {
     this.lineup,
     this.meta,
     this.info,
-    this.posterActions,
+    this.actions,
     this.friends = const <SocialUserCard>[],
     this.thumbnailSize = 96,
   });
@@ -310,7 +310,7 @@ class ExploreEventRow extends StatelessWidget {
   final List<ExploreLineupBand>? lineup;
   final String? meta;
   final ExploreGigInfo? info;
-  final List<Widget>? posterActions;
+  final List<Widget>? actions;
   final List<SocialUserCard> friends;
   final double thumbnailSize;
 
@@ -346,44 +346,6 @@ class ExploreEventRow extends StatelessWidget {
         ),
       ),
     );
-    final thumbnail = posterActions == null
-        ? poster
-        : Stack(
-            children: [
-              poster,
-              Positioned(
-                top: 8,
-                left: 8,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < posterActions!.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 4),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: context.epColors.background.withValues(
-                            alpha: .72,
-                          ),
-                          shape: BoxShape.circle,
-                        ),
-                        child: SizedBox.square(
-                          dimension: 30,
-                          child: Material(
-                            color: Colors.transparent,
-                            shape: const CircleBorder(),
-                            child: FittedBox(
-                              fit: BoxFit.contain,
-                              child: posterActions![i],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          );
     return _ExploreHairlineRow(
       semanticLabel: gig.title,
       onTap: onTap,
@@ -392,7 +354,7 @@ class ExploreEventRow extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            thumbnail,
+            poster,
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -457,6 +419,29 @@ class ExploreEventRow extends StatelessWidget {
                 ],
               ),
             ),
+            if (actions != null && actions!.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < actions!.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 4),
+                        SizedBox.square(
+                          dimension: 28,
+                          child: FittedBox(
+                            fit: BoxFit.contain,
+                            child: actions![i],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(width: 12),
             if (stretchTrailing && trailing != null)
               trailing!
@@ -849,13 +834,66 @@ class ExploreCollectionCard extends StatelessWidget {
   }
 }
 
+/// Layout constants shared by [ExploreVenueTile] and
+/// [exploreVenueRailHeight], so the venues rail stays tall enough for the
+/// tile's tallest possible content.
+const _venueTileWidth = 220.0;
+const _venueTileImageAspectRatio = 4 / 3;
+const _venueTilePaddingHorizontal = 8.0;
+const _venueTilePaddingTop = 6.0;
+const _venueTilePaddingBottom = 4.0;
+const _venueTileNameMaxLines = 2;
+const _venueTileAreaGap = 2.0;
+const _venueTileNextDateGap = 2.0;
+const _venueTileShowCountGap = 2.0;
+const _venueTileOptionalRowGap = 4.0;
+const _venueTileBadgeVerticalPadding = 4.0;
+const _venueTileBadgeBorderHeight = 2.0;
+
+/// The height a VENUES rail needs to show a default [ExploreVenueTile] with
+/// its longest text and optional verification/distance row at the current
+/// text scale.
+double exploreVenueRailHeight(BuildContext context) {
+  final textTheme = Theme.of(context).textTheme;
+  final scale = MediaQuery.textScalerOf(context).scale(1);
+  double lineHeight(TextStyle style) =>
+      (style.fontSize! * style.height! * scale).ceilToDouble();
+
+  const imageHeight = _venueTileWidth / _venueTileImageAspectRatio;
+  final venueNameHeight =
+      lineHeight(textTheme.epDisplayAt(20)) * _venueTileNameMaxLines;
+  final areaHeight = lineHeight(textTheme.epMeta);
+  final nextDateHeight = lineHeight(textTheme.epDisplayAt(20));
+  // EpMonoText uses epChipLabel for its default weight. The badge adds its
+  // vertical padding and one-pixel border on each side to that same line.
+  final showCountHeight = lineHeight(textTheme.epChipLabel);
+  final optionalRowHeight =
+      showCountHeight +
+      _venueTileBadgeVerticalPadding +
+      _venueTileBadgeBorderHeight;
+
+  return (imageHeight +
+          _venueTilePaddingTop +
+          _venueTilePaddingBottom +
+          venueNameHeight +
+          _venueTileAreaGap +
+          areaHeight +
+          _venueTileNextDateGap +
+          nextDateHeight +
+          _venueTileShowCountGap +
+          showCountHeight +
+          _venueTileOptionalRowGap +
+          optionalRowHeight)
+      .ceilToDouble();
+}
+
 /// Image-backed venue card with venue details below the image.
 class ExploreVenueTile extends StatelessWidget {
   const ExploreVenueTile({
     super.key,
     required this.entry,
     this.distance,
-    this.width = 220,
+    this.width = _venueTileWidth,
     required this.onTap,
   });
 
@@ -889,7 +927,7 @@ class ExploreVenueTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               AspectRatio(
-                aspectRatio: 4 / 3,
+                aspectRatio: _venueTileImageAspectRatio,
                 child: entry.venue.photoUrls.isNotEmpty
                     ? EpNetworkImage(
                         url: entry.venue.photoUrls.first,
@@ -900,7 +938,12 @@ class ExploreVenueTile extends StatelessWidget {
                     : placeholder,
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+                padding: const EdgeInsets.fromLTRB(
+                  _venueTilePaddingHorizontal,
+                  _venueTilePaddingTop,
+                  _venueTilePaddingHorizontal,
+                  _venueTilePaddingBottom,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -908,10 +951,10 @@ class ExploreVenueTile extends StatelessWidget {
                     EpDisplay(
                       venue.name,
                       size: 20,
-                      maxLines: 2,
+                      maxLines: _venueTileNameMaxLines,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: _venueTileAreaGap),
                     Text(
                       area,
                       maxLines: 1,
@@ -920,11 +963,12 @@ class ExploreVenueTile extends StatelessWidget {
                         color: context.epColors.muted,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: _venueTileNextDateGap),
                     EpDisplay(nextDate, size: 20),
+                    const SizedBox(height: _venueTileShowCountGap),
                     EpMonoText(showCount, color: context.epColors.muted),
                     if (venue.verified || distance != null) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(height: _venueTileOptionalRowGap),
                       FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,

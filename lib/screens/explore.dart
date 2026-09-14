@@ -307,7 +307,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
               child: EpCarousel(
                 key: const Key('explore-venues'),
                 itemExtent: 220,
-                height: 280,
+                height: exploreVenueRailHeight(context),
                 wrapWhenScaled: true,
                 itemCount: venues.length,
                 itemBuilder: (_, i) {

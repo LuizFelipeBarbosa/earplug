@@ -67,7 +67,7 @@ class FanEventCard extends StatelessWidget {
         price: gig.priceLabel,
       ),
       lineup: exploreLineupFor(gig, app),
-      posterActions: actions.posterActions(context),
+      actions: actions.posterActions(context),
       onTap: () => app.openGig(gig.id),
     );
     if (!app.isDiscoveryBoosted(gig)) return row;

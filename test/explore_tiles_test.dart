@@ -126,6 +126,42 @@ void main() {
     }
   });
 
+  testWidgets('venue rail height fits the tallest tile at any text scale', (
+    tester,
+  ) async {
+    final venue = Venue(
+      id: 'tall-venue',
+      name: 'The Very Long Venue Name That Wraps Across Two Lines',
+      area: 'Mission',
+      addr: '1 Main St',
+      point: const LatLng(0, 0),
+      verified: true,
+    );
+    final entry = VenueWithShows(
+      venue: venue,
+      gigs: [gigFixture(id: 'tall-venue-show', venueId: venue.id)],
+    );
+    for (final scale in [1.0, 1.3]) {
+      await tester.pumpWidget(
+        plain(
+          Column(
+            children: [
+              ExploreVenueTile(entry: entry, distance: '12 MI', onTap: () {}),
+            ],
+          ),
+          textScaler: TextScaler.linear(scale),
+        ),
+      );
+      expect(tester.takeException(), isNull, reason: 'scale $scale');
+      final tile = find.byType(ExploreVenueTile);
+      final context = tester.element(tile);
+      expect(
+        tester.getSize(tile).height,
+        lessThanOrEqualTo(exploreVenueRailHeight(context)),
+      );
+    }
+  });
+
   testWidgets('collection card shows title, show count, and handles taps', (
     tester,
   ) async {
@@ -386,28 +422,50 @@ void main() {
     );
   });
 
-  testWidgets('event row overlays poster actions at the poster corner', (
-    tester,
-  ) async {
+  testWidgets('event row places actions at the row top-right', (tester) async {
     await tester.pumpWidget(
       plain(
         ExploreEventRow(
           gig: gigFixture(id: 'poster-actions'),
           venueName: 'The Foghorn',
-          posterActions: const [Icon(Icons.bookmark, key: Key('poster-save'))],
+          actions: const [Icon(Icons.bookmark, key: Key('poster-save'))],
           onTap: () {},
         ),
       ),
     );
+    final row = tester.getRect(find.byType(ExploreEventRow));
+    final action = tester.getRect(find.byKey(const Key('poster-save')));
     final poster = tester.getRect(
       find.descendant(
         of: find.byType(ExploreEventRow),
         matching: find.byType(EpNetworkImage),
       ),
     );
-    final action = tester.getRect(find.byKey(const Key('poster-save')));
-    expect(action.left, closeTo(poster.left + 8, 1));
-    expect(action.top, closeTo(poster.top + 8, 1));
+    expect(action.top, closeTo(poster.top, 1));
+    expect(action.right, lessThanOrEqualTo(row.right));
+    expect(action.left, greaterThan(row.center.dx));
+    expect(action.left, greaterThan(poster.right));
+
+    await tester.pumpWidget(
+      plain(
+        SizedBox(
+          width: 300,
+          child: ExploreEventRow(
+            gig: gigFixture(
+              id: 'narrow-actions',
+              title: 'A Very Long Event Title That Must Leave Room For Actions',
+            ),
+            venueName: 'The Foghorn',
+            actions: const [
+              Icon(Icons.bookmark, key: Key('narrow-save')),
+              Icon(Icons.ios_share, key: Key('narrow-share')),
+            ],
+            onTap: () {},
+          ),
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('event row info wraps and emphasizes date and time', (
