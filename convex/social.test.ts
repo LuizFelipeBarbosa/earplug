@@ -6,6 +6,9 @@ import schema from "./schema";
 import {
   MAX_FRIENDS_GOING_FRIENDS,
   MAX_FRIENDS_GOING_WINDOW_MS,
+  MAX_KNOWN_ATTENDEE_CHECKS,
+  MAX_KNOWN_ATTENDEES,
+  MIN_SHARED_PAST_SHOWS,
   MAX_RSVPS_PER_FRIEND,
 } from "./lib/social";
 import { FEED_GRACE_MS, MAX_FRIEND_RSVP_ROWS } from "./lib/helpers";
@@ -645,5 +648,149 @@ describe("social", () => {
         (row) => row.gigId === g,
       )?.genres,
     ).toEqual(["punk", "jazz"]);
+  });
+
+  test("knownAttendees returns nothing when unauthenticated", async () => {
+    const t = convexTest(schema);
+    const v = await venue(t);
+    const g = await gig(t, v);
+    expect(await t.query(api.social.knownAttendees, { gigId: g, now: Date.now() })).toEqual({
+      people: [], goingCount: 0, truncated: false,
+    });
+  });
+
+  test("knownAttendees excludes self and attendees who disable sharing", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const friend = await user(t, "friend");
+    await follow(t, me.userId, friend.userId);
+    await follow(t, friend.userId, me.userId);
+    const v = await venue(t);
+    const g = await gig(t, v);
+    await rsvp(t, me.userId, g);
+    await rsvp(t, friend.userId, g);
+    await t.run((ctx) => ctx.db.patch(friend.userId, { shareRsvpsWithFriends: false }));
+    const result = await me.as.query(api.social.knownAttendees, { gigId: g, now: Date.now() });
+    expect(result.people).toEqual([]);
+  });
+
+  test("knownAttendees lists a mutual friend", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const friend = await user(t, "friend", "Friend");
+    await follow(t, me.userId, friend.userId);
+    await follow(t, friend.userId, me.userId);
+    const v = await venue(t);
+    const g = await gig(t, v);
+    await rsvp(t, friend.userId, g);
+    expect((await me.as.query(api.social.knownAttendees, { gigId: g, now: Date.now() })).people).toEqual([
+      { userId: friend.userId, name: "Friend", avatarUrl: null, relation: "friend", sharedShows: 0 },
+    ]);
+  });
+
+  test("knownAttendees lists a stranger sharing two past shows", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const stranger = await user(t, "stranger", "Stranger");
+    const v = await venue(t);
+    const now = Date.now();
+    const target = await gig(t, v, now + 1000);
+    for (let i = 0; i < MIN_SHARED_PAST_SHOWS; i++) {
+      const past = await gig(t, v, now - (i + 1) * 1000);
+      await rsvp(t, me.userId, past);
+      await rsvp(t, stranger.userId, past);
+    }
+    await rsvp(t, stranger.userId, target);
+    expect((await me.as.query(api.social.knownAttendees, { gigId: target, now })).people).toEqual([
+      { userId: stranger.userId, name: "Stranger", avatarUrl: null, relation: "seen", sharedShows: 2 },
+    ]);
+  });
+
+  test("knownAttendees excludes a stranger sharing only one past show", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const stranger = await user(t, "stranger");
+    const v = await venue(t);
+    const now = Date.now();
+    const target = await gig(t, v, now + 1000);
+    const past = await gig(t, v, now - 1000);
+    await rsvp(t, me.userId, past);
+    await rsvp(t, stranger.userId, past);
+    await rsvp(t, stranger.userId, target);
+    expect((await me.as.query(api.social.knownAttendees, { gigId: target, now })).people).toEqual([]);
+  });
+
+  test("knownAttendees ignores future shared shows", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const stranger = await user(t, "stranger");
+    const v = await venue(t);
+    const now = Date.now();
+    const target = await gig(t, v, now + 10_000);
+    const past = await gig(t, v, now - 1000);
+    const future = await gig(t, v, now + 2000);
+    await rsvp(t, me.userId, past);
+    await rsvp(t, stranger.userId, past);
+    await rsvp(t, me.userId, future);
+    await rsvp(t, stranger.userId, future);
+    await rsvp(t, stranger.userId, target);
+    expect((await me.as.query(api.social.knownAttendees, { gigId: target, now })).people).toEqual([]);
+  });
+
+  test("knownAttendees orders friends first and caps the people array", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const friend = await user(t, "friend", "Friend");
+    await follow(t, me.userId, friend.userId);
+    await follow(t, friend.userId, me.userId);
+    const v = await venue(t);
+    const now = Date.now();
+    const target = await gig(t, v, now + 1000);
+    const past = await Promise.all([
+      gig(t, v, now - 1000),
+      gig(t, v, now - 2000),
+    ]);
+    await rsvp(t, friend.userId, target);
+    for (let i = 0; i < MAX_KNOWN_ATTENDEES + 1; i++) {
+      const stranger = await user(t, `seen${i}`, `Seen ${i}`);
+      await rsvp(t, stranger.userId, target);
+      for (const p of past) {
+        await rsvp(t, me.userId, p);
+        await rsvp(t, stranger.userId, p);
+      }
+    }
+    const result = await me.as.query(api.social.knownAttendees, { gigId: target, now });
+    expect(result.people).toHaveLength(MAX_KNOWN_ATTENDEES);
+    expect(result.people[0]).toMatchObject({ name: "Friend", relation: "friend" });
+    expect(result.people.slice(1).every((p) => p.relation === "seen")).toBe(true);
+  });
+
+  test("knownAttendees reports truncation when stranger check budget is exceeded", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const v = await venue(t);
+    const target = await gig(t, v, Date.now() + 1000);
+    await t.run(async (ctx) => {
+      for (let i = 0; i < MAX_KNOWN_ATTENDEE_CHECKS + 1; i++) {
+        const stranger = await ctx.db.insert("users", {
+          clerkId: `stranger-${i}`, name: `Stranger ${i}`, email: `s${i}@x.com`,
+          genres: [], attendedCount: 0,
+        });
+        await ctx.db.insert("gigRsvps", { userId: stranger, gigId: target });
+      }
+    });
+    const result = await me.as.query(api.social.knownAttendees, { gigId: target, now: Date.now() });
+    expect(result.truncated).toBe(true);
+  });
+
+  test("knownAttendees returns count but no people for unpublished gigs", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const v = await venue(t);
+    const g = await gig(t, v, Date.now() + 1000, { lifecycle: "unpublished" });
+    await t.run((ctx) => ctx.db.patch(g, { goingCount: 7 }));
+    expect(await me.as.query(api.social.knownAttendees, { gigId: g, now: Date.now() })).toEqual({
+      people: [], goingCount: 7, truncated: false,
+    });
   });
 });

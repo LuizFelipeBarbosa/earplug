@@ -10,6 +10,13 @@ export const MAX_USER_SEARCH_RESULTS = 20;
 export const MIN_USER_SEARCH_QUERY = 2;
 /** 14 days. */
 export const MAX_FRIENDS_GOING_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+export const MIN_SHARED_PAST_SHOWS = 2;
+export const MAX_KNOWN_ATTENDEE_ROWS = 300;
+export const MAX_KNOWN_ATTENDEE_CHECKS = 60;
+// The ~4096 queries-per-function limit applies across the whole invocation,
+// so this row budget bounds candidate RSVP-history reads.
+export const MAX_KNOWN_ATTENDEE_RSVP_ROWS = 2500;
+export const MAX_KNOWN_ATTENDEES = 20;
 
 export const socialPersonValidator = v.object({
   userId: v.id("users"),

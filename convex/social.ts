@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { Id } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { docCache } from "./lib/docCache";
 import {
@@ -11,10 +11,15 @@ import {
 import {
   followEdges,
   isLiveUser,
+  MAX_KNOWN_ATTENDEE_CHECKS,
+  MAX_KNOWN_ATTENDEE_ROWS,
+  MAX_KNOWN_ATTENDEE_RSVP_ROWS,
+  MAX_KNOWN_ATTENDEES,
   MAX_FRIENDS_GOING_FRIENDS,
   MAX_FRIENDS_GOING_WINDOW_MS,
   MAX_RSVPS_PER_FRIEND,
   MAX_USER_SEARCH_RESULTS,
+  MIN_SHARED_PAST_SHOWS,
   MIN_USER_SEARCH_QUERY,
   sharesRsvps,
   socialPersonValidator,
@@ -234,6 +239,113 @@ export const friendsGoing = query({
       entries.push({ gigId, startsAt: gig.startsAt, friends });
     }
     return { entries, truncated };
+  },
+});
+
+export const knownAttendees = query({
+  args: { gigId: v.id("gigs"), now: v.number() },
+  returns: v.object({
+    people: v.array(
+      socialPersonValidator.extend({
+        relation: v.union(v.literal("friend"), v.literal("seen")),
+        sharedShows: v.number(),
+      }),
+    ),
+    goingCount: v.number(),
+    truncated: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const me = await currentUser(ctx);
+    if (me === null) return { people: [], goingCount: 0, truncated: false };
+    const gig = await ctx.db.get(args.gigId);
+    if (gig === null) return { people: [], goingCount: 0, truncated: false };
+    if ((gig.lifecycle ?? "published") !== "published") {
+      return { people: [], goingCount: gig.goingCount, truncated: false };
+    }
+
+    const attendeeRows = await ctx.db
+      .query("gigRsvps")
+      .withIndex("by_gig", (q) => q.eq("gigId", args.gigId))
+      .take(MAX_KNOWN_ATTENDEE_ROWS);
+    const cache = docCache(ctx);
+    const edges = await followEdges(ctx, me);
+    const friendIds = new Set(edges.friends);
+    const callerHistory = await ctx.db
+      .query("gigRsvps")
+      .withIndex("by_user", (q) => q.eq("userId", me._id))
+      .take(200);
+    let rowsRead = attendeeRows.length + callerHistory.length;
+    const callerPastShows = new Set<Id<"gigs">>();
+    for (const row of callerHistory) {
+      const pastGig = await cache.get(row.gigId);
+      if (pastGig !== null && pastGig.startsAt < args.now) {
+        callerPastShows.add(pastGig._id);
+      }
+    }
+
+    const attendeeIds: Id<"users">[] = [];
+    const seenAttendees = new Set<Id<"users">>();
+    for (const row of attendeeRows) {
+      if (row.userId !== me._id && !seenAttendees.has(row.userId)) {
+        seenAttendees.add(row.userId);
+        attendeeIds.push(row.userId);
+      }
+    }
+    const included: Array<{
+      user: Doc<"users">;
+      relation: "friend" | "seen";
+      sharedShows: number;
+    }> = [];
+    let nonFriendChecks = 0;
+    let truncated = false;
+    for (const userId of attendeeIds) {
+      if (rowsRead > MAX_KNOWN_ATTENDEE_RSVP_ROWS) {
+        truncated = true;
+        break;
+      }
+      if (!friendIds.has(userId) && nonFriendChecks >= MAX_KNOWN_ATTENDEE_CHECKS) {
+        truncated = true;
+        break;
+      }
+      const user = await cache.get(userId);
+      if (user === null || !isLiveUser(user) || !sharesRsvps(user)) continue;
+      if (friendIds.has(userId)) {
+        included.push({ user, relation: "friend", sharedShows: 0 });
+        continue;
+      }
+      nonFriendChecks += 1;
+      const history = await ctx.db
+        .query("gigRsvps")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(100);
+      rowsRead += history.length;
+      let sharedShows = 0;
+      for (const row of history) {
+        if (callerPastShows.has(row.gigId)) sharedShows += 1;
+      }
+      if (sharedShows >= MIN_SHARED_PAST_SHOWS) {
+        included.push({ user, relation: "seen", sharedShows });
+      }
+      if (rowsRead > MAX_KNOWN_ATTENDEE_RSVP_ROWS) {
+        truncated = true;
+        break;
+      }
+    }
+
+    included.sort((a, b) => {
+      if (a.relation !== b.relation) return a.relation === "friend" ? -1 : 1;
+      if (a.sharedShows !== b.sharedShows) return b.sharedShows - a.sharedShows;
+      return a.user.name.localeCompare(b.user.name);
+    });
+    const people = [];
+    for (const entry of included.slice(0, MAX_KNOWN_ATTENDEES)) {
+      people.push({
+        ...(await toSocialPerson(ctx, entry.user, cache)),
+        relation: entry.relation,
+        sharedShows: entry.sharedShows,
+      });
+    }
+    return { people, goingCount: gig.goingCount, truncated };
   },
 });
 
