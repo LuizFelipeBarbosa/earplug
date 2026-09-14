@@ -532,7 +532,7 @@ void main() {
     expect(titleText.softWrap, isTrue);
   });
 
-  testWidgets('event row info wraps and emphasizes date and time', (
+  testWidgets('event row info uses regular weight for every metric span', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -556,14 +556,14 @@ void main() {
     );
     expect(infoText.softWrap, isTrue);
     expect(infoText.overflow, isNot(TextOverflow.ellipsis));
-    final firstSpan =
-        (infoText.textSpan! as TextSpan).children!.first as TextSpan;
-    expect(firstSpan.style?.fontWeight, FontWeight.bold);
     final infoSpans = (infoText.textSpan! as TextSpan).children!
         .whereType<TextSpan>()
         .toList();
-    expect(infoSpans.last.style?.fontWeight, FontWeight.bold);
-    expect(infoSpans[2].style?.fontWeight, isNot(FontWeight.bold));
+    expect(
+      infoSpans.map((span) => span.style?.fontWeight),
+      everyElement(FontWeight.w400),
+    );
+    expect(infoSpans.first.style?.fontSize, 13);
   });
 
   testWidgets('event row info uses uniform metric separators', (tester) async {
@@ -720,7 +720,67 @@ void main() {
     expect(find.text('Briar'), findsNothing);
     expect(find.text('Cinder'), findsNothing);
     expect(find.byKey(const Key('lineup-see-all')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(ExploreFeaturedCard),
+        matching: find.byType(EpDateBlock),
+      ),
+      findsNothing,
+    );
   });
+
+  testWidgets(
+    'featured card info uses regular 14-point metrics in both layouts',
+    (tester) async {
+      const info = ExploreGigInfo(
+        dateTime: '23 SEP · 8PM',
+        distance: '11 MI',
+        price: 'FREE',
+      );
+      for (final size in [const Size(300, 380), const Size(334, 200)]) {
+        await tester.pumpWidget(
+          plain(
+            ExploreFeaturedCard(
+              gig: gigFixture(id: 'featured-structured-info'),
+              venueName: 'The Foghorn',
+              meta: 'Legacy meta',
+              info: info,
+              lineup: const [ExploreLineupBand(name: 'Aster', initials: 'AS')],
+              onTap: () {},
+              width: size.width,
+              height: size.height,
+            ),
+          ),
+        );
+        final infoFinder = find.descendant(
+          of: find.byType(ExploreFeaturedCard),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Text &&
+                widget.textSpan?.toPlainText().contains(info.dateTime) == true,
+          ),
+        );
+        expect(infoFinder, findsOneWidget);
+        final infoText = tester.widget<Text>(infoFinder);
+        final infoSpan = infoText.textSpan! as TextSpan;
+        expect(infoSpan.toPlainText(), '23 SEP · 8PM · 11 MI · FREE');
+        expect(infoText.softWrap, isTrue);
+        expect(infoText.maxLines, isNull);
+        expect(infoText.overflow, isNull);
+        final palette = tester.element(infoFinder).epColors;
+        for (final span in infoSpan.children!.whereType<TextSpan>()) {
+          expect(span.style?.fontSize, 14);
+          expect(span.style?.fontWeight, FontWeight.w400);
+          expect(
+            span.style?.color,
+            span.text == ' · ' ? palette.muted : palette.ink,
+          );
+        }
+        expect(find.text('LEGACY META'), findsNothing);
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
 
   testWidgets('featured card uses generated flyer without duplicating title', (
     tester,
@@ -744,6 +804,13 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('GENERATED FLYER EVENT'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(ExploreFeaturedCard),
+        matching: find.byType(EpDateBlock),
+      ),
+      findsNothing,
+    );
   });
 
   testWidgets('featured card shows details and taps', (tester) async {

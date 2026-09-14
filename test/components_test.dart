@@ -770,7 +770,7 @@ void main() {
       semantics.dispose();
     });
 
-    testWidgets('featured custom flyer image receives its contrast scrim', (
+    testWidgets('featured card uses real images and generated fallbacks', (
       tester,
     ) async {
       late AppState app;
@@ -786,7 +786,8 @@ void main() {
                     gig: _gig(
                       id: 'custom',
                       title: 'Custom Flyer',
-                      flyKey: 'custom',
+                      // A real image takes precedence over the generated style.
+                      flyKey: 'paper',
                       flyerUrl: 'https://example.test/custom-flyer.jpg',
                     ),
                     app: app,
@@ -797,7 +798,7 @@ void main() {
                       id: 'generated',
                       title: 'Generated Flyer',
                       flyKey: 'paper',
-                      flyerUrl: 'https://example.test/ignored-flyer.jpg',
+                      flyerUrl: null,
                     ),
                     app: app,
                     presentation: FanEventCardPresentation.featured,
@@ -812,14 +813,14 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('fan-event-custom')),
-          matching: find.byKey(const ValueKey('flyer-image-scrim')),
+          matching: find.byType(EpNetworkImage),
         ),
         findsOne,
       );
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('fan-event-generated')),
-          matching: find.byKey(const ValueKey('flyer-image-scrim')),
+          matching: find.byType(EpNetworkImage),
         ),
         findsNothing,
       );
@@ -864,7 +865,7 @@ Gig _gig({
   required String id,
   required String title,
   required String flyKey,
-  required String flyerUrl,
+  required String? flyerUrl,
 }) => gigFixture(
   id: id,
   title: title,

@@ -690,10 +690,10 @@ void main() {
     expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
 
-  testWidgets('featured presentation uses the resolved presenter and flyer', (
+  testWidgets('featured presentation renders the explore featured card', (
     tester,
   ) async {
-    final gig = DemoData.gigs.firstWhere((item) => item.createdByBand != null);
+    final gig = DemoData.gigs.firstWhere((item) => item.flyerUrl == null);
     await pumpApp(
       tester,
       home: Builder(
@@ -710,10 +710,10 @@ void main() {
       ),
     );
 
-    final presenter = DemoData.bands[gig.createdByBand]!.name.toUpperCase();
+    expect(find.byType(ExploreFeaturedCard), findsOne);
+    expect(find.byType(EpDateBlock), findsNothing);
     expect(find.byType(DateBlock), findsNothing);
     expect(find.byType(GigFlyer), findsOne);
-    expect(find.text('$presenter PRESENTS'), findsOne);
     expect(find.text(gig.title.toUpperCase()), findsOne);
   });
 

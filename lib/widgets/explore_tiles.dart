@@ -224,41 +224,27 @@ class ExploreLineupRow extends StatelessWidget {
 }
 
 class _ExploreGigInfoLine extends StatelessWidget {
-  const _ExploreGigInfoLine({required this.info});
+  const _ExploreGigInfoLine({required this.info, this.size = 13});
 
   final ExploreGigInfo info;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    final label = Theme.of(context).textTheme.epLabel;
-    final muted = Theme.of(
-      context,
-    ).textTheme.epMeta.copyWith(color: context.epColors.muted);
+    final metric = Theme.of(context).textTheme.epLabel.copyWith(
+      fontSize: size,
+      fontWeight: FontWeight.w400,
+      color: context.epColors.ink,
+    );
+    final separator = metric.copyWith(color: context.epColors.muted);
     final metricSpans = <TextSpan>[
-      TextSpan(
-        text: info.dateTime,
-        style: label.copyWith(
-          color: context.epColors.ink,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      if (info.distance != null)
-        TextSpan(
-          text: info.distance,
-          style: label.copyWith(color: context.epColors.ink),
-        ),
-      if (info.price != null)
-        TextSpan(
-          text: info.price,
-          style: label.copyWith(
-            color: context.epColors.ink,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+      TextSpan(text: info.dateTime, style: metric),
+      if (info.distance != null) TextSpan(text: info.distance, style: metric),
+      if (info.price != null) TextSpan(text: info.price, style: metric),
     ];
     final spans = <InlineSpan>[];
     for (var i = 0; i < metricSpans.length; i++) {
-      if (i > 0) spans.add(TextSpan(text: ' · ', style: muted));
+      if (i > 0) spans.add(TextSpan(text: ' · ', style: separator));
       spans.add(metricSpans[i]);
     }
     return Text.rich(
@@ -545,7 +531,7 @@ class ExploreEventRow extends StatelessWidget {
   }
 }
 
-/// Large featured card used by the Explore recommendation carousel.
+/// Large featured card shared by Home and the Explore recommendation carousel.
 class ExploreFeaturedCard extends StatelessWidget {
   const ExploreFeaturedCard({
     super.key,
@@ -554,6 +540,7 @@ class ExploreFeaturedCard extends StatelessWidget {
     required this.onTap,
     this.friends = const <SocialUserCard>[],
     this.meta,
+    this.info,
     this.lineup = const <ExploreLineupBand>[],
     this.width = 300,
     this.height = 380,
@@ -564,6 +551,7 @@ class ExploreFeaturedCard extends StatelessWidget {
   final VoidCallback onTap;
   final List<SocialUserCard> friends;
   final String? meta;
+  final ExploreGigInfo? info;
   final List<ExploreLineupBand> lineup;
   final double width;
   final double height;
@@ -623,7 +611,6 @@ class ExploreFeaturedCard extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        EpDateBlock(date: gig.startsAt),
         const Spacer(),
         if (friends.isNotEmpty) ...[
           _friendsCueRow(context),
@@ -637,7 +624,10 @@ class ExploreFeaturedCard extends StatelessWidget {
           color: style.fg,
         ),
         const SizedBox(height: 6),
-        EpMonoText(meta ?? _venueLine, color: context.epColors.muted),
+        if (info != null)
+          _ExploreGigInfoLine(info: info!, size: 14)
+        else
+          EpMonoText(meta ?? _venueLine, color: context.epColors.muted),
         if (lineup.isNotEmpty) ...[
           const SizedBox(height: 8),
           ExploreLineupRow(
@@ -650,14 +640,13 @@ class ExploreFeaturedCard extends StatelessWidget {
     ),
   );
 
-  /// Date block pinned top-left; title and venue line bottom-left.
+  /// Title and gig details pinned bottom-left.
   List<Widget> _landscapeContent(BuildContext context, FlyerStyle style) {
     final venueStyle = Theme.of(context).textTheme.epChipLabel.copyWith(
       fontSize: 11,
       color: context.epColors.muted,
     );
     return [
-      Positioned(top: 16, left: 16, child: EpDateBlock(date: gig.startsAt)),
       if (friends.isNotEmpty)
         Positioned(top: 16, right: 16, child: _friendsCueRow(context)),
       Positioned(
@@ -680,13 +669,15 @@ class ExploreFeaturedCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Expanded(
-                  child: Text(
-                    (meta ?? _venueLine).toUpperCase(),
-                    semanticsLabel: meta ?? _venueLine,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: venueStyle,
-                  ),
+                  child: info != null
+                      ? _ExploreGigInfoLine(info: info!, size: 14)
+                      : Text(
+                          (meta ?? _venueLine).toUpperCase(),
+                          semanticsLabel: meta ?? _venueLine,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: venueStyle,
+                        ),
                 ),
               ],
             ),
