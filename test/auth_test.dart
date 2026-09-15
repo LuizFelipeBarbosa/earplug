@@ -236,47 +236,6 @@ void main() {
     },
   );
 
-  test('profile tutorial persists completion and can be replayed', () async {
-    final auth = FakeAuthService();
-    final repository = DemoRepository(auth: auth);
-    final app = AppState.demo(repository: repository, auth: auth);
-    addTearDown(app.dispose);
-    await auth.signInDemo();
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-
-    app.openMyGigsTab();
-    expect(app.profileTutorialVisible, isTrue);
-    await app.completeProfileTutorial();
-    expect(app.profileTutorialVisible, isFalse);
-    expect((await repository.me())?.profileTutorialCompleted, isTrue);
-
-    app.openSettings();
-    app.replayProfileTutorial();
-    expect(app.current.screen, Screen.myGigs);
-    expect(app.profileTutorialVisible, isTrue);
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-    expect((await repository.me())?.profileTutorialCompleted, isFalse);
-  });
-
-  test('profile tutorial failure stays visible with a useful error', () async {
-    final auth = FakeAuthService();
-    final repository = StubRepository(auth: auth)
-      ..fail(
-        'setProfileTutorialCompleted',
-        StateError('tutorial mutation unavailable'),
-      );
-    final app = AppState.demo(repository: repository, auth: auth);
-    addTearDown(app.dispose);
-    await auth.signInDemo();
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-
-    expect(app.profileTutorialVisible, isTrue);
-    await app.completeProfileTutorial();
-
-    expect(app.profileTutorialVisible, isTrue);
-    expect(app.toast, "Couldn't save your profile setup. Try again.");
-  });
-
   test('profile responses from a signed-out session are ignored', () async {
     final auth = FakeAuthService();
     final repository = _GatedProfileRepository(auth: auth);

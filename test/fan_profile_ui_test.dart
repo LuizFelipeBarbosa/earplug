@@ -1359,41 +1359,6 @@ void main() {
     expect(harness.app.upcomingRsvpGigs, contains(repository.futureGig));
   });
 
-  testWidgets('legacy backend payload hides unsupported tutorial controls', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    final repository = StubRepository(auth: auth)
-      ..returns(
-        'me',
-        UserProfile.fromJson({
-          'name': 'Legacy Fan',
-          'email': 'legacy@example.com',
-          'genres': <String>[],
-          'attendedCount': 0,
-          'createdAt': 1234,
-        }),
-      );
-    final profileHarness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const Scaffold(body: MyGigsScreen()),
-    );
-
-    expect(profileHarness.app.profileTutorialAvailable, isFalse);
-    expect(find.byKey(const Key('profile-tutorial')), findsNothing);
-
-    await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const Scaffold(body: SettingsScreen()),
-    );
-    expect(find.byKey(const Key('replay-profile-tutorial')), findsNothing);
-  });
-
   testWidgets('settings shows draft legal links and opens terms', (
     tester,
   ) async {

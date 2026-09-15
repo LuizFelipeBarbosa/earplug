@@ -500,8 +500,6 @@ class AppState extends ChangeNotifier
     _postAuthScreen = null;
     authStep = 1;
     _fanGenreWrite = Future.value();
-    _profileTutorialWrite = Future.value();
-    _profileTutorialReplay = false;
     _fanAvatarSaveOwner = null;
     _appliedHomePersonalization = null;
     _loadingFollowBands.clear();

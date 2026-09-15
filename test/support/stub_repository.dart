@@ -123,7 +123,6 @@ class StubRepository extends DemoRepository {
     'sendOffer',
     'setBandAvatar',
     'setBandBanner',
-    'setProfileTutorialCompleted',
     'setVenueAddressDisclosure',
     'startBandOnboarding',
     'startDisputeReview',
@@ -761,9 +760,6 @@ class StubRepository extends DemoRepository {
   @override
   Future<void> setBandBanner({required String bandId, required String mediaId}) =>
       intercept('setBandBanner', () => super.setBandBanner(bandId: bandId, mediaId: mediaId));
-  @override
-  Future<void> setProfileTutorialCompleted(bool completed) =>
-      intercept('setProfileTutorialCompleted', () => super.setProfileTutorialCompleted(completed));
   @override
   Future<void> setVenueAddressDisclosure({
     required String venueId,

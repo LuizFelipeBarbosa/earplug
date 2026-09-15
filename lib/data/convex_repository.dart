@@ -1174,13 +1174,6 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
-  Future<void> setProfileTutorialCompleted(bool completed) async {
-    await _convexService.mutation('users:setProfileTutorialCompleted', {
-      'completed': completed,
-    });
-  }
-
-  @override
   Future<void> updateFanOnboarding({
     FanCity? preferredCity,
     FanGenreChoice? genreChoice,

@@ -7,7 +7,6 @@ mixin _FanState on _AppStateCore {
   bool get authed;
   int get _sessionGeneration;
   Set<String> get userGenres;
-  set _stack(List<ScreenEntry> value);
   int get _locationRequestGeneration;
   set _locationRequestGeneration(int value);
   abstract DiscoveryLocation discoveryLocation;
@@ -46,13 +45,11 @@ mixin _FanState on _AppStateCore {
   int attended = 0;
   List<FanHistoryItem> history = const [];
   UserProfile? profile;
-  bool _profileTutorialReplay = false;
   Object? _fanAvatarSaveOwner;
   bool get fanAvatarSaving => _fanAvatarSaveOwner != null;
   FanCity? _appliedHomePersonalization;
   final Set<String> _loadingFollowBands = {};
   Future<void> _fanGenreWrite = Future.value();
-  Future<void> _profileTutorialWrite = Future.value();
 
   FanOnboarding? get fanOnboarding => profile?.fanOnboarding;
 
@@ -65,15 +62,6 @@ mixin _FanState on _AppStateCore {
   }
 
   bool get showFanOnboarding => fanOnboarding != null && !fanOnboardingComplete;
-
-  bool get profileTutorialVisible =>
-      authed &&
-      profile != null &&
-      profile!.profileTutorialAvailable &&
-      (_profileTutorialReplay || !profile!.profileTutorialCompleted);
-
-  bool get profileTutorialAvailable =>
-      authed && profile?.profileTutorialAvailable == true;
 
   void _cacheInteractions(Interactions interactions) {
     _confirmedRsvps = Set<String>.of(interactions.rsvpGigIds);
@@ -405,59 +393,6 @@ mixin _FanState on _AppStateCore {
         notifyListeners();
       }
     }
-  }
-
-  Future<void> completeProfileTutorial() async {
-    if (!profileTutorialAvailable) return;
-    final sessionGeneration = _sessionGeneration;
-    try {
-      await _persistProfileTutorial(true, sessionGeneration);
-      if (!_isCurrentSession(sessionGeneration)) return;
-      profile = profile?.copyWith(profileTutorialCompleted: true);
-      _profileTutorialReplay = false;
-      notifyListeners();
-    } catch (error) {
-      logError('completeProfileTutorial', error);
-      if (_isCurrentSession(sessionGeneration)) {
-        say(profileSetupSaveErrorMessage);
-      }
-    }
-  }
-
-  void replayProfileTutorial() {
-    if (!authed) {
-      openMyGigsTab();
-      return;
-    }
-    if (!profileTutorialAvailable) return;
-    _set(() {
-      _profileTutorialReplay = true;
-      _stack = const [ScreenEntry(Screen.myGigs)];
-    });
-    final sessionGeneration = _sessionGeneration;
-    unawaited(
-      _persistProfileTutorial(false, sessionGeneration)
-          .then((_) {
-            if (!_isCurrentSession(sessionGeneration)) return;
-            profile = profile?.copyWith(profileTutorialCompleted: false);
-            notifyListeners();
-          })
-          .catchError((Object error) {
-            logError('replayProfileTutorial', error);
-            if (_isCurrentSession(sessionGeneration)) {
-              say(profileSetupSaveErrorMessage);
-            }
-          }),
-    );
-  }
-
-  Future<void> _persistProfileTutorial(bool completed, int sessionGeneration) {
-    final write = _profileTutorialWrite.then((_) async {
-      if (!_isCurrentSession(sessionGeneration)) return;
-      await repository.setProfileTutorialCompleted(completed);
-    });
-    _profileTutorialWrite = write.catchError((Object _) {});
-    return write;
   }
 
   // ========================= fan onboarding =========================

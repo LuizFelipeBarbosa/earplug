@@ -306,7 +306,6 @@ class DemoRepository implements EarplugRepository {
   bool _locationPersonalizationEnabled = false;
   bool _shareRsvps = true;
   bool _followedBandUpdatesEnabled = true;
-  bool _profileTutorialCompleted = false;
   int _attendedCount = 0;
   int _nextBandId = 1;
   int _nextGigId = 1;
@@ -357,7 +356,6 @@ class DemoRepository implements EarplugRepository {
       locationPersonalizationEnabled: _locationPersonalizationEnabled,
       shareRsvpsWithFriends: _shareRsvps,
       followedBandUpdatesEnabled: _followedBandUpdatesEnabled,
-      profileTutorialCompleted: _profileTutorialCompleted,
       fanOnboarding: _fanOnboarding,
     );
   }
@@ -3283,11 +3281,6 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<void> clearAvatar() async {
     _avatarUrl = null;
-  }
-
-  @override
-  Future<void> setProfileTutorialCompleted(bool completed) async {
-    _profileTutorialCompleted = completed;
   }
 
   @override

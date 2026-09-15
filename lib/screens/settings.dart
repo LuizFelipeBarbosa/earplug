@@ -257,17 +257,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           url: legalOrganizerAgreementUrl,
           caption: 'Organizer, artist and host agreements',
         ),
-        if (app.profileTutorialAvailable) ...[
-          const SizedBox(height: 18),
-          const SectionLabel('PROFILE HELP'),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            key: const Key('replay-profile-tutorial'),
-            onPressed: _deleting ? null : app.replayProfileTutorial,
-            icon: Icon(Icons.replay),
-            label: Text('REPLAY PROFILE TUTORIAL'),
-          ),
-        ],
         const SizedBox(height: 18),
         const SectionLabel('SESSION'),
         const SizedBox(height: 8),

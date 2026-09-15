@@ -745,7 +745,6 @@ abstract class EarplugRepository {
   Future<String> generateAvatarUploadUrl();
   Future<void> setAvatar(String storageId);
   Future<void> clearAvatar();
-  Future<void> setProfileTutorialCompleted(bool completed);
   Future<void> updateFanOnboarding({
     FanCity? preferredCity,
     FanGenreChoice? genreChoice,
