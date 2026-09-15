@@ -260,11 +260,11 @@ class _MapAttribution extends StatelessWidget {
     if (entries.isEmpty) return const SizedBox.shrink();
 
     return Positioned(
-      top: 4,
+      bottom: 6,
       left: 4,
-      right: 4,
+      right: 6,
       child: Align(
-        alignment: Alignment.topRight,
+        alignment: Alignment.bottomRight,
         child: Container(
           constraints: const BoxConstraints(maxWidth: 280),
           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),

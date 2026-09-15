@@ -163,10 +163,15 @@ class _ExploreScreenState extends State<ExploreScreen> {
       padding: EdgeInsets.zero,
       children: [
         if (recents.isNotEmpty) ...[
-          _gutter(const EpSectionHeader(label: 'RECENT SEARCHES')),
+          _gutter(
+            const EpSectionHeader(
+              label: 'RECENT SEARCHES',
+              padding: EdgeInsets.only(top: 24),
+            ),
+          ),
           for (var i = 0; i < recents.length; i++)
             _gutter(
-              EpMenuRow(
+              ExploreMenuRow(
                 key: Key('explore-recent-$i'),
                 icon: Icons.history,
                 label: recents[i],
@@ -181,9 +186,14 @@ class _ExploreScreenState extends State<ExploreScreen> {
               ),
             ),
         ],
-        _gutter(const EpSectionHeader(label: 'SUGGESTIONS')),
         _gutter(
-          EpMenuRow(
+          const EpSectionHeader(
+            label: 'SUGGESTIONS',
+            padding: EdgeInsets.only(top: 24),
+          ),
+        ),
+        _gutter(
+          ExploreMenuRow(
             key: const Key('explore-suggest-near-me'),
             icon: Icons.near_me_outlined,
             label: 'Near me',
@@ -191,7 +201,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
           ),
         ),
         _gutter(
-          EpMenuRow(
+          ExploreMenuRow(
             key: const Key('explore-suggest-tonight'),
             icon: Icons.nightlight_outlined,
             label: 'Tonight',
@@ -199,7 +209,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
           ),
         ),
         _gutter(
-          EpMenuRow(
+          ExploreMenuRow(
             key: const Key('explore-suggest-free'),
             icon: Icons.money_off_outlined,
             label: 'Free',
@@ -266,6 +276,63 @@ class _ExploreScreenState extends State<ExploreScreen> {
       ],
     );
   }
+}
+
+class ExploreMenuRow extends StatelessWidget {
+  const ExploreMenuRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    enabled: true,
+    child: InkWell(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        Icon(icon, size: 16, color: context.epColors.ink),
+                        const SizedBox(width: 12),
+                        Expanded(child: EpDisplay(label, size: 20)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Keep the remove button's touch target outside the label padding.
+                trailing ??
+                    Icon(
+                      Icons.chevron_right,
+                      size: 16,
+                      color: context.epColors.muted,
+                    ),
+              ],
+            ),
+          ),
+          const EpHairline(),
+        ],
+      ),
+    ),
+  );
 }
 
 Widget _gutter(Widget child) => Padding(

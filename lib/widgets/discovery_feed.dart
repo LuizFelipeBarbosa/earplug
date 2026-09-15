@@ -221,6 +221,20 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
             ),
           ),
         );
+        slivers.add(
+          SliverToBoxAdapter(
+            child: _gutter(
+              const Column(
+                key: Key('feed-venues-bands-divider'),
+                children: [
+                  SizedBox(height: 20),
+                  EpHairline(),
+                  SizedBox(height: 8),
+                ],
+              ),
+            ),
+          ),
+        );
       }
       final bandIds = <String>[];
       for (final id in [...home.recommendedBandIds, ...app.exploreBandIds]) {

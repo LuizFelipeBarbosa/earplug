@@ -458,16 +458,20 @@ void main() {
         );
       }
 
-      // The venues rail and its header's bottom padding now sit between actions.
+      // The venues rail, divider, and header padding sit between actions.
       // After accounting for them, the BANDS header still has 32px above its row.
       final venuesHeader = tester.widget<EpSectionHeader>(
         find.ancestor(of: allVenues, matching: find.byType(EpSectionHeader)),
+      );
+      final dividerRect = tester.getRect(
+        find.byKey(const Key('feed-venues-bands-divider')),
       );
       expect(
         tester.getTopLeft(allBands).dy -
             tester.getRect(allVenues).bottom -
             tester.getRect(find.byKey(const Key('feed-venues'))).height -
-            venuesHeader.padding.bottom,
+            venuesHeader.padding.bottom -
+            dividerRect.height,
         EpLayout.formSectionGap,
       );
       expect(
@@ -500,6 +504,31 @@ void main() {
       );
     },
   );
+
+  testWidgets('venues and bands have a hairline divider between them', (
+    tester,
+  ) async {
+    await _pumpExplore(tester, gigs: _gigs, bands: _bands);
+    final divider = find.byKey(const Key('feed-venues-bands-divider'));
+    await _scrollTo(tester, divider);
+
+    expect(divider, findsOneWidget);
+    expect(
+      find.descendant(of: divider, matching: find.byType(EpHairline)),
+      findsOneWidget,
+    );
+    final dividerRect = tester.getRect(divider);
+    expect(
+      dividerRect.top,
+      greaterThanOrEqualTo(
+        tester.getRect(find.byKey(const Key('feed-venues'))).bottom,
+      ),
+    );
+    expect(
+      dividerRect.bottom,
+      lessThanOrEqualTo(tester.getRect(find.text('BANDS')).top),
+    );
+  });
 
   testWidgets('find people row is at the bottom and opens People', (
     tester,

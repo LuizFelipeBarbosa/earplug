@@ -370,10 +370,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                 ],
               ),
-              Text(
-                'Update your public profile and private music preferences.',
-                style: Theme.of(context).textTheme.epCaption,
-              ),
               const SizedBox(height: EpLayout.fieldGap),
               ListenableBuilder(
                 listenable: _nameController,
