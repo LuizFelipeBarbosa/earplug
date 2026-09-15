@@ -553,12 +553,12 @@ class _BandProfileHeaderBar extends StatelessWidget {
                   children: [
                     ClipRect(
                       child: SizedBox.square(
-                        dimension: 32,
+                        dimension: 36,
                         child: EpNetworkImage(
                           url: band.profileImageUrl,
                           fallback: EpAvatarTile(
                             initials: band.initials,
-                            size: 32,
+                            size: 36,
                             accent: true,
                           ),
                         ),
@@ -571,16 +571,12 @@ class _BandProfileHeaderBar extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           EpDisplay(band.name, size: 18, maxLines: 1),
-                          DefaultTextStyle.merge(
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            child: EpEyebrow(
-                              [
-                                'Band',
-                                if (band.area.trim().isNotEmpty) band.area,
-                              ].join(' · '),
+                          if (band.area.trim().isNotEmpty)
+                            DefaultTextStyle.merge(
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              child: EpEyebrow(band.area),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -613,11 +609,7 @@ class _BandMiniFollowPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.epColors;
     final textTheme = Theme.of(context).textTheme;
-    final textScaler = MediaQuery.textScalerOf(context);
-    final visualHeight = textScaler.scale(18);
-    final subtitleHeight =
-        textScaler.scale(textTheme.epSection.fontSize!) *
-        textTheme.epSection.height!;
+    const visualHeight = 36.0;
     final label = following ? 'Following ✓' : 'Follow';
     final shape = StadiumBorder(side: BorderSide(color: colors.outline));
 
@@ -625,7 +617,7 @@ class _BandMiniFollowPill extends StatelessWidget {
       key: const ValueKey('band-mini-follow-pill'),
       height: visualHeight,
       alignment: Alignment.center,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: ShapeDecoration(shape: shape),
       child: Text(
         label.toUpperCase(),
@@ -648,12 +640,7 @@ class _BandMiniFollowPill extends StatelessWidget {
             child: ConstrainedBox(
               key: const ValueKey('band-mini-follow'),
               constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-              child: Center(
-                child: Transform.translate(
-                  offset: Offset(0, -subtitleHeight / 2),
-                  child: pill,
-                ),
-              ),
+              child: Center(child: pill),
             ),
           ),
         ),

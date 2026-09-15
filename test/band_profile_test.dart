@@ -221,11 +221,80 @@ void main() {
 
     expect(
       find.text('BAND · ${DemoData.bands['b1']!.area.toUpperCase()}'),
-      findsNWidgets(2),
+      findsOneWidget,
+    );
+    final miniHeader = find.byKey(const ValueKey('band-profile-mini-header'));
+    expect(
+      find.descendant(
+        of: miniHeader,
+        matching: find.text(DemoData.bands['b1']!.area.toUpperCase()),
+      ),
+      findsOneWidget,
     );
     expect(find.text('PUBLIC PROFILE PREVIEW'), findsNothing);
     expect(find.text('RETURN TO BAND DASHBOARD'), findsNothing);
     expect(find.text('EDIT PROFILE'), findsNothing);
+  });
+
+  testWidgets('mini header shows only the location after scrolling', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+    final controller = tester
+        .widget<CustomScrollView>(find.byType(CustomScrollView))
+        .controller!;
+    controller.jumpTo(450);
+    await tester.pump();
+
+    final miniHeader = find.byKey(const ValueKey('band-profile-mini-header'));
+    expect(
+      find.descendant(
+        of: miniHeader,
+        matching: find.text(DemoData.bands['b1']!.area.toUpperCase()),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: miniHeader, matching: find.textContaining('BAND')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('mini header centers the band name when the location is empty', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final band = DemoData.bands['b1']!.copyWith(area: '');
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _profileRepository(auth: auth, profileBand: band),
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+    final controller = tester
+        .widget<CustomScrollView>(find.byType(CustomScrollView))
+        .controller!;
+    controller.jumpTo(450);
+    await tester.pump();
+
+    final miniHeader = find.byKey(const ValueKey('band-profile-mini-header'));
+    final name = find.descendant(
+      of: miniHeader,
+      matching: find.text(band.name.toUpperCase()),
+    );
+    expect(name, findsOneWidget);
+    expect(
+      find.descendant(of: miniHeader, matching: find.byType(EpEyebrow)),
+      findsNothing,
+    );
+    final back = find.byKey(const ValueKey('band-profile-back-control'));
+    expect(
+      tester.getCenter(name).dy,
+      closeTo(tester.getCenter(back).dy, 2),
+    );
   });
 
   for (final (band, followLabel, followingLabel) in [
@@ -500,16 +569,23 @@ void main() {
             final miniFollowPill = find.byKey(
               const ValueKey('band-mini-follow-pill'),
             );
-            final name = find.descendant(
+            final avatar = find.descendant(
               of: miniHeader,
-              matching: find.text(DemoData.bands['b1']!.name.toUpperCase()),
+              matching: find.byType(EpNetworkImage),
             );
-            final nameHeight = tester.getSize(name).height;
-            final pillHeight = tester.getSize(miniFollowPill).height;
-            expect((nameHeight - pillHeight).abs(), lessThanOrEqualTo(4));
+            expect(avatar, findsOneWidget);
+            final backHeight = tester.getRect(back).height;
+            expect(
+              (tester.getRect(miniFollowPill).height - backHeight).abs(),
+              lessThanOrEqualTo(0.5),
+            );
             expect(
               tester.getCenter(miniFollowPill).dy,
-              closeTo(tester.getCenter(name).dy, 1),
+              closeTo(tester.getCenter(back).dy, 1),
+            );
+            expect(
+              (tester.getRect(avatar).height - backHeight).abs(),
+              lessThanOrEqualTo(0.5),
             );
           }
           expect(tester.widget<ExploreCardIconButton>(back).circle, isTrue);
