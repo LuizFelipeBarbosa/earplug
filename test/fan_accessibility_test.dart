@@ -145,6 +145,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('fan-identity-preview')), findsOne);
+      final avatarControl = tester.getSize(
+        find.byKey(const Key('fan-avatar-preview-control')),
+      );
+      expect(avatarControl.width, greaterThanOrEqualTo(44));
+      expect(avatarControl.height, greaterThanOrEqualTo(44));
       expect(find.byKey(const Key('fan-name-field')), findsOne);
       expect(find.byKey(const Key('save-fan-profile')), findsOne);
 

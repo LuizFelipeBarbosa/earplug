@@ -84,6 +84,20 @@ void main() {
         tester.widget<TextField>(location).controller!.text,
         'Berkeley, CA',
       );
+      expect(
+        tester.widget<EpDisplay>(find.byKey(const Key('fan-preview-name'))).text,
+        'Rae Booker',
+      );
+      expect(
+        tester.widget<Text>(find.byKey(const Key('fan-preview-scene'))).data,
+        'Berkeley scene',
+      );
+      final memberSince = find.byKey(const Key('fan-preview-since'));
+      expect(memberSince, findsOne);
+      expect(
+        tester.widget<Text>(memberSince).data!.startsWith('Member since '),
+        isTrue,
+      );
     }
     await tester.tap(find.text('SAVE CHANGES'));
     await tester.pumpAndSettle();
@@ -107,14 +121,17 @@ void main() {
     expect(editorDecoration.color, Ep.surfaceRaised);
     expect(editorDecoration.gradient, isNull);
     expect(editorDecoration.border!.top.color, Ep.border);
-    expect(find.byKey(const Key('fan-preview-name')), findsNothing);
+    expect(find.byKey(const Key('fan-preview-name')), findsOne);
     expect(find.byKey(const Key('fan-preview-scene')), findsNothing);
+    expect(find.byKey(const Key('fan-preview-since')), findsNothing);
     expect(find.bySemanticsLabel('Edit profile photo'), findsOne);
-    expect(find.text('IDENTITY'), findsOne);
-    expect(find.text('SCENE'), findsOne);
+    expect(find.byKey(const Key('fan-avatar-edit-action')), findsNothing);
+    expect(find.text('IDENTITY'), findsNothing);
+    expect(find.text('SCENE'), findsNothing);
     expect(find.text('DISPLAY NAME · REQUIRED'), findsOne);
     expect(find.bySemanticsLabel(RegExp('^DISPLAY NAME · REQUIRED')), findsOne);
     expect(find.text('HOME LOCATION'), findsOne);
+    expect(find.byKey(const Key('fan-home-location-label')), findsOne);
     expect(find.text('ABOUT'), findsNothing);
     expect(find.textContaining('FAVORITE GENRES'), findsNothing);
     expect(find.text('PREFERENCES'), findsOne);
@@ -346,7 +363,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('picked-fan-avatar-preview')), findsOne);
 
-    await tester.tap(find.byKey(const Key('fan-avatar-edit-action')));
+    await tester.tap(find.byKey(const Key('fan-avatar-preview-control')));
     await tester.pumpAndSettle();
     expect(find.text('Remove photo'), findsOne);
     await tester.tap(find.text('Remove photo'));
@@ -359,6 +376,7 @@ void main() {
       ),
       findsOne,
     );
+    expect(find.byKey(const Key('fan-avatar-edit-action')), findsNothing);
   });
 
   testWidgets('editor exposes only supported preferences in sticky form', (
@@ -416,6 +434,7 @@ void main() {
       300,
       scrollable: find.byType(Scrollable).first,
     );
+    await tester.pumpAndSettle();
     final switchRow = find.byKey(const Key('edit-profile-share-rsvps'));
     expect(tester.widget<SwitchRow>(switchRow).value, isTrue);
     await tester.tap(switchRow);

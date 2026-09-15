@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../date_names.dart';
 import '../models.dart';
 import '../services/location_service.dart';
 import '../services/media_picker.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
 
@@ -377,12 +379,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 listenable: _nameController,
                 builder: (context, _) => _FanIdentityPreview(
                   name: _nameController.text,
+                  homeLocation: _homeLocation,
+                  createdAt: profile?.createdAt,
                   imageUrl: _removeAvatar ? null : profile?.avatarUrl,
                   picked: _pickedAvatar,
                   onEditAvatar: _saving ? null : _openAvatarOptions,
                 ),
               ),
-              const SectionBar.form(label: 'Identity'),
               EpLabeledField(
                 fieldKey: const Key('fan-name-field'),
                 label: 'DISPLAY NAME',
@@ -410,7 +413,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                 ),
               ],
-              const SectionBar.form(label: 'Scene'),
               _FanSelectionField(
                 key: const Key('fan-home-location-field'),
                 label: 'HOME LOCATION',
@@ -718,18 +720,23 @@ class _HomeLocationEditor extends StatelessWidget {
 class _FanIdentityPreview extends StatelessWidget {
   const _FanIdentityPreview({
     required this.name,
+    required this.homeLocation,
+    required this.createdAt,
     required this.imageUrl,
     required this.picked,
     required this.onEditAvatar,
   });
 
   final String name;
+  final FanCity? homeLocation;
+  final DateTime? createdAt;
   final String? imageUrl;
   final PickedMedia? picked;
   final VoidCallback? onEditAvatar;
 
   @override
   Widget build(BuildContext context) {
+    final displayName = name.trim().isEmpty ? 'Your profile' : name;
     return Container(
       key: const Key('fan-identity-preview'),
       padding: const EdgeInsets.all(16),
@@ -768,6 +775,7 @@ class _FanIdentityPreview extends StatelessWidget {
                         name: name,
                         imageUrl: imageUrl,
                         picked: picked,
+                        size: 64,
                       ),
                     ),
                   ),
@@ -775,15 +783,38 @@ class _FanIdentityPreview extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextAction(
-                    'EDIT PHOTO',
-                    key: const Key('fan-avatar-edit-action'),
-                    color: context.epColors.contentPrimary,
-                    padding: EdgeInsets.zero,
-                    onTap: onEditAvatar,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    EpDisplay(
+                      displayName,
+                      key: const Key('fan-preview-name'),
+                      size: 20,
+                      keepCase: true,
+                    ),
+                    if (homeLocation case final city?) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        '${city.label} scene',
+                        key: const Key('fan-preview-scene'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.epCaption.copyWith(
+                          color: context.epColors.ink,
+                        ),
+                      ),
+                    ],
+                    if (createdAt case final date?)
+                      Text(
+                        'Member since ${monthNamesFull[date.month - 1]} ${date.year}',
+                        key: const Key('fan-preview-since'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.epCaption.copyWith(
+                          color: context.epColors.muted,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
@@ -811,7 +842,7 @@ class _FanSelectionField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        FieldLabel(label),
+        FieldLabel(label, key: const Key('fan-home-location-label')),
         if (caption case final caption?) ...[
           const SizedBox(height: 5),
           Text(caption, style: Theme.of(context).textTheme.epCaption),
@@ -828,26 +859,28 @@ class _AvatarPreview extends StatelessWidget {
     required this.name,
     required this.imageUrl,
     required this.picked,
+    this.size = 88,
   });
 
   final String name;
   final String? imageUrl;
   final PickedMedia? picked;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     final photo = picked;
-    final cacheSize = (88 * MediaQuery.devicePixelRatioOf(context)).round();
+    final cacheSize = (size * MediaQuery.devicePixelRatioOf(context)).round();
     final avatar = photo == null
-        ? EpFanAvatar(name: name, imageUrl: imageUrl, size: 88)
+        ? EpFanAvatar(name: name, imageUrl: imageUrl, size: size)
         : Semantics(
             image: true,
             label: 'Selected profile photo',
             child: Image.memory(
               photo.bytes,
               key: const Key('picked-fan-avatar-preview'),
-              width: 88,
-              height: 88,
+              width: size,
+              height: size,
               fit: BoxFit.cover,
               cacheWidth: cacheSize,
               cacheHeight: cacheSize,
