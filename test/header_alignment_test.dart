@@ -77,12 +77,7 @@ void main() {
         param: 'tonight',
         first: find.byKey(const ValueKey('explore-collection-back-control')),
       ),
-      (
-        screen: Screen.gig,
-        param: 'g1',
-        first: find.byKey(const ValueKey('gig-detail-back-control')),
-      ),
-      // Band overlays its hero banner instead of using the common header row.
+      // Gig and band overlay their hero instead of using the common header row.
       (
         screen: Screen.venue,
         param: 'v1',
