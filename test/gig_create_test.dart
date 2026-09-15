@@ -793,6 +793,8 @@ void main() {
       find.byKey(const ValueKey('gig-detail-share-draft-preview')),
       findsNothing,
     );
+    expect(find.byKey(const ValueKey('gig-add-to-calendar')), findsNothing);
+    expect(find.byKey(const ValueKey('gig-venue-directions')), findsNothing);
 
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();

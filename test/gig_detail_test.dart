@@ -131,10 +131,18 @@ void main() {
     );
     expect(
       find.descendant(
-        of: date,
-        matching: find.text(' · Doors 8PM · Start 9PM'),
+        of: find.byKey(const ValueKey('gig-fact-times')),
+        matching: find.text('Doors 8PM · Start 9PM'),
       ),
       findsOne,
+    );
+    final times = tester.widget<Text>(find.text('Doors 8PM · Start 9PM'));
+    expect(times.maxLines, 1);
+    expect(times.overflow, TextOverflow.ellipsis);
+    expect(
+      tester.getTopLeft(find.text('Doors 8PM · Start 9PM')).dy -
+          tester.getBottomLeft(find.text(gig.dateShort)).dy,
+      closeTo(4, 1),
     );
     final meta = find.byKey(const Key('gig-fact-meta'));
     final free = find.descendant(of: meta, matching: find.text('FREE'));
@@ -144,8 +152,16 @@ void main() {
     );
     expect(find.descendant(of: meta, matching: find.text('18+')), findsOne);
     expect(
-      find.descendant(of: meta, matching: find.text('43 GOING')),
-      findsOne,
+      find.descendant(of: meta, matching: find.textContaining('GOING')),
+      findsNothing,
+    );
+    expect(
+      tester
+          .widgetList<Text>(
+            find.descendant(of: meta, matching: find.byType(Text)),
+          )
+          .map((text) => text.style?.fontSize),
+      everyElement(15),
     );
     expect(find.byType(EpFactGrid), findsNothing);
     expect(find.byType(EpFactCell), findsNothing);
@@ -220,6 +236,49 @@ void main() {
     );
   });
 
+  testWidgets('header offers calendar and directions icons for an exact venue', (
+    tester,
+  ) async {
+    final launches = _recordExternalLaunches(tester);
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: GigDetailScreen(gigId: 'g3')),
+    );
+    final header = find.byKey(const ValueKey('gig-detail-header-bar'));
+    for (final key in ['gig-add-to-calendar', 'gig-venue-directions']) {
+      final control = find.descendant(
+        of: header,
+        matching: find.byKey(ValueKey(key)),
+      );
+      expect(control, findsOne);
+      expect(tester.widget<ExploreCardIconButton>(control).circle, isTrue);
+      expect(tester.getSize(control), const Size(44, 44));
+      expect(control.hitTestable(), findsOne);
+    }
+    final controls = [
+      'gig-detail-back-control',
+      'gig-add-to-calendar',
+      'gig-venue-directions',
+      'gig-detail-save-g3',
+      'gig-detail-share-g3',
+    ];
+    for (var index = 1; index < controls.length; index++) {
+      expect(
+        tester.getTopLeft(find.byKey(ValueKey(controls[index]))).dx,
+        greaterThan(
+          tester.getBottomRight(find.byKey(ValueKey(controls[index - 1]))).dx,
+        ),
+      );
+    }
+    await tester.tap(find.byKey(const ValueKey('gig-venue-directions')));
+    await tester.pump();
+    final venue = harness.app.venue(harness.app.gig('g3')!.venueId);
+    expect(
+      launches.single.toString(),
+      'https://www.google.com/maps/search/?api=1&query=${venue.point.latitude},${venue.point.longitude}',
+    );
+  });
+
   for (final gigId in ['g1', 'g2']) {
     testWidgets('date row opens a calendar with readable names for $gigId', (
       tester,
@@ -233,18 +292,19 @@ void main() {
       final date = find.byKey(const Key('gig-fact-date'));
       final calendar = find.descendant(
         of: date,
-        matching: find.byKey(const ValueKey('gig-add-to-calendar')),
+        matching: find.byKey(const ValueKey('gig-fact-calendar-icon')),
       );
       expect(calendar, findsOne);
-      final pill = tester.widget<EpPill>(calendar);
-      expect(pill.variant, EpPillVariant.outline);
-      expect(pill.size, EpPillSize.chip);
-      expect(tester.getSize(calendar).height, greaterThanOrEqualTo(44));
-      expect(tester.getSize(calendar).width, greaterThanOrEqualTo(44));
+      expect(tester.widget<ExploreCardIconButton>(calendar).ring, isTrue);
+      final target = find.descendant(
+        of: calendar,
+        matching: find.byType(InkWell),
+      );
+      expect(tester.getSize(target), const Size(44, 44));
       await tester.ensureVisible(calendar);
       await tester.pumpAndSettle();
-      // Tap near the top edge to check the 44px target, not just the label.
-      final rect = tester.getRect(calendar);
+      // Tap near the top edge of the 44px target, outside the 36px ring.
+      final rect = tester.getRect(target);
       await tester.tapAt(Offset(rect.center.dx, rect.top + 1));
       await tester.pump();
 
@@ -268,6 +328,11 @@ void main() {
             .join(', ');
         expect(url.queryParameters['details'], startsWith('Lineup: $names'));
       }
+
+      launches.clear();
+      await tester.tap(find.byKey(const ValueKey('gig-add-to-calendar')));
+      await tester.pump();
+      expect(launches.single, url);
     });
   }
 
@@ -281,7 +346,7 @@ void main() {
         venueSet: false,
         previewLabel: 'PRIVATE DRAFT',
       );
-      final calendar = find.byKey(const ValueKey('gig-add-to-calendar'));
+      final calendar = find.byKey(const ValueKey('gig-fact-calendar-icon'));
       await tester.ensureVisible(calendar);
       await tester.pumpAndSettle();
       await tester.tap(calendar);
@@ -385,6 +450,7 @@ void main() {
     final tap = find.descendant(of: card, matching: find.byType(InkWell));
     expect(tester.widget<InkWell>(tap).onTap, isNull);
     expect(find.byKey(const Key('gig-venue-directions')), findsNothing);
+    expect(find.byKey(const Key('gig-venue-card-directions')), findsNothing);
     expect(
       find.descendant(of: card, matching: find.textContaining('AREA ONLY')),
       findsOne,
@@ -515,7 +581,10 @@ void main() {
       );
       final date = find.byKey(const Key('gig-fact-date'));
       expect(
-        find.descendant(of: date, matching: find.text(' · Doors 8PM')),
+        find.descendant(
+          of: find.byKey(const ValueKey('gig-fact-times')),
+          matching: find.text('Doors 8PM'),
+        ),
         findsOne,
       );
       expect(
@@ -574,6 +643,11 @@ void main() {
         find.byKey(const Key('gig-venue-directions')),
         scenario.approximate ? findsNothing : findsOne,
       );
+      final directions = find.descendant(
+        of: card,
+        matching: find.byKey(const ValueKey('gig-venue-card-directions')),
+      );
+      expect(directions, scenario.approximate ? findsNothing : findsOne);
       expect(find.byType(EpPanel), findsNothing);
       expect(find.byType(EpFactGrid), findsNothing);
       final decoration =
@@ -601,15 +675,22 @@ void main() {
           findsOne,
         );
       }
-      await tester.ensureVisible(card);
+      await Scrollable.ensureVisible(tester.element(card), alignment: .5);
       await tester.pumpAndSettle();
       if (!scenario.approximate) {
-        final directions = find.byKey(const Key('gig-venue-directions'));
-        final pill = tester.widget<EpPill>(directions);
-        expect(pill.variant, EpPillVariant.outline);
-        expect(pill.label, 'Directions · ${venue.exactAddress}');
-        expect(tester.getSize(directions).height, greaterThanOrEqualTo(44));
-        expect(tester.getSize(directions).width, greaterThanOrEqualTo(44));
+        final address = find.descendant(
+          of: card,
+          matching: find.text(venue.exactAddress!.toUpperCase()),
+        );
+        expect(address, findsOne);
+        expect(tester.widget<Text>(address).maxLines, 1);
+        expect(tester.widget<Text>(address).overflow, TextOverflow.ellipsis);
+        expect(tester.widget<ExploreCardIconButton>(directions).ring, isTrue);
+        final target = find.descendant(
+          of: directions,
+          matching: find.byType(InkWell),
+        );
+        expect(tester.getSize(target), const Size(44, 44));
         final routeBefore = harness.app.current;
         await tester.tap(directions);
         await tester.pump();
@@ -791,7 +872,7 @@ void main() {
       );
 
       expect(find.text("WHO'S GOING"), findsNothing);
-      expect(find.text('23 GOING'), findsOne);
+      expect(find.textContaining('GOING'), findsNothing);
       expect(
         find.byKey(const ValueKey('gig-attendance-hidden-shared-gig')),
         findsOne,
@@ -800,7 +881,13 @@ void main() {
       await tester.tap(find.text('RSVP'));
       await tester.pump();
       expect(harness.app.rsvpCount(repository.gig), 24);
-      expect(find.text('24 GOING'), findsOne);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('gig-fact-meta')),
+          matching: find.textContaining('GOING'),
+        ),
+        findsNothing,
+      );
       expect(find.text("WHO'S GOING"), findsNothing);
 
       repository.completeMutation();
@@ -819,19 +906,20 @@ void main() {
         lessThan(tester.getTopLeft(find.text("WHO'S GOING")).dy),
       );
       expect(
-        tester.getBottomLeft(attendance).dy,
-        closeTo(tester.getTopLeft(find.text('LINEUP · 1')).dy, 1),
+        tester.getTopLeft(attendance).dy -
+            tester.getBottomLeft(find.byKey(const ValueKey('gig-lineup'))).dy,
+        closeTo(0, 1),
       );
       expect(
-        tester.getTopLeft(attendance).dy -
-            tester.getBottomLeft(find.byKey(const Key('gig-facts'))).dy,
+        tester.getTopLeft(find.text("WHO'S GOING")).dy -
+            tester.getTopLeft(attendance).dy,
         closeTo(24, 1),
       );
       final attendanceDivider = find
           .descendant(of: attendance, matching: find.byType(EpHairline))
           .last;
       expect(
-        tester.getTopLeft(find.byKey(const ValueKey('gig-lineup'))).dy -
+        tester.getTopLeft(find.widgetWithText(SectionBar, 'ABOUT')).dy -
             tester.getBottomLeft(attendanceDivider).dy,
         closeTo(24, 1),
       );
@@ -876,7 +964,7 @@ void main() {
       repository.completeMutation();
       await tester.pumpAndSettle();
       expect(harness.app.rsvpCount(repository.gig), 24);
-      expect(find.text('24 GOING'), findsOne);
+      expect(find.textContaining('GOING'), findsNothing);
       expect(find.text("WHO'S GOING"), findsNothing);
       semantics.dispose();
     },
@@ -1010,7 +1098,7 @@ void main() {
   });
 
   testWidgets(
-    'gig detail shows known people who are going, with relation subtitles and the summary line',
+    'gig detail blurs known people and reveals their relation subtitles in a sheet',
     (tester) async {
       final auth = FakeAuthService();
       await auth.signInDemo();
@@ -1025,13 +1113,46 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('known-people-g9')), findsOneWidget);
-      expect(find.text('Maya and Theo are going'), findsOneWidget);
-      expect(find.byKey(const ValueKey('known-person-u-maya')), findsOneWidget);
-      expect(find.byKey(const ValueKey('known-person-u-theo')), findsOneWidget);
-      expect(find.text('Friend'), findsOneWidget);
-      expect(find.text('Seen at 2 shows'), findsOneWidget);
+      final people = find.byKey(const ValueKey('gig-people-you-know'));
+      expect(people, findsOneWidget);
+      expect(find.text('PEOPLE YOU MAY KNOW · 2'), findsOneWidget);
+      expect(find.text('2 people you may know are going'), findsOneWidget);
+      for (final id in ['u-maya', 'u-theo']) {
+        final blur = find.byKey(ValueKey('gig-people-blur-$id'));
+        expect(blur, findsOneWidget);
+        expect(
+          tester.widget<ImageFiltered>(blur).imageFilter,
+          ui.ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+        );
+        expect(find.byKey(ValueKey('known-person-$id')), findsNothing);
+      }
       expect(find.text('25+ GOING'), findsOneWidget);
+      expect(find.byKey(const ValueKey('gig-people-sheet')), findsNothing);
+
+      await tester.ensureVisible(people);
+      await tester.pumpAndSettle();
+      await tester.tap(people);
+      await tester.pumpAndSettle();
+
+      final sheet = find.byKey(const ValueKey('gig-people-sheet'));
+      expect(sheet, findsOneWidget);
+      for (final id in ['u-maya', 'u-theo']) {
+        expect(
+          find.descendant(
+            of: sheet,
+            matching: find.byKey(ValueKey('known-person-$id')),
+          ),
+          findsOneWidget,
+        );
+      }
+      expect(
+        find.descendant(of: sheet, matching: find.text('Friend')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: sheet, matching: find.text('Seen at 2 shows')),
+        findsOneWidget,
+      );
     },
   );
 
@@ -1041,7 +1162,7 @@ void main() {
       home: const Scaffold(body: GigDetailScreen(gigId: 'g9')),
     );
 
-    expect(find.byKey(const ValueKey('known-people-g9')), findsNothing);
+    expect(find.byKey(const ValueKey('gig-people-you-know')), findsNothing);
   });
 
   testWidgets('gig detail shows nothing extra when no known people are going', (
@@ -1060,7 +1181,7 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('known-people-g1')), findsNothing);
+    expect(find.byKey(const ValueKey('gig-people-you-know')), findsNothing);
     expect(find.text("WHO'S GOING"), findsOneWidget);
     expect(find.text('44+ GOING'), findsOneWidget);
   });

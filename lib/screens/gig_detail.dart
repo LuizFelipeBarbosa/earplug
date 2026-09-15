@@ -13,9 +13,10 @@ import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart' show EpAvatarTile, EpEntityRow;
+import '../widgets/ep_sheet.dart' show showEpSheet;
 import '../widgets/ep_text.dart';
-import '../widgets/explore_friends.dart';
 import '../widgets/explore_tiles.dart';
+import '../widgets/sheets.dart' show EpFormSheet;
 import '../widgets/ticket_purchase_sheet.dart';
 import '../widgets/venue_mini_map.dart';
 
@@ -198,38 +199,6 @@ class _GigDetailPresentationState extends State<GigDetailPresentation> {
                     performers: performers,
                   ),
                   const SizedBox(height: _sectionGap),
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 260),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, animation) => SizeTransition(
-                      sizeFactor: animation,
-                      alignment: Alignment.topCenter,
-                      child: FadeTransition(opacity: animation, child: child),
-                    ),
-                    child:
-                        interactive &&
-                            gig.tix == Ticketing.rsvp &&
-                            gig.lifecycle == GigLifecycle.published &&
-                            app.hasConfirmedRsvp(gig.id)
-                        ? Column(
-                            key: ValueKey('gig-attendance-${gig.id}'),
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              const SectionBar(
-                                label: "WHO'S GOING",
-                                padding: EdgeInsets.only(bottom: 4),
-                              ),
-                              _KnownPeopleGoing(gig: gig, app: app),
-                              _WhosGoing(gig: gig, app: app),
-                              const EpHairline(),
-                              const SizedBox(height: _sectionGap),
-                            ],
-                          )
-                        : SizedBox.shrink(
-                            key: ValueKey('gig-attendance-hidden-${gig.id}'),
-                          ),
-                  ),
                   Column(
                     key: const ValueKey('gig-lineup'),
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -252,6 +221,38 @@ class _GigDetailPresentationState extends State<GigDetailPresentation> {
                         ),
                       ],
                     ],
+                  ),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 260),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) => SizeTransition(
+                      sizeFactor: animation,
+                      alignment: Alignment.topCenter,
+                      child: FadeTransition(opacity: animation, child: child),
+                    ),
+                    child:
+                        interactive &&
+                            gig.tix == Ticketing.rsvp &&
+                            gig.lifecycle == GigLifecycle.published &&
+                            app.hasConfirmedRsvp(gig.id)
+                        ? Column(
+                            key: ValueKey('gig-attendance-${gig.id}'),
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const SizedBox(height: _sectionGap),
+                              const SectionBar(
+                                label: "WHO'S GOING",
+                                padding: EdgeInsets.only(bottom: 4),
+                              ),
+                              _PeopleYouMayKnow(gig: gig, app: app),
+                              _WhosGoing(gig: gig, app: app),
+                              const EpHairline(),
+                            ],
+                          )
+                        : SizedBox.shrink(
+                            key: ValueKey('gig-attendance-hidden-${gig.id}'),
+                          ),
                   ),
                   if (gig.desc.trim().isNotEmpty) ...[
                     const SizedBox(height: _sectionGap),
@@ -285,6 +286,9 @@ class _GigDetailPresentationState extends State<GigDetailPresentation> {
           child: _GigDetailHeaderBar(
             gig: gig,
             app: app,
+            venue: venue,
+            venueSet: venueSet,
+            performers: performers,
             topInset: topInset,
             progress: progress,
             previewLabel: previewLabel,
@@ -483,6 +487,9 @@ class _GigDetailHeaderBar extends StatelessWidget {
   const _GigDetailHeaderBar({
     required this.gig,
     required this.app,
+    required this.venue,
+    required this.venueSet,
+    required this.performers,
     required this.topInset,
     required this.progress,
     required this.previewLabel,
@@ -491,6 +498,9 @@ class _GigDetailHeaderBar extends StatelessWidget {
 
   final Gig gig;
   final AppState app;
+  final Venue venue;
+  final bool venueSet;
+  final List<GigPerformer> performers;
   final double topInset;
   final double progress;
   final String? previewLabel;
@@ -500,6 +510,8 @@ class _GigDetailHeaderBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.epColors;
     final saved = app.saved.contains(gig.id);
+    final line = presenterOrLineupLine(gig, app, performers);
+    final showDirections = venueSet && venue.exactAddress != null;
     return Container(
       key: const ValueKey('gig-detail-header-bar'),
       height: 56 + topInset,
@@ -551,6 +563,43 @@ class _GigDetailHeaderBar extends StatelessWidget {
             ),
             if (previewLabel == null) ...[
               const SizedBox(width: 12),
+              SizedBox.square(
+                dimension: 44,
+                child: Tooltip(
+                  message: 'Add to calendar',
+                  excludeFromSemantics: true,
+                  child: ExploreCardIconButton(
+                    key: const ValueKey('gig-add-to-calendar'),
+                    circle: true,
+                    icon: Icons.calendar_today_outlined,
+                    semanticLabel: 'Add to calendar',
+                    onPressed: () => openCalendar(
+                      context,
+                      gig,
+                      venueSet ? venue : null,
+                      presenterOrLineupLine: line,
+                    ),
+                  ),
+                ),
+              ),
+              if (showDirections) ...[
+                const SizedBox(width: 8),
+                SizedBox.square(
+                  dimension: 44,
+                  child: Tooltip(
+                    message: 'Directions',
+                    excludeFromSemantics: true,
+                    child: ExploreCardIconButton(
+                      key: const ValueKey('gig-venue-directions'),
+                      circle: true,
+                      icon: Icons.directions_outlined,
+                      semanticLabel: 'Directions',
+                      onPressed: () => openDirections(context, venue),
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(width: 8),
               SizedBox.square(
                 dimension: 44,
                 child: ExploreCardIconButton(
@@ -644,6 +693,19 @@ class _PreviewStatusBadge extends StatelessWidget {
   );
 }
 
+String? presenterOrLineupLine(
+  Gig gig,
+  AppState app,
+  List<GigPerformer> performers,
+) {
+  final presenter = gig.createdByBand == null
+      ? null
+      : app.band(gig.createdByBand!);
+  if (presenter != null) return 'Presented by ${presenter.name}';
+  if (performers.isEmpty) return null;
+  return 'Lineup: ${performers.map((performer) => performer.name).join(', ')}';
+}
+
 /// Date and admission read as open lines, divided by hairlines.
 class _FactsSection extends StatelessWidget {
   const _FactsSection({
@@ -662,20 +724,13 @@ class _FactsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final presenter = gig.createdByBand == null
-        ? null
-        : app.band(gig.createdByBand!);
-    final presenterOrLineupLine = presenter != null
-        ? 'Presented by ${presenter.name}'
-        : performers.isEmpty
-        ? null
-        : 'Lineup: ${performers.map((performer) => performer.name).join(', ')}';
+    final line = presenterOrLineupLine(gig, app, performers);
     final doors = gig.doorsLabel.trim();
     final start = _startLabel(gig.time);
-    final timeSuffix = [
-      if (doors.isNotEmpty) ' · Doors $doors',
-      if (start.isNotEmpty) ' · Start $start',
-    ].join();
+    final line2 = [
+      if (doors.isNotEmpty) 'Doors $doors',
+      if (start.isNotEmpty) 'Start $start',
+    ].join(' · ');
     return Column(
       key: const Key('gig-facts'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -686,38 +741,39 @@ class _FactsSection extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  runSpacing: 4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     EpDisplay(gig.dateShort, size: 20),
-                    if (timeSuffix.isNotEmpty)
+                    if (line2.isNotEmpty) ...[
+                      const SizedBox(height: 4),
                       EpMonoText(
-                        timeSuffix,
+                        line2,
+                        key: const ValueKey('gig-fact-times'),
                         keepCase: true,
                         color: context.epColors.muted,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
+                    ],
                   ],
                 ),
               ),
-              SizedBox(
-                height: 44,
+              const SizedBox(width: 12),
+              SizedBox.square(
+                dimension: 44,
                 child: Center(
-                  // Center loosens constraints; keep the pill itself tappable
-                  // across the full 44px height, including its outer edges.
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: 44),
-                    child: EpPill(
-                      key: const ValueKey('gig-add-to-calendar'),
-                      label: 'Add to calendar',
-                      variant: EpPillVariant.outline,
-                      size: EpPillSize.chip,
-                      onPressed: () => openCalendar(
-                        context,
-                        gig,
-                        venueSet ? venue : null,
-                        presenterOrLineupLine: presenterOrLineupLine,
-                      ),
+                  child: ExploreCardIconButton(
+                    key: const ValueKey('gig-fact-calendar-icon'),
+                    ring: true,
+                    icon: Icons.calendar_today_outlined,
+                    semanticLabel: 'Add to calendar',
+                    onPressed: () => openCalendar(
+                      context,
+                      gig,
+                      venueSet ? venue : null,
+                      presenterOrLineupLine: line,
                     ),
                   ),
                 ),
@@ -730,22 +786,20 @@ class _FactsSection extends StatelessWidget {
           key: const Key('gig-fact-meta'),
           padding: const EdgeInsets.symmetric(vertical: 14),
           child: _MonoLine(
+            size: 15,
             tokens: [
               EpMonoText(
                 gig.free ? 'FREE' : gig.priceLabel,
+                size: 15,
                 color: gig.free
                     ? context.epColors.accent
                     : context.epColors.ink,
               ),
               EpMonoText(
                 gig.ageRequirement.label.toUpperCase(),
+                size: 15,
                 color: context.epColors.muted,
               ),
-              if (gig.tix == Ticketing.rsvp)
-                EpMonoText(
-                  '${app.rsvpCount(gig)} GOING',
-                  color: context.epColors.muted,
-                ),
             ],
           ),
         ),
@@ -769,9 +823,10 @@ String _venueLocation(Venue venue) {
 /// Keep tokens separate so price and neutral copy retain their
 /// own styling and semantics, while the line can wrap on narrow screens.
 class _MonoLine extends StatelessWidget {
-  const _MonoLine({required this.tokens});
+  const _MonoLine({required this.tokens, this.size = 11});
 
   final List<Widget> tokens;
+  final double size;
 
   @override
   Widget build(BuildContext context) => Wrap(
@@ -779,7 +834,8 @@ class _MonoLine extends StatelessWidget {
     runSpacing: 4,
     children: [
       for (var index = 0; index < tokens.length; index++) ...[
-        if (index > 0) EpMonoText(' · ', color: context.epColors.muted),
+        if (index > 0)
+          EpMonoText(' · ', size: size, color: context.epColors.muted),
         tokens[index],
       ],
     ],
@@ -885,16 +941,12 @@ class _VenueCard extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  if (venue.exactAddress != null && interactive)
-                    SizedBox(
-                      height: 44,
-                      child: EpPill(
-                        key: const Key('gig-venue-directions'),
-                        label: 'Directions · ${venue.exactAddress}',
-                        variant: EpPillVariant.outline,
-                        size: EpPillSize.chip,
-                        onPressed: () => openDirections(context, venue),
-                      ),
+                  if (venue.exactAddress != null)
+                    EpMonoText(
+                      venue.exactAddress!,
+                      color: context.epColors.muted,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     )
                   else
                     EpMonoText(
@@ -904,6 +956,19 @@ class _VenueCard extends StatelessWidget {
                 ],
               ),
             ),
+            if (venue.exactAddress != null && interactive) ...[
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: ExploreCardIconButton(
+                  key: const ValueKey('gig-venue-card-directions'),
+                  ring: true,
+                  icon: Icons.directions_outlined,
+                  semanticLabel: 'Directions',
+                  onPressed: () => openDirections(context, venue),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -911,17 +976,44 @@ class _VenueCard extends StatelessWidget {
   }
 }
 
-String _knownPeopleGoingLine(List<String> names) {
-  if (names.length == 1) return '${names[0]} is going';
-  if (names.length == 2) return '${names[0]} and ${names[1]} are going';
-  if (names.length == 3) {
-    return '${names[0]}, ${names[1]} and ${names[2]} are going';
-  }
-  return '${names[0]}, ${names[1]} and ${names.length - 2} others are going';
+String _peopleYouMayKnowLine(int count) => count == 1
+    ? '1 person you may know is going'
+    : '$count people you may know are going';
+
+Future<void> _openKnownPeopleSheet(
+  BuildContext context,
+  List<KnownAttendee> people,
+) {
+  return showEpSheet(
+    context,
+    (_) => EpFormSheet(
+      key: const ValueKey('gig-people-sheet'),
+      title: 'People you may know',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final person in people)
+            EpEntityRow(
+              key: ValueKey('known-person-${person.userId}'),
+              leading: EpFanAvatar(
+                name: person.name,
+                imageUrl: person.avatarUrl,
+                size: 32,
+              ),
+              title: person.name,
+              sub: person.relation == KnownRelation.friend
+                  ? 'Friend'
+                  : 'Seen at ${person.sharedShows} show${person.sharedShows == 1 ? '' : 's'}',
+            ),
+        ],
+      ),
+    ),
+  );
 }
 
-class _KnownPeopleGoing extends StatelessWidget {
-  const _KnownPeopleGoing({required this.gig, required this.app});
+class _PeopleYouMayKnow extends StatelessWidget {
+  const _PeopleYouMayKnow({required this.gig, required this.app});
 
   final Gig gig;
   final AppState app;
@@ -932,63 +1024,63 @@ class _KnownPeopleGoing extends StatelessWidget {
     final people = known?.people ?? const <KnownAttendee>[];
     if (people.isEmpty) return const SizedBox.shrink();
 
-    final mapped = [
-      for (final person in people)
-        SocialUserCard(
-          userId: person.userId,
-          name: person.name,
-          avatarUrl: person.avatarUrl,
-        ),
-    ];
-    final line = _knownPeopleGoingLine([
-      for (final person in people)
-        person.name.trim().split(RegExp(r'\s+')).first,
-    ]);
+    final shown = people.take(6).toList();
+    final overflow = people.length - shown.length;
 
     return Column(
-      key: ValueKey('known-people-${gig.id}'),
+      key: const ValueKey('gig-people-you-know'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Row(
-            children: [
-              ExploreAvatarStack(people: mapped, size: 28, max: 5),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  line,
-                  style: Theme.of(context).textTheme.epBody,
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 2,
+        SectionBar(
+          label: 'PEOPLE YOU MAY KNOW',
+          count: people.length,
+          padding: const EdgeInsets.only(bottom: 4),
+        ),
+        InkWell(
+          onTap: () => _openKnownPeopleSheet(context, people),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    for (final person in shown) ...[
+                      ImageFiltered(
+                        key: ValueKey('gig-people-blur-${person.userId}'),
+                        imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                        child: EpFanAvatar(
+                          name: person.name,
+                          imageUrl: person.avatarUrl,
+                          size: 40,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (overflow > 0)
+                      Container(
+                        width: 40,
+                        height: 40,
+                        alignment: Alignment.center,
+                        color: context.epColors.panel,
+                        child: EpMonoText(
+                          '+$overflow',
+                          color: context.epColors.muted,
+                        ),
+                      ),
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                Text(
+                  _peopleYouMayKnowLine(people.length),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.epCaption.copyWith(color: context.epColors.muted),
+                ),
+              ],
+            ),
           ),
         ),
-        for (final person in people)
-          EpEntityRow(
-            key: ValueKey('known-person-${person.userId}'),
-            leading: EpFanAvatar(
-              name: person.name,
-              imageUrl: person.avatarUrl,
-              size: 32,
-            ),
-            title: person.name,
-            sub: person.relation == KnownRelation.friend
-                ? 'Friend'
-                : 'Seen at ${person.sharedShows} show${person.sharedShows == 1 ? '' : 's'}',
-          ),
-        if (known?.truncated == true)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              'and more people you may know',
-              style: Theme.of(
-                context,
-              ).textTheme.epCaption.copyWith(color: context.epColors.muted),
-            ),
-          ),
         const EpHairline(),
       ],
     );

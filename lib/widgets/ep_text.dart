@@ -71,6 +71,8 @@ class EpMonoText extends StatelessWidget {
     this.color,
     this.weight = FontWeight.w400,
     this.keepCase = false,
+    this.maxLines,
+    this.overflow = TextOverflow.clip,
   });
 
   final String text;
@@ -78,6 +80,8 @@ class EpMonoText extends StatelessWidget {
   final Color? color;
   final FontWeight weight;
   final bool keepCase;
+  final int? maxLines;
+  final TextOverflow overflow;
 
   @override
   Widget build(BuildContext context) {
@@ -92,6 +96,8 @@ class EpMonoText extends StatelessWidget {
         fontSize: size,
         color: color ?? context.epColors.ink,
       ),
+      maxLines: maxLines,
+      overflow: overflow,
     );
   }
 }
