@@ -386,9 +386,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   onEditAvatar: _saving ? null : _openAvatarOptions,
                 ),
               ),
+              const SectionBar(
+                key: Key('fan-name-header'),
+                label: 'Display name · Required',
+                padding: EdgeInsets.only(
+                  top: EpLayout.formSectionGap,
+                  bottom: EpLayout.fieldGap,
+                ),
+              ),
               EpLabeledField(
                 fieldKey: const Key('fan-name-field'),
                 label: 'DISPLAY NAME',
+                showLabel: false,
                 hint: 'Your name',
                 controller: _nameController,
                 required: true,
@@ -413,9 +422,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                 ),
               ],
+              const SectionBar(
+                key: Key('fan-home-location-header'),
+                label: 'Home location',
+                padding: EdgeInsets.only(
+                  top: EpLayout.formSectionGap,
+                  bottom: EpLayout.fieldGap,
+                ),
+              ),
               _FanSelectionField(
                 key: const Key('fan-home-location-field'),
-                label: 'HOME LOCATION',
                 caption:
                     'Private to your account. Personalization below decides whether this scene tunes discovery.',
                 child: _HomeLocationEditor(
@@ -634,7 +650,6 @@ class _HomeLocationEditor extends StatelessWidget {
               ],
             ),
           ),
-        Divider(color: context.epColors.border, height: 1),
         if (hasNoResults)
           Padding(
             padding: const EdgeInsets.only(top: 10),
@@ -826,14 +841,8 @@ class _FanIdentityPreview extends StatelessWidget {
 }
 
 class _FanSelectionField extends StatelessWidget {
-  const _FanSelectionField({
-    super.key,
-    required this.label,
-    required this.child,
-    this.caption,
-  });
+  const _FanSelectionField({super.key, required this.child, this.caption});
 
-  final String label;
   final String? caption;
   final Widget child;
 
@@ -842,11 +851,8 @@ class _FanSelectionField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        FieldLabel(label, key: const Key('fan-home-location-label')),
-        if (caption case final caption?) ...[
-          const SizedBox(height: 5),
+        if (caption case final caption?)
           Text(caption, style: Theme.of(context).textTheme.epCaption),
-        ],
         const SizedBox(height: 10),
         child,
       ],

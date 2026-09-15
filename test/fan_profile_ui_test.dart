@@ -129,9 +129,10 @@ void main() {
     expect(find.text('IDENTITY'), findsNothing);
     expect(find.text('SCENE'), findsNothing);
     expect(find.text('DISPLAY NAME · REQUIRED'), findsOne);
-    expect(find.bySemanticsLabel(RegExp('^DISPLAY NAME · REQUIRED')), findsOne);
+    expect(find.byKey(const Key('fan-name-header')), findsOne);
+    expect(find.bySemanticsLabel('Display name · Required'), findsOne);
     expect(find.text('HOME LOCATION'), findsOne);
-    expect(find.byKey(const Key('fan-home-location-label')), findsOne);
+    expect(find.byKey(const Key('fan-home-location-header')), findsOne);
     expect(find.text('ABOUT'), findsNothing);
     expect(find.textContaining('FAVORITE GENRES'), findsNothing);
     expect(find.text('PREFERENCES'), findsOne);
@@ -140,7 +141,9 @@ void main() {
 
     final orderedFields = [
       find.byKey(const Key('fan-identity-preview')),
+      find.byKey(const Key('fan-name-header')),
       find.byKey(const Key('fan-name-field')),
+      find.byKey(const Key('fan-home-location-header')),
       find.byKey(const Key('fan-home-location-field')),
       find.byKey(const Key('location-personalization')),
     ];
@@ -150,6 +153,19 @@ void main() {
         greaterThan(tester.getTopLeft(orderedFields[index - 1]).dy),
       );
     }
+    final nameFieldBottom = tester
+        .getBottomLeft(find.byKey(const Key('fan-name-field')))
+        .dy;
+    // Measure the heading text inside SectionBar's top padding.
+    final homeLocationHeaderTop = tester
+        .getTopLeft(
+          find.descendant(
+            of: find.byKey(const Key('fan-home-location-header')),
+            matching: find.byType(Text),
+          ),
+        )
+        .dy;
+    expect(homeLocationHeaderTop - nameFieldBottom, greaterThanOrEqualTo(32));
     for (final key in const [Key('fan-name-field')]) {
       final field = tester.widget<TextField>(find.byKey(key));
       expect(field.style!.fontFamily, 'PP Telegraf');
@@ -158,6 +174,20 @@ void main() {
       );
       expect(decoration.enabledBorder, isA<UnderlineInputBorder>());
     }
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('fan-home-location-field')),
+        matching: find.byType(Divider),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('fan-home-location-field')),
+        matching: find.byType(EpHairline),
+      ),
+      findsNothing,
+    );
     semantics.dispose();
   });
 

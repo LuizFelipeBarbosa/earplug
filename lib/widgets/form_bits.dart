@@ -171,6 +171,7 @@ class EpLabeledField extends StatelessWidget {
     required this.controller,
     this.fieldKey,
     this.required = false,
+    this.showLabel = true,
     this.enabled = true,
     this.minLines = 1,
     this.maxLines = 1,
@@ -197,6 +198,7 @@ class EpLabeledField extends StatelessWidget {
   final TextEditingController controller;
   final Key? fieldKey;
   final bool required;
+  final bool showLabel;
   final bool enabled;
   final int minLines;
   final int maxLines;
@@ -219,46 +221,49 @@ class EpLabeledField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final field = TextField(
+      key: fieldKey,
+      controller: controller,
+      enabled: enabled,
+      minLines: minLines,
+      maxLines: maxLines,
+      maxLength: maxLength,
+      keyboardType: keyboardType,
+      textCapitalization: textCapitalization,
+      onChanged: onChanged,
+      onEditingComplete: onEditingComplete,
+      focusNode: focusNode,
+      autofillHints: autofillHints,
+      style: Theme.of(context).textTheme.epInput,
+      textInputAction:
+          textInputAction ??
+          (maxLines == 1 ? TextInputAction.next : TextInputAction.newline),
+      onSubmitted: onSubmitted,
+      inputFormatters: inputFormatters,
+      autocorrect:
+          autocorrect ??
+          (keyboardType != TextInputType.emailAddress &&
+              keyboardType != TextInputType.url),
+      decoration: epInputDecoration(context, hint).copyWith(
+        errorText: errorText,
+        suffixIcon: suffixIcon,
+        prefixText: prefixText,
+        prefixIcon: prefixIcon,
+      ),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ExcludeSemantics(child: FieldLabel(label, required: required)),
-        const SizedBox(height: 8),
-        Semantics(
-          label: required ? '$label · REQUIRED' : label,
-          child: TextField(
-            key: fieldKey,
-            controller: controller,
-            enabled: enabled,
-            minLines: minLines,
-            maxLines: maxLines,
-            maxLength: maxLength,
-            keyboardType: keyboardType,
-            textCapitalization: textCapitalization,
-            onChanged: onChanged,
-            onEditingComplete: onEditingComplete,
-            focusNode: focusNode,
-            autofillHints: autofillHints,
-            style: Theme.of(context).textTheme.epInput,
-            textInputAction:
-                textInputAction ??
-                (maxLines == 1
-                    ? TextInputAction.next
-                    : TextInputAction.newline),
-            onSubmitted: onSubmitted,
-            inputFormatters: inputFormatters,
-            autocorrect:
-                autocorrect ??
-                (keyboardType != TextInputType.emailAddress &&
-                    keyboardType != TextInputType.url),
-            decoration: epInputDecoration(context, hint).copyWith(
-              errorText: errorText,
-              suffixIcon: suffixIcon,
-              prefixText: prefixText,
-              prefixIcon: prefixIcon,
-            ),
+        if (showLabel) ...[
+          ExcludeSemantics(child: FieldLabel(label, required: required)),
+          const SizedBox(height: 8),
+          Semantics(
+            label: required ? '$label · REQUIRED' : label,
+            child: field,
           ),
-        ),
+        ] else
+          field,
         if (caption != null) ...[
           const SizedBox(height: 6),
           Text(caption!, style: Theme.of(context).textTheme.epCaption),
