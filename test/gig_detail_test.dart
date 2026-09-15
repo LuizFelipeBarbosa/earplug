@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:earplug/app_state.dart';
@@ -15,6 +14,7 @@ import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:earplug/widgets/venue_mini_map.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -22,6 +22,17 @@ import 'support/fixtures.dart';
 import 'support/harness.dart';
 
 void main() {
+  setUpAll(() async {
+    // Use the app's fonts so text wrapping and the fixed CTA match production.
+    final telegraf = FontLoader('PP Telegraf')
+      ..addFont(rootBundle.load('assets/fonts/PPTelegraf-Regular.otf'))
+      ..addFont(rootBundle.load('assets/fonts/PPTelegraf-Ultrabold.otf'));
+    await telegraf.load();
+    final mono = FontLoader('Azeret Mono')
+      ..addFont(rootBundle.load('assets/fonts/AzeretMono-Regular.ttf'));
+    await mono.load();
+  });
+
   testWidgets('flyer hero starts at the top and overlays the header controls', (
     tester,
   ) async {
@@ -70,12 +81,39 @@ void main() {
         tester.widget<Container>(header).decoration! as BoxDecoration;
     expect(restingDecoration.color!.a, 0);
     expect((restingDecoration.border! as Border).bottom.color.a, 0);
-    final poster = tester.widget<GigFlyer>(find.byType(GigFlyer));
-    expect(poster.child, isNull);
-    expect(poster.scrim, isFalse);
+    final placeholder = find.descendant(
+      of: flyer,
+      matching: find.byKey(const ValueKey('gig-detail-flyer-placeholder')),
+    );
+    expect(placeholder, findsOne);
+    expect(
+      find.descendant(of: flyer, matching: find.byType(GigFlyer)),
+      findsNothing,
+    );
+    expect(
+      tester.widget<Container>(placeholder).color,
+      tester.element(flyer).epColors.panel,
+    );
+    final blur = find.descendant(
+      of: flyer,
+      matching: find.byType(ImageFiltered),
+    );
+    expect(blur, findsOne);
+    expect(tester.widget<ImageFiltered>(blur).child, isA<ColoredBox>());
+    final scrim = tester.widgetList<ColoredBox>(
+      find.descendant(of: flyer, matching: find.byType(ColoredBox)),
+    );
+    expect(
+      scrim.any(
+        (box) =>
+            box.color ==
+            tester.element(flyer).epColors.background.withValues(alpha: .55),
+      ),
+      isTrue,
+    );
 
     final title = find.byKey(const ValueKey('gig-detail-title-block'));
-    expect(tester.getTopLeft(title).dy, flyerRect.bottom);
+    expect(tester.getTopLeft(title).dy - flyerRect.bottom, closeTo(24, 1));
     final display = tester.widget<EpDisplay>(
       find.descendant(of: title, matching: find.byType(EpDisplay)),
     );
@@ -170,8 +208,8 @@ void main() {
     await tester.pump();
     expect(tester.getTopLeft(flyer).dy, 0);
     expect(tester.getSize(flyer).height, 47 + 402 * 1.25);
-    expect(tester.getTopLeft(find.byType(GigFlyer)).dy, 47);
-    expect(tester.getSize(find.byType(GigFlyer)).height, 402 * 1.25);
+    expect(tester.getTopLeft(placeholder).dy, 47);
+    expect(tester.getSize(placeholder).height, 402 * 1.25);
     expect(tester.getSize(header).height, 56 + 47);
     expect(tester.widget<Opacity>(titleFade).opacity, 0.0);
     expect(
@@ -179,6 +217,177 @@ void main() {
           .getTopLeft(find.byKey(const ValueKey('gig-detail-back-control')))
           .dy,
       greaterThanOrEqualTo(47),
+    );
+  });
+
+  for (final gigId in ['g1', 'g2']) {
+    testWidgets('date row opens a calendar with readable names for $gigId', (
+      tester,
+    ) async {
+      final launches = _recordExternalLaunches(tester);
+      final harness = await pumpApp(
+        tester,
+        home: Scaffold(body: GigDetailScreen(gigId: gigId)),
+      );
+      final gig = harness.app.gig(gigId)!;
+      final date = find.byKey(const Key('gig-fact-date'));
+      final calendar = find.descendant(
+        of: date,
+        matching: find.byKey(const ValueKey('gig-add-to-calendar')),
+      );
+      expect(calendar, findsOne);
+      final pill = tester.widget<EpPill>(calendar);
+      expect(pill.variant, EpPillVariant.outline);
+      expect(pill.size, EpPillSize.chip);
+      expect(tester.getSize(calendar).height, greaterThanOrEqualTo(44));
+      expect(tester.getSize(calendar).width, greaterThanOrEqualTo(44));
+      await tester.ensureVisible(calendar);
+      await tester.pumpAndSettle();
+      // Tap near the top edge to check the 44px target, not just the label.
+      final rect = tester.getRect(calendar);
+      await tester.tapAt(Offset(rect.center.dx, rect.top + 1));
+      await tester.pump();
+
+      final url = launches.single;
+      expect(url.host, 'calendar.google.com');
+      expect(url.queryParameters['text'], gig.title);
+      if (gig.createdByBand != null) {
+        expect(
+          url.queryParameters['details'],
+          startsWith(
+            'Presented by ${harness.app.band(gig.createdByBand!)!.name}',
+          ),
+        );
+        expect(
+          url.queryParameters['details'],
+          isNot(contains(gig.createdByBand!)),
+        );
+      } else {
+        final names = gig.lineup
+            .map((id) => harness.app.band(id)!.name)
+            .join(', ');
+        expect(url.queryParameters['details'], startsWith('Lineup: $names'));
+      }
+    });
+  }
+
+  testWidgets(
+    'calendar for an unset venue uses text lineup names and no location',
+    (tester) async {
+      final launches = _recordExternalLaunches(tester);
+      await _pumpPresentation(
+        tester,
+        _textOnlyGig().copyWith(createdByBand: 'unresolved-band'),
+        venueSet: false,
+        previewLabel: 'PRIVATE DRAFT',
+      );
+      final calendar = find.byKey(const ValueKey('gig-add-to-calendar'));
+      await tester.ensureVisible(calendar);
+      await tester.pumpAndSettle();
+      await tester.tap(calendar);
+      await tester.pump();
+      expect(
+        launches.single.queryParameters['details'],
+        'Lineup: Text Only Opener',
+      );
+      expect(launches.single.queryParameters, isNot(contains('location')));
+    },
+  );
+
+  testWidgets('lineup genre text stays on one line with ellipsis', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      size: const Size(320, 900),
+      home: const Scaffold(body: GigDetailScreen(gigId: 'g2')),
+    );
+    final row = find
+        .descendant(
+          of: find.byKey(const ValueKey('gig-lineup')),
+          matching: find.byType(EpEntityRow),
+        )
+        .first;
+    final sub = tester.widget<EpEntityRow>(row).sub!;
+    expect(sub, contains('surf punk'));
+    final subtitle = find.descendant(of: row, matching: find.text(sub));
+    final text = tester.widget<Text>(subtitle);
+    expect(text.maxLines, 1);
+    expect(text.overflow, TextOverflow.ellipsis);
+    final painter = TextPainter(
+      text: TextSpan(text: sub, style: text.style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    expect(painter.width, greaterThan(tester.getSize(subtitle).width));
+    painter.dispose();
+  });
+
+  testWidgets('sections have 24px gaps without attendance or About', (
+    tester,
+  ) async {
+    await _pumpPresentation(tester, _textOnlyGig(desc: '   '));
+    expect(find.text('ABOUT'), findsNothing);
+    final hidden = find.byKey(
+      const ValueKey('gig-attendance-hidden-shared-gig'),
+    );
+    expect(tester.getSize(hidden).height, 0);
+    final sections = [
+      find.byKey(const ValueKey('gig-detail-flyer')),
+      find.byKey(const ValueKey('gig-detail-title-block')),
+      find.byKey(const Key('gig-facts')),
+      find.byKey(const ValueKey('gig-lineup')),
+      find.byKey(const Key('gig-venue-card')),
+    ];
+    for (var index = 1; index < sections.length; index++) {
+      expect(
+        tester.getTopLeft(sections[index]).dy -
+            tester.getBottomLeft(sections[index - 1]).dy,
+        closeTo(24, 1),
+        reason: 'Gap before section $index',
+      );
+    }
+    final facts = sections[2];
+    final children = tester.widget<Column>(facts).children;
+    expect(
+      tester.getTopLeft(facts).dy,
+      tester.getTopLeft(find.byWidget(children.first)).dy,
+    );
+    expect(
+      tester.getBottomLeft(facts).dy,
+      tester.getBottomLeft(find.byWidget(children.last)).dy,
+    );
+  });
+
+  testWidgets('About has one 24px gap on either side', (tester) async {
+    final gig = _textOnlyGig();
+    await _pumpPresentation(tester, gig);
+    final about = find.widgetWithText(SectionBar, 'ABOUT');
+    final lineup = find.byKey(const ValueKey('gig-lineup'));
+    final card = find.byKey(const Key('gig-venue-card'));
+    expect(
+      tester.getTopLeft(about).dy - tester.getBottomLeft(lineup).dy,
+      closeTo(24, 1),
+    );
+    expect(tester.widget<SectionBar>(about).padding.top, 0);
+    expect(
+      tester.getTopLeft(card).dy - tester.getBottomLeft(find.text(gig.desc)).dy,
+      closeTo(24, 1),
+    );
+  });
+
+  testWidgets('preview venue card has no directions action', (tester) async {
+    await _pumpPresentation(
+      tester,
+      _textOnlyGig(),
+      previewLabel: 'PRIVATE DRAFT',
+    );
+    final card = find.byKey(const Key('gig-venue-card'));
+    final tap = find.descendant(of: card, matching: find.byType(InkWell));
+    expect(tester.widget<InkWell>(tap).onTap, isNull);
+    expect(find.byKey(const Key('gig-venue-directions')), findsNothing);
+    expect(
+      find.descendant(of: card, matching: find.textContaining('AREA ONLY')),
+      findsOne,
     );
   });
 
@@ -313,10 +522,7 @@ void main() {
         find.descendant(of: date, matching: find.textContaining('Start')),
         findsNothing,
       );
-      final venue = find.byKey(const Key('gig-fact-venue'));
-      expect(find.text('VENUE NOT SET'), findsOne);
-      expect(tester.widget<InkWell>(venue).onTap, isNull);
-      expect(find.byKey(const Key('gig-location-strip')), findsNothing);
+      expect(find.byKey(const Key('gig-venue-card')), findsNothing);
       final title = find.byKey(const ValueKey('gig-detail-title-block'));
       expect(
         find.descendant(of: title, matching: find.byType(EpEyebrow)),
@@ -326,79 +532,103 @@ void main() {
   );
 
   for (final scenario in [
-    (
-      gigId: 'g2',
-      area: 'Mission, San Francisco',
-      verified: true,
-      approximate: true,
-    ),
-    (
-      gigId: 'g3',
-      area: 'Temescal, Oakland',
-      verified: false,
-      approximate: false,
-    ),
-    (gigId: 'g4', area: 'Dogpatch, SF', verified: false, approximate: false),
+    (gigId: 'g2', area: 'Mission', approximate: true),
+    (gigId: 'g3', area: 'Temescal, Oakland', approximate: false),
+    (gigId: 'g4', area: 'Dogpatch, SF', approximate: false),
   ]) {
-    testWidgets(
-      'location strip reflects venue precision for ${scenario.gigId}',
-      (tester) async {
-        final harness = await pumpApp(
-          tester,
-          home: Scaffold(body: GigDetailScreen(gigId: scenario.gigId)),
-        );
-        final venueId = harness.app.gig(scenario.gigId)!.venueId;
-        final fact = find.byKey(const Key('gig-fact-venue'));
-        expect(
-          find.descendant(of: fact, matching: find.text(' · ${scenario.area}')),
-          findsOne,
-        );
-        final strip = find.byKey(const Key('gig-location-strip'));
-        final map = find.descendant(
-          of: strip,
-          matching: find.byType(VenueMapPreview),
-        );
-        expect(tester.getSize(map), const Size(72, 72));
-        expect(
-          tester.widget<VenueMapPreview>(map).approximate,
-          scenario.approximate,
-        );
-        expect(tester.widget<VenueMapPreview>(map).showAttribution, isFalse);
-        expect(tester.widget<VenueMapPreview>(map).overlayLabel, isNull);
+    testWidgets('venue card reflects venue precision for ${scenario.gigId}', (
+      tester,
+    ) async {
+      final launches = _recordExternalLaunches(tester);
+      final harness = await pumpApp(
+        tester,
+        home: Scaffold(body: GigDetailScreen(gigId: scenario.gigId)),
+      );
+      final venueId = harness.app.gig(scenario.gigId)!.venueId;
+      final venue = harness.app.venue(venueId);
+      final card = find.byKey(const Key('gig-venue-card'));
+      final map = find.descendant(
+        of: card,
+        matching: find.byType(VenueMapPreview),
+      );
+      expect(tester.getSize(map), const Size(96, 96));
+      expect(
+        tester.widget<VenueMapPreview>(map).approximate,
+        scenario.approximate,
+      );
+      expect(tester.widget<VenueMapPreview>(map).showAttribution, isFalse);
+      expect(tester.widget<VenueMapPreview>(map).overlayLabel, isNull);
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.text(scenario.area.toUpperCase()),
+        ),
+        findsOne,
+      );
+      expect(find.byKey(const Key('gig-venue-verified')), findsNothing);
+      expect(
+        find.textContaining('AREA ONLY'),
+        scenario.approximate ? findsOne : findsNothing,
+      );
+      expect(
+        find.byKey(const Key('gig-venue-directions')),
+        scenario.approximate ? findsNothing : findsOne,
+      );
+      expect(find.byType(EpPanel), findsNothing);
+      expect(find.byType(EpFactGrid), findsNothing);
+      final decoration =
+          tester.widget<Container>(card).decoration! as BoxDecoration;
+      expect(decoration.color, tester.element(card).epColors.panel);
+      expect(
+        decoration.border,
+        Border.all(color: tester.element(card).epColors.line),
+      );
+      expect(decoration.borderRadius, isNull);
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.text(venue.name.toUpperCase()),
+        ),
+        findsOne,
+      );
+      final distance = harness.app.distanceOf(venue);
+      if (distance.isNotEmpty) {
         expect(
           find.descendant(
-            of: strip,
-            matching: find.text(scenario.area.toUpperCase()),
+            of: card,
+            matching: find.text(distance.toUpperCase()),
           ),
           findsOne,
         );
-        expect(
-          find.byKey(const Key('gig-venue-verified')),
-          scenario.verified ? findsOne : findsNothing,
-        );
-        expect(
-          find.text('APPROX. AREA'),
-          scenario.approximate ? findsOne : findsNothing,
-        );
-        expect(
-          find.byKey(const Key('gig-venue-directions')),
-          scenario.approximate ? findsNothing : findsOne,
-        );
-        expect(find.byType(EpPanel), findsNothing);
-        expect(find.byType(EpFactGrid), findsNothing);
-        await tester.ensureVisible(strip);
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.descendant(
-            of: strip,
-            matching: find.text(scenario.area.toUpperCase()),
-          ),
-        );
+      }
+      await tester.ensureVisible(card);
+      await tester.pumpAndSettle();
+      if (!scenario.approximate) {
+        final directions = find.byKey(const Key('gig-venue-directions'));
+        final pill = tester.widget<EpPill>(directions);
+        expect(pill.variant, EpPillVariant.outline);
+        expect(pill.label, 'Directions · ${venue.exactAddress}');
+        expect(tester.getSize(directions).height, greaterThanOrEqualTo(44));
+        expect(tester.getSize(directions).width, greaterThanOrEqualTo(44));
+        final routeBefore = harness.app.current;
+        await tester.tap(directions);
         await tester.pump();
-        expect(harness.app.current.screen, Screen.venue);
-        expect(harness.app.current.param, venueId);
-      },
-    );
+        expect(
+          launches.single.toString(),
+          'https://www.google.com/maps/search/?api=1&query=${venue.point.latitude},${venue.point.longitude}',
+        );
+        expect(harness.app.current, same(routeBefore));
+      }
+      await tester.tap(
+        find.descendant(
+          of: card,
+          matching: find.text(scenario.area.toUpperCase()),
+        ),
+      );
+      await tester.pump();
+      expect(harness.app.current.screen, Screen.venue);
+      expect(harness.app.current.param, venueId);
+    });
   }
 
   testWidgets(
@@ -538,7 +768,7 @@ void main() {
 
     expect(harness.app.gig('shared-gig'), isNotNull);
     expect(find.text('ABOUT'), findsNothing);
-    expect(find.byKey(const Key('gig-fact-venue')), findsOne);
+    expect(find.byKey(const Key('gig-venue-card')), findsOne);
   });
 
   testWidgets(
@@ -590,7 +820,20 @@ void main() {
       );
       expect(
         tester.getBottomLeft(attendance).dy,
-        lessThan(tester.getTopLeft(find.text('LINEUP · 1')).dy),
+        closeTo(tester.getTopLeft(find.text('LINEUP · 1')).dy, 1),
+      );
+      expect(
+        tester.getTopLeft(attendance).dy -
+            tester.getBottomLeft(find.byKey(const Key('gig-facts'))).dy,
+        closeTo(24, 1),
+      );
+      final attendanceDivider = find
+          .descendant(of: attendance, matching: find.byType(EpHairline))
+          .last;
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('gig-lineup'))).dy -
+            tester.getBottomLeft(attendanceDivider).dy,
+        closeTo(24, 1),
       );
       expect(find.text('24 of 80 spots filled'), findsOne);
       final progress = find.descendant(
@@ -842,6 +1085,26 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.knownAttendeesCalls, 1);
   });
+}
+
+List<Uri> _recordExternalLaunches(WidgetTester tester) {
+  const channel = MethodChannel('plugins.flutter.io/url_launcher');
+  final launches = <Uri>[];
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+    call,
+  ) async {
+    if (call.method != 'launch') return null;
+    final arguments = call.arguments as Map<Object?, Object?>;
+    launches.add(Uri.parse(arguments['url']! as String));
+    return true;
+  });
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      channel,
+      null,
+    ),
+  );
+  return launches;
 }
 
 Future<AppHarness> _pumpPresentation(

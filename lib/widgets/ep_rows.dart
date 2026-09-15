@@ -127,6 +127,7 @@ class EpEntityRow extends StatelessWidget {
     this.leading,
     required this.title,
     this.sub,
+    this.subMaxLinesOne = false,
     this.trailing,
     this.onTap,
   });
@@ -134,6 +135,7 @@ class EpEntityRow extends StatelessWidget {
   final Widget? leading;
   final String title;
   final String? sub;
+  final bool subMaxLinesOne;
   final Widget? trailing;
   final VoidCallback? onTap;
 
@@ -154,6 +156,8 @@ class EpEntityRow extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   sub!,
+                  maxLines: subMaxLinesOne ? 1 : null,
+                  overflow: subMaxLinesOne ? TextOverflow.ellipsis : null,
                   style: Theme.of(
                     context,
                   ).textTheme.epBody.copyWith(color: context.epColors.muted),
