@@ -7,7 +7,6 @@ import 'package:earplug/screens/gig_detail.dart';
 import 'package:earplug/screens/my_gigs.dart';
 import 'package:earplug/screens/venue_detail.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:earplug/widgets/map_view.dart';
 import 'package:flutter/material.dart';
