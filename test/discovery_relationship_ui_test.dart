@@ -293,8 +293,13 @@ void main() {
       home: const Scaffold(body: GigDetailScreen(gigId: 'g4')),
     );
 
-    expect(find.text('AGE'), findsOne);
-    expect(find.text('21+'), findsOne);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('gig-fact-meta')),
+        matching: find.text('21+'),
+      ),
+      findsOne,
+    );
     await tester.tap(find.byKey(const ValueKey('gig-detail-save-g4')));
     await tester.pump();
     expect(harness.app.current.screen, Screen.auth);

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
@@ -6,16 +8,312 @@ import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/gig_detail.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/ep_text.dart';
+import 'package:earplug/widgets/venue_mini_map.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
 
 void main() {
+  testWidgets('flat hero, open facts and sticky RSVP keep the artwork clear', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: GigDetailScreen(gigId: 'g1')),
+    );
+    final gig = harness.app.gig('g1')!;
+    final flyer = find.byKey(const ValueKey('gig-detail-flyer'));
+    final flyerRect = tester.getRect(flyer);
+    expect(flyerRect.width, 402);
+    expect(flyerRect.height, 402 * 1.25);
+    expect(
+      find.descendant(of: flyer, matching: find.byType(Text)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: flyer, matching: find.byType(EpIconPill)),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('gig-detail-hero-content')), findsOne);
+    for (final key in [
+      'gig-detail-back-control',
+      'gig-detail-save-g1',
+      'gig-detail-share-g1',
+    ]) {
+      final control = find.byKey(ValueKey(key));
+      expect(control, findsOne);
+      expect(tester.getSize(control), const Size(44, 44));
+      expect(tester.getBottomLeft(control).dy, lessThan(flyerRect.top));
+    }
+    final poster = tester.widget<GigFlyer>(find.byType(GigFlyer));
+    expect(poster.child, isNull);
+    expect(poster.scrim, isFalse);
+
+    final title = find.byKey(const ValueKey('gig-detail-title-block'));
+    expect(tester.getTopLeft(title).dy, flyerRect.bottom);
+    final display = tester.widget<EpDisplay>(
+      find.descendant(of: title, matching: find.byType(EpDisplay)),
+    );
+    expect(display.text, gig.title);
+    expect(display.size, 32);
+    expect(display.maxLines, 3);
+    expect(
+      find.descendant(of: title, matching: find.byType(EpEyebrow)),
+      findsNothing,
+    );
+    final date = find.byKey(const Key('gig-fact-date'));
+    expect(
+      find.descendant(of: date, matching: find.text(gig.dateShort)),
+      findsOne,
+    );
+    expect(
+      find.descendant(
+        of: date,
+        matching: find.text(' · Doors 8PM · Start 9PM'),
+      ),
+      findsOne,
+    );
+    final meta = find.byKey(const Key('gig-fact-meta'));
+    final free = find.descendant(of: meta, matching: find.text('FREE'));
+    expect(
+      tester.widget<Text>(free).style?.color,
+      tester.element(meta).epColors.accent,
+    );
+    expect(find.descendant(of: meta, matching: find.text('18+')), findsOne);
+    expect(
+      find.descendant(of: meta, matching: find.text('43 GOING')),
+      findsOne,
+    );
+    expect(find.byType(EpFactGrid), findsNothing);
+    expect(find.byType(EpFactCell), findsNothing);
+    expect(find.byType(EpPanel), findsNothing);
+
+    final cta = find.byType(EpBottomCta);
+    expect(
+      find.descendant(
+        of: cta,
+        matching: find.text('FREE · RSVP FOR HEADCOUNT'),
+      ),
+      findsOne,
+    );
+    expect(
+      find.descendant(of: cta, matching: find.byType(EpEyebrow)),
+      findsOne,
+    );
+    final button = find.descendant(of: cta, matching: find.byType(EpPill));
+    expect(tester.widget<EpPill>(button).variant, EpPillVariant.primary);
+    expect(tester.widget<EpPill>(button).expand, isTrue);
+    expect(tester.getSize(button).width, tester.getSize(cta).width - 40);
+    expect(tester.getRect(cta).bottom, 900);
+  });
+
   testWidgets(
-    'direct gig subscription keeps cancellations visible and includes text performers in the hero',
+    'portrait custom flyer uses blur and contain below flat preview status',
+    (tester) async {
+      final gig = gigFixture(id: 'draft-preview', title: 'Current draft');
+      final portraitBytes = await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        ui.Canvas(recorder).drawRect(
+          const Rect.fromLTWH(0, 0, 20, 40),
+          Paint()..color = Colors.white,
+        );
+        final picture = recorder.endRecording();
+        final image = await picture.toImage(20, 40);
+        final data = await image.toByteData(format: ui.ImageByteFormat.png);
+        image.dispose();
+        picture.dispose();
+        return data!.buffer.asUint8List();
+      });
+      await _pumpPresentation(
+        tester,
+        gig,
+        flyerBytes: portraitBytes!,
+        previewLabel: 'PRIVATE DRAFT',
+        size: const Size(402, 600),
+      );
+
+      final flyer = find.byKey(const ValueKey('gig-detail-flyer'));
+      expect(tester.getSize(flyer), const Size(402, 360));
+      expect(
+        find.descendant(of: flyer, matching: find.byType(ImageFiltered)),
+        findsOne,
+      );
+      final images = tester.widgetList<Image>(
+        find.descendant(of: flyer, matching: find.byType(Image)),
+      );
+      expect(images.map((image) => image.fit), [BoxFit.cover, BoxFit.contain]);
+      expect(images.every((image) => image.image is MemoryImage), isTrue);
+      expect(
+        find.descendant(of: flyer, matching: find.byType(Text)),
+        findsNothing,
+      );
+      expect(find.byType(GigFlyer), findsNothing);
+      final status = find.byKey(const ValueKey('gig-draft-preview-status'));
+      expect(tester.getSize(status), const Size(402, 32));
+      expect(tester.getBottomLeft(status).dy, tester.getTopLeft(flyer).dy);
+      expect(find.byKey(const ValueKey('gig-detail-back-control')), findsOne);
+      expect(
+        find.byKey(const ValueKey('gig-detail-save-draft-preview')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('gig-detail-share-draft-preview')),
+        findsNothing,
+      );
+      expect(find.text('CURRENT DRAFT'), findsOne);
+      expect(find.text('FREE RSVP · PREVIEW ONLY'), findsOne);
+    },
+  );
+
+  testWidgets(
+    'remote custom flyer uses plain fallbacks and a sharp contain image',
+    (tester) async {
+      await _pumpPresentation(
+        tester,
+        gigFixture(
+          id: 'custom',
+          flyKey: 'custom',
+          flyerUrl: 'https://example.test/flyer.png',
+        ),
+      );
+
+      final flyer = find.byKey(const ValueKey('gig-detail-flyer'));
+      expect(
+        find.descendant(of: flyer, matching: find.byType(ImageFiltered)),
+        findsOne,
+      );
+      final images = tester.widgetList<EpNetworkImage>(
+        find.descendant(of: flyer, matching: find.byType(EpNetworkImage)),
+      );
+      expect(images.map((image) => image.fit), [BoxFit.cover, BoxFit.contain]);
+      expect(images.every((image) => image.fallback is ColoredBox), isTrue);
+      expect(
+        find.descendant(of: flyer, matching: find.byType(Text)),
+        findsNothing,
+      );
+      expect(find.byType(GigFlyer), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'single-time drafts omit Start and keep an unset venue inactive',
+    (tester) async {
+      await _pumpPresentation(
+        tester,
+        gigFixture(
+          id: 'single-time',
+          time: '8PM',
+          createdByBand: 'missing-band',
+        ),
+        venueSet: false,
+        previewLabel: 'PRIVATE DRAFT',
+      );
+      final date = find.byKey(const Key('gig-fact-date'));
+      expect(
+        find.descendant(of: date, matching: find.text(' · Doors 8PM')),
+        findsOne,
+      );
+      expect(
+        find.descendant(of: date, matching: find.textContaining('Start')),
+        findsNothing,
+      );
+      final venue = find.byKey(const Key('gig-fact-venue'));
+      expect(find.text('VENUE NOT SET'), findsOne);
+      expect(tester.widget<InkWell>(venue).onTap, isNull);
+      expect(find.byKey(const Key('gig-location-strip')), findsNothing);
+      final title = find.byKey(const ValueKey('gig-detail-title-block'));
+      expect(
+        find.descendant(of: title, matching: find.byType(EpEyebrow)),
+        findsNothing,
+      );
+    },
+  );
+
+  for (final scenario in [
+    (
+      gigId: 'g2',
+      area: 'Mission, San Francisco',
+      verified: true,
+      approximate: true,
+    ),
+    (
+      gigId: 'g3',
+      area: 'Temescal, Oakland',
+      verified: false,
+      approximate: false,
+    ),
+    (gigId: 'g4', area: 'Dogpatch, SF', verified: false, approximate: false),
+  ]) {
+    testWidgets(
+      'location strip reflects venue precision for ${scenario.gigId}',
+      (tester) async {
+        final harness = await pumpApp(
+          tester,
+          home: Scaffold(body: GigDetailScreen(gigId: scenario.gigId)),
+        );
+        final venueId = harness.app.gig(scenario.gigId)!.venueId;
+        final fact = find.byKey(const Key('gig-fact-venue'));
+        expect(
+          find.descendant(of: fact, matching: find.text(' · ${scenario.area}')),
+          findsOne,
+        );
+        final strip = find.byKey(const Key('gig-location-strip'));
+        final map = find.descendant(
+          of: strip,
+          matching: find.byType(VenueMapPreview),
+        );
+        expect(tester.getSize(map), const Size(72, 72));
+        expect(
+          tester.widget<VenueMapPreview>(map).approximate,
+          scenario.approximate,
+        );
+        expect(tester.widget<VenueMapPreview>(map).showAttribution, isFalse);
+        expect(tester.widget<VenueMapPreview>(map).overlayLabel, isNull);
+        expect(
+          find.descendant(
+            of: strip,
+            matching: find.text(scenario.area.toUpperCase()),
+          ),
+          findsOne,
+        );
+        expect(
+          find.byKey(const Key('gig-venue-verified')),
+          scenario.verified ? findsOne : findsNothing,
+        );
+        expect(
+          find.text('APPROX. AREA'),
+          scenario.approximate ? findsOne : findsNothing,
+        );
+        expect(
+          find.byKey(const Key('gig-venue-directions')),
+          scenario.approximate ? findsNothing : findsOne,
+        );
+        expect(find.byType(EpPanel), findsNothing);
+        expect(find.byType(EpFactGrid), findsNothing);
+        await tester.ensureVisible(strip);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(
+            of: strip,
+            matching: find.text(scenario.area.toUpperCase()),
+          ),
+        );
+        await tester.pump();
+        expect(harness.app.current.screen, Screen.venue);
+        expect(harness.app.current.param, venueId);
+      },
+    );
+  }
+
+  testWidgets(
+    'direct gig subscription keeps cancellations visible and text performers in the lineup',
     (tester) async {
       final auth = FakeAuthService();
       final repository = _ControlledPublicGigRepository(auth: auth);
@@ -34,17 +332,19 @@ void main() {
       expect(find.text('THIS GIG HAS BEEN CANCELLED'), findsNothing);
       expect(
         find.descendant(
-          of: find.byType(GigFlyer),
+          of: find.byType(EpEntityRow),
           matching: find.text('TEXT ONLY OPENER'),
         ),
         findsOne,
       );
       expect(find.text('RSVP'), findsOne);
 
-      final heroContent = tester.widget<Stack>(
-        find.byKey(const ValueKey('gig-detail-hero-content')),
+      expect(find.byKey(const ValueKey('gig-detail-hero-content')), findsOne);
+      expect(
+        find.descendant(of: find.byType(GigFlyer), matching: find.byType(Text)),
+        findsNothing,
       );
-      expect(heroContent.clipBehavior, Clip.none);
+      expect(find.text('LINEUP · 1'), findsOne);
 
       repository.emit(_textOnlyGig(lifecycle: GigLifecycle.cancelled));
       await tester.pump();
@@ -52,6 +352,13 @@ void main() {
 
       expect(harness.app.gig('shared-gig')?.lifecycle, GigLifecycle.cancelled);
       expect(find.text('THIS GIG HAS BEEN CANCELLED'), findsOne);
+      expect(
+        tester.getBottomLeft(find.text('THIS GIG HAS BEEN CANCELLED')).dy,
+        lessThanOrEqualTo(
+          tester.getTopLeft(find.byKey(const ValueKey('gig-detail-flyer'))).dy,
+        ),
+      );
+      expect(find.text('GIG CANCELLED'), findsOne);
     },
   );
 
@@ -65,13 +372,52 @@ void main() {
 
     expect(find.text('FOGHORN DIET PRESENTS'), findsOne);
     expect(find.textContaining('IN-STORE RACKET'), findsNothing);
+    final title = find.byKey(const ValueKey('gig-detail-title-block'));
+    expect(
+      find.descendant(of: title, matching: find.text('RIPTIDE RELEASE SHOW')),
+      findsOne,
+    );
+    expect(
+      find.descendant(of: title, matching: find.text('FOGHORN DIET')),
+      findsNothing,
+    );
+    expect(find.text('PAY AT THE DOOR · RSVP HOLDS NOTHING'), findsOne);
+    final meta = find.byKey(const Key('gig-fact-meta'));
+    final price = find.descendant(of: meta, matching: find.text(r'$10'));
+    expect(
+      tester.widget<Text>(price).style?.color,
+      tester.element(meta).epColors.ink,
+    );
+    expect(
+      find.descendant(of: meta, matching: find.text('ALL AGES')),
+      findsOne,
+    );
+    expect(find.text('LINEUP · 2'), findsOne);
+    final rows = tester
+        .widgetList<EpEntityRow>(find.byType(EpEntityRow))
+        .toList();
+    expect(rows.map((row) => row.title), ['Foghorn Diet', 'Pigeon Court']);
+    expect(rows.first.leading, isA<BandAvatar>());
+    expect(rows.first.sub, startsWith('Headliner · '));
+    expect(rows.last.sub, startsWith('Support · '));
+    final firstRow = find.byWidget(rows.first);
+    final lastRow = find.byWidget(rows.last);
+    final firstBottom = tester.getBottomLeft(firstRow).dy;
+    final lastTop = tester.getTopLeft(lastRow).dy;
+    expect(lastTop - firstBottom, 1);
+    expect(
+      find.byType(EpHairline).evaluate().where((element) {
+        final rect = tester.getRect(
+          find.byElementPredicate((candidate) => identical(candidate, element)),
+        );
+        return rect.top == firstBottom && rect.bottom == lastTop;
+      }),
+      hasLength(1),
+    );
 
     final follow = find.byKey(const ValueKey('gig-lineup-follow-b1'));
-    await tester.scrollUntilVisible(
-      follow,
-      240,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await tester.ensureVisible(follow);
+    await tester.pumpAndSettle();
     await tester.tap(follow);
     await tester.pump();
 
@@ -97,7 +443,7 @@ void main() {
 
     expect(harness.app.gig('shared-gig'), isNotNull);
     expect(find.text('ABOUT'), findsNothing);
-    expect(find.text('WHERE'), findsOne);
+    expect(find.byKey(const Key('gig-fact-venue')), findsOne);
   });
 
   testWidgets(
@@ -120,11 +466,16 @@ void main() {
       );
 
       expect(find.text("WHO'S GOING"), findsNothing);
-      expect(find.text('23 GOING'), findsNothing);
+      expect(find.text('23 GOING'), findsOne);
+      expect(
+        find.byKey(const ValueKey('gig-attendance-hidden-shared-gig')),
+        findsOne,
+      );
 
       await tester.tap(find.text('RSVP'));
       await tester.pump();
       expect(harness.app.rsvpCount(repository.gig), 24);
+      expect(find.text('24 GOING'), findsOne);
       expect(find.text("WHO'S GOING"), findsNothing);
 
       repository.completeMutation();
@@ -132,6 +483,20 @@ void main() {
       expect(harness.app.rsvpCount(repository.gig), 24);
       expect(find.text("WHO'S GOING"), findsOne);
       expect(find.text('24+ GOING'), findsOne);
+      final attendance = find.byKey(
+        const ValueKey('gig-attendance-shared-gig'),
+      );
+      expect(attendance, findsOne);
+      expect(find.byKey(const ValueKey('who-is-going-shared-gig')), findsOne);
+      expect(find.byType(EpCard), findsNothing);
+      expect(
+        tester.getBottomLeft(find.byKey(const Key('gig-fact-meta'))).dy,
+        lessThan(tester.getTopLeft(find.text("WHO'S GOING")).dy),
+      );
+      expect(
+        tester.getBottomLeft(attendance).dy,
+        lessThan(tester.getTopLeft(find.text('LINEUP · 1')).dy),
+      );
       expect(find.text('24 of 80 spots filled'), findsOne);
       final progress = find.descendant(
         of: find.byKey(
@@ -173,6 +538,7 @@ void main() {
       repository.completeMutation();
       await tester.pumpAndSettle();
       expect(harness.app.rsvpCount(repository.gig), 24);
+      expect(find.text('24 GOING'), findsOne);
       expect(find.text("WHO'S GOING"), findsNothing);
       semantics.dispose();
     },
@@ -259,6 +625,16 @@ void main() {
     );
     expect(find.text('RSVP'), findsNothing);
     expect(find.textContaining('AT DOOR'), findsNothing);
+    final meta = find.byKey(const Key('gig-fact-meta'));
+    final price = find.descendant(of: meta, matching: find.text(r'$25.00'));
+    expect(
+      tester.widget<Text>(price).style?.color,
+      tester.element(meta).epColors.ink,
+    );
+    expect(
+      find.descendant(of: meta, matching: find.textContaining('GOING')),
+      findsNothing,
+    );
   });
 
   testWidgets('buy tickets opens the purchase sheet for signed-in fans', (
@@ -372,6 +748,30 @@ void main() {
     expect(repository.knownAttendeesCalls, 1);
   });
 }
+
+Future<AppHarness> _pumpPresentation(
+  WidgetTester tester,
+  Gig gig, {
+  Uint8List? flyerBytes,
+  String? previewLabel,
+  bool venueSet = true,
+  Size size = const Size(402, 900),
+}) => pumpApp(
+  tester,
+  size: size,
+  home: Scaffold(
+    body: Builder(
+      builder: (context) => GigDetailPresentation(
+        gig: gig,
+        app: context.watch<AppState>(),
+        performers: gig.performers,
+        flyerBytes: flyerBytes,
+        previewLabel: previewLabel,
+        venueSet: venueSet,
+      ),
+    ),
+  ),
+);
 
 Gig _textOnlyGig({
   GigLifecycle lifecycle = GigLifecycle.published,
