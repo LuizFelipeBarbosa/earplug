@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
+import '../widgets/fan_event_card.dart';
 import '../widgets/map_view.dart';
 
 class VenueDetailScreen extends StatefulWidget {
@@ -219,6 +220,8 @@ class _VenueContentState extends State<_VenueContent> {
         40,
       ),
       children: [
+        _VenuePhoto(venue: venue),
+        const SizedBox(height: 20),
         _VenueHeader(venue: venue),
         const SizedBox(height: 20),
         EpPanel(
@@ -235,12 +238,13 @@ class _VenueContentState extends State<_VenueContent> {
           const _QuietNote('Nothing on the calendar right now.')
         else
           for (final gig in _gigs)
-            EpGigRow(
-              key: ValueKey('fan-event-${gig.id}'),
-              date: gig.startsAt,
-              title: gig.title,
-              sub: _gigSubtitle(gig, detail.bands),
-              onTap: () => app.openGig(gig.id),
+            FanEventCard(
+              key: ValueKey('venue-gig-${gig.id}'),
+              gig: gig,
+              app: app,
+              showDistance: true,
+              friends: const [],
+              rowKey: ValueKey('fan-event-${gig.id}'),
             ),
         if (detail.truncated)
           const _QuietNote(
@@ -258,17 +262,6 @@ class _VenueContentState extends State<_VenueContent> {
   }
 }
 
-/// "Doors 8PM · $10 · Foghorn Diet · Pigeon Court" for one upcoming show.
-String _gigSubtitle(Gig gig, Map<String, Band> bands) {
-  final doors = gig.doorsLabel.trim();
-  return [
-    if (doors.isNotEmpty) 'Doors $doors',
-    gig.free ? 'Free' : gig.priceLabel,
-    for (final bandId in gig.lineup)
-      if (bands[bandId] case final band?) band.name,
-  ].join(' · ');
-}
-
 String _venueTypeLabel(VenueType type) => switch (type) {
   VenueType.bar => 'Bar',
   VenueType.club => 'Club',
@@ -278,6 +271,32 @@ String _venueTypeLabel(VenueType type) => switch (type) {
   VenueType.private => 'Private',
   VenueType.other => 'Other',
 };
+
+class _VenuePhoto extends StatelessWidget {
+  const _VenuePhoto({required this.venue});
+
+  final Venue venue;
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = EpPanel(
+      key: const Key('venue-photo-placeholder'),
+      color: context.epColors.panel,
+      child: const Center(child: EpEyebrow('NO PHOTO YET')),
+    );
+    return AspectRatio(
+      aspectRatio: 16 / 9,
+      child: venue.photoUrls.isNotEmpty
+          ? EpNetworkImage(
+              key: const Key('venue-photo'),
+              url: venue.photoUrls.first,
+              fit: BoxFit.cover,
+              fallback: placeholder,
+            )
+          : placeholder,
+    );
+  }
+}
 
 class _VenueHeader extends StatelessWidget {
   const _VenueHeader({required this.venue});

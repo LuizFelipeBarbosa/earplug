@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
@@ -103,16 +104,25 @@ void main() {
     expect(find.byType(VenueMiniMap), findsOne);
     expect(find.textContaining('DOOR POLICY'), findsNothing);
     expect(find.textContaining('PAST EVENTS'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.textContaining('UPCOMING ·'),
+      200,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('venue-detail-content')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.pumpAndSettle();
     expect(find.textContaining('UPCOMING ·'), findsOne);
-    // Events are hairline gig rows, not the stacked fan card.
-    expect(find.byType(FanEventCard), findsNothing);
-    final rows = tester.widgetList<EpGigRow>(find.byType(EpGigRow)).toList();
-    expect(rows, isNotEmpty);
-    expect(rows.every((row) => row.trailing == null), isTrue);
-    final startsAt = rows.map((row) => row.date).toList();
+    final rows = tester
+        .widgetList<FanEventCard>(find.byType(FanEventCard))
+        .toList();
+    final venueGigs = DemoData.gigs.where((gig) => gig.venueId == 'v1');
+    expect(rows, hasLength(venueGigs.length));
+    final startsAt = rows.map((card) => card.gig.startsAt).toList();
     expect(startsAt, orderedEquals([...startsAt]..sort()));
 
-    final firstGigId = _gigIdOf(find.byType(EpGigRow).first, tester);
+    final firstGigId = rows.first.gig.id;
     await tester.tap(find.byKey(ValueKey('fan-event-$firstGigId')));
     await tester.pump();
     expect(harness.app.current.screen, Screen.gig);
@@ -168,7 +178,7 @@ void main() {
         ..returns(
           'venueDetail',
           VenueDetail(
-            venue: DemoData.venues['v1']!,
+            venue: DemoData.venues['v1']!.copyWith(photoUrls: const []),
             gigs: const [],
             bands: const {},
             truncated: false,
@@ -176,8 +186,62 @@ void main() {
         ),
       home: const Scaffold(body: VenueDetailScreen(venueId: 'v1')),
     );
+    expect(find.byKey(const Key('venue-photo-placeholder')), findsOne);
+    expect(find.byKey(const Key('venue-photo')), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('No performers announced yet.'),
+      200,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('venue-detail-content')),
+        matching: find.byType(Scrollable),
+      ),
+    );
     expect(find.text('Nothing on the calendar right now.'), findsOne);
     expect(find.text('No performers announced yet.'), findsOne);
+  });
+
+  testWidgets('venue detail renders its photo above the header', (
+    tester,
+  ) async {
+    const photoUrl = 'https://example.com/venue.jpg';
+    const imageProvider = CachedNetworkImageProvider(photoUrl);
+    final image = await tester.runAsync(() => createTestImage(cache: false));
+    // Seed a decoded image so this test does not depend on a network request.
+    imageCache.putIfAbsent(
+      imageProvider,
+      () =>
+          OneFrameImageStreamCompleter(Future.value(ImageInfo(image: image!))),
+    );
+    addTearDown(() => imageCache.evict(imageProvider));
+
+    final auth = FakeAuthService();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: StubRepository(auth: auth)
+        ..returns(
+          'venueDetail',
+          VenueDetail(
+            venue: DemoData.venues['v1']!.copyWith(photoUrls: const [photoUrl]),
+            gigs: const [],
+            bands: const {},
+            truncated: false,
+          ),
+        ),
+      home: const Scaffold(body: VenueDetailScreen(venueId: 'v1')),
+    );
+
+    final photo = find.byKey(const Key('venue-photo'));
+    expect(photo, findsOne);
+    expect(find.byKey(const Key('venue-photo-placeholder')), findsNothing);
+    expect(
+      tester.getBottomLeft(photo).dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const Key('venue-detail-hero'))).dy,
+      ),
+    );
+    final photoSize = tester.getSize(photo);
+    expect(photoSize.width / photoSize.height, closeTo(16 / 9, 0.001));
   });
 
   testWidgets('fan card exposes metadata and auth-gates save', (tester) async {
@@ -326,12 +390,6 @@ Finder _resultsScrollable() {
         matching: find.byType(Scrollable),
       )
       .first;
-}
-
-/// Venue events are keyed `fan-event-<gigId>`; read the id back off the row.
-String _gigIdOf(Finder row, WidgetTester tester) {
-  final key = tester.widget<EpGigRow>(row).key! as ValueKey<String>;
-  return key.value.substring('fan-event-'.length);
 }
 
 // Wrap the stub to preserve the integer calls getter; StubRepository.calls is a map.
