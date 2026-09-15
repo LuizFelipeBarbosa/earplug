@@ -75,10 +75,33 @@ void main() {
         findsOneWidget,
       );
       final colors = tester.element(overlay).epColors;
-      expect(tester.widget<Container>(overlay).color, colors.background);
+      final chip = tester.widget<Container>(overlay);
+      expect(chip.color, colors.accent);
+      expect(
+        chip.padding,
+        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      );
       final label = tester.widget<Text>(find.text('3 SHOWS'));
-      expect(label.style!.color, colors.ink);
+      expect(label.style!.color, Ep.ink);
+      expect(label.style!.fontSize, 12);
+      expect(
+        label.style!.fontFamily,
+        Theme.of(tester.element(overlay)).textTheme.epLabel.fontFamily,
+      );
       expect(label.maxLines, 1);
+      final position = tester.widget<Positioned>(
+        find.ancestor(of: overlay, matching: find.byType(Positioned)),
+      );
+      expect(position.left, 8);
+      expect(position.bottom, 8);
+      expect(position.top, isNull);
+      expect(position.right, isNull);
+      final mapRect = tester.getRect(find.byType(VenueMapPreview));
+      final overlayRect = tester.getRect(overlay);
+      expect(overlayRect.left, mapRect.left + 8);
+      expect(overlayRect.bottom, mapRect.bottom - 8);
+      expect(overlayRect.top, greaterThanOrEqualTo(mapRect.top));
+      expect(overlayRect.right, lessThanOrEqualTo(mapRect.right));
       expect(tester.takeException(), isNull);
     }
   });

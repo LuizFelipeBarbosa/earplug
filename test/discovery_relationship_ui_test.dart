@@ -115,8 +115,29 @@ void main() {
     expect(find.byKey(const Key('venue-map')), findsOne);
     expect(find.byKey(const Key('venue-address-line')), findsOne);
     expect(find.byKey(const Key('venue-area-line')), findsOne);
+    final mapRect = tester.getRect(find.byKey(const Key('venue-map')));
+    final content = find.byKey(const Key('venue-detail-content'));
+    final padding = tester
+        .widget<ListView>(content)
+        .padding!
+        .resolve(TextDirection.ltr);
+    final contentWidth = tester.getSize(content).width - padding.horizontal;
+    expect(mapRect.width, contentWidth);
+    expect(mapRect.height, closeTo(contentWidth / 2.5, 0.01));
+    for (final key in [
+      'venue-address-line',
+      'venue-detail-approx-note',
+      'venue-area-line',
+    ]) {
+      expect(tester.getTopLeft(find.byKey(Key(key))).dx, mapRect.left);
+    }
     expect(
-      tester.getTopLeft(find.byKey(const Key('venue-map'))).dy,
+      tester.getTopLeft(find.byKey(const Key('venue-address-line'))).dy -
+          mapRect.bottom,
+      closeTo(20, 0.01),
+    );
+    expect(
+      mapRect.top,
       lessThan(
         tester.getTopLeft(find.byKey(const Key('venue-detail-hero'))).dy,
       ),

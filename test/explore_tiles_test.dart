@@ -681,9 +681,25 @@ void main() {
       expect(tester.takeException(), isNull, reason: 'scale $scale');
       final tile = find.byType(ExploreVenueTile);
       final context = tester.element(tile);
+      final tileRect = tester.getRect(tile);
+      final mapRect = tester.getRect(find.byKey(const Key('venue-tile-map')));
+      final nameRect = tester.getRect(find.text(venue.name.toUpperCase()));
+      final areaRect = tester.getRect(find.text(venue.area));
+      expect(mapRect.width, tileRect.width);
+      expect(mapRect.height, tileRect.width / 2);
+      expect(nameRect.left, mapRect.left);
+      expect(areaRect.left, mapRect.left);
+      expect(nameRect.top - mapRect.bottom, 14);
+      final overlayRect = tester.getRect(
+        find.byKey(const Key('venue-map-overlay')),
+      );
+      expect(overlayRect.left, mapRect.left + 8);
+      expect(overlayRect.bottom, mapRect.bottom - 8);
+      expect(overlayRect.top, greaterThanOrEqualTo(mapRect.top));
+      expect(overlayRect.right, lessThanOrEqualTo(mapRect.right));
       expect(
-        tester.getSize(tile).height,
-        closeTo(exploreVenueRailHeight(context), 1),
+        tileRect.height,
+        closeTo(exploreVenueRailHeight(context), 0.01),
       );
     }
   });

@@ -988,9 +988,8 @@ class ExploreCollectionCard extends StatelessWidget {
 /// Layout constants shared by [ExploreVenueTile] and
 /// [exploreVenueRailHeight], so the venues rail matches the tile's fixed slots.
 const _venueTileWidth = 220.0;
-const _venueTileMapAspectRatio = 4 / 3;
-const _venueTilePaddingHorizontal = 8.0;
-const _venueTilePaddingTop = 6.0;
+const _venueTileMapAspectRatio = 2.0;
+const _venueTileMapTextGap = 14.0;
 const _venueTilePaddingBottom = 4.0;
 const _venueTileNameSize = 20.0;
 const _venueTileNameMaxLines = 2;
@@ -1023,7 +1022,7 @@ double exploreVenueRailHeight(BuildContext context) {
   const mapHeight = _venueTileWidth / _venueTileMapAspectRatio;
 
   return mapHeight +
-      _venueTilePaddingTop +
+      _venueTileMapTextGap +
       heights.nameHeight +
       _venueTileLineGap +
       heights.areaHeight +
@@ -1064,16 +1063,14 @@ class ExploreVenueTile extends StatelessWidget {
               VenueMapPreview(
                 key: const Key('venue-tile-map'),
                 venue: venue,
-                height: width * 3 / 4,
+                height: width / _venueTileMapAspectRatio,
                 overlayLabel:
                     '${entry.gigs.length} SHOW${entry.gigs.length == 1 ? '' : 'S'}',
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  _venueTilePaddingHorizontal,
-                  _venueTilePaddingTop,
-                  _venueTilePaddingHorizontal,
-                  _venueTilePaddingBottom,
+                padding: const EdgeInsets.only(
+                  top: _venueTileMapTextGap,
+                  bottom: _venueTilePaddingBottom,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

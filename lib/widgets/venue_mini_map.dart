@@ -68,19 +68,19 @@ class VenueMapPreview extends StatelessWidget {
             if (overlayLabel != null && overlayLabel!.isNotEmpty)
               Positioned(
                 left: 8,
-                top: 8,
+                bottom: 8,
                 child: Container(
                   key: const Key('venue-map-overlay'),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+                    horizontal: 10,
+                    vertical: 5,
                   ),
-                  color: context.epColors.background,
+                  color: context.epColors.accent,
                   child: Text(
                     overlayLabel!,
                     style: Theme.of(context).textTheme.epLabel.copyWith(
-                      fontSize: 11,
-                      color: context.epColors.ink,
+                      fontSize: 12,
+                      color: Ep.ink,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

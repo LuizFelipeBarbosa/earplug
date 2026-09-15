@@ -226,11 +226,11 @@ class _VenueContentState extends State<_VenueContent> {
             key: const Key('venue-map'),
             venue: venue,
             approximate: venue.exactAddress == null,
-            height: constraints.maxWidth * 9 / 16,
+            height: constraints.maxWidth / 2.5,
             overlayLabel: '${_gigs.length} SHOW${_gigs.length == 1 ? '' : 'S'}',
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 20),
         Text(
           venue.addr,
           key: const Key('venue-address-line'),
