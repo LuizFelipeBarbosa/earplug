@@ -979,6 +979,53 @@ void main() {
     expect(find.byKey(ValueKey('gig-cancelled-${gig.id}')), findsOneWidget);
   });
 
+  testWidgets('event row shows a hairline by default', (tester) async {
+    final gig = gigFixture(id: 'hairline-row', title: 'Live Music');
+    await tester.pumpWidget(
+      plain(
+        ExploreEventRow(
+          gig: gig,
+          venueName: 'The Foghorn',
+          lines: GigCardLines(
+            dateLine: 'WED, SEP 23 AT 8PM',
+            title: gig.title,
+            location: 'Southside',
+            price: gig.priceLabel,
+          ),
+          onTap: () {},
+        ),
+      ),
+    );
+
+    expect(find.byType(EpHairline), findsOneWidget);
+    expect(find.text('LIVE MUSIC'), findsOneWidget);
+  });
+
+  testWidgets('event row can hide its hairline while preserving content', (
+    tester,
+  ) async {
+    final gig = gigFixture(id: 'hairline-row', title: 'Live Music');
+    await tester.pumpWidget(
+      plain(
+        ExploreEventRow(
+          gig: gig,
+          venueName: 'The Foghorn',
+          lines: GigCardLines(
+            dateLine: 'WED, SEP 23 AT 8PM',
+            title: gig.title,
+            location: 'Southside',
+            price: gig.priceLabel,
+          ),
+          onTap: () {},
+          showHairline: false,
+        ),
+      ),
+    );
+
+    expect(find.byType(EpHairline), findsNothing);
+    expect(find.text('LIVE MUSIC'), findsOneWidget);
+  });
+
   testWidgets('event row supports supplied lines, sub, and thumbnail size', (
     tester,
   ) async {

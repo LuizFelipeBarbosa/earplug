@@ -60,6 +60,7 @@ class FanEventCard extends StatelessWidget {
     this.showDistance = false,
     this.trailingAction,
     this.showSaveAction = true,
+    this.showHairline = true,
     this.presentation = FanEventCardPresentation.compact,
     this.rowKey,
   });
@@ -71,6 +72,9 @@ class FanEventCard extends StatelessWidget {
 
   /// Whether compact cards fall back to save when [trailingAction] is absent.
   final bool showSaveAction;
+
+  /// Whether compact cards include a divider below the row.
+  final bool showHairline;
 
   final FanEventCardPresentation presentation;
   final Key? rowKey;
@@ -106,6 +110,7 @@ class FanEventCard extends StatelessWidget {
       saveAction:
           trailingAction ?? (showSaveAction ? actions.saveAction : null),
       onTap: () => app.openGig(gig.id),
+      showHairline: showHairline,
     );
     if (!app.isDiscoveryBoosted(gig)) return row;
     return Column(

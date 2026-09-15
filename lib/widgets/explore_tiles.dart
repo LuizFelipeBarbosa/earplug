@@ -204,12 +204,14 @@ class _ExploreHairlineRow extends StatelessWidget {
     required this.onTap,
     this.semanticLabel,
     this.minHeight = 44,
+    this.showHairline = true,
   });
 
   final Widget child;
   final VoidCallback? onTap;
   final String? semanticLabel;
   final double minHeight;
+  final bool showHairline;
 
   @override
   Widget build(BuildContext context) {
@@ -223,7 +225,7 @@ class _ExploreHairlineRow extends StatelessWidget {
             child: child,
           ),
         ),
-        const EpHairline(),
+        if (showHairline) const EpHairline(),
       ],
     );
     if (onTap == null) return content;
@@ -496,6 +498,7 @@ class ExploreEventRow extends StatelessWidget {
     this.saveAction,
     this.sub,
     this.thumbnailSize = 96,
+    this.showHairline = true,
   });
 
   final Gig gig;
@@ -505,6 +508,7 @@ class ExploreEventRow extends StatelessWidget {
   final Widget? saveAction;
   final String? sub;
   final double thumbnailSize;
+  final bool showHairline;
 
   @override
   Widget build(BuildContext context) {
@@ -549,6 +553,7 @@ class ExploreEventRow extends StatelessWidget {
       saveAction: saveAction,
       sub: sub,
       onTap: onTap,
+      showHairline: showHairline,
     );
   }
 }
@@ -631,6 +636,7 @@ class _EventRowBody extends StatelessWidget {
     this.priceChip,
     this.saveAction,
     this.sub,
+    this.showHairline = true,
   });
 
   final String id;
@@ -642,6 +648,7 @@ class _EventRowBody extends StatelessWidget {
   final Widget? priceChip;
   final Widget? saveAction;
   final String? sub;
+  final bool showHairline;
 
   @override
   Widget build(BuildContext context) {
@@ -711,6 +718,7 @@ class _EventRowBody extends StatelessWidget {
       semanticLabel: title,
       onTap: onTap,
       minHeight: 44,
+      showHairline: showHairline,
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,

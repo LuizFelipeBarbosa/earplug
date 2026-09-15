@@ -8,6 +8,7 @@ import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/accessibility.dart';
 import 'support/harness.dart';
 
 void main() {
@@ -438,6 +439,28 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('search content is vertically centered at 1.0x text scale', (
+    tester,
+  ) async {
+    await pumpApp(tester, home: const Scaffold(body: ExploreScreen()));
+    _expectSearchContentCentered(tester, hasText: false);
+
+    await tester.enterText(_searchField, 'Foghorn');
+    await tester.pumpAndSettle();
+    _expectSearchContentCentered(tester, hasText: true);
+  });
+
+  testWidgets('search content is vertically centered at 1.5x text scale', (
+    tester,
+  ) async {
+    await pumpApp(tester, home: scaledScreen(const ExploreScreen()));
+    _expectSearchContentCentered(tester, hasText: false);
+
+    await tester.enterText(_searchField, 'Foghorn');
+    await tester.pumpAndSettle();
+    _expectSearchContentCentered(tester, hasText: true);
+  });
 }
 
 Finder get _searchField => find.byKey(const Key('explore-search-field'));
@@ -453,3 +476,39 @@ Finder _scrollable(String mode) => find.descendant(
   of: find.byKey(ValueKey('explore-$mode')),
   matching: find.byType(Scrollable),
 );
+
+void _expectSearchContentCentered(
+  WidgetTester tester, {
+  required bool hasText,
+}) {
+  final container = find
+      .ancestor(
+        of: _searchField,
+        matching: find.byWidgetPredicate(
+          (widget) => widget is Container && widget.decoration is BoxDecoration,
+        ),
+      )
+      .first;
+  final centerY = tester.getRect(container).center.dy;
+  final editable = find.descendant(
+    of: _searchField,
+    matching: find.byType(EditableText),
+  );
+  expect(tester.getRect(editable).center.dy, closeTo(centerY, 1));
+  expect(
+    tester.getRect(find.byIcon(Icons.search)).center.dy,
+    closeTo(centerY, 1),
+  );
+  if (hasText) {
+    expect(
+      tester.getRect(find.byKey(const Key('explore-search-clear'))).center.dy,
+      closeTo(centerY, 1),
+    );
+  } else {
+    final hint = find.descendant(
+      of: _searchField,
+      matching: find.text('Events, bands, venues, places, tonight, free…'),
+    );
+    expect(tester.getRect(hint).center.dy, closeTo(centerY, 1));
+  }
+}

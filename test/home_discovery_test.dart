@@ -12,6 +12,7 @@ import 'package:earplug/services/location_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:earplug/widgets/map_view.dart';
@@ -251,6 +252,10 @@ void main() {
     await tester.tap(find.byKey(const Key('gig-marker-g1')));
     await tester.pumpAndSettle();
     final cardFinder = find.byKey(const ValueKey('map-gig-card-g1'));
+    expect(
+      find.descendant(of: cardFinder, matching: find.byType(EpHairline)),
+      findsNothing,
+    );
     expect(
       find.descendant(of: cardFinder, matching: find.byType(GigFlyer)),
       findsOne,

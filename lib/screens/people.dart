@@ -216,6 +216,7 @@ class _PeopleScreenState extends State<PeopleScreen> {
                   controller: _controller,
                   onChanged: _onQueryChanged,
                   textInputAction: TextInputAction.search,
+                  textAlignVertical: TextAlignVertical.center,
                   style: Theme.of(context).textTheme.epInput,
                   decoration: InputDecoration(
                     hintText: 'Search by name or email',

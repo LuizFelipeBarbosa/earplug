@@ -122,6 +122,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                   onChanged: (text) => _updateQuery(app, text),
                   onSubmitted: (text) => app.recordSearch(text),
                   textInputAction: TextInputAction.search,
+                  textAlignVertical: TextAlignVertical.center,
                   style: Theme.of(context).textTheme.epInput,
                   decoration: InputDecoration(
                     hintText: 'Events, bands, venues, places, tonight, free…',

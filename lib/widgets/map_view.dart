@@ -517,6 +517,7 @@ class _MapGigCard extends StatelessWidget {
             gig: gig,
             app: app,
             showDistance: true,
+            showHairline: false,
             rowKey: ValueKey('map-gig-${gig.id}'),
           ),
         ],
