@@ -266,8 +266,8 @@ void main() {
     );
     final cardRect = tester.getRect(cardFinder);
     final rowRect = tester.getRect(find.byKey(const ValueKey('map-gig-g1')));
-    expect(rowRect.left, closeTo(cardRect.left, 0.5));
-    expect(rowRect.right, closeTo(cardRect.right, 0.5));
+    expect(rowRect.left, closeTo(cardRect.left + 12, 0.5));
+    expect(rowRect.right, closeTo(cardRect.right - 12, 0.5));
     expect(rowRect.bottom, closeTo(cardRect.bottom, 0.5));
 
     await tester.tap(find.text('BASEMENT BLOWOUT'));
@@ -336,6 +336,11 @@ void main() {
           )
           .first,
     );
+    final cardRect = tester.getRect(
+      find.byKey(const ValueKey('map-gig-card-g2')),
+    );
+    expect(positionRect.left, closeTo(cardRect.left + 12, 0.5));
+    expect(thumbnailRect.left, closeTo(cardRect.left + 12, 0.5));
     expect(positionRect.left, closeTo(thumbnailRect.left, 0.5));
 
     expect(
