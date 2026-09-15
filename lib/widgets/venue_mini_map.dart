@@ -14,12 +14,14 @@ class VenueMapPreview extends StatelessWidget {
     this.height,
     this.overlayLabel,
     this.approximate = false,
+    this.showAttribution = true,
   });
 
   final Venue venue;
   final double? height;
   final String? overlayLabel;
   final bool approximate;
+  final bool showAttribution;
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +37,7 @@ class VenueMapPreview extends StatelessWidget {
             AbsorbPointer(
               child: EpMap(
                 tiles: EpMapTiles.raster,
+                showAttribution: showAttribution,
                 options: MapOptions(
                   initialCenter: point,
                   initialZoom: approximate ? 13 : 15,

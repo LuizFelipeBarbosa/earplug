@@ -29,6 +29,38 @@ Material _pillMaterial(WidgetTester tester) => tester.widget<Material>(
 );
 
 void main() {
+  testWidgets('section action aligns right and keeps a 44px tap target', (
+    tester,
+  ) async {
+    var tapped = false;
+    await _pump(
+      tester,
+      SizedBox(
+        width: 360,
+        child: EpSectionHeader(
+          label: 'This week',
+          action: 'See all',
+          onAction: () => tapped = true,
+        ),
+      ),
+    );
+
+    final header = find.byType(EpSectionHeader);
+    final action = find.text('SEE ALL');
+    final padding = tester.widget<EpSectionHeader>(header).padding;
+    expect(
+      tester.getRect(action).right,
+      closeTo(tester.getRect(header).right - padding.right, 0.5),
+    );
+    final buttonSize = tester.getSize(find.byType(TextButton));
+    expect(buttonSize.width, greaterThanOrEqualTo(44));
+    expect(buttonSize.height, greaterThanOrEqualTo(44));
+
+    await tester.tap(action);
+    expect(tapped, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('uppercase and original-case semantics', (tester) async {
     const label = 'Riptide Release Show';
     for (final widget in <Widget>[

@@ -535,6 +535,72 @@ class ExploreEventRow extends StatelessWidget {
         ),
       ),
     );
+    final dateLine = Text(
+      lines.dateLine,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: textTheme.epLabel.copyWith(
+        fontSize: 11,
+        fontWeight: FontWeight.w400,
+        color: context.epColors.muted,
+      ),
+    );
+    final textColumn = Column(
+      mainAxisSize: MainAxisSize.max,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (gig.lifecycle == GigLifecycle.cancelled) ...[
+          EpMonoText(
+            'CANCELLED',
+            key: ValueKey('gig-cancelled-${gig.id}'),
+            color: context.epColors.destructive,
+          ),
+          const SizedBox(height: 4),
+        ],
+        if (saveAction != null)
+          Padding(padding: const EdgeInsets.only(right: 44), child: dateLine)
+        else
+          dateLine,
+        const SizedBox(height: 8),
+        if (saveAction != null)
+          Padding(
+            padding: const EdgeInsets.only(right: 44),
+            child: EpDisplay(gig.title, size: 18, overflow: TextOverflow.clip),
+          )
+        else
+          EpDisplay(gig.title, size: 18, overflow: TextOverflow.clip),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                lines.location,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.epCaption.copyWith(
+                  color: context.epColors.muted,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _GigPriceChip(
+              gig: gig,
+              price: lines.price,
+              inkColor: context.epColors.ink,
+            ),
+          ],
+        ),
+        if (sub != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            sub!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: textTheme.epBody.copyWith(color: context.epColors.muted),
+          ),
+        ],
+      ],
+    );
     final row = _ExploreHairlineRow(
       semanticLabel: gig.title,
       onTap: onTap,
@@ -546,75 +612,15 @@ class ExploreEventRow extends StatelessWidget {
             poster,
             const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.max,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (gig.lifecycle == GigLifecycle.cancelled) ...[
-                    EpMonoText(
-                      'CANCELLED',
-                      key: ValueKey('gig-cancelled-${gig.id}'),
-                      color: context.epColors.destructive,
-                    ),
-                    const SizedBox(height: 4),
-                  ],
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          lines.dateLine,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: textTheme.epLabel.copyWith(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w400,
-                            color: context.epColors.muted,
-                          ),
-                        ),
-                      ),
-                      if (saveAction != null) ...[
-                        const SizedBox(width: 8),
-                        saveAction!,
+              child: saveAction == null
+                  ? textColumn
+                  : Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        textColumn,
+                        Positioned(top: 0, right: 0, child: saveAction!),
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  EpDisplay(gig.title, size: 18, overflow: TextOverflow.clip),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          lines.location,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: textTheme.epCaption.copyWith(
-                            color: context.epColors.muted,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      _GigPriceChip(
-                        gig: gig,
-                        price: lines.price,
-                        inkColor: context.epColors.ink,
-                      ),
-                    ],
-                  ),
-                  if (sub != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      sub!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: textTheme.epBody.copyWith(
-                        color: context.epColors.muted,
-                      ),
                     ),
-                  ],
-                ],
-              ),
             ),
           ],
         ),
@@ -1063,6 +1069,7 @@ class ExploreVenueTile extends StatelessWidget {
               VenueMapPreview(
                 key: const Key('venue-tile-map'),
                 venue: venue,
+                showAttribution: false,
                 height: width / _venueTileMapAspectRatio,
                 overlayLabel:
                     '${entry.gigs.length} SHOW${entry.gigs.length == 1 ? '' : 'S'}',

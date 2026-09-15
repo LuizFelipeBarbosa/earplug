@@ -3,6 +3,7 @@ import 'package:earplug/explore_ranking.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_map.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
@@ -1037,7 +1038,7 @@ void main() {
       final date = tester.getRect(find.text('WED, SEP 23 AT 8PM'));
       final action = tester.getRect(find.byKey(const Key('poster-save')));
       expect(action.top, closeTo(date.top, 0.1));
-      expect(action.left - date.right, closeTo(8, 0.1));
+      expect(date.right, lessThanOrEqualTo(action.left + 0.1));
       expect(action.right, closeTo(row.right, 0.1));
       expect(tester.takeException(), isNull, reason: 'scale $scale');
     }
@@ -1119,7 +1120,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('event row wraps a long title below the save action', (
+  testWidgets('event row wraps a long title with the original date gap', (
     tester,
   ) async {
     const title =
@@ -1158,10 +1159,12 @@ void main() {
       expect(titleText.softWrap, isTrue);
       expect(titleText.style?.fontSize, 18);
       expect(titleText.overflow, TextOverflow.clip);
-      expect(
-        tester.getRect(titleFinder).top,
-        greaterThan(tester.getRect(find.byType(ExploreCardIconButton)).bottom),
-      );
+      final titleRect = tester.getRect(titleFinder);
+      final dateRect = tester.getRect(find.text('WED, SEP 23 AT 8PM'));
+      expect(titleRect.top - dateRect.bottom, closeTo(8, 0.1));
+      expect(titleRect.left, closeTo(dateRect.left, 0.1));
+      final buttonRect = tester.getRect(find.byType(ExploreCardIconButton));
+      expect(titleRect.right, lessThanOrEqualTo(buttonRect.left + 0.1));
       expect(find.byType(ExploreLineupRow), findsNothing);
     }
   });
@@ -1715,6 +1718,13 @@ void main() {
       expect(find.textContaining('SEP'), findsNothing);
       expect(find.text('1 SHOW'), findsOneWidget);
       expect(find.byKey(const Key('venue-tile-map')), findsOneWidget);
+      final map = tester.widget<EpMap>(
+        find.descendant(
+          of: find.byKey(const Key('venue-tile-map')),
+          matching: find.byType(EpMap),
+        ),
+      );
+      expect(map.showAttribution, isFalse);
       expect(find.byKey(const Key('venue-map-overlay')), findsOneWidget);
       expect(
         find.descendant(

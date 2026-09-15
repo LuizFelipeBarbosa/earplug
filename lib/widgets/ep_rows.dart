@@ -715,6 +715,10 @@ class EpSectionHeader extends StatelessWidget {
               style: TextButton.styleFrom(
                 foregroundColor: context.epColors.ink,
                 textStyle: Theme.of(context).textTheme.epChipLabel,
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(44, 44),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                alignment: Alignment.centerRight,
               ),
               child: EpMonoText(action!),
             ),

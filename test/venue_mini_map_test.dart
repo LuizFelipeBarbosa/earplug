@@ -1,5 +1,6 @@
 import 'package:earplug/models.dart';
 import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/ep_map.dart';
 import 'package:earplug/widgets/venue_mini_map.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -28,6 +29,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(FlutterMap), findsOneWidget);
+    expect(tester.widget<EpMap>(find.byType(EpMap)).showAttribution, isTrue);
     final map = tester.widget<FlutterMap>(find.byType(FlutterMap));
     expect(map.options.initialCenter, venue.point);
     expect(map.options.initialZoom, 15);
@@ -40,6 +42,16 @@ void main() {
     expect(markers, hasLength(1));
     expect(markers.single.point, venue.point);
     expect(tester.getSize(find.byType(VenueMapPreview)).height, 160);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('can hide map attribution', (tester) async {
+    await tester.pumpWidget(
+      plain(const VenueMapPreview(venue: venue, showAttribution: false)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<EpMap>(find.byType(EpMap)).showAttribution, isFalse);
     expect(tester.takeException(), isNull);
   });
 
