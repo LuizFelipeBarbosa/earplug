@@ -206,9 +206,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
         );
       } else {
         final home = app.exploreHome;
-        final friendsByGig = {
-          for (final entry in app.friendsGoing) entry.gig.id: entry.friends,
-        };
         if (home.featured.isNotEmpty) {
           slivers.add(
             SliverToBoxAdapter(
@@ -233,17 +230,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     itemCount: home.featured.length,
                     itemBuilder: (_, i) {
                       final gig = home.featured[i];
-                      return ExploreFeaturedCard(
+                      return FanEventCard(
                         key: Key('explore-featured-${gig.id}'),
+                        rowKey: Key('explore-featured-${gig.id}'),
                         gig: gig,
-                        venueName: app.venue(gig.venueId).name,
-                        info: compactGigInfo(gig, app, showDistance: true),
-                        lineup: exploreLineupFor(gig, app),
-                        actions: gigCardActions(context, gig, app, ring: false),
-                        onTap: () => app.openGig(gig.id),
-                        width: extent,
-                        height: height,
-                        friends: friendsByGig[gig.id] ?? const [],
+                        app: app,
+                        presentation: FanEventCardPresentation.featured,
+                        showDistance: true,
                       );
                     },
                   );
@@ -270,7 +263,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     gig: gig,
                     app: app,
                     showDistance: true,
-                    friends: friendsByGig[gig.id] ?? const [],
                     rowKey: Key('explore-for-you-${gig.id}'),
                   ),
                 );

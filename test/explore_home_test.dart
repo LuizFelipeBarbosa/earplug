@@ -1,15 +1,11 @@
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/repository.dart';
-import 'package:earplug/date_names.dart';
-import 'package:earplug/flyer_styles.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_rows.dart';
-import 'package:earplug/widgets/explore_friends.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
-import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
@@ -145,15 +141,6 @@ Future<void> _scrollTo(WidgetTester tester, Finder target) async {
   await tester.pumpAndSettle();
 }
 
-SocialGraph _social({bool friend = true}) => SocialGraph(
-  following: friend ? {'u1'} : {},
-  followers: friend ? {'u1'} : {},
-  friends: friend ? {'u1'} : {},
-  followingCount: friend ? 1 : 0,
-  followerCount: friend ? 1 : 0,
-  truncated: false,
-  shareRsvpsWithFriends: true,
-);
 FriendsGoing _friendsFor(List<String> ids) => FriendsGoing(
   entries: [
     for (var i = 0; i < ids.length; i++)
@@ -192,11 +179,13 @@ void main() {
       );
       final rail = find.byKey(const Key('explore-featured'));
       expect(rail, findsOneWidget);
-      expect(
-        find.byKey(const Key('explore-featured-gFollowed')),
-        findsOneWidget,
+      Finder featuredCard(String id) => find.byWidgetPredicate(
+        (widget) =>
+            widget is ExploreFeaturedCard &&
+            widget.key == Key('explore-featured-$id'),
       );
-      final followedCard = find.byKey(const Key('explore-featured-gFollowed'));
+      expect(featuredCard('gFollowed'), findsOneWidget);
+      final followedCard = featuredCard('gFollowed');
       final cardRect = tester.getRect(followedCard);
       for (final action in ['save', 'share']) {
         final button = find.descendant(
@@ -213,66 +202,56 @@ void main() {
             ),
           ),
         );
-        expect(glyph.color, flyerStyles['paper']!.fg);
+        expect(glyph.color, Ep.ink);
         expect(glyph.shadows, isNull);
         final rect = tester.getRect(button);
         expect(rect.size, const Size(28, 28));
         expect(rect.top - cardRect.top, closeTo(8, 1));
         expect(
           cardRect.right - rect.right,
-          closeTo(action == 'share' ? 8 : 8 + 28 + 4, 1),
+          closeTo(action == 'save' ? 8 : 8 + 28 + 4, 1),
         );
         expect(rect.right, greaterThan(cardRect.center.dx));
       }
       final gig = _gigs.first;
-      final date =
-          '${gig.startsAt.day} ${monthNamesUpper[gig.startsAt.month - 1]}';
-      final info = find.descendant(
-        of: followedCard,
-        matching: find.byWidgetPredicate(
-          (widget) =>
-              widget is Text &&
-              widget.textSpan?.toPlainText().contains(date) == true &&
-              widget.textSpan?.toPlainText().contains('FREE') == true,
-        ),
-      );
-      expect(info, findsOneWidget);
-      final legacyMeta = compactGigMeta(gig, h.app, showDistance: true);
-      final venueLine =
-          '${h.app.venue(gig.venueId).name} · doors ${gig.doorsLabel}';
       expect(
         find.descendant(
           of: followedCard,
-          matching: find.byWidgetPredicate(
-            (widget) =>
-                widget is Text &&
-                (widget.data == legacyMeta.toUpperCase() ||
-                    widget.data == venueLine.toUpperCase()),
-          ),
+          matching: find.text('TUE, JAN 6 AT ${gig.doorsLabel}'),
         ),
-        findsNothing,
-      );
-      expect(
-        find.descendant(of: followedCard, matching: find.text('Followed Band')),
         findsOneWidget,
       );
-      expect(find.byKey(const Key('explore-featured-gSaved')), findsOneWidget);
-      expect(find.byKey(const Key('explore-featured-gWeekend')), findsNothing);
+      expect(
+        find.descendant(
+          of: followedCard,
+          matching: find.byKey(ValueKey('gig-price-${gig.id}')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: followedCard, matching: find.text('FREE')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: followedCard,
+          matching: find.text(gig.title.toUpperCase()),
+        ),
+        findsOneWidget,
+      );
+      expect(featuredCard('gSaved'), findsOneWidget);
+      expect(featuredCard('gWeekend'), findsNothing);
 
       // One landscape card spans the width; the next one peeks in on the right.
       final viewportWidth =
           tester.view.physicalSize.width / tester.view.devicePixelRatio;
-      final first = tester.getSize(
-        find.byKey(const Key('explore-featured-gFollowed')),
-      );
+      final first = tester.getSize(followedCard);
       expect(first.width, closeTo(viewportWidth - EpLayout.gutter - 36, 1));
       expect(first.height, lessThan(first.width));
-      final secondLeft = tester
-          .getTopLeft(find.byKey(const Key('explore-featured-gSaved')))
-          .dx;
+      final secondLeft = tester.getTopLeft(featuredCard('gSaved')).dx;
       expect(secondLeft, lessThan(viewportWidth));
 
-      await tester.tap(find.byKey(const Key('explore-featured-gFollowed')));
+      await tester.tap(followedCard);
       expect(h.app.current.screen, Screen.gig);
       expect(h.app.current.param, 'gFollowed');
     },
@@ -324,20 +303,19 @@ void main() {
       final row = find.byKey(const Key('explore-for-you-gWeekend'));
       expect(
         find.descendant(of: row, matching: find.byType(EpAvatarTile)),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
-        find.descendant(of: row, matching: find.text('Followed Band')),
+        find.descendant(
+          of: row,
+          matching: find.text(weekendGig.title.toUpperCase()),
+        ),
         findsOneWidget,
       );
       expect(
         find.descendant(
           of: row,
-          matching: find.textContaining(
-            '${weekendGig.startsAt.day} '
-            '${monthNamesUpper[weekendGig.startsAt.month - 1]} · '
-            '${weekendGig.doorsLabel}',
-          ),
+          matching: find.text('SAT, JAN 10 AT ${weekendGig.doorsLabel}'),
         ),
         findsOneWidget,
       );
@@ -368,44 +346,6 @@ void main() {
     await tester.tap(find.byKey(const Key('explore-for-you-gWeekend')));
     expect(h.app.current.screen, Screen.gig);
     expect(h.app.current.param, 'gWeekend');
-  });
-
-  testWidgets('featured card shows a friends cue', (tester) async {
-    await _pumpExplore(
-      tester,
-      signedIn: true,
-      gigs: _gigs,
-      bands: _bands,
-      social: _social(),
-      friends: _friendsFor(const ['gWeekend']),
-    );
-    final card = find.byKey(const Key('explore-featured-gWeekend'));
-    await _scrollTo(tester, card);
-    expect(
-      find.descendant(of: card, matching: find.byType(ExploreAvatarStack)),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('just for you row shows a friends cue', (tester) async {
-    // Friends attend the featured pair too, so the +6 friend weight cannot
-    // promote gLater out of Just for you.
-    final h = await _pumpExplore(
-      tester,
-      signedIn: true,
-      gigs: _gigs,
-      bands: _bands,
-      followed: const {'bFollow'},
-      saved: const {'gSaved'},
-      friends: _friendsFor(const ['gFollowed', 'gSaved', 'gLater']),
-    );
-    expect(h.app.exploreHome.forYou.map((gig) => gig.id), contains('gLater'));
-    final row = find.byKey(const Key('explore-for-you-gLater'));
-    await _scrollTo(tester, row);
-    expect(
-      find.descendant(of: row, matching: find.byType(ExploreAvatarStack)),
-      findsOneWidget,
-    );
   });
 
   testWidgets('a friends attending gig outranks an otherwise equal gig', (

@@ -7,6 +7,7 @@ import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
@@ -328,10 +329,15 @@ void main() {
     );
     final carousel = find.byKey(const Key('explore-featured'));
     expect(carousel, findsOne);
-    expect(find.byKey(const Key('explore-featured-g1')), findsOne);
-    expect(find.byKey(const Key('explore-featured-g2')), findsOne);
-    expect(find.byKey(const Key('explore-featured-g3')), findsNothing);
-    await tester.tap(find.byKey(const Key('explore-featured-g1')));
+    Finder featuredCard(String id) => find.byWidgetPredicate(
+      (widget) =>
+          widget is ExploreFeaturedCard &&
+          widget.key == Key('explore-featured-$id'),
+    );
+    expect(featuredCard('g1'), findsOne);
+    expect(featuredCard('g2'), findsOne);
+    expect(featuredCard('g3'), findsNothing);
+    await tester.tap(featuredCard('g1'));
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.gig);
   });

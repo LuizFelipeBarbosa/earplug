@@ -269,29 +269,18 @@ void main() {
     );
 
     expect(find.text(gig.title.toUpperCase()), findsWidgets);
-    // Date/time, distance, and price render as structured info spans; lineup
-    // chips show the first band and expose a see-all affordance when needed.
+    // The simplified card shows the date line, the location and the price
+    // chip; the lineup and the venue address live on the gig page.
     expect(find.textContaining(gig.doorsLabel), findsOne);
     expect(find.textContaining('FREE'), findsOne);
     expect(find.textContaining('DOORS ${gig.doorsLabel}'), findsNothing);
     expect(find.textContaining(gig.ageRequirement.label), findsNothing);
-    expect(find.textContaining('Mission Creep'), findsOne);
-    expect(find.byKey(const Key('lineup-see-all')), findsOne);
-    expect(
-      find.descendant(
-        of: find.byType(FanEventCard),
-        matching: find.byType(EpAvatarTile),
-      ),
-      findsWidgets,
-    );
+    expect(find.byKey(const Key('lineup-see-all')), findsNothing);
+    expect(find.byKey(ValueKey('share-${gig.id}')), findsNothing);
     expect(
       find.textContaining(DemoData.venues[gig.venueId]!.addr),
       findsNothing,
     );
-
-    await tester.tap(find.byKey(ValueKey('share-${gig.id}')));
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(find.textContaining('Link copied'), findsOne);
 
     await tester.tap(find.byKey(ValueKey('save-${gig.id}')));
     await tester.pump();

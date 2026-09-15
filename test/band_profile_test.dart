@@ -897,7 +897,7 @@ void main() {
             expect(rect.top, greaterThanOrEqualTo(previousBottom));
           }
           previousBottom = rect.bottom;
-          for (final action in ['save', 'share']) {
+          for (final action in ['save']) {
             expect(
               find.descendant(
                 of: row,
@@ -907,6 +907,7 @@ void main() {
             );
           }
           expect(find.byKey(ValueKey('ticket-action-$id')), findsNothing);
+          expect(find.byKey(ValueKey('share-$id')), findsNothing);
         }
 
         final firstRow = find.byKey(ValueKey('fan-event-${upcoming.first}'));

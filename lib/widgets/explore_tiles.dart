@@ -261,20 +261,6 @@ class ExploreLineupWrap extends StatelessWidget {
   );
 }
 
-class ExploreGigInfo {
-  const ExploreGigInfo({
-    required this.price,
-    required this.date,
-    required this.time,
-    this.distance,
-  });
-
-  final String price;
-  final String date;
-  final String time;
-  final String? distance;
-}
-
 class ExploreLineupRow extends StatelessWidget {
   const ExploreLineupRow({
     super.key,

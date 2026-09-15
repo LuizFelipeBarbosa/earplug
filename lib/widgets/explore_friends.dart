@@ -6,6 +6,7 @@ import 'common.dart';
 import 'ep_rows.dart';
 import 'ep_text.dart';
 import 'explore_tiles.dart';
+import 'fan_event_card.dart';
 
 String friendsGoingLine(List<SocialUserCard> friends) {
   if (friends.isEmpty) return 'No friends are going';
@@ -29,7 +30,7 @@ class ExploreFriendsSection extends StatelessWidget {
     required this.onFindPeople,
     required this.onSignIn,
     required this.onOpenGig,
-    required this.venueLine,
+    required this.lines,
     this.onSeeAll,
     this.previewCount = 3,
     this.title = 'THIS WEEKEND · FRIENDS',
@@ -41,7 +42,7 @@ class ExploreFriendsSection extends StatelessWidget {
   final VoidCallback onFindPeople;
   final VoidCallback onSignIn;
   final void Function(String gigId) onOpenGig;
-  final String Function(Gig gig) venueLine;
+  final GigCardLines Function(Gig gig) lines;
   final VoidCallback? onSeeAll;
   final int previewCount;
   final String title;
@@ -86,8 +87,8 @@ class ExploreFriendsSection extends StatelessWidget {
                 ExploreEventRow(
                   key: Key('explore-friends-gig-${entry.gig.id}'),
                   gig: entry.gig,
-                  venueName: venueLine(entry.gig),
-                  trailing: ExploreAvatarStack(people: entry.friends),
+                  venueName: lines(entry.gig).location,
+                  lines: lines(entry.gig),
                   sub: friendsGoingLine(entry.friends),
                   onTap: () => onOpenGig(entry.gig.id),
                 ),

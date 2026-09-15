@@ -665,7 +665,9 @@ void main() {
     expect(find.byType(GigFlyer), findsOneWidget);
     expect(
       find.textContaining(
-        '${gig.startsAt.day} ${monthNamesUpper[gig.startsAt.month - 1]}',
+        '${weekdayNamesUpper[gig.startsAt.weekday - 1]}, '
+        '${monthNamesUpper[gig.startsAt.month - 1]} ${gig.startsAt.day} '
+        'AT ${gig.doorsLabel}',
       ),
       findsOne,
     );
@@ -676,7 +678,7 @@ void main() {
         of: find.byType(FanEventCard),
         matching: find.byType(EpAvatarTile),
       ),
-      findsWidgets,
+      findsNothing,
     );
     expect(
       find.textContaining(gig.ageRequirement.label.toUpperCase()),
@@ -684,7 +686,7 @@ void main() {
     );
     expect(find.textContaining('${gig.going} GOING'), findsNothing);
     expect(find.byKey(ValueKey('save-${gig.id}')), findsOne);
-    expect(find.byKey(ValueKey('share-${gig.id}')), findsOne);
+    expect(find.byKey(ValueKey('share-${gig.id}')), findsNothing);
     expect(harness.app.rsvps, isNot(contains(gig.id)));
     expect(find.byKey(ValueKey('discovery-boost-${gig.id}')), findsOne);
     expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
@@ -725,7 +727,7 @@ void main() {
       expect(rect.top - cardRect.top, closeTo(8, 1));
       expect(
         cardRect.right - rect.right,
-        closeTo(action == 'share' ? 8 : 8 + 28 + 4, 1),
+        closeTo(action == 'save' ? 8 : 8 + 28 + 4, 1),
       );
       expect(rect.right, greaterThan(cardRect.center.dx));
     }

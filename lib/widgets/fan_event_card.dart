@@ -58,7 +58,6 @@ class FanEventCard extends StatelessWidget {
     this.showDistance = false,
     this.trailingAction,
     this.presentation = FanEventCardPresentation.compact,
-    this.friends = const <SocialUserCard>[],
     this.rowKey,
   });
 
@@ -67,7 +66,6 @@ class FanEventCard extends StatelessWidget {
   final bool showDistance;
   final Widget? trailingAction;
   final FanEventCardPresentation presentation;
-  final List<SocialUserCard> friends;
   final Key? rowKey;
 
   @override
@@ -80,7 +78,7 @@ class FanEventCard extends StatelessWidget {
           final width = constraints.maxWidth;
           final height = (width * 0.6).roundToDouble();
           return ExploreFeaturedCard(
-            key: ValueKey('fan-event-${gig.id}'),
+            key: rowKey ?? ValueKey('fan-event-${gig.id}'),
             gig: gig,
             venueName: venue.name,
             lines: lines,
@@ -139,40 +137,6 @@ List<Widget> gigCardActions(
     iconShadows: iconShadows,
   );
   return [actions.shareAction(context), actions.saveAction];
-}
-
-// Retained for the Explore carousel and its tests until their call sites migrate.
-String compactGigMeta(Gig gig, AppState app, {required bool showDistance}) {
-  final info = compactGigInfo(gig, app, showDistance: showDistance);
-  return [info.date, info.time, info.price, ?info.distance].join(' · ');
-}
-
-ExploreGigInfo compactGigInfo(
-  Gig gig,
-  AppState app, {
-  required bool showDistance,
-}) {
-  final venue = app.venue(gig.venueId);
-  final lines = gigCardLines(gig, app, showDistance: showDistance);
-  return ExploreGigInfo(
-    price: lines.price,
-    date: _metaDateLabel(gig),
-    time: gig.doorsLabel,
-    distance: showDistance ? _distanceLabel(app.distanceOf(venue)) : null,
-  );
-}
-
-String _metaDateLabel(Gig gig) =>
-    '${gig.startsAt.day} ${monthNamesUpper[gig.startsAt.month - 1]}';
-
-/// Reformats a distance such as "3.4 mi" as "3.4 MI" or "11 MI".
-String _distanceLabel(String raw) {
-  final miles = double.tryParse(raw.split(' ').first);
-  if (miles == null) return raw.toUpperCase();
-  final value = miles < 10
-      ? miles.toStringAsFixed(1)
-      : miles.round().toString();
-  return '$value MI';
 }
 
 /// Compact save control and an optional caller-supplied action.

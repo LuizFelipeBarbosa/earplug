@@ -3,6 +3,7 @@ import 'package:earplug/models.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/explore_friends.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
+import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,7 +27,12 @@ void main() {
           onFindPeople: () {},
           onSignIn: () => tapped = true,
           onOpenGig: (_) {},
-          venueLine: (_) => 'Venue',
+          lines: (_) => const GigCardLines(
+            dateLine: 'WED, SEP 23 AT 8PM',
+            title: 'Show',
+            location: 'Venue',
+            price: 'FREE',
+          ),
         ),
       ),
     );
@@ -46,7 +52,12 @@ void main() {
           onFindPeople: () => tapped = true,
           onSignIn: () {},
           onOpenGig: (_) {},
-          venueLine: (_) => 'Venue',
+          lines: (_) => const GigCardLines(
+            dateLine: 'WED, SEP 23 AT 8PM',
+            title: 'Show',
+            location: 'Venue',
+            price: 'FREE',
+          ),
         ),
       ),
     );
@@ -65,7 +76,12 @@ void main() {
           onFindPeople: () => tapped = true,
           onSignIn: () {},
           onOpenGig: (_) {},
-          venueLine: (_) => 'Venue',
+          lines: (_) => const GigCardLines(
+            dateLine: 'WED, SEP 23 AT 8PM',
+            title: 'Show',
+            location: 'Venue',
+            price: 'FREE',
+          ),
         ),
       ),
     );
@@ -74,9 +90,7 @@ void main() {
     expect(tapped, isTrue);
   });
 
-  testWidgets('renders friend rows, sublines, avatars and see all', (
-    tester,
-  ) async {
+  testWidgets('renders friend rows, sublines and see all', (tester) async {
     final entries = [
       (gig: gig, friends: [person('a', 'Maya')]),
       (
@@ -105,7 +119,12 @@ void main() {
           onFindPeople: () {},
           onSignIn: () {},
           onOpenGig: (id) => opened = id,
-          venueLine: (_) => 'Venue',
+          lines: (_) => const GigCardLines(
+            dateLine: 'WED, SEP 23 AT 8PM',
+            title: 'Show',
+            location: 'Venue',
+            price: 'FREE',
+          ),
           onSeeAll: () => seeAll = true,
         ),
       ),
@@ -116,7 +135,6 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(ExploreEventRow), findsNWidgets(2));
-    expect(find.byType(ExploreAvatarStack), findsNWidgets(2));
     expect(find.text('Maya is going'), findsOneWidget);
     expect(find.text('Maya and Dev are going'), findsOneWidget);
     expect(find.text('SEE ALL'), findsOneWidget);
@@ -150,7 +168,12 @@ void main() {
               onFindPeople: () {},
               onSignIn: () {},
               onOpenGig: (_) {},
-              venueLine: (_) => 'Venue',
+              lines: (_) => const GigCardLines(
+                dateLine: 'WED, SEP 23 AT 8PM',
+                title: 'Show',
+                location: 'Venue',
+                price: 'FREE',
+              ),
             ),
           ),
         ),

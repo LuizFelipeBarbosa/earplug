@@ -243,7 +243,6 @@ class _VenueContentState extends State<_VenueContent> {
               gig: gig,
               app: app,
               showDistance: true,
-              friends: const [],
               rowKey: ValueKey('fan-event-${gig.id}'),
             ),
         if (detail.truncated)
