@@ -28,7 +28,9 @@ from misconfiguration.
 | Config file | `config/dev.json` | `config/prod.json` |
 
 `Env.configurationError` (`lib/env.dart`) refuses to start on a mismatched
-pair, naming both sides. Non-production builds carry a `DEV` corner ribbon.
+pair, naming both sides. Non-production builds are not visually distinguished
+in the UI; they are identified only by the Convex deployment, Clerk instance,
+and config file they are built against, as listed in the table above.
 `decisive-iguana-759` is also named literally in `lib/env.dart` as the one
 production deployment — if it ever changes, change it there too or the guard
 checks the wrong name.

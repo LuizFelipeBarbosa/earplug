@@ -496,26 +496,12 @@ class EarplugApp extends StatelessWidget {
           themeAnimationDuration: kIsWeb
               ? Duration.zero
               : const Duration(milliseconds: 180),
-          // A corner ribbon on everything that is not production, so which
-          // dataset you are looking at is never a guess.
           builder: (context, child) {
             final app = child ?? const SizedBox.shrink();
-            final label = _environmentRibbon();
-            final wrappedApp = label == null
-                ? app
-                : Banner(
-                    message: label,
-                    location: BannerLocation.topEnd,
-                    color: context.epColors.accent,
-                    textStyle: Theme.of(context).textTheme.epChipLabel.copyWith(
-                      color: context.epColors.onAccent,
-                    ),
-                    child: app,
-                  );
-            if (!PerfOverlay.enabled) return wrappedApp;
+            if (!PerfOverlay.enabled) return app;
             return Stack(
               children: [
-                wrappedApp,
+                app,
                 PerfOverlay(
                   marks: webShell.marks,
                   extraStats: ConvexService.debugStats,
@@ -572,12 +558,6 @@ class _FeedReadyMarkerState extends State<_FeedReadyMarker> {
 
   @override
   Widget build(BuildContext context) => widget.child;
-}
-
-/// Null in production, so the live app carries no ribbon.
-String? _environmentRibbon() {
-  if (Env.demo) return 'DEMO';
-  return Env.convexTier == DeploymentTier.development ? 'DEV' : null;
 }
 
 class RootShell extends StatelessWidget {
