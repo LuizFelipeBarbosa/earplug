@@ -207,7 +207,7 @@ class _ExploreHairlineRow extends StatelessWidget {
   });
 
   final Widget child;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final String? semanticLabel;
   final double minHeight;
 
@@ -226,6 +226,7 @@ class _ExploreHairlineRow extends StatelessWidget {
         const EpHairline(),
       ],
     );
+    if (onTap == null) return content;
     return Semantics(
       button: true,
       label: semanticLabel,
@@ -509,7 +510,6 @@ class ExploreEventRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = flyerStyles[gig.flyKey] ?? flyerStyles['paper']!;
     final imageUrl = gig.flyerUrl;
-    final textTheme = Theme.of(context).textTheme;
     final poster = SizedBox(
       width: thumbnailSize,
       // The row stretches the poster to the text height; the poster must not
@@ -535,6 +535,117 @@ class ExploreEventRow extends StatelessWidget {
         ),
       ),
     );
+    return _EventRowBody(
+      id: gig.id,
+      title: gig.title,
+      lines: lines,
+      cancelled: gig.lifecycle == GigLifecycle.cancelled,
+      thumbnail: poster,
+      priceChip: _GigPriceChip(
+        gig: gig,
+        price: lines.price,
+        inkColor: context.epColors.ink,
+      ),
+      saveAction: saveAction,
+      sub: sub,
+      onTap: onTap,
+    );
+  }
+}
+
+/// Snapshot counterpart to [ExploreEventRow], without saved-event controls.
+class ExploreEventSnapshotRow extends StatelessWidget {
+  const ExploreEventSnapshotRow({
+    super.key,
+    required this.id,
+    required this.lines,
+    this.flyerUrl,
+    this.flyKey,
+    this.onTap,
+  });
+
+  final String id;
+  final GigCardLines lines;
+  final String? flyerUrl;
+  final String? flyKey;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    const thumbnailSize = 96.0;
+    final style = flyerStyles[flyKey] ?? flyerStyles['paper']!;
+    final poster = SizedBox(
+      width: thumbnailSize,
+      height: 0,
+      child: EpNetworkImage(
+        url: flyerUrl,
+        fit: BoxFit.cover,
+        cacheWidth: thumbnailSize.round(),
+        fallback: SizedBox.expand(
+          child: SizedBox(
+            height: thumbnailSize,
+            child: FittedBox(
+              fit: BoxFit.cover,
+              clipBehavior: Clip.hardEdge,
+              child: SizedBox(
+                width: 240,
+                height: 300,
+                child: FlyerBox(style: style),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return _EventRowBody(
+      id: id,
+      title: lines.title,
+      lines: lines,
+      cancelled: false,
+      thumbnail: poster,
+      priceChip: lines.price.isEmpty
+          ? null
+          : Text(
+              lines.price.toUpperCase(),
+              key: ValueKey('snapshot-price-$id'),
+              textAlign: TextAlign.right,
+              style: Theme.of(context).textTheme.epChipLabel.copyWith(
+                fontSize: 13,
+                color: context.epColors.ink,
+              ),
+            ),
+      onTap: onTap,
+    );
+  }
+}
+
+/// Shared layout for full gigs and historical event snapshots.
+class _EventRowBody extends StatelessWidget {
+  const _EventRowBody({
+    required this.id,
+    required this.title,
+    required this.lines,
+    required this.cancelled,
+    required this.thumbnail,
+    required this.onTap,
+    this.priceChip,
+    this.saveAction,
+    this.sub,
+  });
+
+  final String id;
+  final String title;
+  final GigCardLines lines;
+  final bool cancelled;
+  final Widget thumbnail;
+  final VoidCallback? onTap;
+  final Widget? priceChip;
+  final Widget? saveAction;
+  final String? sub;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
     final dateLine = Text(
       lines.dateLine,
       maxLines: 1,
@@ -549,10 +660,10 @@ class ExploreEventRow extends StatelessWidget {
       mainAxisSize: MainAxisSize.max,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (gig.lifecycle == GigLifecycle.cancelled) ...[
+        if (cancelled) ...[
           EpMonoText(
             'CANCELLED',
-            key: ValueKey('gig-cancelled-${gig.id}'),
+            key: ValueKey('gig-cancelled-$id'),
             color: context.epColors.destructive,
           ),
           const SizedBox(height: 4),
@@ -565,10 +676,10 @@ class ExploreEventRow extends StatelessWidget {
         if (saveAction != null)
           Padding(
             padding: const EdgeInsets.only(right: 44),
-            child: EpDisplay(gig.title, size: 18, overflow: TextOverflow.clip),
+            child: EpDisplay(title, size: 18, overflow: TextOverflow.clip),
           )
         else
-          EpDisplay(gig.title, size: 18, overflow: TextOverflow.clip),
+          EpDisplay(title, size: 18, overflow: TextOverflow.clip),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -582,12 +693,7 @@ class ExploreEventRow extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            _GigPriceChip(
-              gig: gig,
-              price: lines.price,
-              inkColor: context.epColors.ink,
-            ),
+            if (priceChip != null) ...[const SizedBox(width: 8), priceChip!],
           ],
         ),
         if (sub != null) ...[
@@ -602,14 +708,14 @@ class ExploreEventRow extends StatelessWidget {
       ],
     );
     final row = _ExploreHairlineRow(
-      semanticLabel: gig.title,
+      semanticLabel: title,
       onTap: onTap,
       minHeight: 44,
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            poster,
+            thumbnail,
             const SizedBox(width: 12),
             Expanded(
               child: saveAction == null

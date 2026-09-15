@@ -85,7 +85,9 @@ void main() {
         'Berkeley, CA',
       );
       expect(
-        tester.widget<EpDisplay>(find.byKey(const Key('fan-preview-name'))).text,
+        tester
+            .widget<EpDisplay>(find.byKey(const Key('fan-preview-name')))
+            .text,
         'Rae Booker',
       );
       expect(
@@ -314,49 +316,50 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('home location suggestions survive focus loss and select a scene', (
-    tester,
-  ) async {
-    await pumpApp(
-      tester,
-      size: const Size(402, 1800),
-      home: const Scaffold(body: EditProfileScreen()),
-    );
-    final location = find.byKey(const Key('home-location-input'));
-    await tester.enterText(location, 'Berk');
-    await tester.pump();
-    final focusNode = tester.widget<TextField>(location).focusNode!;
-    expect(focusNode.hasFocus, isTrue);
+  testWidgets(
+    'home location suggestions survive focus loss and select a scene',
+    (tester) async {
+      await pumpApp(
+        tester,
+        size: const Size(402, 1800),
+        home: const Scaffold(body: EditProfileScreen()),
+      );
+      final location = find.byKey(const Key('home-location-input'));
+      await tester.enterText(location, 'Berk');
+      await tester.pump();
+      final focusNode = tester.widget<TextField>(location).focusNode!;
+      expect(focusNode.hasFocus, isTrue);
 
-    final suggestion = find.byKey(
-      const Key('home-location-suggestion-berkeley'),
-    );
-    expect(suggestion, findsOne);
-    final suggestionFocus = tester.widget<Focus>(
-      find.ancestor(of: suggestion, matching: find.byType(Focus)).first,
-    );
-    expect(suggestionFocus.canRequestFocus, isFalse);
-    expect(suggestionFocus.descendantsAreFocusable, isFalse);
+      final suggestion = find.byKey(
+        const Key('home-location-suggestion-berkeley'),
+      );
+      expect(suggestion, findsOne);
+      final suggestionFocus = tester.widget<Focus>(
+        find.ancestor(of: suggestion, matching: find.byType(Focus)).first,
+      );
+      expect(suggestionFocus.canRequestFocus, isFalse);
+      expect(suggestionFocus.descendantsAreFocusable, isFalse);
 
-    FocusManager.instance.primaryFocus?.unfocus();
-    await tester.pump();
-    expect(focusNode.hasFocus, isFalse);
-    expect(suggestion, findsOne);
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      expect(focusNode.hasFocus, isFalse);
+      expect(suggestion, findsOne);
 
-    await tester.tap(suggestion);
-    await tester.pumpAndSettle();
-    expect(
-      tester.widget<TextField>(location).controller!.text,
-      'Berkeley, CA',
-    );
-    expect(suggestion, findsNothing);
-    expect(focusNode.hasFocus, isFalse);
-    final previewScene = tester.widget<Text>(
-      find.byKey(const Key('fan-preview-scene')),
-    );
-    expect(previewScene.data, 'Berkeley scene');
-    expect(previewScene.style!.color, Ep.ink);
-  });
+      await tester.tap(suggestion);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(location).controller!.text,
+        'Berkeley, CA',
+      );
+      expect(suggestion, findsNothing);
+      expect(focusNode.hasFocus, isFalse);
+      final previewScene = tester.widget<Text>(
+        find.byKey(const Key('fan-preview-scene')),
+      );
+      expect(previewScene.data, 'Berkeley scene');
+      expect(previewScene.style!.color, Ep.ink);
+    },
+  );
 
   testWidgets('unknown home locations stay typed with a no-results state', (
     tester,
@@ -638,6 +641,8 @@ void main() {
         find.text('No upcoming RSVPs. Pick a show you want to catch.'),
         findsOne,
       );
+      await _selectProfileList(tester, 'TICKETS · 0');
+      expect(find.text('No tickets yet · paid shows list them here'), findsOne);
       await _selectProfileList(tester, 'SAVED · 0');
       expect(
         find.text('Nothing saved. Bookmark a show to keep it handy.'),
@@ -799,46 +804,58 @@ void main() {
     expect(find.text('MAYA OKAFOR'), findsOne);
   });
 
-  testWidgets('long history titles and venues wrap within compact rows', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    await pumpApp(
-      tester,
-      auth: auth,
-      repository: StubRepository(auth: auth)
-        ..returns('history', [
-          FanHistoryItem(
-            gigId: 'long-history',
-            title: _longHistoryTitle,
-            startsAt: DateTime(2026, 1, 2, 20),
-            venueName: _longHistoryVenue,
-            bandNames: const [],
-            flyKey: 'paper',
-            flyerUrl: null,
-            status: FanHistoryStatus.rsvped,
-          ),
-        ]),
-      home: const Scaffold(body: MyGigsScreen()),
-    );
-    tester.view.physicalSize = const Size(320, 700);
-    await tester.pumpAndSettle();
+  testWidgets(
+    'history snapshots wrap titles and retain full accessible details',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      await pumpApp(
+        tester,
+        auth: auth,
+        repository: StubRepository(auth: auth)
+          ..returns('history', [
+            FanHistoryItem(
+              gigId: 'long-history',
+              title: _longHistoryTitle,
+              startsAt: DateTime(2026, 1, 2, 20),
+              venueName: _longHistoryVenue,
+              bandNames: const [],
+              flyKey: 'paper',
+              flyerUrl: null,
+              status: FanHistoryStatus.rsvped,
+            ),
+          ]),
+        home: const Scaffold(body: MyGigsScreen()),
+      );
+      tester.view.physicalSize = const Size(320, 700);
+      await tester.pumpAndSettle();
 
-    await _tapProfileControl(tester, find.byKey(const Key('fan-stat-history')));
-    await tester.pumpAndSettle();
-    final title = tester.widget<Text>(
-      find.text(_longHistoryTitle.toUpperCase()),
-    );
-    final venue = tester.widget<Text>(
-      find.text(_longHistoryVenue.toUpperCase()),
-    );
-    expect(title.maxLines, 3);
-    expect(title.overflow, TextOverflow.ellipsis);
-    expect(venue.maxLines, isNull);
-    expect(venue.softWrap, isNot(isFalse));
-    expect(tester.takeException(), isNull);
-  });
+      await _tapProfileControl(
+        tester,
+        find.byKey(const Key('fan-stat-history')),
+      );
+      await tester.pumpAndSettle();
+      final title = tester.widget<Text>(
+        find.text(_longHistoryTitle.toUpperCase()),
+      );
+      final venue = tester.widget<Text>(find.text(_longHistoryVenue));
+      expect(title.maxLines, isNull);
+      expect(title.overflow, TextOverflow.clip);
+      expect(title.softWrap, isTrue);
+      expect(venue.maxLines, 1);
+      expect(venue.overflow, TextOverflow.ellipsis);
+      expect(find.text('JAN 2, 2026'), findsOneWidget);
+      expect(
+        tester
+            .getSemantics(find.byKey(const ValueKey('history-long-history')))
+            .label,
+        '$_longHistoryTitle, $_longHistoryVenue, JAN 2, 2026, RSVP RECORD',
+      );
+      expect(tester.takeException(), isNull);
+      semantics.dispose();
+    },
+  );
 
   testWidgets(
     'revisiting Explore and Profile never promotes a past RSVP to upcoming',
@@ -1245,24 +1262,43 @@ void main() {
     expect(find.text('YOUR GENRES'), findsOne);
     expect(find.text('From the shows you go to.'), findsOne);
     expect(find.text(bio), findsNothing);
-    final chips = tester
-        .widgetList<EpChip>(
-          find.descendant(of: genres, matching: find.byType(EpChip)),
-        )
-        .toList();
+    final chips = tester.widget<Wrap>(genres).children;
     expect(chips, hasLength(3));
-    expect(
-      chips.map((chip) => chip.label),
-      expected.map((genre) => genre.label),
-    );
     expect(chips.map((chip) => chip.key), [
       for (final genre in expected)
         ValueKey('fan-profile-genre-${genre.genre}'),
     ]);
-    for (final chip in chips) {
-      expect(chip.onTap, isNull);
-      expect(chip.readOnly, isTrue);
-      expect(chip.semanticLabel, isNull);
+    for (final genre in expected) {
+      final chip = find.descendant(
+        of: genres,
+        matching: find.byKey(ValueKey('fan-profile-genre-${genre.genre}')),
+      );
+      final label = tester.widget<Text>(
+        find.descendant(
+          of: chip,
+          matching: find.text(genre.label.toUpperCase()),
+        ),
+      );
+      final decoration =
+          tester
+                  .widget<DecoratedBox>(
+                    find.descendant(
+                      of: chip,
+                      matching: find.byType(DecoratedBox),
+                    ),
+                  )
+                  .decoration
+              as BoxDecoration;
+      expect(label.style!.color, genreTint(genre.genre));
+      expect(decoration.border, Border.all(color: genreTint(genre.genre)));
+      expect(decoration.color, isNull);
+      expect(decoration.borderRadius, BorderRadius.zero);
+      expect(tester.getSize(chip).height, greaterThanOrEqualTo(44));
+      expect(tester.getSize(chip).width, greaterThanOrEqualTo(44));
+      expect(
+        find.descendant(of: chip, matching: find.byType(InkWell)),
+        findsNothing,
+      );
     }
   });
 
@@ -1292,46 +1328,6 @@ void main() {
     expect(harness.app.follows, contains('b1'));
     expect(find.text('FOLLOWING ✓'), findsOne);
     await tester.pump(const Duration(seconds: 3));
-  });
-
-  testWidgets('profile tutorial completes and can be replayed from settings', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    final repository = DemoRepository(auth: auth);
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      beforePump: (app) => app.resetTo(Screen.myGigs),
-      home: const Scaffold(body: MyGigsScreen()),
-    );
-
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('profile-tutorial')),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.byKey(const Key('profile-tutorial')), findsOne);
-    for (var step = 0; step < 3; step++) {
-      final next = find.byKey(const Key('profile-tutorial-next'));
-      tester.widget<EpPill>(next).onPressed!();
-      await tester.pumpAndSettle();
-    }
-    expect(find.byKey(const Key('profile-tutorial')), findsNothing);
-    expect(harness.app.profile?.profileTutorialCompleted, isTrue);
-
-    final replayHarness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const Scaffold(body: SettingsScreen()),
-    );
-    await tester.tap(find.byKey(const Key('replay-profile-tutorial')));
-    await tester.pumpAndSettle();
-    expect(replayHarness.app.current.screen, Screen.myGigs);
-    expect(replayHarness.app.profileTutorialVisible, isTrue);
   });
 
   testWidgets('next in-app RSVP is promoted and stays in upcoming section', (

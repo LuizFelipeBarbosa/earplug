@@ -22,6 +22,11 @@ class GigCardLines {
   final String price;
 }
 
+/// The event's start date paired with its already-formatted doors time.
+String eventDateLine(DateTime startsAt, {required String doorsLabel}) =>
+    '${weekdayNamesUpper[startsAt.weekday - 1]}, '
+    '${monthNamesUpper[startsAt.month - 1]} ${startsAt.day} AT $doorsLabel';
+
 GigCardLines gigCardLines(Gig gig, AppState app, {required bool showDistance}) {
   final venue = app.venue(gig.venueId);
   final area =
@@ -33,10 +38,7 @@ GigCardLines gigCardLines(Gig gig, AppState app, {required bool showDistance}) {
       ? area
       : (area.isEmpty ? distance : '$area · $distance');
   return GigCardLines(
-    dateLine:
-        '${weekdayNamesUpper[gig.startsAt.weekday - 1]}, '
-        '${monthNamesUpper[gig.startsAt.month - 1]} ${gig.startsAt.day} '
-        'AT ${gig.doorsLabel}',
+    dateLine: eventDateLine(gig.startsAt, doorsLabel: gig.doorsLabel),
     title: gig.title,
     location: location,
     price: gig.priceLabel,
@@ -118,6 +120,36 @@ class FanEventCard extends StatelessWidget {
       ],
     );
   }
+}
+
+/// An event card for ticket or history snapshots that need no full [Gig].
+class FanEventSnapshotCard extends StatelessWidget {
+  const FanEventSnapshotCard({
+    super.key,
+    required this.id,
+    required this.lines,
+    this.flyerUrl,
+    this.flyKey,
+    this.onTap,
+    this.rowKey,
+  });
+
+  final String id;
+  final GigCardLines lines;
+  final String? flyerUrl;
+  final String? flyKey;
+  final VoidCallback? onTap;
+  final Key? rowKey;
+
+  @override
+  Widget build(BuildContext context) => ExploreEventSnapshotRow(
+    key: rowKey ?? ValueKey('fan-event-snapshot-$id'),
+    id: id,
+    lines: lines,
+    flyerUrl: flyerUrl,
+    flyKey: flyKey,
+    onTap: onTap,
+  );
 }
 
 List<Widget> gigCardActions(

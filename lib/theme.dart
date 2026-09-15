@@ -17,6 +17,16 @@ abstract final class Ep {
   static const line = Color(0x24F2F2EF);
   static const outline = Color(0x4DFFFFFF);
 
+  // Shared genre tints, readable on both page backgrounds.
+  static const genreTints = <Color>[
+    Color(0xFF39877F), // Teal.
+    Color(0xFFAA7932), // Amber.
+    Color(0xFFB56575), // Rose.
+    Color(0xFF668A51), // Sage.
+    Color(0xFF4F86B0), // Sky.
+    Color(0xFF9A825B), // Sand.
+  ];
+
   // Surfaces.
   static const surface = panel;
   static const surfaceRaised = Color(0xFF1C1C1F);
@@ -52,6 +62,15 @@ abstract final class Ep {
 
   /// Intended for artwork and scrims, not ordinary text or component states.
   static Color whiteA(double a) => Colors.white.withValues(alpha: a);
+}
+
+/// A stable, case-insensitive tint for a genre, independent of the theme.
+Color genreTint(String genre) {
+  var hash = 0x811c9dc5;
+  for (final unit in genre.toLowerCase().codeUnits) {
+    hash = ((hash ^ unit) * 0x01000193) & 0xFFFFFFFF;
+  }
+  return Ep.genreTints[hash % Ep.genreTints.length];
 }
 
 /// Shared dimensions for page layouts and controls.

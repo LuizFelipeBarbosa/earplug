@@ -29,6 +29,16 @@ Material _pillMaterial(WidgetTester tester) => tester.widget<Material>(
 );
 
 void main() {
+  test('genre tints are stable, case-insensitive palette colours', () {
+    expect(genreTint('punk'), genreTint('PUNK'));
+    const genres = ['punk', 'jazz', 'ambient', 'soul', 'techno'];
+    for (final genre in genres) {
+      expect(genreTint(genre), genreTint(genre));
+      expect(Ep.genreTints, contains(genreTint(genre)));
+    }
+    expect(genres.map(genreTint).toSet().length, greaterThan(1));
+  });
+
   testWidgets('section action aligns right and keeps a 44px tap target', (
     tester,
   ) async {

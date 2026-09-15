@@ -1,5 +1,7 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:earplug/app_state.dart';
 import 'package:earplug/explore_ranking.dart';
+import 'package:earplug/flyer_styles.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
@@ -698,10 +700,7 @@ void main() {
       expect(overlayRect.bottom, mapRect.bottom - 8);
       expect(overlayRect.top, greaterThanOrEqualTo(mapRect.top));
       expect(overlayRect.right, lessThanOrEqualTo(mapRect.right));
-      expect(
-        tileRect.height,
-        closeTo(exploreVenueRailHeight(context), 0.01),
-      );
+      expect(tileRect.height, closeTo(exploreVenueRailHeight(context), 0.01));
     }
   });
 
@@ -733,6 +732,129 @@ void main() {
     await tester.tap(find.text('WEEKEND PICKS'));
     expect(tapped, isTrue);
   });
+
+  testWidgets(
+    'snapshot card shows its lines, flyer pattern, and whole-row tap',
+    (tester) async {
+      var taps = 0;
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(
+          plain(
+            FanEventSnapshotCard(
+              id: 'snapshot',
+              lines: const GigCardLines(
+                dateLine: 'WED, SEP 23 AT 8PM',
+                title: 'Snapshot Night',
+                location: 'The Foghorn',
+                price: '',
+              ),
+              flyKey: 'riso',
+              onTap: () => taps++,
+            ),
+            brightness: brightness,
+          ),
+        );
+        final card = find.byKey(const ValueKey('fan-event-snapshot-snapshot'));
+        expect(card, findsOneWidget);
+        for (final label in [
+          'WED, SEP 23 AT 8PM',
+          'SNAPSHOT NIGHT',
+          'The Foghorn',
+        ]) {
+          expect(
+            find.descendant(of: card, matching: find.text(label)),
+            findsOneWidget,
+          );
+        }
+        expect(
+          tester.widget<FlyerBox>(find.byType(FlyerBox)).style,
+          flyerStyles['riso'],
+        );
+        expect(find.byType(GigFlyer), findsNothing);
+        expect(find.byType(CachedNetworkImage), findsNothing);
+        expect(find.byType(ExploreCardIconButton), findsNothing);
+        expect(
+          find.byKey(const ValueKey('snapshot-price-snapshot')),
+          findsNothing,
+        );
+        expect(find.text('FREE'), findsNothing);
+        expect(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget.key is ValueKey<String> &&
+                (widget.key! as ValueKey<String>).value.startsWith('save-'),
+          ),
+          findsNothing,
+        );
+        final thumbnail = find.byType(EpNetworkImage);
+        expect(tester.getSize(thumbnail).width, 96);
+        expect(tester.widget<EpNetworkImage>(thumbnail).cacheWidth, 96);
+        final size = tester.getSize(card);
+        expect(size.width, greaterThanOrEqualTo(44));
+        expect(size.height, greaterThanOrEqualTo(44));
+        final location = tester.getRect(find.text('The Foghorn'));
+        expect(location.right, closeTo(tester.getRect(card).right, 0.1));
+        await tester.tap(thumbnail);
+        await tester.tapAt(tester.getRect(card).topRight + const Offset(-2, 2));
+        expect(tester.takeException(), isNull);
+      }
+      expect(taps, 4);
+    },
+  );
+
+  testWidgets(
+    'snapshot card uses a network flyer and an optional plain price',
+    (tester) async {
+      const flyerUrl = 'https://example.com/snapshot.jpg';
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(
+          plain(
+            const FanEventSnapshotCard(
+              id: 'priced-snapshot',
+              rowKey: ValueKey('snapshot-custom-row'),
+              lines: GigCardLines(
+                dateLine: 'JAN 2, 2026',
+                title: 'Past Show',
+                location: 'Local venue',
+                price: 'sold out',
+              ),
+              flyerUrl: flyerUrl,
+            ),
+            brightness: brightness,
+          ),
+        );
+        final card = find.byKey(const ValueKey('snapshot-custom-row'));
+        expect(card, findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('fan-event-snapshot-priced-snapshot')),
+          findsNothing,
+        );
+        expect(
+          tester.widget<EpNetworkImage>(find.byType(EpNetworkImage)).url,
+          flyerUrl,
+        );
+        expect(
+          tester
+              .widget<CachedNetworkImage>(find.byType(CachedNetworkImage))
+              .imageUrl,
+          flyerUrl,
+        );
+        final price = tester.widget<Text>(
+          find.byKey(const ValueKey('snapshot-price-priced-snapshot')),
+        );
+        expect(price.data, 'SOLD OUT');
+        expect(price.textAlign, TextAlign.right);
+        expect(price.style!.fontSize, 13);
+        expect(price.style!.color, tester.element(card).epColors.ink);
+        expect(find.byType(ExploreCardIconButton), findsNothing);
+        expect(
+          find.descendant(of: card, matching: find.byType(InkWell)),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
 
   testWidgets('event row shows three lines, generated flyer, and taps', (
     tester,
