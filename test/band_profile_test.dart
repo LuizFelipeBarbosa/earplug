@@ -8,10 +8,11 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_profile.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
-import 'package:earplug/widgets/brand_icons.dart';
+import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
@@ -92,6 +93,11 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
+    await tester.scrollUntilVisible(
+      find.text('ABOUT'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.byKey(const ValueKey('band-social-instagram')), findsOneWidget);
     expect(find.byKey(const ValueKey('band-social-bandcamp')), findsOneWidget);
     expect(find.byKey(const ValueKey('band-social-youtube')), findsOneWidget);
@@ -127,6 +133,11 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
+    await tester.scrollUntilVisible(
+      find.text('ABOUT'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.byKey(const ValueKey('band-social-instagram')), findsNothing);
     expect(find.byKey(const ValueKey('band-social-bandcamp')), findsNothing);
     expect(find.byKey(const ValueKey('band-social-youtube')), findsNothing);
@@ -153,6 +164,11 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
+    await tester.scrollUntilVisible(
+      find.text('ABOUT'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.byKey(const ValueKey('band-social-instagram')), findsOneWidget);
     expect(find.byKey(const ValueKey('band-social-bandcamp')), findsNothing);
     expect(find.byKey(const ValueKey('band-social-youtube')), findsNothing);
@@ -192,7 +208,7 @@ void main() {
 
     expect(
       find.text('BAND · ${DemoData.bands['b1']!.area.toUpperCase()}'),
-      findsOne,
+      findsNWidgets(2),
     );
     expect(find.text('PUBLIC PROFILE PREVIEW'), findsNothing);
     expect(find.text('RETURN TO BAND DASHBOARD'), findsNothing);
@@ -208,13 +224,111 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('band-profile-hero-b1')), findsOne);
-    expect(find.text('FOLLOW'), findsOne);
-    expect(
-      find.byWidgetPredicate(
-        (widget) => widget is EpPill && widget.variant == EpPillVariant.primary,
-      ),
-      findsOne,
+    expect(find.text('FOLLOW'), findsNWidgets(2));
+    final follow = find.byKey(const ValueKey('band-follow'));
+    expect(follow, findsOneWidget);
+    expect(tester.widget<EpPill>(follow).variant, EpPillVariant.primary);
+    final miniFollow = find.byKey(const ValueKey('band-mini-follow'));
+    expect(miniFollow, findsOneWidget);
+    expect(tester.widget(miniFollow), isA<EpPill>());
+  });
+
+  testWidgets('share button copies the band public URL and shows a toast', (
+    tester,
+  ) async {
+    String? copiedText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copiedText = (call.arguments as Map)['text'] as String;
+        }
+        if (call.method == 'Clipboard.getData') return {'text': copiedText};
+        return null;
+      },
     );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await _pumpProfile(tester);
+
+    await tester.tap(find.byKey(const ValueKey('band-share')));
+    await tester.pump();
+
+    final publicRef = DemoData.bands['b1']!.publicRef;
+    expect(find.byType(SnackBar), findsOneWidget);
+    expect(find.text('Link copied: earplug.app/$publicRef'), findsOneWidget);
+    final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+    expect(clipboard?.text, 'https://earplug.app/$publicRef');
+  });
+
+  testWidgets('pinned mini header appears only after scrolling past the hero', (
+    tester,
+  ) async {
+    await _pumpProfile(tester);
+    final miniHeader = find.byKey(const ValueKey('band-profile-mini-header'));
+    final topBar = find.ancestor(
+      of: find.byKey(
+        const ValueKey('band-profile-back-control'),
+        skipOffstage: false,
+      ),
+      matching: find.byType(AnimatedOpacity, skipOffstage: false),
+    );
+    expect(tester.getTopLeft(miniHeader).dy, greaterThan(200));
+    expect(tester.widget<AnimatedOpacity>(topBar).opacity, 1);
+
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -600));
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopLeft(miniHeader).dy, closeTo(0, 1));
+    expect(tester.widget<AnimatedOpacity>(topBar).opacity, 0);
+  });
+
+  testWidgets('ABOUT renders the stat grid and configured link rows', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: _profileRepository(
+        auth: auth,
+        profileBand: DemoData.bands['b1']!.copyWith(
+          linkIg: '@foghorn.diet',
+          linkBc: 'foghorn.bandcamp.com',
+          linkYt: 'youtube.com/@foghorn',
+        ),
+        details: BandProfileDetails.empty,
+      ),
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+    await tester.scrollUntilVisible(
+      find.text('ABOUT'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    final stats = tester.widget<EpStatGrid>(find.byType(EpStatGrid)).stats;
+    expect(stats.map((stat) => stat.value), [
+      DemoData.bands['b1']!.followersLabel,
+      '${harness.media.videosFor('b1').length}',
+      '${harness.media.photosFor('b1').length}',
+    ]);
+    expect(find.text('FOLLOWERS'), findsOneWidget);
+    expect(find.text('VIDEOS'), findsOneWidget);
+    expect(find.text('PHOTOS'), findsOneWidget);
+    for (final name in ['instagram', 'bandcamp', 'youtube']) {
+      final link = find.byKey(ValueKey('band-social-$name'));
+      expect(link, findsOneWidget);
+      expect(tester.widget(link), isA<EpMenuRow>());
+      expect(
+        find.descendant(of: link, matching: find.text('↗')),
+        findsOneWidget,
+      );
+    }
   });
 
   testWidgets('public profile keeps completion state private', (tester) async {
@@ -416,8 +530,16 @@ void main() {
     expect(linear.colors.last.a, 0);
     expect(find.byKey(const ValueKey('band-profile-avatar-frame')), findsOne);
     expect(find.descendant(of: hero, matching: find.byType(EpPanel)), findsOne);
-    final avatar = tester.widget<EpAvatarTile>(find.byType(EpAvatarTile));
-    expect(avatar.size, 56);
+    final image = find.descendant(
+      of: find.byKey(const ValueKey('band-profile-image-control')),
+      matching: find.byType(EpNetworkImage),
+    );
+    expect(image, findsOneWidget);
+    final avatar = tester.widget<EpAvatarTile>(
+      find.descendant(of: hero, matching: find.byType(EpAvatarTile)),
+    );
+    expect(avatar.size, tester.getSize(hero).height);
+    expect(tester.getSize(hero).height, 402);
     expect(avatar.accent, isTrue);
     expect(find.textContaining('486 FOLLOWERS'), findsOne);
     expect(find.text('PROFILE COMPLETE'), findsNothing);
@@ -484,7 +606,14 @@ void main() {
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('PHOTOS'), findsNothing);
+    final mediaSection = find.ancestor(
+      of: find.text('THIS IS WHAT WE SOUND LIKE'),
+      matching: find.byType(SliverToBoxAdapter),
+    );
+    expect(
+      find.descendant(of: mediaSection, matching: find.text('PHOTOS')),
+      findsNothing,
+    );
     for (final photo in DemoData.b1Media.where(
       (media) => media.kind == MediaKind.photo,
     )) {
@@ -523,52 +652,54 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
   });
 
-  testWidgets('social icons wrap at narrow width and increased text scale', (
-    tester,
-  ) async {
-    tester.platformDispatcher.textScaleFactorTestValue = 1.4;
-    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+  testWidgets(
+    'ABOUT link rows stay usable at narrow width and increased text scale',
+    (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 1.4;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
-    final harness = await _pumpProfile(tester);
-    tester.view.physicalSize = const Size(170, 1000);
-    tester.view.devicePixelRatio = 1;
-    await tester.pump();
-    await _saveSocialLinks(harness);
-    await tester.pumpAndSettle();
+      final harness = await _pumpProfile(tester);
+      tester.view.physicalSize = const Size(360, 1000);
+      tester.view.devicePixelRatio = 1;
+      await tester.pump();
+      await _saveSocialLinks(harness);
+      await tester.pumpAndSettle();
 
-    final instagram = find.byKey(const ValueKey('band-social-instagram'));
-    final bandcamp = find.byKey(const ValueKey('band-social-bandcamp'));
-    final youtube = find.byKey(const ValueKey('band-social-youtube'));
-    await tester.scrollUntilVisible(
-      youtube,
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-
-    for (final link in [instagram, bandcamp, youtube]) {
-      final size = tester.getSize(link);
-      expect(size.height, greaterThanOrEqualTo(36));
-      expect(size.width, lessThanOrEqualTo(170 - 2 * EpLayout.gutter));
-      final pill = tester.widget<EpPill>(
-        find.descendant(of: link, matching: find.byType(EpPill)),
+      final instagram = find.byKey(const ValueKey('band-social-instagram'));
+      final bandcamp = find.byKey(const ValueKey('band-social-bandcamp'));
+      final youtube = find.byKey(const ValueKey('band-social-youtube'));
+      await tester.scrollUntilVisible(
+        youtube,
+        180,
+        scrollable: find.byType(Scrollable).first,
       );
-      expect(pill.variant, EpPillVariant.outline);
-      expect(pill.size, EpPillSize.chip);
-      expect(pill.onPressed, isNotNull);
+
+      for (final link in [instagram, bandcamp, youtube]) {
+        await Scrollable.ensureVisible(tester.element(link), alignment: 0.5);
+        await tester.pumpAndSettle();
+        final size = tester.getSize(link);
+        expect(link, findsOneWidget);
+        expect(size.height, greaterThanOrEqualTo(44));
+        expect(size.width, lessThanOrEqualTo(360 - 2 * EpLayout.gutter));
+        final row = tester.widget<EpMenuRow>(link);
+        expect(row.onTap, isNotNull);
+        expect(link.hitTestable(), findsOneWidget);
+        expect(
+          find.descendant(of: link, matching: find.text('↗')),
+          findsOneWidget,
+        );
+      }
       expect(
-        find.descendant(of: link, matching: find.byType(BrandIcon)),
-        findsOne,
+        tester.getTopLeft(bandcamp).dy,
+        greaterThan(tester.getTopLeft(instagram).dy),
       );
-    }
-    expect(
-      tester.getTopLeft(bandcamp).dy,
-      greaterThan(tester.getTopLeft(instagram).dy),
-    );
-    expect(
-      tester.getTopLeft(youtube).dy,
-      greaterThan(tester.getTopLeft(bandcamp).dy),
-    );
-  });
+      expect(
+        tester.getTopLeft(youtube).dy,
+        greaterThan(tester.getTopLeft(bandcamp).dy),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 Future<AppHarness> _pumpProfile(WidgetTester tester) => pumpApp(

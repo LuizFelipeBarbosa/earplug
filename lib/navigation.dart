@@ -85,6 +85,7 @@ class AdminIdentity extends ActiveIdentity {
 }
 
 const fanTabScreens = {
+  Screen.band,
   Screen.hostApply,
   Screen.home,
   Screen.explore,
