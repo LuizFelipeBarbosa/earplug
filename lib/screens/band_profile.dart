@@ -10,10 +10,10 @@ import '../data/repository.dart';
 import '../models.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
-import '../widgets/branding.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
+import '../widgets/explore_tiles.dart';
 import '../widgets/fan_event_card.dart';
 import '../widgets/photo_viewer.dart';
 import '../widgets/video_player_sheet.dart';
@@ -102,217 +102,207 @@ class _BandProfileViewState extends State<_BandProfileView> {
     ).textTheme.epBody.copyWith(color: context.epColors.muted);
     final following = app.follows.contains(bandId);
     final topInset = MediaQuery.paddingOf(context).top;
-    final headerTop = EpLayout.isDesktop(context) ? 0.0 : headerTopPad(context);
     final offset = _scrollController.hasClients
         ? _scrollController.offset
         : 0.0;
+    final progress = (offset / 80).clamp(0.0, 1.0);
 
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: EpLayout.workspaceWidth),
-        child: CustomScrollView(
-          controller: _scrollController,
-          slivers: [
-            SliverToBoxAdapter(
-              child: AnimatedOpacity(
-                opacity: (1 - offset / 80).clamp(0.0, 1.0),
-                duration: const Duration(milliseconds: 150),
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    EpLayout.gutter,
-                    headerTop,
-                    EpLayout.gutter,
-                    12,
+        child: Stack(
+          children: [
+            CustomScrollView(
+              controller: _scrollController,
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _BandHero(
+                    band: band,
+                    topInset: topInset,
+                    onEditBanner: app.bandId == bandId && app.isAdminOf(bandId)
+                        ? app.openBandEditor
+                        : null,
                   ),
-                  child: Row(
-                    children: [
-                      EpIconPill(
-                        key: const ValueKey('band-profile-back-control'),
-                        icon: Icons.arrow_back,
-                        semanticLabel: widget.isManagedPreview
-                            ? 'Return to band dashboard'
-                            : 'Back',
-                        onPressed: widget.isManagedPreview
-                            ? app.returnToBandDashboard
-                            : app.back,
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      EpLayout.gutter,
+                      16,
+                      EpLayout.gutter,
+                      16,
+                    ),
+                    child: _ProfileActions(
+                      app: app,
+                      band: band,
+                      isManagedPreview: widget.isManagedPreview,
+                    ),
+                  ),
+                ),
+                if (soundVideos.isNotEmpty) ...[
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: EpLayout.gutter,
                       ),
-                      const SizedBox(width: 12),
-                      const EpLogo.compact(height: 22),
-                    ],
+                      child: Column(
+                        children: [SizedBox(height: 20), EpHairline()],
+                      ),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: _BandSoundPanel(
+                      band: band,
+                      app: app,
+                      videos: soundVideos,
+                    ),
+                  ),
+                ],
+                if (photos.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: EpLayout.gutter,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          EpSectionHeader(
+                            label:
+                                'Photos ${photos.length.toString().padLeft(2, '0')}',
+                            padding: const EdgeInsets.only(top: 24, bottom: 12),
+                          ),
+                          _BandPhotoGrid(photos: photos),
+                        ],
+                      ),
+                    ),
+                  ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: EpLayout.gutter,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        EpSectionHeader(
+                          label:
+                              'Upcoming · ${upcoming.length} '
+                              '${upcoming.length == 1 ? 'SHOW' : 'SHOWS'}',
+                          padding: const EdgeInsets.only(top: 24, bottom: 12),
+                        ),
+                        for (final gig in upcoming)
+                          FanEventCard(
+                            gig: gig,
+                            app: app,
+                            showDistance: true,
+                            rowKey: ValueKey('fan-event-${gig.id}'),
+                          ),
+                        if (upcoming.isEmpty)
+                          _UpcomingEmptyState(band: band, app: app),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: _BandHero(
-                band: band,
-                onEditBanner: app.bandId == bandId && app.isAdminOf(bandId)
-                    ? app.openBandEditor
-                    : null,
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  EpLayout.gutter,
-                  16,
-                  EpLayout.gutter,
-                  16,
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: EpLayout.gutter,
+                    ),
+                    child: _BandAbout(
+                      app: app,
+                      band: band,
+                      bio: bio,
+                      videoCount: videos.length,
+                      photoCount: photos.length,
+                    ),
+                  ),
                 ),
-                child: _ProfileActions(
-                  app: app,
-                  band: band,
-                  isManagedPreview: widget.isManagedPreview,
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: EpLayout.gutter,
+                    ),
+                    child: _PastShows(band: band, app: app),
+                  ),
                 ),
-              ),
+                if (details?.credits?.trim().isNotEmpty == true)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: EpLayout.gutter,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const EpSectionHeader(label: 'Credits'),
+                          Text(details!.credits!.trim(), style: bodyStyle),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (details?.memberNames.isNotEmpty == true)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: EpLayout.gutter,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const EpSectionHeader(label: 'Band members'),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final name in details!.memberNames)
+                                EpChip(
+                                  label: name,
+                                  active: false,
+                                  onTap: null,
+                                  readOnly: true,
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: EpLayout.gutter,
+                    ),
+                    child: _BandReviewsSection(
+                      key: ValueKey('band-reviews-loader-$bandId'),
+                      bandId: bandId,
+                      summary: band.reviewSummary,
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: tabBarClearance),
+                ),
+              ],
             ),
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _MiniHeaderDelegate(
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _BandProfileHeaderBar(
                 band: band,
                 following: following,
                 onFollow: () => app.requestFollow(bandId),
-                extent: 56 + topInset,
+                topInset: topInset,
+                progress: progress,
+                backLabel: widget.isManagedPreview
+                    ? 'Return to band dashboard'
+                    : 'Back',
+                onBack: widget.isManagedPreview
+                    ? app.returnToBandDashboard
+                    : app.back,
               ),
             ),
-            if (soundVideos.isNotEmpty) ...[
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: EpLayout.gutter),
-                  child: Column(children: [SizedBox(height: 20), EpHairline()]),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _BandSoundPanel(
-                  band: band,
-                  app: app,
-                  videos: soundVideos,
-                ),
-              ),
-            ],
-            if (photos.isNotEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: EpLayout.gutter,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      EpSectionHeader(
-                        label:
-                            'Photos ${photos.length.toString().padLeft(2, '0')}',
-                        padding: const EdgeInsets.only(top: 24, bottom: 12),
-                      ),
-                      _BandPhotoGrid(photos: photos),
-                    ],
-                  ),
-                ),
-              ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: EpLayout.gutter,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    EpSectionHeader(
-                      label:
-                          'Upcoming · ${upcoming.length} '
-                          '${upcoming.length == 1 ? 'SHOW' : 'SHOWS'}',
-                      padding: const EdgeInsets.only(top: 24, bottom: 12),
-                    ),
-                    for (final gig in upcoming)
-                      FanEventCard(
-                        gig: gig,
-                        app: app,
-                        showDistance: true,
-                        rowKey: ValueKey('fan-event-${gig.id}'),
-                      ),
-                    if (upcoming.isEmpty)
-                      _UpcomingEmptyState(band: band, app: app),
-                  ],
-                ),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: EpLayout.gutter,
-                ),
-                child: _BandAbout(
-                  app: app,
-                  band: band,
-                  bio: bio,
-                  videoCount: videos.length,
-                  photoCount: photos.length,
-                ),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: EpLayout.gutter,
-                ),
-                child: _PastShows(band: band, app: app),
-              ),
-            ),
-            if (details?.credits?.trim().isNotEmpty == true)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: EpLayout.gutter,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const EpSectionHeader(label: 'Credits'),
-                      Text(details!.credits!.trim(), style: bodyStyle),
-                    ],
-                  ),
-                ),
-              ),
-            if (details?.memberNames.isNotEmpty == true)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: EpLayout.gutter,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const EpSectionHeader(label: 'Band members'),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final name in details!.memberNames)
-                            EpChip(
-                              label: name,
-                              active: false,
-                              onTap: null,
-                              readOnly: true,
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: EpLayout.gutter,
-                ),
-                child: _BandReviewsSection(
-                  key: ValueKey('band-reviews-loader-$bandId'),
-                  bandId: bandId,
-                  summary: band.reviewSummary,
-                ),
-              ),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: tabBarClearance)),
           ],
         ),
       ),
@@ -321,15 +311,21 @@ class _BandProfileViewState extends State<_BandProfileView> {
 }
 
 class _BandHero extends StatelessWidget {
-  const _BandHero({required this.band, required this.onEditBanner});
+  const _BandHero({
+    required this.band,
+    required this.topInset,
+    required this.onEditBanner,
+  });
 
   final Band band;
+  final double topInset;
   final VoidCallback? onEditBanner;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.epColors;
-    final heroHeight = math.min(MediaQuery.sizeOf(context).width, 420.0);
+    final heroHeight =
+        math.min(MediaQuery.sizeOf(context).width, 420.0) + topInset;
 
     return SizedBox(
       key: ValueKey('band-profile-hero-${band.id}'),
@@ -390,19 +386,13 @@ class _BandHero extends StatelessWidget {
                   const SizedBox(height: 12),
                   EpDisplay(band.name, size: 44, maxLines: 3),
                   const SizedBox(height: 12),
-                  EpMonoText(
-                    [
-                      band.genres.join('/'),
-                      '${band.followersLabel} FOLLOWERS',
-                    ].join(' · '),
-                    color: colors.muted,
-                  ),
+                  EpMonoText(band.genres.join('/'), color: colors.muted),
                 ],
               ),
             ),
             if (onEditBanner != null)
               Positioned(
-                top: 12,
+                top: topInset + 56 + 12,
                 right: 12,
                 child: Semantics(
                   button: true,
@@ -441,7 +431,6 @@ class _ProfileActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bandId = band.id;
-    final following = app.follows.contains(bandId);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -449,13 +438,18 @@ class _ProfileActions extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: EpPill(
-                key: const ValueKey('band-follow'),
-                label: following ? 'Following ✓' : 'Follow',
-                variant: following ? EpPillVariant.ink : EpPillVariant.primary,
-                size: EpPillSize.regular,
-                expand: true,
-                onPressed: () => app.requestFollow(bandId),
+              child: Container(
+                key: const ValueKey('band-follower-count'),
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  border: Border.all(color: context.epColors.outline),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: EpMonoText(
+                  '${band.followersLabel} FOLLOWERS',
+                  color: context.epColors.ink,
+                ),
               ),
             ),
             const SizedBox(width: 8),
@@ -500,96 +494,118 @@ class _ProfileActions extends StatelessWidget {
   }
 }
 
-class _MiniHeaderDelegate extends SliverPersistentHeaderDelegate {
-  const _MiniHeaderDelegate({
+class _BandProfileHeaderBar extends StatelessWidget {
+  const _BandProfileHeaderBar({
     required this.band,
     required this.following,
     required this.onFollow,
-    required this.extent,
+    required this.topInset,
+    required this.progress,
+    required this.backLabel,
+    required this.onBack,
   });
 
   final Band band;
   final bool following;
   final VoidCallback onFollow;
-  final double extent;
+  final double topInset;
+  final double progress;
+  final String backLabel;
+  final VoidCallback onBack;
 
   @override
-  double get minExtent => extent;
-
-  @override
-  double get maxExtent => extent;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
+  Widget build(BuildContext context) {
     final colors = context.epColors;
-    final topInset = MediaQuery.paddingOf(context).top;
     return Container(
       key: const ValueKey('band-profile-mini-header'),
-      height: extent,
+      height: 56 + topInset,
       padding: EdgeInsets.only(top: topInset),
       decoration: BoxDecoration(
-        color: colors.background,
-        border: Border(bottom: BorderSide(color: colors.line)),
+        color: Color.lerp(
+          colors.background.withValues(alpha: 0),
+          colors.background,
+          progress,
+        ),
+        border: Border(
+          bottom: BorderSide(
+            color: Color.lerp(
+              colors.line.withValues(alpha: 0),
+              colors.line,
+              progress,
+            )!,
+          ),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
         child: Row(
           children: [
-            ClipRect(
-              child: SizedBox.square(
-                dimension: 32,
-                child: EpNetworkImage(
-                  url: band.profileImageUrl,
-                  fallback: EpAvatarTile(
-                    initials: band.initials,
-                    size: 32,
-                    accent: true,
-                  ),
+            ExploreCardIconButton(
+              key: const ValueKey('band-profile-back-control'),
+              circle: true,
+              icon: Icons.arrow_back,
+              semanticLabel: backLabel,
+              onPressed: onBack,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Opacity(
+                opacity: progress,
+                child: Row(
+                  children: [
+                    ClipRect(
+                      child: SizedBox.square(
+                        dimension: 32,
+                        child: EpNetworkImage(
+                          url: band.profileImageUrl,
+                          fallback: EpAvatarTile(
+                            initials: band.initials,
+                            size: 32,
+                            accent: true,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          EpDisplay(band.name, size: 18, maxLines: 1),
+                          DefaultTextStyle.merge(
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            child: EpEyebrow(
+                              [
+                                'Band',
+                                if (band.area.trim().isNotEmpty) band.area,
+                              ].join(' · '),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
             const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  EpDisplay(band.name, size: 18, maxLines: 1),
-                  DefaultTextStyle.merge(
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    child: EpEyebrow(
-                      [
-                        'Band',
-                        if (band.area.trim().isNotEmpty) band.area,
-                      ].join(' · '),
-                    ),
-                  ),
-                ],
+            SizedBox(
+              height: 44,
+              child: EpPill(
+                key: const ValueKey('band-mini-follow'),
+                label: following ? 'Following ✓' : 'Follow',
+                variant: following ? EpPillVariant.ink : EpPillVariant.primary,
+                size: EpPillSize.chip,
+                onPressed: onFollow,
               ),
-            ),
-            EpPill(
-              key: const ValueKey('band-mini-follow'),
-              label: following ? 'Following ✓' : 'Follow',
-              variant: following ? EpPillVariant.ink : EpPillVariant.primary,
-              size: EpPillSize.chip,
-              onPressed: onFollow,
             ),
           ],
         ),
       ),
     );
   }
-
-  @override
-  bool shouldRebuild(covariant _MiniHeaderDelegate oldDelegate) =>
-      oldDelegate.band != band ||
-      oldDelegate.following != following ||
-      oldDelegate.extent != extent;
 }
 
 class _BandAbout extends StatelessWidget {
@@ -817,9 +833,12 @@ class _ClipTile extends StatelessWidget {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      BandVideoThumbnail(
-                        media: clip,
-                        fallback: const EpPanel(striped: true),
+                      KeyedSubtree(
+                        key: ValueKey('band-clip-thumb-${clip.id}'),
+                        child: BandVideoThumbnail(
+                          media: clip,
+                          fallback: const EpPanel(striped: true),
+                        ),
                       ),
                       DecoratedBox(
                         decoration: BoxDecoration(

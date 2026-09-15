@@ -11,6 +11,8 @@ import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
+import 'package:earplug/widgets/explore_tiles.dart';
+import 'package:earplug/widgets/video_thumbnail.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -196,6 +198,17 @@ void main() {
     await tester.tap(find.text('RETURN TO BAND DASHBOARD'));
     await tester.pump();
     expect(harness.app.current.screen, Screen.bandDash);
+
+    harness.app.go(Screen.bandPreview, 'b1');
+    await tester.pump();
+    final back = find.byKey(const ValueKey('band-profile-back-control'));
+    expect(
+      tester.widget<ExploreCardIconButton>(back).semanticLabel,
+      'Return to band dashboard',
+    );
+    await tester.tap(back);
+    await tester.pump();
+    expect(harness.app.current.screen, Screen.bandDash);
   });
 
   testWidgets('ordinary visits retain the regular public header', (
@@ -215,22 +228,57 @@ void main() {
     expect(find.text('EDIT PROFILE'), findsNothing);
   });
 
-  testWidgets('press hero keeps follow as the sole primary profile action', (
+  testWidgets('header has one follow control and a read-only follower count', (
     tester,
   ) async {
-    await pumpApp(
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final band = DemoData.bands['b1']!;
+    final repository = _profileRepository(auth: auth, profileBand: band);
+    final harness = await pumpApp(
       tester,
+      auth: auth,
+      repository: repository,
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
-    expect(find.byKey(const ValueKey('band-profile-hero-b1')), findsOne);
-    expect(find.text('FOLLOW'), findsNWidgets(2));
-    final follow = find.byKey(const ValueKey('band-follow'));
-    expect(follow, findsOneWidget);
-    expect(tester.widget<EpPill>(follow).variant, EpPillVariant.primary);
+    final hero = find.byKey(const ValueKey('band-profile-hero-b1'));
+    final meta = tester.widget<EpMonoText>(
+      find.descendant(of: hero, matching: find.byType(EpMonoText)),
+    );
+    expect(meta.text, band.genres.join('/'));
+    expect(meta.text, isNot(contains('FOLLOWERS')));
+    final followers = find.byKey(const ValueKey('band-follower-count'));
+    expect(
+      find.descendant(
+        of: followers,
+        matching: find.text('${band.followersLabel} FOLLOWERS'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: followers, matching: find.byType(InkWell)),
+      findsNothing,
+    );
+    expect(harness.app.follows, isNot(contains(band.id)));
+    await tester.tap(followers);
+    await tester.pump();
+    expect(repository.callsTo('toggleFollow'), 0);
+    expect(harness.app.follows, isNot(contains(band.id)));
+
+    expect(find.text('FOLLOW'), findsOneWidget);
     final miniFollow = find.byKey(const ValueKey('band-mini-follow'));
-    expect(miniFollow, findsOneWidget);
-    expect(tester.widget(miniFollow), isA<EpPill>());
+    expect(miniFollow.hitTestable(), findsOneWidget);
+    expect(tester.widget<EpPill>(miniFollow).variant, EpPillVariant.primary);
+    expect(tester.getSize(miniFollow).height, greaterThanOrEqualTo(44));
+    await tester.tap(miniFollow);
+    await tester.pumpAndSettle();
+
+    expect(repository.callsTo('toggleFollow'), 1);
+    expect(harness.app.follows, contains(band.id));
+    expect(tester.widget<EpPill>(miniFollow).label, 'Following ✓');
+    expect(tester.widget<EpPill>(miniFollow).variant, EpPillVariant.ink);
+    await tester.pump(const Duration(seconds: 3));
   });
 
   testWidgets('share button copies the band public URL and shows a toast', (
@@ -265,27 +313,95 @@ void main() {
     expect(clipboard?.text, 'https://earplug.app/$publicRef');
   });
 
-  testWidgets('pinned mini header appears only after scrolling past the hero', (
-    tester,
-  ) async {
-    await _pumpProfile(tester);
-    final miniHeader = find.byKey(const ValueKey('band-profile-mini-header'));
-    final topBar = find.ancestor(
-      of: find.byKey(
-        const ValueKey('band-profile-back-control'),
-        skipOffstage: false,
-      ),
-      matching: find.byType(AnimatedOpacity, skipOffstage: false),
+  for (final topInset in [0.0, 47.0]) {
+    testWidgets(
+      'overlay header floats at rest and fades in on scroll (inset: $topInset)',
+      (tester) async {
+        final harness = await pumpApp(
+          tester,
+          beforePump: (app) => app.go(Screen.band, 'b1'),
+          home: Builder(
+            builder: (context) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(padding: EdgeInsets.only(top: topInset)),
+              child: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+            ),
+          ),
+        );
+        final hero = find.byKey(const ValueKey('band-profile-hero-b1'));
+        final miniHeader = find.byKey(
+          const ValueKey('band-profile-mini-header'),
+        );
+        final back = find.byKey(const ValueKey('band-profile-back-control'));
+        final follow = find.byKey(const ValueKey('band-mini-follow'));
+        final identityFade = find.descendant(
+          of: miniHeader,
+          matching: find.byType(Opacity),
+        );
+        expect(tester.getTopLeft(hero), Offset.zero);
+        expect(tester.getSize(hero).height, 402 + topInset);
+        expect(tester.getTopLeft(miniHeader).dy, 0);
+        expect(tester.getSize(miniHeader).height, 56 + topInset);
+        expect(back.hitTestable(), findsOneWidget);
+        expect(follow.hitTestable(), findsOneWidget);
+        expect(tester.getTopLeft(back).dy, greaterThanOrEqualTo(topInset));
+        expect(tester.getTopLeft(follow).dy, greaterThanOrEqualTo(topInset));
+        expect(tester.widget<ExploreCardIconButton>(back).circle, isTrue);
+        expect(
+          tester.widget<ExploreCardIconButton>(back).semanticLabel,
+          'Back',
+        );
+        expect(find.textContaining('EarPlug'), findsNothing);
+        expect(tester.widget<Opacity>(identityFade).opacity, 0);
+        expect(
+          find.descendant(
+            of: identityFade,
+            matching: find.text(DemoData.bands['b1']!.name.toUpperCase()),
+          ),
+          findsOneWidget,
+        );
+        final restingDecoration =
+            tester.widget<Container>(miniHeader).decoration! as BoxDecoration;
+        expect(restingDecoration.color!.a, 0);
+        expect((restingDecoration.border! as Border).bottom.color.a, 0);
+
+        final controller = tester
+            .widget<CustomScrollView>(find.byType(CustomScrollView))
+            .controller!;
+        final colors = tester.element(miniHeader).epColors;
+        for (final offset in [40.0, 120.0, 0.0]) {
+          controller.jumpTo(offset);
+          await tester.pump();
+
+          final progress = (offset / 80).clamp(0.0, 1.0);
+          final decoration =
+              tester.widget<Container>(miniHeader).decoration! as BoxDecoration;
+          expect(tester.getTopLeft(miniHeader).dy, 0);
+          expect(tester.widget<Opacity>(identityFade).opacity, progress);
+          expect(
+            decoration.color,
+            Color.lerp(
+              colors.background.withValues(alpha: 0),
+              colors.background,
+              progress,
+            ),
+          );
+          expect(
+            (decoration.border! as Border).bottom.color,
+            Color.lerp(colors.line.withValues(alpha: 0), colors.line, progress),
+          );
+          expect(back.hitTestable(), findsOneWidget);
+          expect(follow.hitTestable(), findsOneWidget);
+          expect(tester.widget<ExploreCardIconButton>(back).circle, isTrue);
+        }
+
+        await tester.tap(back);
+        await tester.pump();
+        expect(harness.app.current.screen, Screen.home);
+      },
     );
-    expect(tester.getTopLeft(miniHeader).dy, greaterThan(200));
-    expect(tester.widget<AnimatedOpacity>(topBar).opacity, 1);
-
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, -600));
-    await tester.pumpAndSettle();
-
-    expect(tester.getTopLeft(miniHeader).dy, closeTo(0, 1));
-    expect(tester.widget<AnimatedOpacity>(topBar).opacity, 0);
-  });
+  }
 
   testWidgets('ABOUT renders the stat grid and configured link rows', (
     tester,
@@ -523,6 +639,7 @@ void main() {
     expect(gradient, isA<LinearGradient>());
     final linear = gradient as LinearGradient;
     final hero = find.byKey(const ValueKey('band-profile-hero-b1'));
+    expect(tester.getTopLeft(hero), Offset.zero);
     expect(linear.begin, Alignment.bottomCenter);
     expect(linear.end, Alignment.topCenter);
     expect(linear.stops, [0, .6]);
@@ -544,7 +661,7 @@ void main() {
     expect(find.textContaining('486 FOLLOWERS'), findsOne);
     expect(find.text('PROFILE COMPLETE'), findsNothing);
     final edit = find.byKey(const ValueKey('edit-band-profile-banner'));
-    expect(edit, findsOne);
+    expect(edit.hitTestable(), findsOneWidget);
 
     await tester.tap(edit);
     await tester.pump();
@@ -628,6 +745,26 @@ void main() {
       ),
     );
     expect(tiles, findsNWidgets(videos.length));
+    for (final clip in videos) {
+      final tile = find.byKey(ValueKey('band-clip-${clip.id}'));
+      final thumbnail = find.descendant(
+        of: tile,
+        matching: find.byKey(ValueKey('band-clip-thumb-${clip.id}')),
+      );
+      expect(thumbnail, findsOneWidget);
+      final image = tester.widget<BandVideoThumbnail>(
+        find.descendant(
+          of: thumbnail,
+          matching: find.byType(BandVideoThumbnail),
+        ),
+      );
+      expect(image.media.id, clip.id);
+      expect((image.fallback as EpPanel).striped, isTrue);
+      expect(
+        find.descendant(of: tile, matching: find.byType(PlayTriangle)),
+        findsOneWidget,
+      );
+    }
     expect(tester.widget(tiles.first).key, const ValueKey('band-clip-bm1'));
     expect(find.text('PINNED'), findsOneWidget);
     expect(

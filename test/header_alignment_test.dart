@@ -82,11 +82,7 @@ void main() {
         param: 'g1',
         first: find.byKey(const ValueKey('gig-detail-back-control')),
       ),
-      (
-        screen: Screen.band,
-        param: 'b1',
-        first: find.byKey(const ValueKey('band-profile-back-control')),
-      ),
+      // Band overlays its hero banner instead of using the common header row.
       (
         screen: Screen.venue,
         param: 'v1',
