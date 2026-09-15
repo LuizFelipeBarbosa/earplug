@@ -595,7 +595,11 @@ class ExploreEventRow extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      _GigPriceChip(gig: gig, price: lines.price),
+                      _GigPriceChip(
+                        gig: gig,
+                        price: lines.price,
+                        inkColor: context.epColors.ink,
+                      ),
                     ],
                   ),
                   if (sub != null) ...[
@@ -621,23 +625,38 @@ class ExploreEventRow extends StatelessWidget {
 }
 
 class _GigPriceChip extends StatelessWidget {
-  const _GigPriceChip({required this.gig, required this.price});
+  const _GigPriceChip({
+    required this.gig,
+    required this.price,
+    required this.inkColor,
+  });
 
   final Gig gig;
   final String price;
+  final Color inkColor;
 
   @override
-  Widget build(BuildContext context) => Container(
-    key: ValueKey('gig-price-${gig.id}'),
-    color: Ep.accent,
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-    child: Text(
+  Widget build(BuildContext context) {
+    final labelStyle = Theme.of(context).textTheme.epChipLabel;
+    if (gig.free) {
+      return Container(
+        key: ValueKey('gig-price-${gig.id}'),
+        color: Ep.accent,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        child: Text(
+          price.toUpperCase(),
+          style: labelStyle.copyWith(fontSize: 13, color: Ep.ink),
+        ),
+      );
+    }
+
+    return Text(
       price.toUpperCase(),
-      style: Theme.of(
-        context,
-      ).textTheme.epChipLabel.copyWith(fontSize: 13, color: Ep.ink),
-    ),
-  );
+      key: ValueKey('gig-price-${gig.id}'),
+      textAlign: TextAlign.right,
+      style: labelStyle.copyWith(fontSize: 13, color: inkColor),
+    );
+  }
 }
 
 /// Large featured card shared by Home and the Explore recommendation carousel.
@@ -740,7 +759,11 @@ class ExploreFeaturedCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        _GigPriceChip(gig: gig, price: lines.price),
+                        _GigPriceChip(
+                          gig: gig,
+                          price: lines.price,
+                          inkColor: Ep.ink,
+                        ),
                       ],
                     ),
                   ],

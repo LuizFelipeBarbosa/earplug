@@ -778,6 +778,43 @@ void main() {
     expect(find.text('\$12'), findsOneWidget);
   });
 
+  testWidgets(
+    'paid price renders as plain text, free price renders as an accent badge',
+    (tester) async {
+      for (final gig in [
+        gigFixture(id: 'paid-price', price: 12),
+        gigFixture(id: 'free-price', price: 0),
+      ]) {
+        await tester.pumpWidget(
+          plain(
+            ExploreEventRow(
+              gig: gig,
+              venueName: 'The Foghorn',
+              lines: GigCardLines(
+                dateLine: 'WED, SEP 23 AT 8PM',
+                title: gig.title,
+                location: 'Southside',
+                price: gig.priceLabel,
+              ),
+              onTap: () {},
+            ),
+          ),
+        );
+
+        final price = tester.widget(
+          find.byKey(ValueKey('gig-price-${gig.id}')),
+        );
+        if (gig.free) {
+          expect(price, isA<Container>());
+          expect((price as Container).color, Ep.accent);
+        } else {
+          expect(price, isA<Text>());
+          expect(price, isNot(isA<Container>()));
+        }
+      }
+    },
+  );
+
   testWidgets('cancelled event row shows the CANCELLED marker', (tester) async {
     final gig = gigFixture(
       id: 'cancelled-row',
@@ -1114,7 +1151,7 @@ void main() {
   });
 
   testWidgets(
-    'event row uses a regular mono date, muted location, and purple price',
+    'event row uses a regular mono date, muted location, and plain paid price',
     (tester) async {
       final gig = gigFixture(id: 'structured-lines', price: 12);
       for (final brightness in Brightness.values) {
@@ -1153,20 +1190,17 @@ void main() {
         );
         expect(location.maxLines, 1);
         expect(location.overflow, TextOverflow.ellipsis);
-        final price = tester.widget<Container>(
+        final price = tester.widget(
           find.byKey(ValueKey('gig-price-${gig.id}')),
         );
-        expect(price.color, Ep.accent);
-        expect(price.decoration, isNull);
-        expect(
-          price.padding,
-          const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        );
-        final label = price.child! as Text;
+        expect(price, isA<Text>());
+        expect(price, isNot(isA<Container>()));
+        final label = price as Text;
         expect(label.data, '\$12');
+        expect(label.textAlign, TextAlign.right);
         expect(label.style?.fontFamily, 'Azeret Mono');
         expect(label.style?.fontSize, 13);
-        expect(label.style?.color, Ep.ink);
+        expect(label.style?.color, palette.ink);
         expect(tester.takeException(), isNull);
       }
     },
