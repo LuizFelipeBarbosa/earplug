@@ -21,6 +21,9 @@ import '../widgets/ticket_purchase_sheet.dart';
 import '../widgets/venue_mini_map.dart';
 
 const _sectionGap = 24.0;
+const _titleToFactsGap = 12.0;
+const _bottomBreathingRoom = 48.0;
+const _headerBarContentHeight = 44 + EpLayout.gutter * 2;
 
 class GigDetailScreen extends StatefulWidget {
   final String gigId;
@@ -175,7 +178,9 @@ class _GigDetailPresentationState extends State<GigDetailPresentation> {
       children: [
         ListView(
           controller: _scrollController,
-          padding: EdgeInsets.only(bottom: actionBarClearance(context)),
+          padding: EdgeInsets.only(
+            bottom: actionBarClearance(context) + _bottomBreathingRoom,
+          ),
           children: [
             _Hero(
               gig: gig,
@@ -189,15 +194,16 @@ class _GigDetailPresentationState extends State<GigDetailPresentation> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: _sectionGap),
-                  _TitleBlock(gig: gig, app: app),
-                  const SizedBox(height: _sectionGap),
-                  _FactsSection(
+                  _TitleBlock(
                     gig: gig,
                     app: app,
                     venue: venue,
                     venueSet: venueSet,
                     performers: performers,
+                    interactive: interactive,
                   ),
+                  const SizedBox(height: _titleToFactsGap),
+                  _FactsSection(gig: gig),
                   const SizedBox(height: _sectionGap),
                   Column(
                     key: const ValueKey('gig-lineup'),
@@ -286,9 +292,6 @@ class _GigDetailPresentationState extends State<GigDetailPresentation> {
           child: _GigDetailHeaderBar(
             gig: gig,
             app: app,
-            venue: venue,
-            venueSet: venueSet,
-            performers: performers,
             topInset: topInset,
             progress: progress,
             previewLabel: previewLabel,
@@ -487,9 +490,6 @@ class _GigDetailHeaderBar extends StatelessWidget {
   const _GigDetailHeaderBar({
     required this.gig,
     required this.app,
-    required this.venue,
-    required this.venueSet,
-    required this.performers,
     required this.topInset,
     required this.progress,
     required this.previewLabel,
@@ -498,9 +498,6 @@ class _GigDetailHeaderBar extends StatelessWidget {
 
   final Gig gig;
   final AppState app;
-  final Venue venue;
-  final bool venueSet;
-  final List<GigPerformer> performers;
   final double topInset;
   final double progress;
   final String? previewLabel;
@@ -510,11 +507,9 @@ class _GigDetailHeaderBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.epColors;
     final saved = app.saved.contains(gig.id);
-    final line = presenterOrLineupLine(gig, app, performers);
-    final showDirections = venueSet && venue.exactAddress != null;
     return Container(
       key: const ValueKey('gig-detail-header-bar'),
-      height: 56 + topInset,
+      height: _headerBarContentHeight + topInset,
       padding: EdgeInsets.only(top: topInset),
       decoration: BoxDecoration(
         color: Color.lerp(
@@ -522,6 +517,9 @@ class _GigDetailHeaderBar extends StatelessWidget {
           colors.background,
           progress,
         ),
+      ),
+      // Paint the hairline without subtracting from the centered row's height.
+      foregroundDecoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
             color: Color.lerp(
@@ -565,43 +563,6 @@ class _GigDetailHeaderBar extends StatelessWidget {
               const SizedBox(width: 12),
               SizedBox.square(
                 dimension: 44,
-                child: Tooltip(
-                  message: 'Add to calendar',
-                  excludeFromSemantics: true,
-                  child: ExploreCardIconButton(
-                    key: const ValueKey('gig-add-to-calendar'),
-                    circle: true,
-                    icon: Icons.calendar_today_outlined,
-                    semanticLabel: 'Add to calendar',
-                    onPressed: () => openCalendar(
-                      context,
-                      gig,
-                      venueSet ? venue : null,
-                      presenterOrLineupLine: line,
-                    ),
-                  ),
-                ),
-              ),
-              if (showDirections) ...[
-                const SizedBox(width: 8),
-                SizedBox.square(
-                  dimension: 44,
-                  child: Tooltip(
-                    message: 'Directions',
-                    excludeFromSemantics: true,
-                    child: ExploreCardIconButton(
-                      key: const ValueKey('gig-venue-directions'),
-                      circle: true,
-                      icon: Icons.directions_outlined,
-                      semanticLabel: 'Directions',
-                      onPressed: () => openDirections(context, venue),
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(width: 8),
-              SizedBox.square(
-                dimension: 44,
                 child: ExploreCardIconButton(
                   key: ValueKey('gig-detail-save-${gig.id}'),
                   circle: true,
@@ -635,10 +596,21 @@ class _GigDetailHeaderBar extends StatelessWidget {
 }
 
 class _TitleBlock extends StatelessWidget {
-  const _TitleBlock({required this.gig, required this.app});
+  const _TitleBlock({
+    required this.gig,
+    required this.app,
+    required this.venue,
+    required this.venueSet,
+    required this.performers,
+    required this.interactive,
+  });
 
   final Gig gig;
   final AppState app;
+  final Venue venue;
+  final bool venueSet;
+  final List<GigPerformer> performers;
+  final bool interactive;
 
   @override
   Widget build(BuildContext context) {
@@ -648,18 +620,72 @@ class _TitleBlock extends StatelessWidget {
     return Padding(
       key: const ValueKey('gig-detail-title-block'),
       padding: EdgeInsets.zero,
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (presenter != null) ...[
-            EpEyebrow.accent('${presenter.name} presents'),
-            const SizedBox(height: 9),
-          ],
-          EpDisplay(gig.title, size: 32, maxLines: 3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (presenter != null) ...[
+                  EpEyebrow.accent('${presenter.name} presents'),
+                  const SizedBox(height: 9),
+                ],
+                EpDisplay(gig.title, size: 32, maxLines: 3),
+              ],
+            ),
+          ),
+          if (interactive) _buildActions(context),
         ],
       ),
     );
   }
+
+  Widget _buildActions(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      SizedBox.square(
+        dimension: 44,
+        child: Tooltip(
+          message: 'Add to calendar',
+          excludeFromSemantics: true,
+          child: ExploreCardIconButton(
+            key: const ValueKey('gig-add-to-calendar'),
+            ring: true,
+            icon: Icons.calendar_today_outlined,
+            semanticLabel: 'Add to calendar',
+            onPressed: () => openCalendar(
+              context,
+              gig,
+              venueSet ? venue : null,
+              presenterOrLineupLine: presenterOrLineupLine(
+                gig,
+                app,
+                performers,
+              ),
+            ),
+          ),
+        ),
+      ),
+      if (venueSet && venue.exactAddress != null) ...[
+        const SizedBox(width: 8),
+        SizedBox.square(
+          dimension: 44,
+          child: Tooltip(
+            message: 'Directions',
+            excludeFromSemantics: true,
+            child: ExploreCardIconButton(
+              key: const ValueKey('gig-venue-directions'),
+              ring: true,
+              icon: Icons.directions_outlined,
+              semanticLabel: 'Directions',
+              onPressed: () => openDirections(context, venue),
+            ),
+          ),
+        ),
+      ],
+    ],
+  );
 }
 
 /// The editor preview's lifecycle chip. Its 32px height is part of the
@@ -708,23 +734,12 @@ String? presenterOrLineupLine(
 
 /// Date and admission read as open lines, divided by hairlines.
 class _FactsSection extends StatelessWidget {
-  const _FactsSection({
-    required this.gig,
-    required this.app,
-    required this.venue,
-    required this.venueSet,
-    required this.performers,
-  });
+  const _FactsSection({required this.gig});
 
   final Gig gig;
-  final AppState app;
-  final Venue venue;
-  final bool venueSet;
-  final List<GigPerformer> performers;
 
   @override
   Widget build(BuildContext context) {
-    final line = presenterOrLineupLine(gig, app, performers);
     final doors = gig.doorsLabel.trim();
     final start = _startLabel(gig.time);
     final line2 = [
@@ -758,24 +773,6 @@ class _FactsSection extends StatelessWidget {
                       ),
                     ],
                   ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              SizedBox.square(
-                dimension: 44,
-                child: Center(
-                  child: ExploreCardIconButton(
-                    key: const ValueKey('gig-fact-calendar-icon'),
-                    ring: true,
-                    icon: Icons.calendar_today_outlined,
-                    semanticLabel: 'Add to calendar',
-                    onPressed: () => openCalendar(
-                      context,
-                      gig,
-                      venueSet ? venue : null,
-                      presenterOrLineupLine: line,
-                    ),
-                  ),
                 ),
               ),
             ],
