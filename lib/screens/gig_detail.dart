@@ -15,6 +15,7 @@ import '../widgets/common.dart';
 import '../widgets/ep_rows.dart' show EpAvatarTile, EpEntityRow;
 import '../widgets/ep_text.dart';
 import '../widgets/explore_friends.dart';
+import '../widgets/explore_tiles.dart';
 import '../widgets/ticket_purchase_sheet.dart';
 import '../widgets/venue_mini_map.dart';
 
@@ -109,7 +110,7 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
 
 /// The redesigned public gig composition, also used by the editor's read-only
 /// draft preview so current form values are shown in the same hierarchy.
-class GigDetailPresentation extends StatelessWidget {
+class GigDetailPresentation extends StatefulWidget {
   const GigDetailPresentation({
     super.key,
     required this.gig,
@@ -132,20 +133,53 @@ class GigDetailPresentation extends StatelessWidget {
   bool get isPreview => previewLabel != null;
 
   @override
+  State<GigDetailPresentation> createState() => _GigDetailPresentationState();
+}
+
+class _GigDetailPresentationState extends State<GigDetailPresentation> {
+  final _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() => setState(() {});
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final gig = widget.gig;
+    final app = widget.app;
+    final performers = widget.performers;
+    final previewLabel = widget.previewLabel;
+    final venueSet = widget.venueSet;
     final venue = app.venue(gig.venueId);
-    final interactive = !isPreview;
+    final interactive = !widget.isPreview;
+    final topInset = MediaQuery.paddingOf(context).top;
+    final offset = _scrollController.hasClients
+        ? _scrollController.offset
+        : 0.0;
+    final progress = (offset / 80).clamp(0.0, 1.0);
+
     return Stack(
       children: [
         ListView(
+          controller: _scrollController,
           padding: EdgeInsets.only(bottom: actionBarClearance(context)),
           children: [
             _Hero(
               gig: gig,
               app: app,
-              onBack: onBack ?? app.back,
+              topInset: topInset,
               previewLabel: previewLabel,
-              flyerBytes: flyerBytes,
+              flyerBytes: widget.flyerBytes,
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
@@ -222,6 +256,19 @@ class GigDetailPresentation extends StatelessWidget {
           ],
         ),
         Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: _GigDetailHeaderBar(
+            gig: gig,
+            app: app,
+            topInset: topInset,
+            progress: progress,
+            previewLabel: previewLabel,
+            onBack: widget.onBack ?? app.back,
+          ),
+        ),
+        Positioned(
           left: 0,
           right: 0,
           bottom: 0,
@@ -251,87 +298,84 @@ class _CancelledBanner extends StatelessWidget {
   );
 }
 
-/// Controls and lifecycle rows sit above the unobstructed, full-width flyer.
+/// The full-width flyer leads into compact lifecycle rows below the artwork.
 class _Hero extends StatelessWidget {
   const _Hero({
     required this.gig,
     required this.app,
-    required this.onBack,
+    required this.topInset,
     required this.previewLabel,
     required this.flyerBytes,
   });
 
   final Gig gig;
   final AppState app;
-  final VoidCallback onBack;
+  final double topInset;
   final String? previewLabel;
   final Uint8List? flyerBytes;
 
   @override
   Widget build(BuildContext context) {
-    final saved = app.saved.contains(gig.id);
     return Column(
       key: const ValueKey('gig-detail-hero-content'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(
-            EpLayout.gutter,
-            EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
-            EpLayout.gutter,
-            12,
-          ),
-          child: Row(
-            children: [
-              EpIconPill(
-                key: const ValueKey('gig-detail-back-control'),
-                icon: Icons.arrow_back,
-                semanticLabel: 'Back',
-                onPressed: onBack,
-              ),
-              const Spacer(),
-              if (previewLabel == null) ...[
-                EpIconPill(
-                  key: ValueKey('gig-detail-save-${gig.id}'),
-                  icon: saved ? Icons.favorite : Icons.favorite_border,
-                  semanticLabel: saved ? 'Remove saved event' : 'Save',
-                  onPressed: () => app.requestSave(gig.id),
-                ),
-                const SizedBox(width: 6),
-                EpIconPill(
-                  key: ValueKey('gig-detail-share-${gig.id}'),
-                  icon: Icons.ios_share,
-                  semanticLabel: 'Share',
-                  onPressed: () => copyForUser(
-                    context,
-                    publicWebUrl('g/${gig.publicRef}'),
-                    successMessage:
-                        'Link copied: ${publicWebDisplayUrl('g/${gig.publicRef}')}',
-                  ),
-                ),
-              ],
-            ],
-          ),
+        _Flyer(
+          gig: gig,
+          style: app.flyer(gig.flyKey),
+          topInset: topInset,
+          bytes: flyerBytes,
         ),
-        if (previewLabel != null) _PreviewStatusBadge(label: previewLabel!),
-        if (gig.lifecycle == GigLifecycle.cancelled) const _CancelledBanner(),
-        _Flyer(gig: gig, style: app.flyer(gig.flyKey), bytes: flyerBytes),
+        if (previewLabel != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              EpLayout.gutter,
+              12,
+              EpLayout.gutter,
+              0,
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: IntrinsicWidth(
+                child: _PreviewStatusBadge(label: previewLabel!),
+              ),
+            ),
+          ),
+        if (gig.lifecycle == GigLifecycle.cancelled)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(
+              EpLayout.gutter,
+              12,
+              EpLayout.gutter,
+              0,
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: IntrinsicWidth(child: _CancelledBanner()),
+            ),
+          ),
       ],
     );
   }
 }
 
 class _Flyer extends StatelessWidget {
-  const _Flyer({required this.gig, required this.style, required this.bytes});
+  const _Flyer({
+    required this.gig,
+    required this.style,
+    required this.topInset,
+    required this.bytes,
+  });
 
   final Gig gig;
   final FlyerStyle style;
+  final double topInset;
   final Uint8List? bytes;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      final height = math.min(
+      final contentHeight = math.min(
         constraints.maxWidth * 1.25,
         MediaQuery.sizeOf(context).height * .6,
       );
@@ -341,26 +385,41 @@ class _Flyer extends StatelessWidget {
         key: const ValueKey('gig-detail-flyer'),
         child: SizedBox(
           width: constraints.maxWidth,
-          height: height,
-          child: custom
-              ? ClipRect(
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ImageFiltered(
-                        imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                        child: _image(context, BoxFit.cover),
-                      ),
-                      ColoredBox(
-                        color: context.epColors.background.withValues(
-                          alpha: .55,
+          height: topInset + contentHeight,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ColoredBox(color: context.epColors.background),
+              if (custom)
+                Positioned.fill(
+                  child: ClipRect(
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        ImageFiltered(
+                          imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                          child: _image(context, BoxFit.cover),
                         ),
-                      ),
-                      _image(context, BoxFit.contain),
-                    ],
+                        ColoredBox(
+                          color: context.epColors.background.withValues(
+                            alpha: .55,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                )
-              : GigFlyer(gig, style, height: height),
+                ),
+              Positioned(
+                top: topInset,
+                left: 0,
+                right: 0,
+                height: contentHeight,
+                child: custom
+                    ? _image(context, BoxFit.contain)
+                    : GigFlyer(gig, style, height: contentHeight),
+              ),
+            ],
+          ),
         ),
       );
     },
@@ -373,6 +432,112 @@ class _Flyer extends StatelessWidget {
       url: gig.flyerUrl,
       fit: fit,
       fallback: ColoredBox(color: context.epColors.background),
+    );
+  }
+}
+
+class _GigDetailHeaderBar extends StatelessWidget {
+  const _GigDetailHeaderBar({
+    required this.gig,
+    required this.app,
+    required this.topInset,
+    required this.progress,
+    required this.previewLabel,
+    required this.onBack,
+  });
+
+  final Gig gig;
+  final AppState app;
+  final double topInset;
+  final double progress;
+  final String? previewLabel;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.epColors;
+    final saved = app.saved.contains(gig.id);
+    return Container(
+      key: const ValueKey('gig-detail-header-bar'),
+      height: 56 + topInset,
+      padding: EdgeInsets.only(top: topInset),
+      decoration: BoxDecoration(
+        color: Color.lerp(
+          colors.background.withValues(alpha: 0),
+          colors.background,
+          progress,
+        ),
+        border: Border(
+          bottom: BorderSide(
+            color: Color.lerp(
+              colors.line.withValues(alpha: 0),
+              colors.line,
+              progress,
+            )!,
+          ),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
+        child: Row(
+          children: [
+            SizedBox.square(
+              dimension: 44,
+              child: Tooltip(
+                message: 'Back',
+                excludeFromSemantics: true,
+                child: ExploreCardIconButton(
+                  key: const ValueKey('gig-detail-back-control'),
+                  circle: true,
+                  icon: Icons.arrow_back,
+                  semanticLabel: 'Back',
+                  onPressed: onBack,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Opacity(
+                opacity: progress,
+                // Keep the hidden title out of traversal until it fades in.
+                child: Offstage(
+                  offstage: progress == 0,
+                  child: EpDisplay(gig.title, size: 18, maxLines: 1),
+                ),
+              ),
+            ),
+            if (previewLabel == null) ...[
+              const SizedBox(width: 12),
+              SizedBox.square(
+                dimension: 44,
+                child: ExploreCardIconButton(
+                  key: ValueKey('gig-detail-save-${gig.id}'),
+                  circle: true,
+                  icon: saved ? Icons.favorite : Icons.favorite_border,
+                  semanticLabel: saved ? 'Remove saved event' : 'Save',
+                  onPressed: () => app.requestSave(gig.id),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox.square(
+                dimension: 44,
+                child: ExploreCardIconButton(
+                  key: ValueKey('gig-detail-share-${gig.id}'),
+                  circle: true,
+                  icon: Icons.ios_share,
+                  semanticLabel: 'Share',
+                  onPressed: () => copyForUser(
+                    context,
+                    publicWebUrl('g/${gig.publicRef}'),
+                    successMessage:
+                        'Link copied: ${publicWebDisplayUrl('g/${gig.publicRef}')}',
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

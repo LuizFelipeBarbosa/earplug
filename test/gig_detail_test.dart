@@ -12,6 +12,7 @@ import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
+import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:earplug/widgets/venue_mini_map.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,7 +22,7 @@ import 'support/fixtures.dart';
 import 'support/harness.dart';
 
 void main() {
-  testWidgets('flat hero, open facts and sticky RSVP keep the artwork clear', (
+  testWidgets('flyer hero starts at the top and overlays the header controls', (
     tester,
   ) async {
     final harness = await pumpApp(
@@ -31,6 +32,7 @@ void main() {
     final gig = harness.app.gig('g1')!;
     final flyer = find.byKey(const ValueKey('gig-detail-flyer'));
     final flyerRect = tester.getRect(flyer);
+    expect(flyerRect.top, 0);
     expect(flyerRect.width, 402);
     expect(flyerRect.height, 402 * 1.25);
     expect(
@@ -50,8 +52,24 @@ void main() {
       final control = find.byKey(ValueKey(key));
       expect(control, findsOne);
       expect(tester.getSize(control), const Size(44, 44));
-      expect(tester.getBottomLeft(control).dy, lessThan(flyerRect.top));
+      expect(control.hitTestable(), findsOne);
+      expect(tester.widget<ExploreCardIconButton>(control).circle, isTrue);
+      final controlRect = tester.getRect(control);
+      expect(flyerRect.contains(controlRect.topLeft), isTrue);
+      expect(flyerRect.contains(controlRect.bottomRight), isTrue);
     }
+    final header = find.byKey(const ValueKey('gig-detail-header-bar'));
+    final titleFade = find.descendant(
+      of: header,
+      matching: find.byType(Opacity),
+    );
+    expect(tester.getTopLeft(header).dy, 0);
+    expect(tester.getSize(header).height, 56);
+    expect(tester.widget<Opacity>(titleFade).opacity, 0.0);
+    final restingDecoration =
+        tester.widget<Container>(header).decoration! as BoxDecoration;
+    expect(restingDecoration.color!.a, 0);
+    expect((restingDecoration.border! as Border).bottom.color.a, 0);
     final poster = tester.widget<GigFlyer>(find.byType(GigFlyer));
     expect(poster.child, isNull);
     expect(poster.scrim, isFalse);
@@ -112,10 +130,60 @@ void main() {
     expect(tester.widget<EpPill>(button).expand, isTrue);
     expect(tester.getSize(button).width, tester.getSize(cta).width - 40);
     expect(tester.getRect(cta).bottom, 900);
+
+    final controller = tester
+        .widget<ListView>(find.byType(ListView))
+        .controller!;
+    final colors = tester.element(header).epColors;
+    for (final offset in [40.0, 160.0]) {
+      controller.jumpTo(offset);
+      await tester.pump();
+
+      final progress = (offset / 80).clamp(0.0, 1.0);
+      expect(tester.widget<Opacity>(titleFade).opacity, progress);
+      final headerTitle = find.descendant(
+        of: titleFade,
+        matching: find.text(gig.title.toUpperCase()),
+      );
+      expect(headerTitle.hitTestable(), findsOne);
+      expect(tester.widget<Text>(headerTitle).maxLines, 1);
+      final decoration =
+          tester.widget<Container>(header).decoration! as BoxDecoration;
+      expect(
+        decoration.color,
+        Color.lerp(
+          colors.background.withValues(alpha: 0),
+          colors.background,
+          progress,
+        ),
+      );
+      expect(
+        (decoration.border! as Border).bottom.color,
+        Color.lerp(colors.line.withValues(alpha: 0), colors.line, progress),
+      );
+      expect(tester.getTopLeft(header).dy, 0);
+      expect(tester.getRect(cta).bottom, 900);
+    }
+
+    controller.jumpTo(0);
+    tester.view.padding = const FakeViewPadding(top: 47);
+    await tester.pump();
+    expect(tester.getTopLeft(flyer).dy, 0);
+    expect(tester.getSize(flyer).height, 47 + 402 * 1.25);
+    expect(tester.getTopLeft(find.byType(GigFlyer)).dy, 47);
+    expect(tester.getSize(find.byType(GigFlyer)).height, 402 * 1.25);
+    expect(tester.getSize(header).height, 56 + 47);
+    expect(tester.widget<Opacity>(titleFade).opacity, 0.0);
+    expect(
+      tester
+          .getTopLeft(find.byKey(const ValueKey('gig-detail-back-control')))
+          .dy,
+      greaterThanOrEqualTo(47),
+    );
   });
 
   testWidgets(
-    'portrait custom flyer uses blur and contain below flat preview status',
+    'portrait custom flyer uses blur and contain with preview status below the flyer',
     (tester) async {
       final gig = gigFixture(id: 'draft-preview', title: 'Current draft');
       final portraitBytes = await tester.runAsync(() async {
@@ -156,8 +224,16 @@ void main() {
       );
       expect(find.byType(GigFlyer), findsNothing);
       final status = find.byKey(const ValueKey('gig-draft-preview-status'));
-      expect(tester.getSize(status), const Size(402, 32));
-      expect(tester.getBottomLeft(status).dy, tester.getTopLeft(flyer).dy);
+      expect(tester.getSize(status).height, 32);
+      expect(tester.getTopLeft(status).dx, EpLayout.gutter);
+      expect(
+        tester.getSize(status).width,
+        lessThan(tester.getSize(flyer).width),
+      );
+      expect(
+        tester.getTopLeft(status).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(flyer).dy),
+      );
       expect(find.byKey(const ValueKey('gig-detail-back-control')), findsOne);
       expect(
         find.byKey(const ValueKey('gig-detail-save-draft-preview')),
@@ -169,6 +245,19 @@ void main() {
       );
       expect(find.text('CURRENT DRAFT'), findsOne);
       expect(find.text('FREE RSVP · PREVIEW ONLY'), findsOne);
+
+      tester.view.padding = const FakeViewPadding(top: 47);
+      await tester.pump();
+      expect(tester.getTopLeft(flyer).dy, 0);
+      expect(tester.getSize(flyer), const Size(402, 407));
+      final insetImages = find.descendant(
+        of: flyer,
+        matching: find.byType(Image),
+      );
+      expect(tester.getRect(insetImages.first), tester.getRect(flyer));
+      expect(tester.getTopLeft(insetImages.last).dy, 47);
+      expect(tester.getSize(insetImages.last), const Size(402, 360));
+      expect(tester.getSize(status).height, 32);
     },
   );
 
@@ -353,10 +442,16 @@ void main() {
       expect(harness.app.gig('shared-gig')?.lifecycle, GigLifecycle.cancelled);
       expect(find.text('THIS GIG HAS BEEN CANCELLED'), findsOne);
       expect(
-        tester.getBottomLeft(find.text('THIS GIG HAS BEEN CANCELLED')).dy,
-        lessThanOrEqualTo(
-          tester.getTopLeft(find.byKey(const ValueKey('gig-detail-flyer'))).dy,
+        tester.getTopLeft(find.text('THIS GIG HAS BEEN CANCELLED')).dy,
+        greaterThanOrEqualTo(
+          tester
+              .getBottomLeft(find.byKey(const ValueKey('gig-detail-flyer')))
+              .dy,
         ),
+      );
+      expect(
+        tester.getTopLeft(find.text('THIS GIG HAS BEEN CANCELLED')).dx,
+        EpLayout.gutter + 14 + 1, // The banner keeps its padding and border.
       );
       expect(find.text('GIG CANCELLED'), findsOne);
     },
