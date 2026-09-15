@@ -12,7 +12,6 @@ import 'package:earplug/services/location_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
-import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:earplug/widgets/map_view.dart';
@@ -36,6 +35,53 @@ Finder _hero(String label) => find.byWidgetPredicate(
 );
 
 void main() {
+  testWidgets('Home list shows the discovery feed without the map context', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      home: const Scaffold(body: HomeScreen()),
+      beforePump: (app) => app.setMapMode(false),
+    );
+
+    expect(find.byKey(const Key('feed-genre-rail')), findsOne);
+    expect(find.byKey(const Key('feed-featured')), findsOne);
+    expect(find.byKey(const Key('home-hero')), findsNothing);
+    expect(find.byKey(const Key('home-location-control')), findsNothing);
+  });
+
+  testWidgets('Home map shows the hero without the genre rail', (tester) async {
+    await pumpApp(tester, home: const Scaffold(body: HomeScreen()));
+
+    expect(find.byKey(const Key('home-hero')), findsOne);
+    expect(find.byKey(const Key('feed-genre-rail')), findsNothing);
+  });
+
+  testWidgets('desktop Home only shows the header hero in map mode', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      size: const Size(1280, 900),
+      home: const Scaffold(body: HomeScreen()),
+    );
+
+    expect(find.byKey(const Key('home-header-hero')), findsOne);
+    await tester.tap(find.byKey(const Key('home-view-list')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('home-header-hero')), findsNothing);
+    expect(find.byKey(const Key('home-header-row')), findsOne);
+  });
+
+  testWidgets('Home has no quick filters in either view', (tester) async {
+    await pumpApp(tester, home: const Scaffold(body: HomeScreen()));
+
+    expect(find.byKey(const Key('home-filters')), findsNothing);
+    await tester.tap(find.byKey(const Key('home-view-list')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('home-filters')), findsNothing);
+  });
+
   testWidgets(
     'Home defaults to Map and keeps List as an intentional switch with location toggle geometry',
     (tester) async {
@@ -46,6 +92,7 @@ void main() {
 
       expect(harness.app.mapMode, isTrue);
       expect(find.byType(GigMapView), findsOne);
+      expect(_hero('9 shows near you.'), findsOne);
       expect(find.text('PUNK'), findsNothing);
       expect(find.byKey(const Key('home-logo')), findsOne);
 
@@ -67,23 +114,7 @@ void main() {
 
       expect(harness.app.mapMode, isFalse);
       expect(find.byType(GigMapView), findsNothing);
-      expect(_hero('9 shows near you.'), findsOne);
-      final cards = tester.widgetList<FanEventCard>(find.byType(FanEventCard));
-      final featured = cards.first;
-      expect(featured.gig.id, harness.app.feed.first.id);
-      expect(featured.presentation, FanEventCardPresentation.featured);
-      expect(
-        cards
-            .skip(1)
-            .every(
-              (card) => card.presentation == FanEventCardPresentation.compact,
-            ),
-        isTrue,
-      );
-      expect(
-        find.byKey(ValueKey('fan-event-${harness.app.feed.first.id}')),
-        findsOne,
-      );
+      expect(find.byKey(const Key('home-hero')), findsNothing);
 
       harness.app.resetTo(Screen.explore);
       harness.app.resetTo(Screen.home);
@@ -130,7 +161,6 @@ void main() {
           ),
         ),
       home: const Scaffold(body: HomeScreen()),
-      beforePump: (app) => app.setMapMode(false),
     );
 
     expect(_hero('1 show near you.'), findsOne);
@@ -193,95 +223,6 @@ void main() {
       pinDecoration.border,
       Border.all(color: Ep.contentPrimary, width: 2),
     );
-  });
-
-  testWidgets('active complete listings carry the transparent boost label', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    final readyBand = DemoData.bands['b1']!.copyWith(
-      discoveryProfileReady: true,
-    );
-    await pumpApp(
-      tester,
-      auth: auth,
-      repository: StubRepository(auth: auth)
-        ..returnsStream(
-          'feed',
-          () => Stream.value(
-            FeedSnapshot(
-              gigs: DemoData.gigs,
-              venues: DemoData.venues,
-              bands: {...DemoData.bands, 'b1': readyBand},
-            ),
-          ),
-        )
-        ..returnsStream(
-          'myBands',
-          () => Stream.value([BandMembership(band: readyBand, role: 'admin')]),
-        ),
-      home: const Scaffold(body: HomeScreen()),
-    );
-
-    await tester.tap(find.byKey(const Key('home-view-list')));
-    await tester.pumpAndSettle();
-    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
-  });
-
-  testWidgets('the feed refreshes when a discovery boost window opens', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    var now = DateTime.utc(2026, 8, 25, 19);
-    final repository = _BoundaryBoostRepository(auth: auth, now: now);
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const Scaffold(body: HomeScreen()),
-      beforePump: (app) => app.setMapMode(false),
-      now: () => now,
-    );
-
-    expect(harness.app.isDiscoveryBoosted(repository.gig), isFalse);
-    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsNothing);
-
-    now = now.add(const Duration(seconds: 3));
-    await tester.pump(const Duration(seconds: 3));
-    await tester.pump();
-
-    expect(harness.app.isDiscoveryBoosted(repository.gig), isTrue);
-    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
-  });
-
-  testWidgets('a same-second boundary refreshes discovery boost membership', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    var now = DateTime.utc(2026, 8, 25, 19, 0, 0, 400);
-    const boundaryDelay = Duration(milliseconds: 500);
-    final repository = _BoundaryBoostRepository(
-      auth: auth,
-      now: now,
-      opensAfter: boundaryDelay,
-    );
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const Scaffold(body: HomeScreen()),
-      beforePump: (app) => app.setMapMode(false),
-      now: () => now,
-    );
-
-    expect(harness.app.isDiscoveryBoosted(repository.gig), isFalse);
-    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsNothing);
-
-    now = now.add(boundaryDelay);
-    await tester.pump(boundaryDelay);
-
-    expect(harness.app.isDiscoveryBoosted(repository.gig), isTrue);
-    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
 
   testWidgets('the whole map card opens one gig route', (tester) async {
@@ -422,59 +363,6 @@ void main() {
     expect(find.byKey(const Key('gig-marker-missing-venue')), findsNothing);
   });
 
-  testWidgets('Filters apply live and the results button closes the sheet', (
-    tester,
-  ) async {
-    final harness = await pumpApp(
-      tester,
-      home: const Scaffold(body: HomeScreen()),
-    );
-
-    await tester.tap(find.byKey(const Key('home-filters')));
-    await tester.pumpAndSettle();
-    expect(find.text('GENRES · CHOOSE ANY'), findsNothing);
-    await tester.tap(find.text('PAID'));
-    await tester.pumpAndSettle();
-
-    expect(harness.app.fPrice, PriceFilter.paid);
-
-    await tester.tap(find.byKey(const Key('show-filter-results')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('ANY GENRE · I\'M OPEN'), findsNothing);
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('home-filters')),
-        matching: find.text('1'),
-      ),
-      findsOne,
-    );
-  });
-
-  testWidgets('quick filters fill the row and share a center line', (
-    tester,
-  ) async {
-    await pumpApp(
-      tester,
-      home: const Scaffold(body: HomeScreen()),
-      size: const Size(402, 700),
-    );
-
-    final pills = find.byType(EpPill);
-    final tonight = tester.getRect(pills.at(0));
-    final thisWeek = tester.getRect(pills.at(1));
-    final free = tester.getRect(pills.at(2));
-    final filters = tester.getRect(find.byKey(const Key('home-filters')));
-    expect(
-      (tonight.center.dy - thisWeek.center.dy).abs(),
-      lessThanOrEqualTo(1),
-    );
-    expect((tonight.center.dy - free.center.dy).abs(), lessThanOrEqualTo(1));
-    expect((tonight.center.dy - filters.center.dy).abs(), lessThanOrEqualTo(1));
-    expect(tonight.left, EpLayout.gutter);
-    expect(filters.right, 402 - EpLayout.gutter);
-  });
-
   testWidgets('current location is user initiated and adds a map marker', (
     tester,
   ) async {
@@ -587,22 +475,6 @@ void main() {
     expect(find.text(_noGigs), findsOne);
     expect(find.text(_noMatches), findsNothing);
     expect(_hero('0 shows near you.'), findsOne);
-  });
-
-  testWidgets('Home list lazily builds a 60-gig feed', (tester) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    final snapshot = _bigFeedSnapshot();
-    await pumpApp(
-      tester,
-      auth: auth,
-      repository: StubRepository(auth: auth)
-        ..returnsStream('feed', () => Stream.value(snapshot)),
-      home: const Scaffold(body: HomeScreen()),
-      beforePump: (app) => app.setMapMode(false),
-    );
-
-    expect(tester.widgetList(find.byType(FanEventCard)).length, lessThan(60));
   });
 
   testWidgets('compact is the default thumbnail card presentation', (
@@ -812,43 +684,6 @@ Future<void> _expandClusterContaining(
   expect(marker, findsOne);
 }
 
-FeedSnapshot _bigFeedSnapshot() {
-  return FeedSnapshot(
-    gigs: List.generate(60, (index) {
-      final source = DemoData.gigs.first;
-      return Gig(
-        id: 'big-$index',
-        slug: 'big-$index',
-        title: source.title,
-        venueId: source.venueId,
-        price: source.price,
-        startsAt: source.startsAt,
-        doorsAt: source.doorsAt,
-        dateShort: source.dateShort,
-        dateLine: source.dateLine,
-        time: source.time,
-        when: source.when,
-        flyKey: source.flyKey,
-        lineup: source.lineup,
-        performers: source.performers,
-        going: source.going,
-        genres: source.genres,
-        desc: source.desc,
-        tix: source.tix,
-        externalUrl: source.externalUrl,
-        flyerUrl: source.flyerUrl,
-        cap: source.cap,
-        ageRequirement: source.ageRequirement,
-        lifecycle: source.lifecycle,
-        createdByBand: source.createdByBand,
-        discoveryListingReady: source.discoveryListingReady,
-      );
-    }),
-    venues: DemoData.venues,
-    bands: DemoData.bands,
-  );
-}
-
 class _SuccessfulLocationService implements LocationService {
   const _SuccessfulLocationService();
 
@@ -881,38 +716,6 @@ class _DeniedLocationService implements LocationService {
 
   @override
   Future<bool> openLocationSettings() async => true;
-}
-
-class _BoundaryBoostRepository extends StubRepository {
-  _BoundaryBoostRepository({
-    required super.auth,
-    required DateTime now,
-    Duration opensAfter = const Duration(seconds: 2),
-  }) : opensAt = now.add(opensAfter) {
-    final readyBand = DemoData.bands['b1']!.copyWith(
-      discoveryProfileReady: true,
-    );
-    returnsStream(
-      'feed',
-      () => Stream.value(
-        FeedSnapshot(
-          gigs: [gig],
-          venues: {'v1': DemoData.venues['v1']!},
-          bands: {'b1': readyBand},
-        ),
-      ),
-    );
-    returnsStream(
-      'myBands',
-      () => Stream.value([BandMembership(band: readyBand, role: 'admin')]),
-    );
-  }
-
-  final DateTime opensAt;
-
-  late final Gig gig = DemoData.gigs[1].copyWith(
-    startsAt: opensAt.add(discoveryBoostLead),
-  );
 }
 
 final _missingVenueGig = Gig(

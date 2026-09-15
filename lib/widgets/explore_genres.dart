@@ -30,7 +30,7 @@ class ExploreGenreRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-    key: const Key('explore-genre-rail'),
+    key: const Key('feed-genre-rail'),
     height: 40,
     child: Semantics(
       container: true,
@@ -47,7 +47,7 @@ class ExploreGenreRail extends StatelessWidget {
           scrollbars: false,
         ),
         child: ListView.separated(
-          key: const Key('explore-genre-rail-list'),
+          key: const Key('feed-genre-rail-list'),
           primary: false,
           scrollDirection: Axis.horizontal,
           padding: padding,
@@ -65,7 +65,7 @@ class ExploreGenreRail extends StatelessWidget {
             }
             final chip = chips[index - 1];
             return EpPill(
-              key: Key('explore-genre-${chip.genre}'),
+              key: Key('feed-genre-${chip.genre}'),
               label: chip.feedCount > 0
                   ? '${chip.label} · ${chip.feedCount}'
                   : chip.label,

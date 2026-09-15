@@ -72,9 +72,9 @@ void main() {
     expect(find.text('GENRE 1 · 2'), findsOneWidget);
     expect(find.text('GENRE 2 · 3'), findsOneWidget);
     expect(
-      tester.getTopLeft(find.byKey(const Key('explore-genre-genre-0'))).dx,
+      tester.getTopLeft(find.byKey(const Key('feed-genre-genre-0'))).dx,
       lessThan(
-        tester.getTopLeft(find.byKey(const Key('explore-genre-genre-1'))).dx,
+        tester.getTopLeft(find.byKey(const Key('feed-genre-genre-1'))).dx,
       ),
     );
   });
@@ -96,22 +96,22 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const Key('explore-genre-punk')));
+    await tester.tap(find.byKey(const Key('feed-genre-punk')));
     await tester.pump();
     expect(selections, ['punk']);
     expect(
       tester
-          .widget<EpPill>(find.byKey(const Key('explore-genre-punk')))
+          .widget<EpPill>(find.byKey(const Key('feed-genre-punk')))
           .selected,
       isTrue,
     );
-    await tester.tap(find.byKey(const Key('explore-genre-punk')));
+    await tester.tap(find.byKey(const Key('feed-genre-punk')));
     expect(selections, ['punk', null]);
   });
 
   testWidgets('rail scrolls with a mouse drag', (tester) async {
     await _pumpRail(tester, SizedBox(width: 300, child: _rail(count: 10)));
-    final item = find.byKey(const Key('explore-genre-genre-0'));
+    final item = find.byKey(const Key('feed-genre-genre-0'));
     final before = tester.getTopLeft(item).dx;
     await tester.drag(
       find.byType(ListView),

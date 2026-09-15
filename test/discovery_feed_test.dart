@@ -1,7 +1,7 @@
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
-import 'package:earplug/screens/explore.dart';
+import 'package:earplug/screens/home.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_rows.dart';
@@ -126,14 +126,17 @@ Future<AppHarness> _pumpExplore(
     repository: repository,
     size: size,
     now: () => _now,
-    home: home ?? const Scaffold(body: ExploreScreen()),
-    beforePump: (app) => app.loadMoreExploreBands(),
+    home: home ?? const Scaffold(body: HomeScreen()),
+    beforePump: (app) {
+      app.setMapMode(false);
+      app.loadMoreExploreBands();
+    },
   );
 }
 
 Finder _browseScrollable() => find
     .descendant(
-      of: find.byKey(const ValueKey('explore-browse-all')),
+      of: find.byKey(const ValueKey('feed-browse-all')),
       matching: find.byType(Scrollable),
     )
     .first;
@@ -178,12 +181,12 @@ void main() {
         followed: const {'bFollow'},
         saved: const {'gSaved'},
       );
-      final rail = find.byKey(const Key('explore-featured'));
+      final rail = find.byKey(const Key('feed-featured'));
       expect(rail, findsOneWidget);
       Finder featuredCard(String id) => find.byWidgetPredicate(
         (widget) =>
             widget is ExploreFeaturedCard &&
-            widget.key == Key('explore-featured-$id'),
+            widget.key == Key('feed-featured-$id'),
       );
       expect(featuredCard('gFollowed'), findsOneWidget);
       final followedCard = featuredCard('gFollowed');
@@ -262,8 +265,8 @@ void main() {
     'featured carousel is omitted when the feed is empty and the empty copy shows',
     (tester) async {
       await _pumpExplore(tester, signedIn: true, gigs: const [], bands: _bands);
-      expect(find.byKey(const Key('explore-featured')), findsNothing);
-      expect(find.byKey(const Key('explore-empty')), findsOneWidget);
+      expect(find.byKey(const Key('feed-featured')), findsNothing);
+      expect(find.byKey(const Key('feed-empty')), findsOneWidget);
       expect(find.text('No upcoming events yet.'), findsOneWidget);
     },
   );
@@ -287,21 +290,18 @@ void main() {
         followed: const {'bFollow'},
         saved: const {'gSaved'},
       );
-      await _scrollTo(
-        tester,
-        find.byKey(const Key('explore-for-you-gWeekend')),
-      );
-      expect(find.byKey(const Key('explore-for-you-gWeekend')), findsOneWidget);
-      expect(find.byKey(const Key('explore-for-you-gLater')), findsOneWidget);
-      expect(find.byKey(const Key('explore-for-you-gFollowed')), findsNothing);
-      expect(find.byKey(const Key('explore-for-you-gSaved')), findsNothing);
+      await _scrollTo(tester, find.byKey(const Key('feed-for-you-gWeekend')));
+      expect(find.byKey(const Key('feed-for-you-gWeekend')), findsOneWidget);
+      expect(find.byKey(const Key('feed-for-you-gLater')), findsOneWidget);
+      expect(find.byKey(const Key('feed-for-you-gFollowed')), findsNothing);
+      expect(find.byKey(const Key('feed-for-you-gSaved')), findsNothing);
       expect(
-        tester.getTopLeft(find.byKey(const Key('explore-for-you-gWeekend'))).dy,
+        tester.getTopLeft(find.byKey(const Key('feed-for-you-gWeekend'))).dy,
         lessThan(
-          tester.getTopLeft(find.byKey(const Key('explore-for-you-gLater'))).dy,
+          tester.getTopLeft(find.byKey(const Key('feed-for-you-gLater'))).dy,
         ),
       );
-      final row = find.byKey(const Key('explore-for-you-gWeekend'));
+      final row = find.byKey(const Key('feed-for-you-gWeekend'));
       expect(
         find.descendant(of: row, matching: find.byType(EpAvatarTile)),
         findsNothing,
@@ -343,8 +343,8 @@ void main() {
       followed: const {'bFollow'},
       saved: const {'gSaved'},
     );
-    await _scrollTo(tester, find.byKey(const Key('explore-for-you-gWeekend')));
-    await tester.tap(find.byKey(const Key('explore-for-you-gWeekend')));
+    await _scrollTo(tester, find.byKey(const Key('feed-for-you-gWeekend')));
+    await tester.tap(find.byKey(const Key('feed-for-you-gWeekend')));
     expect(h.app.current.screen, Screen.gig);
     expect(h.app.current.param, 'gWeekend');
   });
@@ -371,7 +371,7 @@ void main() {
     tester,
   ) async {
     final h = await _pumpExplore(tester, gigs: _gigs, bands: _bands);
-    await _scrollTo(tester, find.byKey(const Key('explore-venues')));
+    await _scrollTo(tester, find.byKey(const Key('feed-venues')));
     expect(find.byKey(const Key('explore-venue-tile-v1')), findsOneWidget);
     expect(find.byKey(const Key('explore-venue-tile-v2')), findsOneWidget);
     await tester.tap(find.byKey(const Key('explore-venue-tile-v1')));
@@ -392,7 +392,7 @@ void main() {
       genres: const ['punk'],
     );
     expect(h.app.exploreHome.recommendedBandIds.first, 'bFollow');
-    await _scrollTo(tester, find.byKey(const Key('explore-bands')));
+    await _scrollTo(tester, find.byKey(const Key('feed-bands')));
     final band = find.byKey(const Key('explore-band-card-bFollow'));
     expect(band, findsOneWidget);
     expect(
@@ -408,9 +408,9 @@ void main() {
     'bands rail hugs its tiles and header sits 32 under the venues rail',
     (tester) async {
       await _pumpExplore(tester, signedIn: true, gigs: _gigs, bands: _bands);
-      final rail = find.byKey(const Key('explore-bands'));
-      final allBands = find.byKey(const Key('explore-toggle-bands'));
-      final findPeople = find.byKey(const Key('explore-find-people'));
+      final rail = find.byKey(const Key('feed-bands'));
+      final allBands = find.byKey(const Key('feed-toggle-bands'));
+      final findPeople = find.byKey(const Key('feed-find-people'));
       await _scrollTo(tester, findPeople);
       expect(rail, findsOneWidget);
       final railRect = tester.getRect(rail);
@@ -428,7 +428,7 @@ void main() {
       expect(find.text('VENUES'), findsOneWidget);
       expect(heading, findsOneWidget);
 
-      final allVenues = find.byKey(const Key('explore-toggle-venues'));
+      final allVenues = find.byKey(const Key('feed-toggle-venues'));
       for (final action in [allVenues, allBands]) {
         expect(tester.widget(action), isA<TextButton>());
         expect(
@@ -454,7 +454,7 @@ void main() {
         );
         expect(
           headerRect.right,
-          tester.getRect(find.byType(ExploreScreen)).right - EpLayout.gutter,
+          tester.getRect(find.byType(HomeScreen)).right - EpLayout.gutter,
         );
       }
 
@@ -466,7 +466,7 @@ void main() {
       expect(
         tester.getTopLeft(allBands).dy -
             tester.getRect(allVenues).bottom -
-            tester.getRect(find.byKey(const Key('explore-venues'))).height -
+            tester.getRect(find.byKey(const Key('feed-venues'))).height -
             venuesHeader.padding.bottom,
         EpLayout.formSectionGap,
       );
@@ -494,40 +494,12 @@ void main() {
         matching: find.byType(Column),
       );
       expect(
-        tester.getRect(bottomColumn).bottom - tester.getRect(findPeople).bottom,
+        tester.getRect(bottomColumn.first).bottom -
+            tester.getRect(findPeople).bottom,
         24,
       );
     },
   );
-
-  testWidgets('pinned genre rail stays below the status bar when scrolled', (
-    tester,
-  ) async {
-    const statusBar = 47.0;
-    await _pumpExplore(
-      tester,
-      gigs: _gigs,
-      bands: _bands,
-      home: Builder(
-        builder: (context) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(padding: const EdgeInsets.only(top: statusBar)),
-          child: const Scaffold(body: ExploreScreen()),
-        ),
-      ),
-    );
-    final chips = find.byKey(const Key('explore-genre-rail'));
-    // At rest the chips sit 12px under the search field's hairline.
-    final fieldBottom = tester.getRect(find.byType(EpUnderlineField)).bottom;
-    expect(tester.getTopLeft(chips).dy - fieldBottom, 12);
-    expect(tester.getTopLeft(find.text('EXPLORE')).dy, greaterThan(statusBar));
-
-    await _scrollTo(tester, find.byKey(const Key('explore-toggle-bands')));
-    expect(find.text('EXPLORE'), findsNothing);
-    expect(tester.getTopLeft(chips).dy, statusBar + 12);
-    expect(tester.getTopLeft(chips).dy, greaterThanOrEqualTo(12));
-  });
 
   testWidgets('find people row is at the bottom and opens People', (
     tester,
@@ -538,7 +510,7 @@ void main() {
       gigs: _gigs,
       bands: _bands,
     );
-    final findPeople = find.byKey(const Key('explore-find-people'));
+    final findPeople = find.byKey(const Key('feed-find-people'));
     await _scrollTo(tester, findPeople);
     expect(h.app.current.screen, Screen.home);
     await tester.tap(findPeople);
@@ -549,7 +521,7 @@ void main() {
     tester,
   ) async {
     final h = await _pumpExplore(tester, gigs: _gigs, bands: _bands);
-    final signIn = find.byKey(const Key('explore-friends-sign-in'));
+    final signIn = find.byKey(const Key('feed-friends-sign-in'));
     await _scrollTo(tester, signIn);
     await tester.tap(signIn);
     expect(h.app.pending?.kind, PendingKind.myGigs);
@@ -559,14 +531,14 @@ void main() {
     tester,
   ) async {
     final h = await _pumpExplore(tester, gigs: _gigs, bands: _bands);
-    await _scrollTo(tester, find.byKey(const Key('explore-toggle-bands')));
-    await tester.tap(find.byKey(const Key('explore-toggle-bands')));
+    await _scrollTo(tester, find.byKey(const Key('feed-toggle-bands')));
+    await tester.tap(find.byKey(const Key('feed-toggle-bands')));
     expect(h.app.current.screen, Screen.exploreCollection);
     expect(h.app.current.param, 'bands');
     h.app.go(Screen.home);
     await tester.pumpAndSettle();
-    await _scrollTo(tester, find.byKey(const Key('explore-toggle-venues')));
-    await tester.tap(find.byKey(const Key('explore-toggle-venues')));
+    await _scrollTo(tester, find.byKey(const Key('feed-toggle-venues')));
+    await tester.tap(find.byKey(const Key('feed-toggle-venues')));
     expect(h.app.current.screen, Screen.exploreCollection);
     expect(h.app.current.param, 'venues');
   });
@@ -575,57 +547,15 @@ void main() {
     'selecting a genre chip switches to the genre page and All restores the feed',
     (tester) async {
       await _pumpExplore(tester, gigs: _gigs, bands: _bands);
-      final chip = find.byKey(const Key('explore-genre-punk'));
+      final chip = find.byKey(const Key('feed-genre-punk'));
       expect(chip, findsOneWidget);
       await tester.tap(chip);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('explore-genre-page')), findsOneWidget);
-      expect(find.byKey(const Key('explore-browse-all')), findsNothing);
+      expect(find.byKey(const Key('feed-browse-all')), findsNothing);
       await tester.tap(find.byKey(const Key('explore-genre-all')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('explore-browse-all')), findsOneWidget);
-    },
-  );
-
-  testWidgets(
-    'search shows location, event, band and venue groups and a location result sets the city',
-    (tester) async {
-      final venue = Venue(
-        id: 'oak-v',
-        name: 'Oak Venue',
-        area: 'Oakland',
-        addr: 'Oak Ave',
-        city: 'Oakland',
-        point: const LatLng(37.8044, -122.2712),
-      );
-      final band = _band('oak-b', 'Oak Band');
-      final gig = _gig(
-        'oak-g',
-        DateTime(2026, 1, 6, 20),
-        venueId: 'oak-v',
-        title: 'Oak Event',
-        lineup: const ['oak-b'],
-      );
-      final h = await _pumpExplore(
-        tester,
-        gigs: [gig],
-        bands: [band],
-        venues: [venue],
-        signedIn: true,
-      );
-      await tester.enterText(
-        find.byKey(const Key('explore-search-field')),
-        'oak',
-      );
-      await tester.tap(find.byKey(const Key('explore-search-submit')));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('LOCATIONS ·'), findsOneWidget);
-      expect(find.textContaining('EVENTS ·'), findsOneWidget);
-      expect(find.textContaining('BANDS ·'), findsOneWidget);
-      expect(find.textContaining('VENUES ·'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('explore-location-oak')));
-      expect(h.app.discoveryLocation, DiscoveryLocation.oak);
-      expect(h.app.query, isEmpty);
+      expect(find.byKey(const Key('feed-browse-all')), findsOneWidget);
     },
   );
 
@@ -640,10 +570,10 @@ void main() {
       saved: const {'gSaved'},
     );
     expect(tester.takeException(), isNull);
-    expect(find.byKey(const Key('explore-featured')), findsOneWidget);
-    await _scrollTo(tester, find.byKey(const Key('explore-find-people')));
+    expect(find.byKey(const Key('feed-featured')), findsOneWidget);
+    await _scrollTo(tester, find.byKey(const Key('feed-find-people')));
     expect(tester.takeException(), isNull);
-    expect(find.byKey(const Key('explore-find-people')), findsOneWidget);
+    expect(find.byKey(const Key('feed-find-people')), findsOneWidget);
   });
 
   testWidgets('large text scale wraps the rails and renders without overflow', (
@@ -660,12 +590,12 @@ void main() {
           data: MediaQuery.of(
             context,
           ).copyWith(textScaler: TextScaler.linear(1.5)),
-          child: const Scaffold(body: ExploreScreen()),
+          child: const Scaffold(body: HomeScreen()),
         ),
       ),
     );
     expect(tester.takeException(), isNull);
-    await _scrollTo(tester, find.byKey(const Key('explore-find-people')));
-    expect(find.byKey(const Key('explore-find-people')), findsOneWidget);
+    await _scrollTo(tester, find.byKey(const Key('feed-find-people')));
+    expect(find.byKey(const Key('feed-find-people')), findsOneWidget);
   });
 }

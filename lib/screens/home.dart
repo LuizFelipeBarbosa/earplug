@@ -2,15 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
-import '../memo.dart';
-import '../models.dart';
 import '../theme.dart';
 import '../widgets/branding.dart';
 import '../widgets/common.dart';
-import '../widgets/discovery_quick_filters.dart';
+import '../widgets/discovery_feed.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
-import '../widgets/fan_event_card.dart';
 import '../widgets/location_eyebrow.dart';
 import '../widgets/map_view.dart';
 
@@ -20,25 +17,40 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mapMode = context.select<AppState, bool>((app) => app.mapMode);
-    if (!mapMode) return const _FeedList();
-    return const Column(
+    return Column(
       children: [
-        ScreenHeader(bottomPadding: 14, child: _HomeHeader()),
+        ScreenHeader(bottomPadding: 14, child: _HomeHeader(mapMode)),
         Expanded(
-          child: GigMapView(emptyState: _DiscoveryEmptyState(compact: true)),
+          child: mapMode
+              ? const GigMapView(
+                  emptyState: _DiscoveryEmptyState(compact: true),
+                )
+              : const DiscoveryFeed(),
         ),
       ],
     );
   }
 }
 
-/// Identity row, the "N shows near you" hero and the quick filters. Fixed above
-/// the map; the first thing the feed scrolls past in list mode.
+/// Identity and view controls, with location and nearby show count in map mode.
 class _HomeHeader extends StatelessWidget {
-  const _HomeHeader();
+  const _HomeHeader(this.mapMode);
+
+  final bool mapMode;
 
   @override
   Widget build(BuildContext context) {
+    const identityRow = Row(
+      key: ValueKey('home-header-row'),
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        EpLogo.full(key: ValueKey('home-logo'), width: null, height: 22),
+        Spacer(),
+        _ViewControls(),
+      ],
+    );
+    if (!mapMode) return identityRow;
+
     final count = context.select<AppState, int>((app) => app.homeFeed.length);
     final hero = Column(
       mainAxisSize: MainAxisSize.min,
@@ -54,20 +66,22 @@ class _HomeHeader extends StatelessWidget {
     );
 
     if (EpLayout.isDesktop(context)) {
-      final desktopHero = KeyedSubtree(
-        key: const ValueKey('home-header-hero'),
-        child: hero,
-      );
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(flex: 3, child: desktopHero),
-          const SizedBox(width: 24),
           Expanded(
+            flex: 3,
+            child: KeyedSubtree(
+              key: const ValueKey('home-header-hero'),
+              child: hero,
+            ),
+          ),
+          const SizedBox(width: 24),
+          const Expanded(
             flex: 2,
             child: Align(
               alignment: Alignment.bottomRight,
-              child: DiscoveryQuickFilters(trailing: const _ViewControls()),
+              child: _ViewControls(),
             ),
           ),
         ],
@@ -76,25 +90,7 @@ class _HomeHeader extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          key: const ValueKey('home-header-row'),
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const EpLogo.full(
-              key: ValueKey('home-logo'),
-              width: null,
-              height: 22,
-            ),
-            const Spacer(),
-            _ViewControls(),
-          ],
-        ),
-        const SizedBox(height: 16),
-        hero,
-        const SizedBox(height: 6),
-        DiscoveryQuickFilters(),
-      ],
+      children: [identityRow, const SizedBox(height: 16), hero],
     );
   }
 }
@@ -172,179 +168,6 @@ class _ViewControls extends StatelessWidget {
       onSelect: (index) => app.setMapMode(index == 0),
     );
   }
-}
-
-class _FeedList extends StatefulWidget {
-  const _FeedList();
-
-  @override
-  State<_FeedList> createState() => _FeedListState();
-}
-
-class _FeedListState extends State<_FeedList> {
-  final Memo<({List<Gig> feed, bool featuredBoosted}), List<_FeedRow>>
-  _rowsMemo = Memo();
-
-  /// Partitions the feed into rows once per feed instance. The list itself
-  /// rebuilds on every AppState notification because its cards read live
-  /// RSVP and going-count state off [app].
-  List<_FeedRow> _feedRows(AppState app) {
-    final feed = app.homeFeed;
-    final inputs = (
-      feed: feed,
-      featuredBoosted: feed.isNotEmpty && app.isDiscoveryBoosted(feed.first),
-    );
-    return _rowsMemo(inputs, () {
-      if (feed.isEmpty) return const [_FeedEmptyRow()];
-
-      final featured = feed.first;
-      final rows = <_FeedRow>[
-        _FeedSectionRow(
-          label: 'Featured · ${_sectionLabel(featured.when)}',
-          topLine: true,
-        ),
-        if (inputs.featuredBoosted) _FeedBoostRow(featured),
-        _FeedCardRow(featured, featured: true),
-      ];
-
-      final remaining = feed.skip(1);
-      for (final section in GigWhen.values) {
-        final gigs = remaining
-            .where((gig) => gig.when == section)
-            .toList(growable: false);
-        if (gigs.isEmpty) continue;
-        rows.add(
-          _FeedSectionRow(label: '${_sectionLabel(section)} · ${gigs.length}'),
-        );
-        for (final gig in gigs) {
-          rows.add(_FeedCardRow(gig));
-        }
-      }
-      return rows;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final rows = _feedRows(app);
-    if (EpLayout.isDesktop(context)) return _desktopFeed(context, app, rows);
-    return ListView.builder(
-      padding: EdgeInsets.fromLTRB(
-        EpLayout.gutter,
-        headerTopPad(context),
-        EpLayout.gutter,
-        tabBarClearance,
-      ),
-      itemCount: rows.length + 1,
-      // Same breathing room under the quick filters as the map header's
-      // bottom padding, so the Featured hairline does not hug the chips.
-      itemBuilder: (context, index) => index == 0
-          ? const Padding(
-              padding: EdgeInsets.only(bottom: 14),
-              child: _HomeHeader(),
-            )
-          : _buildRow(context, rows[index - 1], app),
-    );
-  }
-
-  /// Wide screens run the lead poster and the dated rows side by side, so the
-  /// row list is split at the featured card instead of stacked.
-  Widget _desktopFeed(BuildContext context, AppState app, List<_FeedRow> rows) {
-    final lead = rows.indexWhere((row) => row is _FeedCardRow && row.featured);
-    Widget column(Iterable<_FeedRow> source) => Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [for (final row in source) _buildRow(context, row, app)],
-    );
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 40),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
-            child: const _HomeHeader(),
-          ),
-          const SizedBox(height: 32),
-          const EpHairline(),
-          if (lead == -1)
-            column(rows)
-          else
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: column(rows.take(lead + 1))),
-                const SizedBox(width: 40),
-                Expanded(child: column(rows.skip(lead + 1))),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRow(BuildContext context, _FeedRow row, AppState app) {
-    return switch (row) {
-      _FeedEmptyRow() => const _DiscoveryEmptyState(),
-      _FeedSectionRow(:final label, :final topLine) => Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (topLine && !EpLayout.isDesktop(context)) const EpHairline(),
-          EpSectionHeader(label: label),
-        ],
-      ),
-      _FeedBoostRow(:final gig) => Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: EpEyebrow.accent(
-          'Discovery boost · complete listing',
-          key: ValueKey('discovery-boost-${gig.id}'),
-        ),
-      ),
-      _FeedCardRow(:final gig, :final featured) => FanEventCard(
-        gig: gig,
-        app: app,
-        showDistance: true,
-        presentation: featured
-            ? FanEventCardPresentation.featured
-            : FanEventCardPresentation.compact,
-      ),
-    };
-  }
-}
-
-String _sectionLabel(GigWhen when) => switch (when) {
-  GigWhen.tonight => 'Tonight',
-  GigWhen.week => 'This week',
-  GigWhen.later => 'Later',
-};
-
-sealed class _FeedRow {
-  const _FeedRow();
-}
-
-class _FeedEmptyRow extends _FeedRow {
-  const _FeedEmptyRow();
-}
-
-class _FeedSectionRow extends _FeedRow {
-  const _FeedSectionRow({required this.label, this.topLine = false});
-
-  final String label;
-  final bool topLine;
-}
-
-class _FeedBoostRow extends _FeedRow {
-  const _FeedBoostRow(this.gig);
-
-  final Gig gig;
-}
-
-class _FeedCardRow extends _FeedRow {
-  const _FeedCardRow(this.gig, {this.featured = false});
-
-  final Gig gig;
-  final bool featured;
 }
 
 class _DiscoveryEmptyState extends StatelessWidget {

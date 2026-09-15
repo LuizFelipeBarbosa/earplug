@@ -18,6 +18,7 @@ void main() {
     required Screen screen,
     String? param,
     double? topPadding,
+    bool mapMode = false,
   }) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
@@ -38,7 +39,7 @@ void main() {
         },
       ),
     );
-    harness.app.setMapMode(false);
+    harness.app.setMapMode(mapMode);
     await tester.pumpAndSettle();
     if (screen != Screen.home) {
       harness.app.go(screen, param);
@@ -108,6 +109,7 @@ void main() {
         tester,
         size: phoneSize,
         screen: route.screen,
+        mapMode: route.screen == Screen.home,
         param: route.param,
         topPadding: 47,
       );
@@ -145,6 +147,7 @@ void main() {
         tester,
         size: desktopSize,
         screen: route.screen,
+        mapMode: route.screen == Screen.home,
       );
       final topLeft = tester.getTopLeft(route.first);
       final shellLeft = tester
