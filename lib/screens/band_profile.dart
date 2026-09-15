@@ -100,7 +100,6 @@ class _BandProfileViewState extends State<_BandProfileView> {
     final bodyStyle = Theme.of(
       context,
     ).textTheme.epBody.copyWith(color: context.epColors.muted);
-    final following = app.follows.contains(bandId);
     final topInset = MediaQuery.paddingOf(context).top;
     final offset = _scrollController.hasClients
         ? _scrollController.offset
@@ -128,9 +127,9 @@ class _BandProfileViewState extends State<_BandProfileView> {
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(
                       EpLayout.gutter,
-                      16,
+                      8,
                       EpLayout.gutter,
-                      16,
+                      8,
                     ),
                     child: _ProfileActions(
                       app: app,
@@ -291,8 +290,6 @@ class _BandProfileViewState extends State<_BandProfileView> {
               right: 0,
               child: _BandProfileHeaderBar(
                 band: band,
-                following: following,
-                onFollow: () => app.requestFollow(bandId),
                 topInset: topInset,
                 progress: progress,
                 backLabel: widget.isManagedPreview
@@ -431,6 +428,8 @@ class _ProfileActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bandId = band.id;
+    final following = app.follows.contains(bandId);
+    final followLabel = following ? 'Following ✓' : 'Follow';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -438,18 +437,15 @@ class _ProfileActions extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: Container(
-                key: const ValueKey('band-follower-count'),
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  border: Border.all(color: context.epColors.outline),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: EpMonoText(
-                  '${band.followersLabel} FOLLOWERS',
-                  color: context.epColors.ink,
-                ),
+              child: EpPill(
+                key: const ValueKey('band-follow'),
+                label: band.followers > 0
+                    ? '$followLabel · ${band.followersLabel}'
+                    : followLabel,
+                variant: EpPillVariant.outline,
+                size: EpPillSize.regular,
+                expand: true,
+                onPressed: () => app.requestFollow(bandId),
               ),
             ),
             const SizedBox(width: 8),
@@ -497,8 +493,6 @@ class _ProfileActions extends StatelessWidget {
 class _BandProfileHeaderBar extends StatelessWidget {
   const _BandProfileHeaderBar({
     required this.band,
-    required this.following,
-    required this.onFollow,
     required this.topInset,
     required this.progress,
     required this.backLabel,
@@ -506,8 +500,6 @@ class _BandProfileHeaderBar extends StatelessWidget {
   });
 
   final Band band;
-  final bool following;
-  final VoidCallback onFollow;
   final double topInset;
   final double progress;
   final String backLabel;
@@ -588,17 +580,6 @@ class _BandProfileHeaderBar extends StatelessWidget {
                     ),
                   ],
                 ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              height: 44,
-              child: EpPill(
-                key: const ValueKey('band-mini-follow'),
-                label: following ? 'Following ✓' : 'Follow',
-                variant: following ? EpPillVariant.ink : EpPillVariant.primary,
-                size: EpPillSize.chip,
-                onPressed: onFollow,
               ),
             ),
           ],

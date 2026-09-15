@@ -228,57 +228,98 @@ void main() {
     expect(find.text('EDIT PROFILE'), findsNothing);
   });
 
-  testWidgets('header has one follow control and a read-only follower count', (
+  for (final (band, followLabel, followingLabel) in [
+    (
+      DemoData.bands['b1']!,
+      'Follow · ${DemoData.bands['b1']!.followersLabel}',
+      'Following ✓ · ${DemoData.bands['b1']!.followersLabel}',
+    ),
+    (DemoData.bands['b1']!.copyWith(followers: 0), 'Follow', 'Following ✓'),
+  ]) {
+    testWidgets(
+      'hero follow pill carries the follower count; mini header has no '
+      'follow control (${band.followers} followers)',
+      (tester) async {
+        final auth = FakeAuthService();
+        await auth.signInDemo();
+        final repository = _profileRepository(auth: auth, profileBand: band);
+        final harness = await pumpApp(
+          tester,
+          auth: auth,
+          repository: repository,
+          home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+        );
+
+        final hero = find.byKey(const ValueKey('band-profile-hero-b1'));
+        final meta = tester.widget<EpMonoText>(
+          find.descendant(of: hero, matching: find.byType(EpMonoText)),
+        );
+        expect(meta.text, band.genres.join('/'));
+        expect(meta.text, isNot(contains('FOLLOWERS')));
+        expect(find.byKey(const ValueKey('band-follower-count')), findsNothing);
+        expect(find.byKey(const ValueKey('band-mini-follow')), findsNothing);
+        expect(harness.app.follows, isNot(contains(band.id)));
+        expect(repository.callsTo('toggleFollow'), 0);
+
+        final follow = find.byKey(const ValueKey('band-follow'));
+        expect(follow.hitTestable(), findsOneWidget);
+        expect(tester.widget<EpPill>(follow).label, followLabel);
+        expect(tester.widget<EpPill>(follow).variant, EpPillVariant.outline);
+        expect(tester.getSize(follow).height, greaterThanOrEqualTo(44));
+        await tester.tap(follow);
+        await tester.pumpAndSettle();
+
+        expect(repository.callsTo('toggleFollow'), 1);
+        expect(harness.app.follows, contains(band.id));
+        expect(tester.widget<EpPill>(follow).label, followingLabel);
+        expect(tester.widget<EpPill>(follow).variant, EpPillVariant.outline);
+
+        await tester.tap(follow);
+        await tester.pumpAndSettle();
+
+        expect(repository.callsTo('toggleFollow'), 2);
+        expect(harness.app.follows, isNot(contains(band.id)));
+        expect(tester.widget<EpPill>(follow).label, followLabel);
+        expect(tester.widget<EpPill>(follow).variant, EpPillVariant.outline);
+        await tester.pump(const Duration(seconds: 3));
+      },
+    );
+  }
+
+  testWidgets('hero actions have 8px gaps above and below the row', (
     tester,
   ) async {
     final auth = FakeAuthService();
-    await auth.signInDemo();
-    final band = DemoData.bands['b1']!;
-    final repository = _profileRepository(auth: auth, profileBand: band);
-    final harness = await pumpApp(
+    await pumpApp(
       tester,
       auth: auth,
-      repository: repository,
+      repository: _profileRepository(
+        auth: auth,
+        profileBand: DemoData.bands['b1']!,
+      )..returns('mediaFor', <BandMedia>[]),
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
     final hero = find.byKey(const ValueKey('band-profile-hero-b1'));
-    final meta = tester.widget<EpMonoText>(
-      find.descendant(of: hero, matching: find.byType(EpMonoText)),
+    // With no media, the Upcoming section (including its own padding)
+    // starts immediately after the action row's bottom margin.
+    final upcoming = find.byWidgetPredicate(
+      (widget) =>
+          widget is EpSectionHeader && widget.label.startsWith('Upcoming ·'),
     );
-    expect(meta.text, band.genres.join('/'));
-    expect(meta.text, isNot(contains('FOLLOWERS')));
-    final followers = find.byKey(const ValueKey('band-follower-count'));
-    expect(
-      find.descendant(
-        of: followers,
-        matching: find.text('${band.followersLabel} FOLLOWERS'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: followers, matching: find.byType(InkWell)),
-      findsNothing,
-    );
-    expect(harness.app.follows, isNot(contains(band.id)));
-    await tester.tap(followers);
-    await tester.pump();
-    expect(repository.callsTo('toggleFollow'), 0);
-    expect(harness.app.follows, isNot(contains(band.id)));
-
-    expect(find.text('FOLLOW'), findsOneWidget);
-    final miniFollow = find.byKey(const ValueKey('band-mini-follow'));
-    expect(miniFollow.hitTestable(), findsOneWidget);
-    expect(tester.widget<EpPill>(miniFollow).variant, EpPillVariant.primary);
-    expect(tester.getSize(miniFollow).height, greaterThanOrEqualTo(44));
-    await tester.tap(miniFollow);
-    await tester.pumpAndSettle();
-
-    expect(repository.callsTo('toggleFollow'), 1);
-    expect(harness.app.follows, contains(band.id));
-    expect(tester.widget<EpPill>(miniFollow).label, 'Following ✓');
-    expect(tester.widget<EpPill>(miniFollow).variant, EpPillVariant.ink);
-    await tester.pump(const Duration(seconds: 3));
+    expect(upcoming, findsOneWidget);
+    for (final key in ['band-follow', 'band-share']) {
+      final action = find.byKey(ValueKey(key));
+      expect(tester.getSize(action).height, greaterThanOrEqualTo(44));
+      expect(
+        tester.getTopLeft(action).dy - tester.getBottomLeft(hero).dy,
+        inInclusiveRange(0, 8),
+      );
+      expect(
+        tester.getTopLeft(upcoming).dy - tester.getBottomLeft(action).dy,
+        inInclusiveRange(0, 8),
+      );
+    }
   });
 
   testWidgets('share button copies the band public URL and shows a toast', (
@@ -334,7 +375,7 @@ void main() {
           const ValueKey('band-profile-mini-header'),
         );
         final back = find.byKey(const ValueKey('band-profile-back-control'));
-        final follow = find.byKey(const ValueKey('band-mini-follow'));
+        final miniFollow = find.byKey(const ValueKey('band-mini-follow'));
         final identityFade = find.descendant(
           of: miniHeader,
           matching: find.byType(Opacity),
@@ -344,9 +385,8 @@ void main() {
         expect(tester.getTopLeft(miniHeader).dy, 0);
         expect(tester.getSize(miniHeader).height, 56 + topInset);
         expect(back.hitTestable(), findsOneWidget);
-        expect(follow.hitTestable(), findsOneWidget);
+        expect(miniFollow, findsNothing);
         expect(tester.getTopLeft(back).dy, greaterThanOrEqualTo(topInset));
-        expect(tester.getTopLeft(follow).dy, greaterThanOrEqualTo(topInset));
         expect(tester.widget<ExploreCardIconButton>(back).circle, isTrue);
         expect(
           tester.widget<ExploreCardIconButton>(back).semanticLabel,
@@ -392,7 +432,7 @@ void main() {
             Color.lerp(colors.line.withValues(alpha: 0), colors.line, progress),
           );
           expect(back.hitTestable(), findsOneWidget);
-          expect(follow.hitTestable(), findsOneWidget);
+          expect(miniFollow, findsNothing);
           expect(tester.widget<ExploreCardIconButton>(back).circle, isTrue);
         }
 
@@ -460,7 +500,10 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
     expect(find.byKey(const Key('profile-complete-badge')), findsNothing);
-    expect(find.textContaining('486 FOLLOWERS'), findsOne);
+    expect(
+      tester.widget<EpPill>(find.byKey(const ValueKey('band-follow'))).label,
+      'Follow · ${DemoData.bands['b1']!.followersLabel}',
+    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     final incompleteAuth = FakeAuthService();
@@ -658,7 +701,10 @@ void main() {
     expect(avatar.size, tester.getSize(hero).height);
     expect(tester.getSize(hero).height, 402);
     expect(avatar.accent, isTrue);
-    expect(find.textContaining('486 FOLLOWERS'), findsOne);
+    expect(
+      tester.widget<EpPill>(find.byKey(const ValueKey('band-follow'))).label,
+      'Follow · ${DemoData.bands['b1']!.followersLabel}',
+    );
     expect(find.text('PROFILE COMPLETE'), findsNothing);
     final edit = find.byKey(const ValueKey('edit-band-profile-banner'));
     expect(edit.hitTestable(), findsOneWidget);
