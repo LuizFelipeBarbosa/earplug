@@ -43,36 +43,21 @@ void main() {
     final search = find.byKey(const Key('explore-search-field'));
     expect(search, findsOne);
     expect(tester.getSize(search).width, greaterThan(0));
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('explore-genre-punk')),
-      200,
-      scrollable: find.descendant(
-        of: find.byKey(const Key('explore-genre-rail-list')),
-        matching: find.byType(Scrollable),
-      ),
+    final scrollable = find.descendant(
+      of: find.byKey(const ValueKey('explore-default')),
+      matching: find.byType(Scrollable),
     );
-    expect(find.byKey(const Key('explore-genre-punk')), findsOne);
-    final forYou = find.byWidgetPredicate(
-      (widget) =>
-          widget.key is ValueKey<String> &&
-          (widget.key! as ValueKey<String>).value.startsWith(
-            'explore-for-you-',
-          ),
-    );
-    final browseState = tester.state<ScrollableState>(_browseScrollable());
-    browseState.position.jumpTo(0);
-    await tester.pump();
-    // The featured carousel wraps at this scale, so no row is built yet;
-    // page down until the lazy list has built one, then bring it on screen.
-    for (var step = 0; step < 12 && forYou.evaluate().isEmpty; step++) {
-      browseState.position.jumpTo(browseState.position.pixels + 240);
-      await tester.pump();
+    for (final suffix in ['near-me', 'tonight', 'free']) {
+      final row = find.byKey(Key('explore-suggest-$suffix'));
+      await tester.scrollUntilVisible(row, 160, scrollable: scrollable);
+      expect(tester.getSize(row).height, greaterThanOrEqualTo(44));
     }
-    await tester.ensureVisible(forYou.first);
+    final tonight = find.byKey(const Key('explore-suggest-tonight'));
+    await tester.ensureVisible(tonight);
+    await tester.tap(tonight);
     await tester.pumpAndSettle();
-    final rowSize = tester.getSize(forYou.first);
-    expect(rowSize.width, greaterThanOrEqualTo(44));
-    expect(rowSize.height, greaterThanOrEqualTo(44));
+    // Demo shows start at 21:00; after that, tonight can have no future hits.
+    expect(find.byKey(const Key('explore-results-meta')), findsOne);
     expect(tester.takeException(), isNull);
   });
 
@@ -263,13 +248,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
-
-Finder _browseScrollable() => find
-    .descendant(
-      of: find.byKey(const ValueKey('explore-browse-all')),
-      matching: find.byType(Scrollable),
-    )
-    .first;
 
 class _RecoveryLocationService implements LocationService {
   const _RecoveryLocationService(this.reason);

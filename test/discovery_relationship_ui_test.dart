@@ -17,74 +17,86 @@ import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
 void main() {
-  testWidgets('submitted search stays while an unsubmitted draft is typed', (
-    tester,
-  ) async {
-    final harness = await pumpApp(
-      tester,
-      home: const Scaffold(body: ExploreScreen()),
-    );
-    harness.app.go(Screen.explore);
-    await tester.pumpAndSettle();
+  testWidgets(
+    'live search surfaces relationship matches and clearing returns to the default view',
+    (tester) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: ExploreScreen()),
+      );
+      harness.app.go(Screen.explore);
+      await tester.pumpAndSettle();
 
-    await tester.enterText(
-      find.byKey(const Key('explore-search-field')),
-      'Foghorn',
-    );
-    await tester.tap(find.byKey(const Key('explore-search-submit')));
-    await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('explore-search-field')),
+        'Foghorn',
+      );
+      await tester.pumpAndSettle();
+      expect(harness.app.query, 'Foghorn');
+      expect(find.text('RIPTIDE RELEASE SHOW'), findsWidgets);
 
-    // The event matches through its Foghorn Diet lineup relationship.
-    expect(find.text('RIPTIDE RELEASE SHOW'), findsWidgets);
-    await _scrollResultsTo(tester, find.text('FOGHORN DIET'));
-    expect(find.text('FOGHORN DIET'), findsWidgets);
-    await _scrollResultsTo(tester, find.text('THE FOGHORN CLUB'));
-    expect(find.text('THE FOGHORN CLUB'), findsWidgets);
+      // Cards show event titles and locations. Check the underlying band and
+      // venue relationships as each matching event is brought into view.
+      final hits = harness.app.searchResults;
+      expect(hits.map((hit) => hit.gig.id), containsAll(['g2', 'g7', 'g8']));
+      for (final hit in hits) {
+        final cardFinder = find.byWidgetPredicate(
+          (widget) => widget is FanEventCard && widget.gig.id == hit.gig.id,
+        );
+        await _scrollResultsTo(tester, cardFinder);
+        final card = tester.widget<FanEventCard>(cardFinder);
+        expect(
+          find.descendant(
+            of: cardFinder,
+            matching: find.text(hit.gig.title.toUpperCase()),
+          ),
+          findsWidgets,
+        );
+        expect(
+          card.gig.lineup.map((id) => harness.app.band(id)?.name.toUpperCase()),
+          contains('FOGHORN DIET'),
+        );
+        if (card.gig.venueId == 'v1') {
+          expect(
+            harness.app.venue(card.gig.venueId).name.toUpperCase(),
+            'THE FOGHORN CLUB',
+          );
+        }
+      }
 
-    await _scrollToTop(tester);
-    await tester.enterText(
-      find.byKey(const Key('explore-search-field')),
-      'unsubmitted draft',
-    );
-    expect(harness.app.query, 'Foghorn');
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('explore-search-field')))
-          .controller!
-          .text,
-      'unsubmitted draft',
-    );
-    expect(find.text('RIPTIDE RELEASE SHOW'), findsWidgets);
-    await _scrollResultsTo(tester, find.text('FOGHORN DIET'));
-    expect(find.text('FOGHORN DIET'), findsWidgets);
-    await _scrollResultsTo(tester, find.text('THE FOGHORN CLUB'));
-    expect(find.text('THE FOGHORN CLUB'), findsWidgets);
+      await _scrollToTop(tester);
+      await tester.tap(find.byKey(const Key('explore-search-clear')));
+      await tester.pumpAndSettle();
+      expect(harness.app.query, isEmpty);
+      expect(find.byKey(const ValueKey('explore-default')), findsOne);
+    },
+  );
 
-    await _scrollToTop(tester);
-    await tester.tap(find.byKey(const Key('explore-search-clear')));
-    await tester.pumpAndSettle();
-    expect(harness.app.query, isEmpty);
-    expect(find.byKey(const ValueKey('explore-browse-all')), findsOne);
-  });
+  testWidgets(
+    'tapping a search result opens the gig without clearing the query',
+    (tester) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: ExploreScreen()),
+      );
+      harness.app.go(Screen.explore);
+      await tester.pumpAndSettle();
+      harness.app.setQuery('Foghorn Club');
+      await tester.pumpAndSettle();
+      final gig = harness.app.searchResults.first.gig;
+      expect(gig.venueId, 'v1');
+      final card = find.byWidgetPredicate(
+        (widget) => widget is FanEventCard && widget.gig.id == gig.id,
+      );
+      await _scrollResultsTo(tester, card);
+      await tester.tap(card);
+      await tester.pump();
 
-  testWidgets('venue search rows navigate without replacing the query', (
-    tester,
-  ) async {
-    final harness = await pumpApp(
-      tester,
-      home: const Scaffold(body: ExploreScreen()),
-    );
-    harness.app.go(Screen.explore);
-    await tester.pumpAndSettle();
-    harness.app.setQuery('Foghorn Club');
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('THE FOGHORN CLUB'));
-    await tester.pump();
-
-    expect(harness.app.current.screen, Screen.venue);
-    expect(harness.app.current.param, 'v1');
-    expect(harness.app.query, 'Foghorn Club');
-  });
+      expect(harness.app.current.screen, Screen.gig);
+      expect(harness.app.current.param, gig.id);
+      expect(harness.app.query, 'Foghorn Club');
+    },
+  );
 
   testWidgets('venue detail shows map, chronological events, and performers', (
     tester,
@@ -331,8 +343,7 @@ Finder _resultsScrollable() {
   bool isResultsList(Widget widget) {
     final key = widget.key;
     return key is ValueKey<String> &&
-        (key.value.startsWith('explore-browse-') ||
-            key.value.startsWith('explore-results-'));
+        (key.value == 'explore-default' || key.value == 'explore-results');
   }
 
   return find

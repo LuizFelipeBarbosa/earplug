@@ -8,6 +8,10 @@ mixin _ExploreState on _AppStateCore {
   Map<String, Band> get _bands;
   List<Venue> get venues;
   Venue venue(String id);
+  Venue? knownVenue(String id);
+  @override
+  recent_searches.RecentSearchesStore get recentSearchesStore;
+  String get query;
   Set<String> get follows;
   Set<String> get saved;
   Set<String> get rsvps;
@@ -269,6 +273,87 @@ mixin _ExploreState on _AppStateCore {
       if (collection.key == key) return collection;
     }
     return null;
+  }
+
+  // ---- search
+  List<String> _recentSearches = const [];
+
+  /// Newest first, capped at [recent_searches.kRecentSearchLimit].
+  List<String> get recentSearches => List.unmodifiable(_recentSearches);
+
+  Future<void> loadRecentSearches() async {
+    final saved = await recentSearchesStore.load();
+    if (_disposed) return;
+    _set(() => _recentSearches = saved);
+  }
+
+  Future<void> recordSearch(String q) async {
+    _set(
+      () => _recentSearches = recent_searches.pushRecentSearch(
+        _recentSearches,
+        q,
+      ),
+    );
+    await recentSearchesStore.save(_recentSearches);
+  }
+
+  Future<void> removeRecentSearch(String q) async {
+    _set(
+      () => _recentSearches = recent_searches.removeRecentSearch(
+        _recentSearches,
+        q,
+      ),
+    );
+    await recentSearchesStore.save(_recentSearches);
+  }
+
+  ParsedSearch get parsedSearch => parseSearchQuery(query);
+
+  final Memo<
+    ({
+      String query,
+      List<Gig> allGigs,
+      List<Venue> venues,
+      Map<String, Band> bands,
+      List<({Gig gig, List<SocialUserCard> friends})> friendsGoing,
+      Set<String> saved,
+      int quarterHourBucket,
+    }),
+    List<SearchHit>
+  >
+  _searchResultsMemo = Memo();
+
+  /// The ranked search hits for [query]; empty while the query is blank.
+  List<SearchHit> get searchResults {
+    final now = _now();
+    final inputs = (
+      query: query,
+      allGigs: allGigs,
+      venues: venues,
+      bands: _bands,
+      friendsGoing: friendsGoing,
+      saved: saved,
+      quarterHourBucket: now.millisecondsSinceEpoch ~/ (15 * 60 * 1000),
+    );
+    return _searchResultsMemo(inputs, () {
+      double? distanceMiles(Gig gig) {
+        final gigVenue = knownVenue(gig.venueId);
+        return gigVenue == null
+            ? null
+            : _distanceMilesFromDiscoveryCenter(gigVenue);
+      }
+
+      return rankSearchResults(
+        parsed: parseSearchQuery(inputs.query),
+        gigs: inputs.allGigs,
+        band: (id) => inputs.bands[id],
+        venue: venue,
+        now: now,
+        distanceMiles: distanceMiles,
+        friendGigIds: {for (final entry in inputs.friendsGoing) entry.gig.id},
+        savedGigIds: inputs.saved,
+      );
+    });
   }
 }
 

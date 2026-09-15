@@ -20,6 +20,7 @@ import 'flyer_styles.dart';
 import 'memo.dart';
 import 'models.dart';
 import 'navigation.dart';
+import 'search_query.dart';
 import 'services/auth_service.dart';
 import 'services/browser_history.dart';
 import 'services/flyer_text_extractor.dart';
@@ -27,6 +28,7 @@ import 'services/geocoding_service.dart';
 import 'services/location_service.dart';
 import 'services/media_picker.dart';
 import 'services/media_upload_service.dart';
+import 'services/recent_searches.dart' as recent_searches;
 import 'services/statement_pdf.dart' deferred as statement_pdf;
 import 'services/web_shell.dart';
 
@@ -67,6 +69,7 @@ mixin _AppStateCore on ChangeNotifier {
   EarplugRepository get repository;
   AuthService get auth;
   LocationService get locationService;
+  recent_searches.RecentSearchesStore get recentSearchesStore;
   ReverseGeocodingService? get reverseGeocoding;
   MediaUploadService get mediaUploader;
   DateTime Function() get _now;
@@ -165,6 +168,7 @@ class AppState extends ChangeNotifier
     LocationService? locationService,
     ReverseGeocodingService? reverseGeocoding,
     MediaUploadService? mediaUploadService,
+    recent_searches.RecentSearchesStore? recentSearchesStore,
     String? initialJoinToken,
     String? initialPerformerInviteToken,
     String? initialGigId,
@@ -189,6 +193,7 @@ class AppState extends ChangeNotifier
          locationService ?? GeolocatorLocationService(),
          reverseGeocoding,
          mediaUploadService,
+         recentSearchesStore,
          initialJoinToken,
          initialPerformerInviteToken,
          initialGigId,
@@ -218,6 +223,7 @@ class AppState extends ChangeNotifier
     LocationService? locationService,
     ReverseGeocodingService? reverseGeocoding,
     MediaUploadService? mediaUploadService,
+    recent_searches.RecentSearchesStore? recentSearchesStore,
     String? initialJoinToken,
     String? initialPerformerInviteToken,
     String? initialGigId,
@@ -244,6 +250,7 @@ class AppState extends ChangeNotifier
       locationService: locationService,
       reverseGeocoding: reverseGeocoding,
       mediaUploadService: mediaUploadService,
+      recentSearchesStore: recentSearchesStore,
       initialJoinToken: initialJoinToken,
       initialPerformerInviteToken: initialPerformerInviteToken,
       initialGigId: initialGigId,
@@ -271,6 +278,7 @@ class AppState extends ChangeNotifier
     this.locationService,
     this.reverseGeocoding,
     MediaUploadService? providedMediaUploader,
+    recent_searches.RecentSearchesStore? providedRecentSearchesStore,
     String? initialJoinToken,
     String? initialPerformerInviteToken,
     String? initialGigId,
@@ -296,6 +304,10 @@ class AppState extends ChangeNotifier
           : DataStatus.ready {
     mediaUploader =
         providedMediaUploader ?? MediaUploadService(repository: repository);
+    recentSearchesStore =
+        providedRecentSearchesStore ??
+        recent_searches.PrefsRecentSearchesStore();
+    unawaited(loadRecentSearches());
     _stopBrowserHistory = listenForBrowserBack(_popAppStack);
     authed = auth.signedIn;
     if (authed) {
@@ -428,6 +440,8 @@ class AppState extends ChangeNotifier
   final DateTime Function() _now;
   @override
   late final MediaUploadService mediaUploader;
+  @override
+  late final recent_searches.RecentSearchesStore recentSearchesStore;
 
   StreamSubscription<bool>? _authSubscription;
   StreamSubscription<Interactions>? _interactionsSubscription;

@@ -632,6 +632,7 @@ class EpMenuRow extends StatelessWidget {
     required this.label,
     this.sub,
     this.trailingText,
+    this.trailing,
     this.onTap,
   });
 
@@ -639,6 +640,7 @@ class EpMenuRow extends StatelessWidget {
   final String label;
   final String? sub;
   final String? trailingText;
+  final Widget? trailing;
   final VoidCallback? onTap;
 
   @override
@@ -668,7 +670,9 @@ class EpMenuRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        if (trailingText != null)
+        if (trailing != null)
+          trailing!
+        else if (trailingText != null)
           Flexible(
             child: EpMonoText(trailingText!, color: context.epColors.muted),
           )
