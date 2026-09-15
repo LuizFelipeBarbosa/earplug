@@ -122,7 +122,11 @@ void main() {
     expect(editorDecoration.gradient, isNull);
     expect(editorDecoration.border!.top.color, Ep.border);
     expect(find.byKey(const Key('fan-preview-name')), findsOne);
-    expect(find.byKey(const Key('fan-preview-scene')), findsNothing);
+    final previewScene = tester.widget<Text>(
+      find.byKey(const Key('fan-preview-scene')),
+    );
+    expect(previewScene.data, 'Scene unknown');
+    expect(previewScene.style!.color, Ep.muted);
     expect(find.byKey(const Key('fan-preview-since')), findsNothing);
     expect(find.bySemanticsLabel('Edit profile photo'), findsOne);
     expect(find.byKey(const Key('fan-avatar-edit-action')), findsNothing);
@@ -287,6 +291,13 @@ void main() {
           .text,
       'San Jose, CA',
     );
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('home-location-input')))
+          .focusNode!
+          .hasFocus,
+      isFalse,
+    );
 
     await tester.tap(find.byKey(const Key('use-current-home-location')));
     await tester.pumpAndSettle();
@@ -301,6 +312,50 @@ void main() {
     expect(find.textContaining('nearest supported scene'), findsOne);
     expect(find.byKey(const Key('clear-home-location')), findsOne);
     semantics.dispose();
+  });
+
+  testWidgets('home location suggestions survive focus loss and select a scene', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      size: const Size(402, 1800),
+      home: const Scaffold(body: EditProfileScreen()),
+    );
+    final location = find.byKey(const Key('home-location-input'));
+    await tester.enterText(location, 'Berk');
+    await tester.pump();
+    final focusNode = tester.widget<TextField>(location).focusNode!;
+    expect(focusNode.hasFocus, isTrue);
+
+    final suggestion = find.byKey(
+      const Key('home-location-suggestion-berkeley'),
+    );
+    expect(suggestion, findsOne);
+    final suggestionFocus = tester.widget<Focus>(
+      find.ancestor(of: suggestion, matching: find.byType(Focus)).first,
+    );
+    expect(suggestionFocus.canRequestFocus, isFalse);
+    expect(suggestionFocus.descendantsAreFocusable, isFalse);
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    expect(focusNode.hasFocus, isFalse);
+    expect(suggestion, findsOne);
+
+    await tester.tap(suggestion);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(location).controller!.text,
+      'Berkeley, CA',
+    );
+    expect(suggestion, findsNothing);
+    expect(focusNode.hasFocus, isFalse);
+    final previewScene = tester.widget<Text>(
+      find.byKey(const Key('fan-preview-scene')),
+    );
+    expect(previewScene.data, 'Berkeley scene');
+    expect(previewScene.style!.color, Ep.ink);
   });
 
   testWidgets('unknown home locations stay typed with a no-results state', (

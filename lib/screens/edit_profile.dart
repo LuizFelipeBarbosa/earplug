@@ -580,7 +580,7 @@ class _HomeLocationEditor extends StatelessWidget {
   Widget build(BuildContext context) {
     final query = controller.text.trim();
     final exactMatch = fanCityFromLocationInput(query);
-    final suggestions = focusNode.hasFocus && exactMatch == null
+    final suggestions = exactMatch == null
         ? fanCitySuggestions(query).toList(growable: false)
         : const <FanCity>[];
     final hasNoResults =
@@ -631,23 +631,27 @@ class _HomeLocationEditor extends StatelessWidget {
             decoration: BoxDecoration(
               border: Border(top: BorderSide(color: context.epColors.border)),
             ),
-            child: Column(
-              children: [
-                for (final city in suggestions)
-                  TextButton.icon(
-                    key: ValueKey('home-location-suggestion-${city.name}'),
-                    onPressed: () => onSelected(city),
-                    style: TextButton.styleFrom(
-                      foregroundColor: context.epColors.contentPrimary,
-                      minimumSize: const Size.fromHeight(48),
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      shape: const RoundedRectangleBorder(),
+            child: Focus(
+              canRequestFocus: false,
+              descendantsAreFocusable: false,
+              child: Column(
+                children: [
+                  for (final city in suggestions)
+                    TextButton.icon(
+                      key: ValueKey('home-location-suggestion-${city.name}'),
+                      onPressed: () => onSelected(city),
+                      style: TextButton.styleFrom(
+                        foregroundColor: context.epColors.contentPrimary,
+                        minimumSize: const Size.fromHeight(48),
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        shape: const RoundedRectangleBorder(),
+                      ),
+                      icon: Icon(Icons.place_outlined, size: 18),
+                      label: Text(city.autocompleteLabel),
                     ),
-                    icon: Icon(Icons.place_outlined, size: 18),
-                    label: Text(city.autocompleteLabel),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         if (hasNoResults)
@@ -807,18 +811,20 @@ class _FanIdentityPreview extends StatelessWidget {
                       size: 20,
                       keepCase: true,
                     ),
-                    if (homeLocation case final city?) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        '${city.label} scene',
-                        key: const Key('fan-preview-scene'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.epCaption.copyWith(
-                          color: context.epColors.ink,
-                        ),
+                    const SizedBox(height: 2),
+                    Text(
+                      homeLocation == null
+                          ? 'Scene unknown'
+                          : '${homeLocation!.label} scene',
+                      key: const Key('fan-preview-scene'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.epCaption.copyWith(
+                        color: homeLocation == null
+                            ? context.epColors.muted
+                            : context.epColors.ink,
                       ),
-                    ],
+                    ),
                     if (createdAt case final date?)
                       Text(
                         'Member since ${monthNamesFull[date.month - 1]} ${date.year}',
