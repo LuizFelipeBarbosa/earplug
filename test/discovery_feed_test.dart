@@ -7,6 +7,7 @@ import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
+import 'package:earplug/widgets/feed_spacing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
@@ -405,7 +406,7 @@ void main() {
   });
 
   testWidgets(
-    'bands rail hugs its tiles and header sits 32 under the venues rail',
+    'bands rail hugs its tiles and preserves actions and Find people spacing',
     (tester) async {
       await _pumpExplore(tester, signedIn: true, gigs: _gigs, bands: _bands);
       final rail = find.byKey(const Key('feed-bands'));
@@ -458,22 +459,6 @@ void main() {
         );
       }
 
-      // The venues rail, divider, and header padding sit between actions.
-      // After accounting for them, the BANDS header still has 32px above its row.
-      final venuesHeader = tester.widget<EpSectionHeader>(
-        find.ancestor(of: allVenues, matching: find.byType(EpSectionHeader)),
-      );
-      final dividerRect = tester.getRect(
-        find.byKey(const Key('feed-venues-bands-divider')),
-      );
-      expect(
-        tester.getTopLeft(allBands).dy -
-            tester.getRect(allVenues).bottom -
-            tester.getRect(find.byKey(const Key('feed-venues'))).height -
-            venuesHeader.padding.bottom -
-            dividerRect.height,
-        EpLayout.formSectionGap,
-      );
       expect(
         tester.getTopLeft(findPeople).dy - railRect.bottom,
         EpLayout.formSectionGap,
@@ -505,30 +490,98 @@ void main() {
     },
   );
 
-  testWidgets('venues and bands have a hairline divider between them', (
-    tester,
-  ) async {
-    await _pumpExplore(tester, gigs: _gigs, bands: _bands);
-    final divider = find.byKey(const Key('feed-venues-bands-divider'));
-    await _scrollTo(tester, divider);
+  testWidgets(
+    'feed sections share gaps with a centered venues and bands divider',
+    (tester) async {
+      final h = await _pumpExplore(
+        tester,
+        signedIn: true,
+        gigs: _gigs,
+        bands: _bands,
+      );
+      await _scrollTo(tester, find.byKey(const Key('feed-find-people')));
+      final position = tester
+          .state<ScrollableState>(_browseScrollable())
+          .position;
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      expect(position.pixels, position.maxScrollExtent);
+      expect(position.pixels, greaterThan(0));
 
-    expect(divider, findsOneWidget);
-    expect(
-      find.descendant(of: divider, matching: find.byType(EpHairline)),
-      findsOneWidget,
-    );
-    final dividerRect = tester.getRect(divider);
-    expect(
-      dividerRect.top,
-      greaterThanOrEqualTo(
-        tester.getRect(find.byKey(const Key('feed-venues'))).bottom,
-      ),
-    );
-    expect(
-      dividerRect.bottom,
-      lessThanOrEqualTo(tester.getRect(find.text('BANDS')).top),
-    );
-  });
+      final featured = find.byKey(
+        const Key('feed-featured'),
+        skipOffstage: false,
+      );
+      final forYou = h.app.exploreHome.forYou;
+      final venues = find.byKey(const Key('feed-venues'));
+      final bands = find.byKey(const Key('feed-bands'));
+      final sections = [
+        // The pinned controls no longer precede FEATURED after scrolling.
+        (label: 'FEATURED', previous: null, content: featured),
+        (
+          label: 'JUST FOR YOU · ${forYou.length}',
+          previous: featured,
+          content: find.byKey(
+            Key('feed-for-you-${forYou.first.id}'),
+            skipOffstage: false,
+          ),
+        ),
+        (
+          label: 'VENUES',
+          previous: find.byKey(
+            Key('feed-for-you-${forYou.last.id}'),
+            skipOffstage: false,
+          ),
+          content: venues,
+        ),
+        (label: 'BANDS', previous: venues, content: bands),
+      ];
+      for (final section in sections) {
+        // Measure the header's row, excluding outer padding and including
+        // the full See more tap target where present.
+        final headerRow = find
+            .descendant(
+              of: find.widgetWithText(
+                EpSectionHeader,
+                section.label,
+                skipOffstage: false,
+              ),
+              matching: find.byType(Row, skipOffstage: false),
+              skipOffstage: false,
+            )
+            .first;
+        final headerRect = tester.getRect(headerRow);
+        if (section.previous case final previous?) {
+          expect(
+            headerRect.top - tester.getRect(previous).bottom,
+            closeTo(kFeedSectionGap, 1),
+            reason: '${section.label}: previous content to header',
+          );
+        }
+        expect(
+          tester.getRect(section.content).top - headerRect.bottom,
+          closeTo(kFeedHeaderGap, 1),
+          reason: '${section.label}: header to first content',
+        );
+      }
+
+      final divider = find.byKey(const Key('feed-venues-bands-divider'));
+      final hairline = find.descendant(
+        of: divider,
+        matching: find.byType(EpHairline),
+      );
+      expect(divider, findsOneWidget);
+      expect(hairline, findsOneWidget);
+      final venuesBottom = tester.getRect(venues).bottom;
+      final dividerRect = tester.getRect(divider);
+      final hairlineRect = tester.getRect(hairline);
+      expect(dividerRect.top, closeTo(venuesBottom, 1));
+      expect(dividerRect.height, closeTo(kFeedSectionGap, 1));
+      expect(hairlineRect.height, 1);
+      expect(hairlineRect.top - venuesBottom, closeTo(kFeedSectionGap / 2, 2));
+      expect(hairlineRect.center.dy, closeTo(dividerRect.center.dy, 1));
+    },
+  );
 
   testWidgets('find people row is at the bottom and opens People', (
     tester,

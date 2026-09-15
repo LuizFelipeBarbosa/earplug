@@ -10,6 +10,7 @@ import 'ep_text.dart';
 import 'explore_genres.dart';
 import 'explore_tiles.dart';
 import 'fan_event_card.dart';
+import 'feed_spacing.dart';
 
 class DiscoveryFeed extends StatefulWidget {
   const DiscoveryFeed({super.key});
@@ -111,7 +112,15 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
       if (home.featured.isNotEmpty) {
         slivers.add(
           SliverToBoxAdapter(
-            child: _gutter(EpSectionHeader(label: 'FEATURED')),
+            child: _gutter(
+              EpSectionHeader(
+                label: 'FEATURED',
+                padding: const EdgeInsets.only(
+                  top: kFeedSectionGap,
+                  bottom: kFeedHeaderGap,
+                ),
+              ),
+            ),
           ),
         );
         slivers.add(
@@ -150,7 +159,13 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
       slivers.add(
         SliverToBoxAdapter(
           child: _gutter(
-            EpSectionHeader(label: 'JUST FOR YOU · ${home.forYou.length}'),
+            EpSectionHeader(
+              label: 'JUST FOR YOU · ${home.forYou.length}',
+              padding: const EdgeInsets.only(
+                top: kFeedSectionGap,
+                bottom: kFeedHeaderGap,
+              ),
+            ),
           ),
         ),
       );
@@ -196,6 +211,10 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
                 action: 'See more',
                 actionKey: const Key('feed-toggle-venues'),
                 onAction: () => app.go(Screen.exploreCollection, 'venues'),
+                padding: const EdgeInsets.only(
+                  top: kFeedSectionGap,
+                  bottom: kFeedHeaderGap,
+                ),
               ),
             ),
           ),
@@ -224,13 +243,10 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
         slivers.add(
           SliverToBoxAdapter(
             child: _gutter(
-              const Column(
+              const SizedBox(
                 key: Key('feed-venues-bands-divider'),
-                children: [
-                  SizedBox(height: 20),
-                  EpHairline(),
-                  SizedBox(height: 8),
-                ],
+                height: kFeedSectionGap,
+                child: Center(child: EpHairline()),
               ),
             ),
           ),
@@ -249,7 +265,7 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
               action: 'See more',
               actionKey: const Key('feed-toggle-bands'),
               onAction: () => app.go(Screen.exploreCollection, 'bands'),
-              padding: const EdgeInsets.only(top: 32, bottom: 4),
+              padding: const EdgeInsets.only(top: 0, bottom: kFeedHeaderGap),
             ),
           ),
         ),

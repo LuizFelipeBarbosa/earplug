@@ -11,6 +11,7 @@ import 'ep_rows.dart';
 import 'ep_text.dart';
 import 'explore_tiles.dart';
 import 'fan_event_card.dart';
+import 'feed_spacing.dart';
 
 /// A sideways-scrollable rail of genre chips: "All" plus one chip per genre.
 /// Mouse-draggable. Sits under the quick filters in the Explore page header.
@@ -138,7 +139,10 @@ class ExploreGenrePageBody extends StatelessWidget {
       children.addAll([
         EpSectionHeader(
           label: 'Bands playing ${page.label.toUpperCase()}',
-          padding: const EdgeInsets.only(top: 32, bottom: 4),
+          padding: const EdgeInsets.only(
+            top: kFeedSectionGap,
+            bottom: kFeedHeaderGap,
+          ),
         ),
         // Same extent as the browse page's BANDS rail: sized to the tile's
         // tallest content so no dead space opens up above the All bands row.
@@ -170,7 +174,15 @@ class ExploreGenrePageBody extends StatelessWidget {
 
   void _addBucket(List<Widget> children, String label, List<Gig> gigs) {
     if (gigs.isEmpty) return;
-    children.add(EpSectionHeader(label: '$label · ${gigs.length}'));
+    children.add(
+      EpSectionHeader(
+        label: '$label · ${gigs.length}',
+        padding: const EdgeInsets.only(
+          top: kFeedSectionGap,
+          bottom: kFeedHeaderGap,
+        ),
+      ),
+    );
     children.addAll(
       gigs.map((gig) => FanEventCard(gig: gig, app: app, showDistance: true)),
     );
