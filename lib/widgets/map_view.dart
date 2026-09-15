@@ -374,10 +374,17 @@ class _GigMapViewState extends State<GigMapView> {
     }
     _updateCamera(app, groups);
 
+    final tabBarClearance =
+        EpLayout.tabBarHeight + MediaQuery.paddingOf(context).bottom;
     return Stack(
       children: [
         EpMap(
           mapController: _controller,
+          attributionPadding: EdgeInsets.only(
+            bottom: tabBarClearance + 6,
+            right: 6,
+            left: 4,
+          ),
           options: MapOptions(
             initialCenter: view.center,
             initialZoom: 13,
@@ -425,10 +432,7 @@ class _GigMapViewState extends State<GigMapView> {
           Positioned(
             left: 12,
             right: 12,
-            bottom:
-                EpLayout.tabBarHeight +
-                MediaQuery.paddingOf(context).bottom +
-                12,
+            bottom: tabBarClearance + 12,
             child: TapRegion(
               onTapOutside: (_) => setState(() => selected = null),
               child: _MapGigCard(

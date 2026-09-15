@@ -15,6 +15,7 @@ import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:earplug/widgets/map_view.dart';
+import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
@@ -55,6 +56,21 @@ void main() {
 
     expect(find.byKey(const Key('home-hero')), findsOne);
     expect(find.byKey(const Key('feed-genre-rail')), findsNothing);
+  });
+
+  testWidgets('Home map attribution clears the tab bar', (tester) async {
+    await pumpApp(tester, home: const Scaffold(body: HomeScreen()));
+
+    final attribution = find.text('© Stadia Maps');
+    expect(attribution, findsOne);
+    final tabBar = find.byType(FanTabBar);
+    final screenHeight =
+        tester.view.physicalSize.height / tester.view.devicePixelRatio;
+    final tabBarTop = tabBar.evaluate().isEmpty
+        ? screenHeight - EpLayout.tabBarHeight
+        : tester.getRect(tabBar).top;
+
+    expect(tester.getRect(attribution).bottom, lessThanOrEqualTo(tabBarTop));
   });
 
   testWidgets('desktop Home only shows the header hero in map mode', (
