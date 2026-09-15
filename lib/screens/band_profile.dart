@@ -292,6 +292,8 @@ class _BandProfileViewState extends State<_BandProfileView> {
                 band: band,
                 topInset: topInset,
                 progress: progress,
+                following: app.follows.contains(bandId),
+                onFollow: () => app.requestFollow(bandId),
                 backLabel: widget.isManagedPreview
                     ? 'Return to band dashboard'
                     : 'Back',
@@ -495,6 +497,8 @@ class _BandProfileHeaderBar extends StatelessWidget {
     required this.band,
     required this.topInset,
     required this.progress,
+    required this.following,
+    required this.onFollow,
     required this.backLabel,
     required this.onBack,
   });
@@ -502,6 +506,8 @@ class _BandProfileHeaderBar extends StatelessWidget {
   final Band band;
   final double topInset;
   final double progress;
+  final bool following;
+  final VoidCallback onFollow;
   final String backLabel;
   final VoidCallback onBack;
 
@@ -578,11 +584,78 @@ class _BandProfileHeaderBar extends StatelessWidget {
                         ],
                       ),
                     ),
+                    const SizedBox(width: 12),
+                    IgnorePointer(
+                      ignoring: progress == 0,
+                      child: _BandMiniFollowPill(
+                        following: following,
+                        onFollow: onFollow,
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BandMiniFollowPill extends StatelessWidget {
+  const _BandMiniFollowPill({required this.following, required this.onFollow});
+
+  final bool following;
+  final VoidCallback onFollow;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.epColors;
+    final textTheme = Theme.of(context).textTheme;
+    final textScaler = MediaQuery.textScalerOf(context);
+    final visualHeight = textScaler.scale(18);
+    final subtitleHeight =
+        textScaler.scale(textTheme.epSection.fontSize!) *
+        textTheme.epSection.height!;
+    final label = following ? 'Following ✓' : 'Follow';
+    final shape = StadiumBorder(side: BorderSide(color: colors.outline));
+
+    final pill = Container(
+      key: const ValueKey('band-mini-follow-pill'),
+      height: visualHeight,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: ShapeDecoration(shape: shape),
+      child: Text(
+        label.toUpperCase(),
+        semanticsLabel: label,
+        maxLines: 1,
+        style: textTheme.epChipLabel.copyWith(color: colors.ink),
+      ),
+    );
+
+    return IntrinsicWidth(
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onFollow,
+          customBorder: const StadiumBorder(),
+          child: Semantics(
+            button: true,
+            label: label,
+            excludeSemantics: true,
+            child: ConstrainedBox(
+              key: const ValueKey('band-mini-follow'),
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              child: Center(
+                child: Transform.translate(
+                  offset: Offset(0, -subtitleHeight / 2),
+                  child: pill,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -709,8 +782,8 @@ class _BandSoundPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final count = videos.length.toString().padLeft(2, '0');
     final unit = videos.length == 1 ? 'VIDEO' : 'VIDEOS';
-    return EpPanel(
-      striped: true,
+    return Padding(
+      key: const ValueKey('band-sound-section'),
       padding: const EdgeInsets.fromLTRB(
         EpLayout.gutter,
         0,

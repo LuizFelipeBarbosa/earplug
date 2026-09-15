@@ -237,8 +237,8 @@ void main() {
     (DemoData.bands['b1']!.copyWith(followers: 0), 'Follow', 'Following ✓'),
   ]) {
     testWidgets(
-      'hero follow pill carries the follower count; mini header has no '
-      'follow control (${band.followers} followers)',
+      'hero follow pill carries the follower count; mini header follow pill '
+      'is inert at rest (${band.followers} followers)',
       (tester) async {
         final auth = FakeAuthService();
         await auth.signInDemo();
@@ -257,7 +257,9 @@ void main() {
         expect(meta.text, band.genres.join('/'));
         expect(meta.text, isNot(contains('FOLLOWERS')));
         expect(find.byKey(const ValueKey('band-follower-count')), findsNothing);
-        expect(find.byKey(const ValueKey('band-mini-follow')), findsNothing);
+        final miniFollow = find.byKey(const ValueKey('band-mini-follow'));
+        expect(miniFollow, findsOneWidget);
+        expect(miniFollow.hitTestable(), findsNothing);
         expect(harness.app.follows, isNot(contains(band.id)));
         expect(repository.callsTo('toggleFollow'), 0);
 
@@ -285,6 +287,62 @@ void main() {
       },
     );
   }
+
+  testWidgets('mini follow pill uses the hero follow flow with a 44px target', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final band = DemoData.bands['b1']!;
+    final repository = _profileRepository(auth: auth, profileBand: band);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+    final controller = tester
+        .widget<CustomScrollView>(find.byType(CustomScrollView))
+        .controller!;
+    controller.jumpTo(450);
+    await tester.pump();
+
+    final miniFollow = find.byKey(const ValueKey('band-mini-follow'));
+    final miniFollowPill = find.byKey(const ValueKey('band-mini-follow-pill'));
+    expect(tester.getSize(miniFollow).width, greaterThanOrEqualTo(44));
+    expect(tester.getSize(miniFollow).height, greaterThanOrEqualTo(44));
+    expect(
+      find.descendant(of: miniFollow, matching: find.text('FOLLOW')),
+      findsOneWidget,
+    );
+    expect(harness.app.follows, isNot(contains(band.id)));
+    expect(repository.callsTo('toggleFollow'), 0);
+
+    await tester.tap(miniFollow);
+    await tester.pumpAndSettle();
+
+    expect(repository.callsTo('toggleFollow'), 1);
+    expect(harness.app.follows, contains(band.id));
+    expect(
+      find.descendant(of: miniFollow, matching: find.text('FOLLOWING ✓')),
+      findsOneWidget,
+    );
+
+    // The target must accept taps inside the box but outside the visible pill.
+    final targetEdge = tester.getCenter(miniFollow) + const Offset(0, 21);
+    expect(tester.getRect(miniFollow).contains(targetEdge), isTrue);
+    expect(tester.getRect(miniFollowPill).contains(targetEdge), isFalse);
+    await tester.tapAt(targetEdge);
+    await tester.pumpAndSettle();
+
+    expect(repository.callsTo('toggleFollow'), 2);
+    expect(harness.app.follows, isNot(contains(band.id)));
+    expect(
+      find.descendant(of: miniFollow, matching: find.text('FOLLOW')),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(seconds: 3));
+  });
 
   testWidgets('hero actions have 8px gaps above and below the row', (
     tester,
@@ -385,7 +443,8 @@ void main() {
         expect(tester.getTopLeft(miniHeader).dy, 0);
         expect(tester.getSize(miniHeader).height, 56 + topInset);
         expect(back.hitTestable(), findsOneWidget);
-        expect(miniFollow, findsNothing);
+        expect(miniFollow, findsOneWidget);
+        expect(miniFollow.hitTestable(), findsNothing);
         expect(tester.getTopLeft(back).dy, greaterThanOrEqualTo(topInset));
         expect(tester.widget<ExploreCardIconButton>(back).circle, isTrue);
         expect(
@@ -432,7 +491,27 @@ void main() {
             Color.lerp(colors.line.withValues(alpha: 0), colors.line, progress),
           );
           expect(back.hitTestable(), findsOneWidget);
-          expect(miniFollow, findsNothing);
+          expect(miniFollow, findsOneWidget);
+          expect(
+            miniFollow.hitTestable(),
+            progress > 0 ? findsOneWidget : findsNothing,
+          );
+          if (progress > 0) {
+            final miniFollowPill = find.byKey(
+              const ValueKey('band-mini-follow-pill'),
+            );
+            final name = find.descendant(
+              of: miniHeader,
+              matching: find.text(DemoData.bands['b1']!.name.toUpperCase()),
+            );
+            final nameHeight = tester.getSize(name).height;
+            final pillHeight = tester.getSize(miniFollowPill).height;
+            expect((nameHeight - pillHeight).abs(), lessThanOrEqualTo(4));
+            expect(
+              tester.getCenter(miniFollowPill).dy,
+              closeTo(tester.getCenter(name).dy, 1),
+            );
+          }
           expect(tester.widget<ExploreCardIconButton>(back).circle, isTrue);
         }
 
@@ -761,7 +840,7 @@ void main() {
     expect(harness.app.current.screen, Screen.bandPreview);
   });
 
-  testWidgets('sound panel spans the page and stacks the pinned clip first', (
+  testWidgets('sound section spans the page with the pinned clip first', (
     tester,
   ) async {
     await _pumpProfile(tester);
@@ -772,10 +851,10 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
 
-    final panel = find.ancestor(of: header, matching: find.byType(EpPanel));
+    final panel = find.byKey(const ValueKey('band-sound-section'));
     final pageRect = tester.getRect(find.byType(CustomScrollView));
     final panelRect = tester.getRect(panel);
-    expect(tester.widget<EpPanel>(panel).striped, isTrue);
+    expect(tester.widget(panel), isNot(isA<EpPanel>()));
     expect(panelRect.left, pageRect.left);
     expect(panelRect.right, pageRect.right);
     expect(tester.getTopLeft(header).dx, pageRect.left + EpLayout.gutter);
