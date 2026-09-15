@@ -18,8 +18,10 @@ import {
   MAX_FRIENDS_GOING_FRIENDS,
   MAX_FRIENDS_GOING_WINDOW_MS,
   MAX_RSVPS_PER_FRIEND,
+  MAX_SUGGESTED_PEOPLE,
   MAX_USER_SEARCH_RESULTS,
   MIN_SHARED_PAST_SHOWS,
+  MIN_SHARED_SHOWS_FOR_SUGGESTION,
   MIN_USER_SEARCH_QUERY,
   sharesRsvps,
   socialPersonValidator,
@@ -346,6 +348,122 @@ export const knownAttendees = query({
       });
     }
     return { people, goingCount: gig.goingCount, truncated };
+  },
+});
+
+export const suggestedPeople = query({
+  args: {},
+  returns: v.object({
+    people: v.array(v.object({
+      userId: v.id("users"),
+      name: v.string(),
+      avatarUrl: v.optional(v.string()),
+      sharedShows: v.number(),
+      mutualFriends: v.number(),
+      followsMe: v.boolean(),
+    })),
+    truncated: v.boolean(),
+  }),
+  handler: async (ctx) => {
+    const me = await currentUser(ctx);
+    if (me === null) return { people: [], truncated: false };
+
+    const cache = docCache(ctx);
+    const edges = await followEdges(ctx, me);
+    let truncated = edges.truncated;
+    const candidates = new Map<
+      Id<"users">,
+      { sharedShows: number; mutualFriends: number }
+    >();
+    const callerRsvps = await ctx.db
+      .query("gigRsvps")
+      .withIndex("by_user", (q) => q.eq("userId", me._id))
+      .order("desc")
+      .take(50);
+    let rowsRead = callerRsvps.length;
+    const gigIds = new Set(callerRsvps.map((row) => row.gigId));
+    for (const gigId of gigIds) {
+      const attendeeRows = await ctx.db
+        .query("gigRsvps")
+        .withIndex("by_gig", (q) => q.eq("gigId", gigId))
+        .take(100);
+      rowsRead += attendeeRows.length;
+      const attendeeIds = new Set(attendeeRows.map((row) => row.userId));
+      for (const userId of attendeeIds) {
+        if (userId === me._id) continue;
+        const user = await cache.get(userId);
+        // RSVP privacy applies to this signal even when mutual friends would
+        // independently qualify the candidate for a suggestion.
+        if (user === null || !isLiveUser(user) || !sharesRsvps(user)) continue;
+        const candidate = candidates.get(userId) ?? {
+          sharedShows: 0,
+          mutualFriends: 0,
+        };
+        candidate.sharedShows += 1;
+        candidates.set(userId, candidate);
+      }
+      if (rowsRead > MAX_FRIEND_RSVP_ROWS) {
+        truncated = true;
+        break;
+      }
+    }
+
+    const friendIds = [...new Set(edges.friends)];
+    if (friendIds.length > 50) truncated = true;
+    for (const friendId of friendIds.slice(0, 50)) {
+      const followeeRows = await ctx.db
+        .query("userFollows")
+        .withIndex("by_follower", (q) => q.eq("followerId", friendId))
+        .take(100);
+      const followeeIds = new Set(followeeRows.map((row) => row.followeeId));
+      for (const userId of followeeIds) {
+        const candidate = candidates.get(userId) ?? {
+          sharedShows: 0,
+          mutualFriends: 0,
+        };
+        candidate.mutualFriends += 1;
+        candidates.set(userId, candidate);
+      }
+    }
+
+    const followingIds = new Set(edges.following);
+    const included: Array<{
+      user: Doc<"users">;
+      sharedShows: number;
+      mutualFriends: number;
+    }> = [];
+    for (const [userId, candidate] of candidates) {
+      if (userId === me._id || followingIds.has(userId)) continue;
+      if (
+        candidate.sharedShows < MIN_SHARED_SHOWS_FOR_SUGGESTION &&
+        candidate.mutualFriends < 1
+      ) {
+        continue;
+      }
+      const user = await cache.get(userId);
+      if (user === null || !isLiveUser(user)) continue;
+      included.push({ user, ...candidate });
+    }
+    included.sort((a, b) => {
+      const scoreA = a.sharedShows * 2 + a.mutualFriends;
+      const scoreB = b.sharedShows * 2 + b.mutualFriends;
+      if (scoreA !== scoreB) return scoreB - scoreA;
+      return a.user.name.localeCompare(b.user.name);
+    });
+    const followerIds = new Set(edges.followers);
+    const people = [];
+    for (const entry of included.slice(0, MAX_SUGGESTED_PEOPLE)) {
+      const person = await toSocialPerson(ctx, entry.user, cache);
+      people.push({
+        userId: person.userId,
+        name: person.name,
+        avatarUrl: person.avatarUrl ?? undefined,
+        sharedShows: entry.sharedShows,
+        mutualFriends: entry.mutualFriends,
+        followsMe: followerIds.has(person.userId),
+      });
+    }
+    return { people, truncated };
   },
 });
 

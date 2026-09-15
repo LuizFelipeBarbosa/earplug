@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.32)
+# EarPlug Convex function contract (FROZEN — v1.33)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -1107,6 +1107,29 @@ count descending and name; unauthenticated or missing gigs return empty zeroed
 values, and an unpublished gig returns no people with only its `goingCount`
 populated.
 
+**v1.33 — suggested people.** Added `social:suggestedPeople({})`, returning
+`{ people: Array<{ userId: Id<"users">, name: string, avatarUrl?: string,
+sharedShows: number, mutualFriends: number, followsMe: boolean }>, truncated:
+boolean }`; unauthenticated callers receive `{ people: [], truncated: false }`.
+Candidates qualify through at least `MIN_SHARED_SHOWS_FOR_SUGGESTION = 3`
+distinct shared RSVPed gigs (past or upcoming), or one of the caller's mutual
+friends following them. The co-attendance scan reads the caller's 50 newest
+RSVP rows and up to 100 attendee rows per distinct gig, counting the caller's
+own rows toward `MAX_FRIEND_RSVP_ROWS = 2500` and stopping further gigs once
+the running total exceeds that budget. The friends-of-friends scan reads up
+to 50 mutual friends and 100 followee rows per friend, counting each distinct
+friend once per candidate. Both signals merge by user id; self,
+already-followed, missing, and deleted users are excluded. `followsMe` comes
+from the caller's followers. Results sort by `sharedShows * 2 + mutualFriends`
+descending, then name ascending via `localeCompare`, and are capped at
+`MAX_SUGGESTED_PEOPLE = 20`. `truncated` propagates follow-edge truncation and
+reports the co-attendance row-budget stop or excess over 50 friends; the
+per-query row caps and final result cap do not themselves set it. Only live
+users allowed by `sharesRsvps()` contribute to `sharedShows`: a user with
+`shareRsvpsWithFriends: false` can still surface through mutual friends with
+`sharedShows: 0`, but their real shared-show count is never revealed. Rows
+carry no email; an absent avatar is omitted rather than returned as null.
+
 ## Reconciliation
 
 Verified against the current source as of v1.17; these deployed, client-required contract surfaces were previously undocumented:
@@ -1346,6 +1369,7 @@ Verified against the current source as of v1.17; these deployed, client-required
 | `social:friendsGoing`           | `{ from: number, to: number }` | `{ entries: Array<{ gigId: Id<"gigs">, startsAt: number, friends: SocialPerson[] }>, truncated: boolean }` — published gigs where mutual friends who allow RSVP sharing are going; unauthenticated or invalid windows return empty. Requires `to > from`, a window ≤14 days, and clamps `from` to the shared feed cutoff. Friend-major scan is capped at 100 friends, 50 RSVPs each, and 2,500 rows overall.                                                                                                                                                                                        |
 | `social:userCard`               | `{ userId }`         | `SocialUserCard & { followedBandCount: number, mutualBands: Array<{ bandId: Id<"bands">, name: string }> }` or `null` — authenticated target lookup with follow state and up to 10 mutual bands; null unauthenticated or for a missing/deleted target.                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `social:knownAttendees`          | `{ gigId, now }`     | `{ people: Array<{ userId, name, avatarUrl, relation: "friend"\|"seen", sharedShows: number }>, goingCount: number, truncated: boolean }` — published-gig attendees known through mutual friendship or at least two shared past shows, subject to RSVP sharing; friends first, then shared-show count descending and name. Unauthenticated or missing gigs return empty zeroed values; unpublished gigs return no people and the gig's `goingCount`.                                                                                                                                                                                                 |
+| `social:suggestedPeople`        | `{}`                 | `{ people: Array<{ userId: Id<"users">, name: string, avatarUrl?: string, sharedShows: number, mutualFriends: number, followsMe: boolean }>, truncated: boolean }` — people sharing at least three RSVPed gigs (past or upcoming) or followed by a mutual friend, excluding self/already-followed/missing/deleted users. Shared shows count only while RSVP sharing is enabled; opted-out users can qualify through mutual friends with `sharedShows: 0`. Sorts by `sharedShows * 2 + mutualFriends` descending, then name ascending, capped at 20. Unauthenticated returns `{ people: [], truncated: false }`; truncation covers follow edges, the co-attendance row budget, and the 50-friends cap. |
 | `analytics:bandRecap`           | `{ bandId }`         | `BandRecap` — signed-in band members only (admin or member); throws otherwise. Reads the 200 most recent globally past gigs, analyzes at most the first 30 whose lineup contains the band, and returns shows newest first. `window.truncated` covers both the matching-show cap and a full global scan. The five-distinct-fan floor suppresses `leadTime`, `repeatFans`, `newReturning` and the per-show new/returning columns; `leadTime.unmeasurable` is also independently zeroed for 1–4 distinct fans. `venues`, `weekdays` and `pricing` always publish because they are exactly recomputable from `shows[]`. |
 
 ## Mutations
@@ -1432,6 +1456,12 @@ the creating band republishes.
 - `MIN_SHARED_PAST_SHOWS = 2`, `MAX_KNOWN_ATTENDEE_ROWS = 300`,
   `MAX_KNOWN_ATTENDEE_CHECKS = 60`, `MAX_KNOWN_ATTENDEE_RSVP_ROWS = 2500`,
   and `MAX_KNOWN_ATTENDEES = 20` bound `social:knownAttendees`.
+- `MIN_SHARED_SHOWS_FOR_SUGGESTION = 3` and `MAX_SUGGESTED_PEOPLE = 20`
+  bound `social:suggestedPeople` eligibility and results. Co-attendance reads
+  the caller's 50 newest RSVP rows and up to 100 attendees per distinct gig,
+  stopping further gigs once the running total (including the caller's rows)
+  exceeds `MAX_FRIEND_RSVP_ROWS = 2500`. Friends-of-friends reads at most 50
+  mutual friends and 100 followee rows per friend.
 - `MAX_MEDIA_BYTES = 100 MiB`.
 - Band invitation tokens carry 256 bits of strong pseudo-randomness. Creation
   and rotation schedule `bandInvites:expire` for seven days later; its band and
@@ -1449,7 +1479,7 @@ the creating band republishes.
 
 ## Invariants
 
-- Only `social:friendsGoing` and `social:knownAttendees` reveal another user's RSVPs: `social:friendsGoing` shows them only to mutual followers, while `social:knownAttendees` shows an attendee only when they are a mutual friend of the caller or share at least two past shows with them, and both queries do so only while that user's `shareRsvpsWithFriends` is not false; no social payload carries an email.
+- Only `social:friendsGoing`, `social:knownAttendees`, and the shared-shows signal in `social:suggestedPeople` reveal another user's RSVPs: `social:friendsGoing` shows them only to mutual followers, while `social:knownAttendees` shows an attendee only when they are a mutual friend of the caller or share at least two past shows with them. `social:suggestedPeople` counts distinct shared gigs (past or upcoming), qualifying candidates through at least three shared shows or one mutual friend. All three queries reveal RSVP information only while that user's `shareRsvpsWithFriends` is not false. An opted-out user can still appear in `social:suggestedPeople` through mutual friends with `sharedShows: 0`, but their real shared-show count is never revealed; no social payload carries an email.
 - `bands.followerCount == count(follows by bandId) + count(bandMembers by
 bandId)`. Its permitted live writers are `interactions:toggleFollow` (±1 with
   its follow row), `bands:createBand` (seeds 1 with its admin member row), and

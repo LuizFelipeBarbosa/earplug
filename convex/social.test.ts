@@ -10,6 +10,9 @@ import {
   MAX_KNOWN_ATTENDEES,
   MIN_SHARED_PAST_SHOWS,
   MAX_RSVPS_PER_FRIEND,
+  MAX_SOCIAL_FOLLOWS,
+  MAX_SUGGESTED_PEOPLE,
+  MIN_SHARED_SHOWS_FOR_SUGGESTION,
 } from "./lib/social";
 import { FEED_GRACE_MS, MAX_FRIEND_RSVP_ROWS } from "./lib/helpers";
 
@@ -791,6 +794,375 @@ describe("social", () => {
     await t.run((ctx) => ctx.db.patch(g, { goingCount: 7 }));
     expect(await me.as.query(api.social.knownAttendees, { gigId: g, now: Date.now() })).toEqual({
       people: [], goingCount: 7, truncated: false,
+    });
+  });
+
+  test("suggestedPeople returns nothing when unauthenticated", async () => {
+    const t = convexTest(schema);
+    expect(await t.query(api.social.suggestedPeople, {})).toEqual({
+      people: [],
+      truncated: false,
+    });
+  });
+
+  test.each([
+    MIN_SHARED_SHOWS_FOR_SUGGESTION - 1,
+    MIN_SHARED_SHOWS_FOR_SUGGESTION,
+  ])("suggestedPeople applies the threshold to %i distinct shared gigs", async (sharedShows) => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const stranger = await user(t, "stranger", "Stranger");
+    const v = await venue(t);
+    const now = Date.now();
+    for (let i = 0; i < sharedShows; i++) {
+      const g = await gig(t, v, now + (i % 2 === 0 ? -1 : 1) * (i + 1) * 1000);
+      // Duplicate rows on either side must not inflate the shared-show count.
+      await rsvp(t, me.userId, g);
+      await rsvp(t, me.userId, g);
+      await rsvp(t, stranger.userId, g);
+      await rsvp(t, stranger.userId, g);
+    }
+    const result = await me.as.query(api.social.suggestedPeople, {});
+    expect(result.truncated).toBe(false);
+    if (sharedShows < MIN_SHARED_SHOWS_FOR_SUGGESTION) {
+      expect(result.people).toEqual([]);
+    } else {
+      expect(result.people).toEqual([{
+        userId: stranger.userId,
+        name: "Stranger",
+        sharedShows: 3,
+        mutualFriends: 0,
+        followsMe: false,
+      }]);
+      expect(result.people[0].avatarUrl).toBeUndefined();
+      expect(result.people[0]).not.toHaveProperty("email");
+    }
+  });
+
+  test("suggestedPeople hides opted-out shared shows even when mutual friends qualify the person", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const stranger = await user(t, "stranger");
+    const v = await venue(t);
+    for (let i = 0; i < MIN_SHARED_SHOWS_FOR_SUGGESTION; i++) {
+      const g = await gig(t, v);
+      await rsvp(t, me.userId, g);
+      await rsvp(t, stranger.userId, g);
+    }
+    await t.run((ctx) =>
+      ctx.db.patch(stranger.userId, { shareRsvpsWithFriends: false }),
+    );
+    expect(await me.as.query(api.social.suggestedPeople, {})).toEqual({
+      people: [],
+      truncated: false,
+    });
+
+    const friend = await user(t, "friend");
+    await follow(t, me.userId, friend.userId);
+    await follow(t, friend.userId, me.userId);
+    await follow(t, friend.userId, stranger.userId);
+    expect((await me.as.query(api.social.suggestedPeople, {})).people).toEqual([{
+      userId: stranger.userId,
+      name: "stranger",
+      sharedShows: 0,
+      mutualFriends: 1,
+      followsMe: false,
+    }]);
+  });
+
+  test("suggestedPeople includes a stranger followed by a mutual friend with their avatar", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const friend = await user(t, "friend");
+    const stranger = await user(t, "stranger", "Stranger");
+    await follow(t, me.userId, friend.userId);
+    await follow(t, friend.userId, me.userId);
+    await follow(t, friend.userId, stranger.userId);
+    await t.run((ctx) =>
+      ctx.db.patch(stranger.userId, { avatarUrl: "https://example.com/avatar.jpg" }),
+    );
+    expect(await me.as.query(api.social.suggestedPeople, {})).toEqual({
+      people: [{
+        userId: stranger.userId,
+        name: "Stranger",
+        avatarUrl: "https://example.com/avatar.jpg",
+        sharedShows: 0,
+        mutualFriends: 1,
+        followsMe: false,
+      }],
+      truncated: false,
+    });
+  });
+
+  test("suggestedPeople excludes already-followed people qualifying through both signals", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const friend = await user(t, "friend");
+    const followed = await user(t, "followed");
+    await follow(t, me.userId, friend.userId);
+    await follow(t, friend.userId, me.userId);
+    await follow(t, friend.userId, followed.userId);
+    await follow(t, me.userId, followed.userId);
+    const v = await venue(t);
+    for (let i = 0; i < MIN_SHARED_SHOWS_FOR_SUGGESTION; i++) {
+      const g = await gig(t, v);
+      await rsvp(t, me.userId, g);
+      await rsvp(t, followed.userId, g);
+    }
+    expect((await me.as.query(api.social.suggestedPeople, {})).people).toEqual([]);
+  });
+
+  test("suggestedPeople never suggests the caller through RSVPs or a friend's follows", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const friend = await user(t, "friend");
+    await follow(t, me.userId, friend.userId);
+    await follow(t, friend.userId, me.userId);
+    const v = await venue(t);
+    for (let i = 0; i < MIN_SHARED_SHOWS_FOR_SUGGESTION; i++) {
+      await rsvp(t, me.userId, await gig(t, v));
+    }
+    expect((await me.as.query(api.social.suggestedPeople, {})).people).toEqual([]);
+  });
+
+  test.each(["tombstone", "missing"])("suggestedPeople excludes a %s user qualifying through both signals", async (state) => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const friend = await user(t, "friend");
+    const deleted = await user(t, "deleted");
+    await follow(t, me.userId, friend.userId);
+    await follow(t, friend.userId, me.userId);
+    await follow(t, friend.userId, deleted.userId);
+    const v = await venue(t);
+    for (let i = 0; i < MIN_SHARED_SHOWS_FOR_SUGGESTION; i++) {
+      const g = await gig(t, v);
+      await rsvp(t, me.userId, g);
+      await rsvp(t, deleted.userId, g);
+    }
+    if (state === "tombstone") {
+      await t.run((ctx) => ctx.db.patch(deleted.userId, { deletedAt: Date.now() }));
+    } else {
+      await t.run((ctx) => ctx.db.delete(deleted.userId));
+    }
+    expect((await me.as.query(api.social.suggestedPeople, {})).people).toEqual([]);
+  });
+
+  test("suggestedPeople does not count one-way follows as mutual friends", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const following = await user(t, "following");
+    const follower = await user(t, "follower");
+    const stranger = await user(t, "stranger");
+    await follow(t, me.userId, following.userId);
+    await follow(t, follower.userId, me.userId);
+    await follow(t, following.userId, stranger.userId);
+    await follow(t, follower.userId, stranger.userId);
+    expect((await me.as.query(api.social.suggestedPeople, {})).people).toEqual([]);
+  });
+
+  test("suggestedPeople counts distinct mutual friends and reports followsMe", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const stranger = await user(t, "stranger");
+    for (const subject of ["friend-a", "friend-b"]) {
+      const friend = await user(t, subject);
+      await follow(t, me.userId, friend.userId);
+      await follow(t, me.userId, friend.userId);
+      await follow(t, friend.userId, me.userId);
+      await follow(t, friend.userId, stranger.userId);
+      await follow(t, friend.userId, stranger.userId);
+    }
+    await follow(t, stranger.userId, me.userId);
+    expect((await me.as.query(api.social.suggestedPeople, {})).people).toEqual([{
+      userId: stranger.userId,
+      name: "stranger",
+      sharedShows: 0,
+      mutualFriends: 2,
+      followsMe: true,
+    }]);
+  });
+
+  test("suggestedPeople merges signals, weights shared shows twice and breaks score ties by name", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const high = await user(t, "high", "Zed");
+    const beta = await user(t, "beta", "Beta");
+    const alpha = await user(t, "alpha", "Alpha");
+    const v = await venue(t);
+    for (let i = 0; i < MIN_SHARED_SHOWS_FOR_SUGGESTION; i++) {
+      const g = await gig(t, v);
+      await rsvp(t, me.userId, g);
+      await rsvp(t, high.userId, g);
+      await rsvp(t, beta.userId, g);
+      if (i === 0) await rsvp(t, alpha.userId, g);
+    }
+    for (let i = 0; i < 4; i++) {
+      const friend = await user(t, `friend-${i}`);
+      await follow(t, me.userId, friend.userId);
+      await follow(t, friend.userId, me.userId);
+      await follow(t, friend.userId, alpha.userId);
+      if (i === 0) await follow(t, friend.userId, high.userId);
+    }
+    const result = await me.as.query(api.social.suggestedPeople, {});
+    expect(result.people.map(({ name, sharedShows, mutualFriends }) => ({
+      name, sharedShows, mutualFriends,
+    }))).toEqual([
+      { name: "Zed", sharedShows: 3, mutualFriends: 1 },
+      { name: "Alpha", sharedShows: 1, mutualFriends: 4 },
+      { name: "Beta", sharedShows: 3, mutualFriends: 0 },
+    ]);
+  });
+
+  test("suggestedPeople caps ranked results at MAX_SUGGESTED_PEOPLE", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const friend = await user(t, "friend");
+    await follow(t, me.userId, friend.userId);
+    await follow(t, friend.userId, me.userId);
+    const names = [];
+    for (let i = 0; i < MAX_SUGGESTED_PEOPLE + 1; i++) {
+      const name = `Person ${i}`;
+      names.push(name);
+      const stranger = await user(t, `stranger-${i}`, name);
+      await follow(t, friend.userId, stranger.userId);
+    }
+    const result = await me.as.query(api.social.suggestedPeople, {});
+    expect(result.people).toHaveLength(MAX_SUGGESTED_PEOPLE);
+    expect(result.people.map((person) => person.name)).toEqual(
+      names.sort((a, b) => a.localeCompare(b)).slice(0, MAX_SUGGESTED_PEOPLE),
+    );
+    expect(result.truncated).toBe(false);
+  });
+
+  test("suggestedPeople scans only the caller's newest 50 RSVP rows", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const old = await user(t, "old");
+    const recent = await user(t, "recent");
+    const v = await venue(t);
+    for (let i = 0; i < 51; i++) {
+      const g = await gig(t, v);
+      await rsvp(t, me.userId, g);
+      if (i < MIN_SHARED_SHOWS_FOR_SUGGESTION) await rsvp(t, old.userId, g);
+      await rsvp(t, recent.userId, g);
+    }
+    const result = await me.as.query(api.social.suggestedPeople, {});
+    expect(result.people).toEqual([{
+      userId: recent.userId,
+      name: "recent",
+      sharedShows: 50,
+      mutualFriends: 0,
+      followsMe: false,
+    }]);
+    expect(result.truncated).toBe(false);
+  });
+
+  test("suggestedPeople scans at most 100 attendee rows per gig", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const followed = await user(t, "followed");
+    const beyondCap = await user(t, "beyond-cap");
+    await follow(t, me.userId, followed.userId);
+    const v = await venue(t);
+    for (let i = 0; i < MIN_SHARED_SHOWS_FOR_SUGGESTION; i++) {
+      const g = await gig(t, v);
+      await rsvp(t, me.userId, g);
+      await t.run(async (ctx) => {
+        for (let j = 0; j < 99; j++) {
+          await ctx.db.insert("gigRsvps", { userId: followed.userId, gigId: g });
+        }
+      });
+      await rsvp(t, beyondCap.userId, g);
+    }
+    expect(await me.as.query(api.social.suggestedPeople, {})).toEqual({
+      people: [],
+      truncated: false,
+    });
+  });
+
+  test("suggestedPeople counts own RSVP rows in the co-attendance budget and stops further gigs", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const stranger = await user(t, "stranger");
+    const v = await venue(t);
+    const gigCount = 30;
+    const rowsPerGig = 100;
+    for (let i = 0; i < gigCount; i++) {
+      const g = await gig(t, v);
+      await rsvp(t, me.userId, g);
+      await t.run(async (ctx) => {
+        for (let j = 0; j < rowsPerGig - 1; j++) {
+          await ctx.db.insert("gigRsvps", { userId: stranger.userId, gigId: g });
+        }
+      });
+    }
+    const result = await me.as.query(api.social.suggestedPeople, {});
+    expect(result.truncated).toBe(true);
+    expect(result.people).toHaveLength(1);
+    expect(result.people[0].sharedShows).toBe(
+      Math.floor((MAX_FRIEND_RSVP_ROWS - gigCount) / rowsPerGig) + 1,
+    );
+  });
+
+  test("suggestedPeople scans at most 50 mutual friends and reports the excess", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const included = await user(t, "included");
+    const beyondCap = await user(t, "beyond-cap");
+    for (let i = 0; i < 51; i++) {
+      const friend = await user(t, `friend-${i}`);
+      await follow(t, me.userId, friend.userId);
+      await follow(t, friend.userId, me.userId);
+      await follow(t, friend.userId, included.userId);
+      if (i === 50) await follow(t, friend.userId, beyondCap.userId);
+    }
+    const result = await me.as.query(api.social.suggestedPeople, {});
+    expect(result.truncated).toBe(true);
+    expect(result.people).toEqual([{
+      userId: included.userId,
+      name: "included",
+      sharedShows: 0,
+      mutualFriends: 50,
+      followsMe: false,
+    }]);
+  });
+
+  test("suggestedPeople scans at most 100 followee rows per friend", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const friend = await user(t, "friend");
+    const beyondCap = await user(t, "beyond-cap");
+    await follow(t, me.userId, friend.userId);
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 100; i++) {
+        await ctx.db.insert("userFollows", {
+          followerId: friend.userId,
+          followeeId: me.userId,
+        });
+      }
+    });
+    await follow(t, friend.userId, beyondCap.userId);
+    expect(await me.as.query(api.social.suggestedPeople, {})).toEqual({
+      people: [],
+      truncated: false,
+    });
+  });
+
+  test("suggestedPeople propagates followEdges truncation without exceeding the friend cap", async () => {
+    const t = convexTest(schema);
+    const me = await user(t, "me");
+    const follower = await user(t, "follower");
+    await t.run(async (ctx) => {
+      for (let i = 0; i < MAX_SOCIAL_FOLLOWS + 1; i++) {
+        await ctx.db.insert("userFollows", {
+          followerId: follower.userId,
+          followeeId: me.userId,
+        });
+      }
+    });
+    expect(await me.as.query(api.social.suggestedPeople, {})).toEqual({
+      people: [],
+      truncated: true,
     });
   });
 });

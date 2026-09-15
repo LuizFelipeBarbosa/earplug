@@ -17,6 +17,8 @@ export const MAX_KNOWN_ATTENDEE_CHECKS = 60;
 // so this row budget bounds candidate RSVP-history reads.
 export const MAX_KNOWN_ATTENDEE_RSVP_ROWS = 2500;
 export const MAX_KNOWN_ATTENDEES = 20;
+export const MIN_SHARED_SHOWS_FOR_SUGGESTION = 3;
+export const MAX_SUGGESTED_PEOPLE = 20;
 
 export const socialPersonValidator = v.object({
   userId: v.id("users"),

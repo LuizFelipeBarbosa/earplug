@@ -302,6 +302,7 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing social.js:friendsGoing",
     "missing social.js:userCard",
     "missing social.js:knownAttendees",
+    "missing social.js:suggestedPeople",
   ]);
 });
 

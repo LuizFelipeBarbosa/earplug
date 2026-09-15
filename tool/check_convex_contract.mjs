@@ -145,6 +145,7 @@ export const requiredClientFunctions = Object.freeze({
   "social.js:friendsGoing": "Query",
   "social.js:userCard": "Query",
   "social.js:knownAttendees": "Query",
+  "social.js:suggestedPeople": "Query",
 });
 
 export const requiredClientFields = Object.freeze([
@@ -249,6 +250,7 @@ export const requiredClientFields = Object.freeze([
   ["social.js:friendsGoing", "return", "truncated", false],
   ["social.js:knownAttendees", "return", "people", false],
   ["social.js:knownAttendees", "return", "goingCount", false],
+  ["social.js:suggestedPeople", "return", "people", false],
   ["social.js:searchUsers", "arrayReturn", "isFriend", false],
   ["social.js:toggleFollowUser", "args", "on", true],
 ]);
