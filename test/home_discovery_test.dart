@@ -264,6 +264,11 @@ void main() {
       tester.getRect(cardFinder).bottom,
       closeTo(900 - (EpLayout.tabBarHeight + 12), 1),
     );
+    final cardRect = tester.getRect(cardFinder);
+    final rowRect = tester.getRect(find.byKey(const ValueKey('map-gig-g1')));
+    expect(rowRect.left, closeTo(cardRect.left, 0.5));
+    expect(rowRect.right, closeTo(cardRect.right, 0.5));
+    expect(rowRect.bottom, closeTo(cardRect.bottom, 0.5));
 
     await tester.tap(find.text('BASEMENT BLOWOUT'));
     await tester.pumpAndSettle();
@@ -319,6 +324,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('RIPTIDE RELEASE SHOW'), findsOne);
     expect(find.text('1 OF 2 GIGS AT THIS VENUE'), findsOne);
+
+    final positionRect = tester.getRect(
+      find.byKey(const Key('map-gig-position')),
+    );
+    final thumbnailRect = tester.getRect(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey('map-gig-card-g2')),
+            matching: find.byType(GigFlyer),
+          )
+          .first,
+    );
+    expect(positionRect.left, closeTo(thumbnailRect.left, 0.5));
 
     expect(
       tester.getSize(find.byKey(const Key('previous-map-gig'))).height,

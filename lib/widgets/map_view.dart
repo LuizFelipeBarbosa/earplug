@@ -480,36 +480,39 @@ class _MapGigCard extends StatelessWidget {
     return EpCard(
       key: ValueKey('map-gig-card-${gig.id}'),
       variant: EpCardVariant.raised,
-      padding: EdgeInsets.all(total > 1 ? 10 : 12),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (total > 1) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: DefaultTextStyle.merge(
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    child: EpEyebrow(
-                      '${position + 1} OF $total GIGS AT THIS VENUE',
-                      key: const Key('map-gig-position'),
+            Padding(
+              padding: const EdgeInsets.only(top: 10, right: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: DefaultTextStyle.merge(
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      child: EpEyebrow(
+                        '${position + 1} OF $total GIGS AT THIS VENUE',
+                        key: const Key('map-gig-position'),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 6),
-                _CarouselButton(
-                  key: const Key('previous-map-gig'),
-                  icon: Icons.chevron_left,
-                  onTap: onPrevious,
-                ),
-                const SizedBox(width: 4),
-                _CarouselButton(
-                  key: const Key('next-map-gig'),
-                  icon: Icons.chevron_right,
-                  onTap: onNext,
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  _CarouselButton(
+                    key: const Key('previous-map-gig'),
+                    icon: Icons.chevron_left,
+                    onTap: onPrevious,
+                  ),
+                  const SizedBox(width: 4),
+                  _CarouselButton(
+                    key: const Key('next-map-gig'),
+                    icon: Icons.chevron_right,
+                    onTap: onNext,
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 4),
           ],
