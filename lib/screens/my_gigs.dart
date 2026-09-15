@@ -12,6 +12,7 @@ import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/ep_text.dart';
+import '../widgets/explore_tiles.dart';
 import '../widgets/fan_event_card.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
@@ -140,6 +141,23 @@ class _MyGigsScreenState extends State<MyGigsScreen> {
                         gig: gig,
                         app: app,
                         showDistance: true,
+                        showSaveAction: false,
+                        trailingAction:
+                            gig.tix == Ticketing.rsvp &&
+                                app.rsvps.contains(gig.id) &&
+                                gig.lifecycle == GigLifecycle.published
+                            ? ExploreCardIconButton(
+                                key: ValueKey('show-qr-${gig.id}'),
+                                icon: Icons.qr_code_2,
+                                semanticLabel: 'Show ticket',
+                                ring: true,
+                                onPressed: () => showQrDialog(
+                                  context,
+                                  gig,
+                                  app.venue(gig.venueId),
+                                ),
+                              )
+                            : null,
                       ),
                     ),
                   if (upcoming.isNotEmpty)

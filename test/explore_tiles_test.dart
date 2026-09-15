@@ -1199,7 +1199,7 @@ void main() {
     }
   });
 
-  testWidgets('compact fan card keeps save and the optional QR action', (
+  testWidgets('compact fan card trailing action replaces the save action', (
     tester,
   ) async {
     final gig = gigFixture(
@@ -1218,26 +1218,25 @@ void main() {
               key: const Key('qr-action'),
               icon: Icons.qr_code,
               semanticLabel: 'Show QR code',
+              ring: true,
               onPressed: () => qrTaps++,
             ),
           ),
         ),
       ),
     );
-    final save = find.byKey(ValueKey('save-${gig.id}'));
-    expect(tester.widget<ExploreCardIconButton>(save).ring, isTrue);
-    expect(tester.getSize(save), const Size(36, 36));
-    final actions = tester.widget<Wrap>(
-      find.byKey(ValueKey('event-actions-${gig.id}')),
-    );
-    expect(actions.children, hasLength(2));
+    expect(find.byKey(ValueKey('save-${gig.id}')), findsNothing);
+    final qr = find.byKey(const Key('qr-action'));
+    expect(qr, findsOne);
+    expect(tester.widget<ExploreCardIconButton>(qr).ring, isTrue);
+    expect(tester.getSize(qr), const Size(36, 36));
     expect(find.byKey(ValueKey('share-${gig.id}')), findsNothing);
     expect(find.byIcon(Icons.ios_share), findsNothing);
     expect(
-      tester.getRect(save).top,
+      tester.getRect(qr).top,
       closeTo(tester.getRect(find.text('WED, SEP 23 AT 8PM')).top, 0.1),
     );
-    await tester.tap(find.byKey(const Key('qr-action')));
+    await tester.tap(qr);
     expect(qrTaps, 1);
     expect(tester.takeException(), isNull);
   });

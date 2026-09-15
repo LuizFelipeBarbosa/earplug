@@ -50,7 +50,7 @@ enum FanEventCardPresentation { compact, featured }
 /// The event summary used throughout the fan experience: a hairline gig row in
 /// lists, a poster block where one show leads the page.
 ///
-/// The card owns the standard event actions while callers can add one
+/// Compact cards show a save action by default. Callers can replace it with a
 /// surface-specific action, such as the QR button in Profile.
 class FanEventCard extends StatelessWidget {
   const FanEventCard({
@@ -59,6 +59,7 @@ class FanEventCard extends StatelessWidget {
     required this.app,
     this.showDistance = false,
     this.trailingAction,
+    this.showSaveAction = true,
     this.presentation = FanEventCardPresentation.compact,
     this.rowKey,
   });
@@ -67,6 +68,10 @@ class FanEventCard extends StatelessWidget {
   final AppState app;
   final bool showDistance;
   final Widget? trailingAction;
+
+  /// Whether compact cards fall back to save when [trailingAction] is absent.
+  final bool showSaveAction;
+
   final FanEventCardPresentation presentation;
   final Key? rowKey;
 
@@ -92,17 +97,14 @@ class FanEventCard extends StatelessWidget {
         },
       );
     }
-    final actions = _EventActions(
-      gig: gig,
-      app: app,
-      trailingAction: trailingAction,
-    );
+    final actions = _EventActions(gig: gig, app: app);
     final row = ExploreEventRow(
       key: rowKey ?? ValueKey('fan-event-${gig.id}'),
       gig: gig,
       venueName: venue.name,
       lines: lines,
-      saveAction: trailingAction == null ? actions.saveAction : actions,
+      saveAction:
+          trailingAction ?? (showSaveAction ? actions.saveAction : null),
       onTap: () => app.openGig(gig.id),
     );
     if (!app.isDiscoveryBoosted(gig)) return row;
@@ -171,12 +173,11 @@ List<Widget> gigCardActions(
   return [actions.shareAction(context), actions.saveAction];
 }
 
-/// Compact save control and an optional caller-supplied action.
-class _EventActions extends StatelessWidget {
+/// Standard save and share controls for compact and featured cards.
+class _EventActions {
   const _EventActions({
     required this.gig,
     required this.app,
-    this.trailingAction,
     this.ring = true,
     this.color,
     this.iconShadows,
@@ -184,22 +185,9 @@ class _EventActions extends StatelessWidget {
 
   final Gig gig;
   final AppState app;
-  final Widget? trailingAction;
   final bool ring;
   final Color? color;
   final List<Shadow>? iconShadows;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      key: ValueKey('event-actions-${gig.id}'),
-      alignment: WrapAlignment.end,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 4,
-      runSpacing: 4,
-      children: [saveAction, ?trailingAction],
-    );
-  }
 
   Widget get saveAction {
     final saved = app.saved.contains(gig.id);

@@ -15,6 +15,7 @@ import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
+import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -628,6 +629,44 @@ void main() {
       findsNothing,
     );
     expect(find.byKey(const Key('history-qualification')), findsNothing);
+  });
+
+  testWidgets('Going opens RSVP tickets while Saved keeps the save action', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      home: const Scaffold(body: MyGigsScreen()),
+    );
+    final gig = harness.app.upcomingRsvpGigs.single;
+    expect(gig.tix, Ticketing.rsvp);
+    expect(harness.app.rsvps, contains(gig.id));
+
+    await _selectProfileList(tester, 'GOING · 1');
+    final row = find.byKey(ValueKey('upcoming-rsvp-${gig.id}'));
+    final qr = find.byKey(ValueKey('show-qr-${gig.id}'));
+    expect(find.descendant(of: row, matching: qr), findsOne);
+    expect(find.byKey(ValueKey('save-${gig.id}')), findsNothing);
+    final button = tester.widget<ExploreCardIconButton>(qr);
+    expect(button.icon, Icons.qr_code_2);
+    expect(button.semanticLabel, 'Show ticket');
+    expect(button.ring, isTrue);
+    expect(button.circle, isFalse);
+    expect(tester.getSize(qr), const Size(36, 36));
+
+    await _tapProfileControl(tester, qr);
+    expect(find.text('YOUR TICKET'), findsOne);
+    await tester.tap(find.text('CLOSE'));
+    await tester.pumpAndSettle();
+
+    final savedGigId = harness.app.saved.single;
+    await _selectProfileList(tester, 'SAVED · 1');
+    expect(find.byKey(ValueKey('save-$savedGigId')), findsOne);
+    expect(find.byKey(ValueKey('show-qr-$savedGigId')), findsNothing);
+    expect(qr, findsNothing);
   });
 
   testWidgets(
