@@ -436,7 +436,7 @@ void main() {
     }
   });
 
-  testWidgets('venue rail height fits the tallest tile at any text scale', (
+  testWidgets('venue rail height matches the tile at any text scale', (
     tester,
   ) async {
     final venue = Venue(
@@ -467,7 +467,7 @@ void main() {
       final context = tester.element(tile);
       expect(
         tester.getSize(tile).height,
-        lessThanOrEqualTo(exploreVenueRailHeight(context)),
+        closeTo(exploreVenueRailHeight(context), 1),
       );
     }
   });
@@ -1463,7 +1463,7 @@ void main() {
   });
 
   testWidgets(
-    'venue tile renders metadata, singular/plural, and verification',
+    'venue tile renders metadata and singular/plural without verification badges',
     (tester) async {
       final date = DateTime(2026, 9, 19); // Saturday.
       final venue = Venue(
@@ -1487,7 +1487,13 @@ void main() {
       expect(find.text('19 SEP'), findsNothing);
       expect(find.textContaining('SEP'), findsNothing);
       expect(find.text('1 SHOW'), findsOneWidget);
-      expect(find.text('VERIFIED'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(ExploreVenueTile),
+          matching: find.byType(EpBadge),
+        ),
+        findsNothing,
+      );
       expect(
         tester.getBottomLeft(find.text('THE FOGHORN')).dy,
         lessThan(tester.getTopLeft(find.text('1 SHOW')).dy),
@@ -1525,7 +1531,13 @@ void main() {
       expect(find.text('19 SEP'), findsNothing);
       expect(find.textContaining('SEP'), findsNothing);
       expect(find.text('2 SHOWS'), findsOneWidget);
-      expect(find.text('VERIFIED'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(ExploreVenueTile),
+          matching: find.byType(EpBadge),
+        ),
+        findsNothing,
+      );
 
       for (final name in ['', '   ']) {
         final unnamed = Venue(
@@ -1563,6 +1575,81 @@ void main() {
           ),
         );
         expect(tileSemantics.properties.label, unnamed.addr);
+      }
+    },
+  );
+
+  testWidgets(
+    'venue tiles align name, show count, and area line tops across different content',
+    (tester) async {
+      final shortVenue = Venue(
+        id: 'short-venue',
+        name: 'Short',
+        area: 'Mission',
+        addr: '1 Main St',
+        point: const LatLng(0, 0),
+        verified: true,
+      );
+      final longVenue = Venue(
+        id: 'long-venue',
+        name: 'A Very Long Venue Name That Wraps Across Two Lines',
+        area: 'Oakland',
+        addr: '2 Main St',
+        point: const LatLng(0, 0),
+      );
+      for (final scale in [1.0, 1.3]) {
+        await tester.pumpWidget(
+          plain(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ExploreVenueTile(
+                  entry: VenueWithShows(
+                    venue: shortVenue,
+                    gigs: [
+                      gigFixture(id: 'short-show', venueId: shortVenue.id),
+                    ],
+                  ),
+                  distance: '2 MI',
+                  onTap: () {},
+                ),
+                ExploreVenueTile(
+                  entry: VenueWithShows(
+                    venue: longVenue,
+                    gigs: [
+                      gigFixture(id: 'long-show-a', venueId: longVenue.id),
+                      gigFixture(id: 'long-show-b', venueId: longVenue.id),
+                    ],
+                  ),
+                  distance: null,
+                  onTap: () {},
+                ),
+              ],
+            ),
+            textScaler: TextScaler.linear(scale),
+          ),
+        );
+        expect(tester.takeException(), isNull, reason: 'scale $scale');
+        expect(find.text('2 MI'), findsOneWidget);
+        final shortName = find.text(shortVenue.name.toUpperCase());
+        final longName = find.text(longVenue.name.toUpperCase());
+        // Confirm that the fixtures exercise different numbers of name lines.
+        expect(
+          tester.getSize(longName).height,
+          greaterThan(tester.getSize(shortName).height),
+        );
+        for (final (shortText, longText) in [
+          (shortName, longName),
+          (find.text('1 SHOW'), find.text('2 SHOWS')),
+          (find.text(shortVenue.area), find.text(longVenue.area)),
+        ]) {
+          expect(
+            (tester.getTopLeft(shortText).dy - tester.getTopLeft(longText).dy)
+                .abs(),
+            lessThan(0.5),
+            reason: 'scale $scale: $shortText and $longText',
+          );
+        }
       }
     },
   );

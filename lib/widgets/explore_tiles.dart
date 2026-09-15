@@ -1136,8 +1136,7 @@ class ExploreCollectionCard extends StatelessWidget {
 }
 
 /// Layout constants shared by [ExploreVenueTile] and
-/// [exploreVenueRailHeight], so the venues rail stays tall enough for the
-/// tile's tallest possible content.
+/// [exploreVenueRailHeight], so the venues rail matches the tile's fixed slots.
 const _venueTileWidth = 220.0;
 const _venueTileImageAspectRatio = 4 / 3;
 const _venueTilePaddingHorizontal = 8.0;
@@ -1151,22 +1150,11 @@ const _venueTileShowsCountSize = 16.0;
 TextStyle _venueTileShowsCountStyle(TextTheme textTheme) => textTheme.epLabel
     .copyWith(fontSize: _venueTileShowsCountSize, fontWeight: FontWeight.w400);
 const _venueTileLineGap = 2.0;
-const _venueTileInlineGap = 6.0;
 const _venueTileAreaSeparator = ' · ';
 const _venueTileAreaMinChars = 3;
-// EpBadge wraps its mono label in two pixels of vertical padding and a
-// one-pixel border on each side.
-const _venueTileBadgeVerticalPadding = 4.0;
-const _venueTileBadgeBorderHeight = 2.0;
 
-/// The height a VENUES rail needs to show a default [ExploreVenueTile] with
-/// its name (or address) fully wrapped, its show count, and its area, distance,
-/// and Verified badge at the current text scale.
-///
-/// Each line is derived from the widgets the tile renders: the name or address
-/// is [_venueTileNameMaxLines] display lines, the show count is one display
-/// line, and the area row is the taller of the meta text and the badge.
-double exploreVenueRailHeight(BuildContext context) {
+({double nameHeight, double showsCountHeight, double areaHeight})
+_venueTileTextHeights(BuildContext context) {
   final textTheme = Theme.of(context).textTheme;
   final scale = MediaQuery.textScalerOf(context).scale(1);
   // The text engine rounds each line box to whole pixels, so round each line
@@ -1174,24 +1162,28 @@ double exploreVenueRailHeight(BuildContext context) {
   double lineHeight(TextStyle style) =>
       (style.fontSize! * style.height! * scale).ceilToDouble();
 
+  return (
+    nameHeight:
+        lineHeight(textTheme.epDisplayAt(_venueTileNameSize)) *
+        _venueTileNameMaxLines,
+    showsCountHeight: lineHeight(_venueTileShowsCountStyle(textTheme)),
+    areaHeight: lineHeight(textTheme.epMeta),
+  );
+}
+
+/// The exact height of a default-width [ExploreVenueTile] at the current text
+/// scale, computed from the same fixed text slots the tile renders.
+double exploreVenueRailHeight(BuildContext context) {
+  final heights = _venueTileTextHeights(context);
   const imageHeight = _venueTileWidth / _venueTileImageAspectRatio;
-  final nameHeight =
-      lineHeight(textTheme.epDisplayAt(_venueTileNameSize)) *
-      _venueTileNameMaxLines;
-  final showsCountHeight = lineHeight(_venueTileShowsCountStyle(textTheme));
-  final monoHeight = lineHeight(textTheme.epChipLabel);
-  final badgeHeight =
-      monoHeight + _venueTileBadgeVerticalPadding + _venueTileBadgeBorderHeight;
-  final metaHeight = lineHeight(textTheme.epMeta);
-  final areaLineHeight = metaHeight > badgeHeight ? metaHeight : badgeHeight;
 
   return imageHeight +
       _venueTilePaddingTop +
-      nameHeight +
+      heights.nameHeight +
       _venueTileLineGap +
-      showsCountHeight +
+      heights.showsCountHeight +
       _venueTileLineGap +
-      areaLineHeight +
+      heights.areaHeight +
       _venueTilePaddingBottom;
 }
 
@@ -1214,6 +1206,7 @@ class ExploreVenueTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final venue = entry.venue;
     final venueLabel = venue.name.trim().isEmpty ? venue.addr : venue.name;
+    final heights = _venueTileTextHeights(context);
     final placeholder = EpPanel(
       color: context.epColors.panel,
       child: const Center(child: EpEyebrow('NO PHOTO YET')),
@@ -1251,16 +1244,37 @@ class ExploreVenueTile extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    EpDisplay(
-                      venueLabel,
-                      size: _venueTileNameSize,
-                      maxLines: _venueTileNameMaxLines,
-                      overflow: TextOverflow.ellipsis,
+                    SizedBox(
+                      height: heights.nameHeight,
+                      child: Align(
+                        alignment: Alignment.topLeft,
+                        child: EpDisplay(
+                          venueLabel,
+                          size: _venueTileNameSize,
+                          maxLines: _venueTileNameMaxLines,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: _venueTileLineGap),
-                    _VenueTileShowsLine(entry: entry),
+                    SizedBox(
+                      height: heights.showsCountHeight,
+                      child: Align(
+                        alignment: Alignment.topLeft,
+                        child: _VenueTileShowsLine(entry: entry),
+                      ),
+                    ),
                     const SizedBox(height: _venueTileLineGap),
-                    _VenueTileAreaLine(venue: venue, distance: distance),
+                    SizedBox(
+                      height: heights.areaHeight,
+                      child: Align(
+                        alignment: Alignment.topLeft,
+                        child: _VenueTileAreaLine(
+                          venue: venue,
+                          distance: distance,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1272,12 +1286,12 @@ class ExploreVenueTile extends StatelessWidget {
   }
 }
 
-/// Area or neighbourhood, the distance, and the Verified badge on one line.
+/// Area or neighbourhood and the distance on one line.
 ///
 /// The area yields first when space runs out, down to its first
 /// [_venueTileAreaMinChars] characters and an ellipsis; when even that leaves
-/// no room beside the badge, the distance and its separator are dropped so
-/// the row never overflows.
+/// no room for the distance, it and its separator are dropped so the row
+/// never overflows.
 class _VenueTileAreaLine extends StatelessWidget {
   const _VenueTileAreaLine({required this.venue, required this.distance});
 
@@ -1299,58 +1313,53 @@ class _VenueTileAreaLine extends StatelessWidget {
     final muted = Theme.of(
       context,
     ).textTheme.epMeta.copyWith(color: context.epColors.muted);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Flexible(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final trailingWidth = distance == null
-                  ? 0.0
-                  : _textWidth(context, _venueTileAreaSeparator, muted) +
-                        _textWidth(context, distance!, muted);
-              final minAreaWidth = _textWidth(
-                context,
-                '${area.characters.take(_venueTileAreaMinChars)}…',
-                muted,
-              );
-              final showDistance =
-                  distance != null &&
-                  trailingWidth + minAreaWidth <= constraints.maxWidth;
-              return Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: Text(
-                      area,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: muted,
-                    ),
-                  ),
-                  if (showDistance) ...[
-                    Text(_venueTileAreaSeparator, style: muted),
-                    Text(distance!, style: muted),
-                  ],
-                ],
-              );
-            },
-          ),
-        ),
-        if (venue.verified) ...[
-          const SizedBox(width: _venueTileInlineGap),
-          EpBadge(
-            key: Key('explore-venue-tile-verified-${venue.id}'),
-            label: 'Verified',
-            variant: EpBadgeVariant.outline,
-          ),
-        ],
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final trailingWidth = distance == null
+            ? 0.0
+            : _textWidth(context, _venueTileAreaSeparator, muted) +
+                  _textWidth(context, distance!, muted);
+        final minAreaWidth = _textWidth(
+          context,
+          '${area.characters.take(_venueTileAreaMinChars)}…',
+          muted,
+        );
+        final showDistance =
+            distance != null &&
+            trailingWidth + minAreaWidth <= constraints.maxWidth;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                area,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: muted,
+              ),
+            ),
+            if (showDistance) ...[
+              Text(
+                _venueTileAreaSeparator,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: muted,
+              ),
+              Text(
+                distance!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: muted,
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }
 
-/// Show count in display type on one left-aligned line.
+/// Show count in regular-weight mono on one left-aligned line.
 class _VenueTileShowsLine extends StatelessWidget {
   const _VenueTileShowsLine({required this.entry});
 
