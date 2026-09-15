@@ -1145,7 +1145,7 @@ const _venueTilePaddingTop = 6.0;
 const _venueTilePaddingBottom = 4.0;
 const _venueTileNameSize = 20.0;
 const _venueTileNameMaxLines = 2;
-const _venueTileDateSize = 16.0;
+const _venueTileShowsCountSize = 16.0;
 const _venueTileLineGap = 2.0;
 const _venueTileInlineGap = 6.0;
 const _venueTileAreaSeparator = ' · ';
@@ -1156,14 +1156,12 @@ const _venueTileBadgeVerticalPadding = 4.0;
 const _venueTileBadgeBorderHeight = 2.0;
 
 /// The height a VENUES rail needs to show a default [ExploreVenueTile] with
-/// its name fully wrapped, its metadata line with the Verified badge, and its
-/// next-show line at the current text scale.
+/// its name (or address) fully wrapped, its show count, and its area, distance,
+/// and Verified badge at the current text scale.
 ///
-/// Each line is derived from the widgets the tile renders: the name is
-/// [_venueTileNameMaxLines] display lines, the metadata line is the taller of
-/// the meta text and the badge, and the next-show line is the taller of the
-/// display date and the mono show count. Both rows centre their children, so
-/// each row is exactly as tall as its tallest child.
+/// Each line is derived from the widgets the tile renders: the name or address
+/// is [_venueTileNameMaxLines] display lines, the show count is one display
+/// line, and the area row is the taller of the meta text and the badge.
 double exploreVenueRailHeight(BuildContext context) {
   final textTheme = Theme.of(context).textTheme;
   final scale = MediaQuery.textScalerOf(context).scale(1);
@@ -1176,21 +1174,22 @@ double exploreVenueRailHeight(BuildContext context) {
   final nameHeight =
       lineHeight(textTheme.epDisplayAt(_venueTileNameSize)) *
       _venueTileNameMaxLines;
+  final showsCountHeight = lineHeight(
+    textTheme.epDisplayAt(_venueTileShowsCountSize),
+  );
   final monoHeight = lineHeight(textTheme.epChipLabel);
   final badgeHeight =
       monoHeight + _venueTileBadgeVerticalPadding + _venueTileBadgeBorderHeight;
   final metaHeight = lineHeight(textTheme.epMeta);
   final areaLineHeight = metaHeight > badgeHeight ? metaHeight : badgeHeight;
-  final dateHeight = lineHeight(textTheme.epDisplayAt(_venueTileDateSize));
-  final showsLineHeight = dateHeight > monoHeight ? dateHeight : monoHeight;
 
   return imageHeight +
       _venueTilePaddingTop +
       nameHeight +
       _venueTileLineGap +
-      areaLineHeight +
+      showsCountHeight +
       _venueTileLineGap +
-      showsLineHeight +
+      areaLineHeight +
       _venueTilePaddingBottom;
 }
 
@@ -1212,6 +1211,7 @@ class ExploreVenueTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final venue = entry.venue;
+    final venueLabel = venue.name.trim().isEmpty ? venue.addr : venue.name;
     final placeholder = EpPanel(
       color: context.epColors.panel,
       child: const Center(child: EpEyebrow('NO PHOTO YET')),
@@ -1220,7 +1220,7 @@ class ExploreVenueTile extends StatelessWidget {
       width: width,
       child: Semantics(
         button: true,
-        label: venue.name,
+        label: venueLabel,
         child: GestureDetector(
           onTap: onTap,
           child: Column(
@@ -1250,18 +1250,15 @@ class ExploreVenueTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     EpDisplay(
-                      venue.name,
+                      venueLabel,
                       size: _venueTileNameSize,
                       maxLines: _venueTileNameMaxLines,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: _venueTileLineGap),
-                    _VenueTileAreaLine(venue: venue, distance: distance),
+                    _VenueTileShowsLine(entry: entry),
                     const SizedBox(height: _venueTileLineGap),
-                    _VenueTileShowsLine(
-                      entry: entry,
-                      maxWidth: width - 2 * _venueTilePaddingHorizontal,
-                    ),
+                    _VenueTileAreaLine(venue: venue, distance: distance),
                   ],
                 ),
               ),
@@ -1351,50 +1348,21 @@ class _VenueTileAreaLine extends StatelessWidget {
   }
 }
 
-/// Bold next-show date left, mono show count right-aligned, on one line.
-/// The date keeps its natural width up to [maxWidth]; the count yields first.
+/// Show count in display type on one left-aligned line.
 class _VenueTileShowsLine extends StatelessWidget {
-  const _VenueTileShowsLine({required this.entry, required this.maxWidth});
+  const _VenueTileShowsLine({required this.entry});
 
   final VenueWithShows entry;
-  final double maxWidth;
 
   @override
   Widget build(BuildContext context) {
-    final next = entry.next.startsAt;
-    final nextDate = '${next.day} ${monthNamesUpper[next.month - 1]}';
     final showCount =
         '${entry.gigs.length} SHOW${entry.gigs.length == 1 ? '' : 'S'}';
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        // Row children without a flex factor get an unbounded width, so the
-        // date is capped explicitly to ellipsize instead of overflowing.
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxWidth),
-          child: EpDisplay(
-            nextDate,
-            size: _venueTileDateSize,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        Flexible(
-          child: Padding(
-            padding: const EdgeInsets.only(left: _venueTileInlineGap),
-            child: Text(
-              showCount,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.end,
-              style: Theme.of(
-                context,
-              ).textTheme.epChipLabel.copyWith(color: context.epColors.muted),
-            ),
-          ),
-        ),
-      ],
+    return EpDisplay(
+      showCount,
+      size: _venueTileShowsCountSize,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 }

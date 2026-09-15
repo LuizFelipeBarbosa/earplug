@@ -1484,9 +1484,18 @@ void main() {
       );
       expect(find.text('THE FOGHORN'), findsOneWidget);
       expect(find.text('The Mission'), findsOneWidget);
-      expect(find.text('19 SEP'), findsOneWidget);
+      expect(find.text('19 SEP'), findsNothing);
+      expect(find.textContaining('SEP'), findsNothing);
       expect(find.text('1 SHOW'), findsOneWidget);
       expect(find.text('VERIFIED'), findsOneWidget);
+      expect(
+        tester.getBottomLeft(find.text('THE FOGHORN')).dy,
+        lessThan(tester.getTopLeft(find.text('1 SHOW')).dy),
+      );
+      expect(
+        tester.getBottomLeft(find.text('1 SHOW')).dy,
+        lessThan(tester.getTopLeft(find.text('The Mission')).dy),
+      );
 
       final unverified = Venue(
         id: 'venue-plain',
@@ -1513,9 +1522,48 @@ void main() {
           ),
         ),
       );
-      expect(find.text('19 SEP'), findsOneWidget);
+      expect(find.text('19 SEP'), findsNothing);
+      expect(find.textContaining('SEP'), findsNothing);
       expect(find.text('2 SHOWS'), findsOneWidget);
       expect(find.text('VERIFIED'), findsNothing);
+
+      for (final name in ['', '   ']) {
+        final unnamed = Venue(
+          id: 'venue-unnamed',
+          name: name,
+          area: 'Sunset',
+          addr: '99 Ocean Ave',
+          point: const LatLng(0, 0),
+        );
+        await tester.pumpWidget(
+          plain(
+            ExploreVenueTile(
+              entry: VenueWithShows(
+                venue: unnamed,
+                gigs: [gigFixture(id: 'unnamed-show', venueId: unnamed.id)],
+              ),
+              onTap: () {},
+            ),
+          ),
+        );
+        expect(find.text('99 OCEAN AVE'), findsOneWidget);
+        expect(
+          find.byWidgetPredicate(
+            (widget) => widget is Text && widget.data?.trim().isEmpty == true,
+          ),
+          findsNothing,
+        );
+        final tileSemantics = tester.widget<Semantics>(
+          find.descendant(
+            of: find.byType(ExploreVenueTile),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Semantics && widget.properties.button == true,
+            ),
+          ),
+        );
+        expect(tileSemantics.properties.label, unnamed.addr);
+      }
     },
   );
 
