@@ -723,11 +723,11 @@ void main() {
       expect(button, findsOneWidget);
       expect(tester.widget<ExploreCardIconButton>(button).ring, isFalse);
       final rect = tester.getRect(button);
-      expect(rect.size, const Size(28, 28));
+      expect(rect.size, const Size(36, 36));
       expect(rect.top - cardRect.top, closeTo(8, 1));
       expect(
         cardRect.right - rect.right,
-        closeTo(action == 'save' ? 8 : 8 + 28 + 4, 1),
+        closeTo(action == 'save' ? 8 : 8 + 36 + 4, 1),
       );
       expect(rect.right, greaterThan(cardRect.center.dx));
     }

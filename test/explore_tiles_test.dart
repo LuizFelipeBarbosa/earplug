@@ -151,6 +151,7 @@ void main() {
       expect(outline.color!.a, 1);
       expect(fill.size, 16);
       expect(outline.size, 16);
+      expect(tester.getSize(button), const Size(28, 28));
       expect(
         tester.getRect(find.byIcon(Icons.bookmark)),
         tester.getRect(find.byIcon(Icons.bookmark_border)),
@@ -251,7 +252,7 @@ void main() {
     }
   });
 
-  testWidgets('card icon button has a flush 28px ring and a 44px target', (
+  testWidgets('card icon button has a flush 36px ring and a 44px target', (
     tester,
   ) async {
     var taps = 0;
@@ -278,10 +279,10 @@ void main() {
             widget is Semantics && widget.properties.label == 'Save event',
       ),
     );
-    expect(buttonRect.size, const Size(28, 28));
+    expect(buttonRect.size, const Size(36, 36));
     expect(tester.getSize(inkWell), const Size(44, 44));
-    expect(tester.getRect(inkWell), buttonRect.inflate(8));
-    expect(tester.getRect(semantics), buttonRect.inflate(8));
+    expect(tester.getRect(inkWell), buttonRect.inflate(4));
+    expect(tester.getRect(semantics), buttonRect.inflate(4));
     final ring = find.descendant(
       of: button,
       matching: find.byWidgetPredicate(
@@ -294,7 +295,7 @@ void main() {
     expect(decoration.color, isNull);
     expect((decoration.shape as CircleBorder).side.width, 1);
     expect(tester.getRect(ring).top, closeTo(buttonRect.top, 0.5));
-    expect(tester.getSize(ring), const Size(28, 28));
+    expect(tester.getSize(ring), const Size(36, 36));
     await tester.tap(button);
     expect(taps, 1);
     for (final offset in const [
@@ -332,8 +333,8 @@ void main() {
     final button = find.byType(ExploreCardIconButton);
     final buttonRect = tester.getRect(button);
     final inkWell = find.descendant(of: button, matching: find.byType(InkWell));
-    expect(buttonRect.size, const Size(28, 28));
-    expect(tester.getRect(inkWell), buttonRect.inflate(8));
+    expect(buttonRect.size, const Size(36, 36));
+    expect(tester.getRect(inkWell), buttonRect.inflate(4));
     final circle = find.descendant(
       of: button,
       matching: find.byType(DecoratedBox),
@@ -360,7 +361,7 @@ void main() {
     );
     expect(find.byIcon(Icons.bookmark), findsNothing);
     final glyph = tester.widget<Icon>(find.byIcon(Icons.bookmark_border));
-    expect(glyph.size, 16);
+    expect(glyph.size, 20);
     expect(glyph.color, Ep.ink);
     expect(glyph.shadows, isNull);
     expect(
@@ -377,6 +378,43 @@ void main() {
       await tester.tapAt(buttonRect.center + offset);
     }
     expect(taps, 5);
+  });
+
+  testWidgets('ring and circle visuals are 36px with centered 44px targets', (
+    tester,
+  ) async {
+    for (final ring in [true, false]) {
+      await tester.pumpWidget(
+        plain(
+          Center(
+            child: ExploreCardIconButton(
+              icon: Icons.bookmark_border,
+              semanticLabel: 'Save event',
+              ring: ring,
+              circle: !ring,
+              onPressed: () {},
+            ),
+          ),
+        ),
+      );
+      final button = find.byType(ExploreCardIconButton);
+      final visual = find.descendant(
+        of: button,
+        matching: find.byType(DecoratedBox),
+      );
+      final target = find.descendant(
+        of: button,
+        matching: find.byType(InkWell),
+      );
+      expect(tester.getSize(button), const Size(36, 36));
+      expect(tester.getRect(visual), tester.getRect(button));
+      expect(
+        tester.getSize(find.byIcon(Icons.bookmark_border)),
+        const Size(20, 20),
+      );
+      expect(tester.getSize(target), const Size(44, 44));
+      expect(tester.getCenter(target), tester.getCenter(button));
+    }
   });
 
   testWidgets('card actions receive overflow taps without opening the gig', (
@@ -461,7 +499,7 @@ void main() {
         }
         expect(shares, 3);
         // The overlapping part of the targets belongs to the nearest button.
-        await tester.tapAt(shareRect.center + const Offset(17, 0));
+        await tester.tapAt(shareRect.center + const Offset(21, 0));
         expect(saves, 4);
         expect(shares, 3);
       } else {
@@ -712,8 +750,12 @@ void main() {
     final dateRect = tester.getRect(find.text('WED, SEP 23 AT 8PM'));
     final titleRect = tester.getRect(find.text('NEON NIGHTS'));
     final locationRect = tester.getRect(find.text('Southside · 11.2 mi'));
+    final priceRect = tester.getRect(
+      find.byKey(ValueKey('gig-price-${gig.id}')),
+    );
     expect(titleRect.top - dateRect.bottom, closeTo(8, 0.1));
-    expect(locationRect.top - titleRect.bottom, closeTo(8, 0.1));
+    expect(priceRect.top - titleRect.bottom, closeTo(8, 0.1));
+    expect(locationRect.center.dy, closeTo(priceRect.center.dy, 0.1));
     await tester.tap(find.text('NEON NIGHTS'));
     expect(tapped, isTrue);
 
@@ -810,6 +852,55 @@ void main() {
     expect(image.cacheHeight, isNull);
   });
 
+  testWidgets('event row thumbnail matches its natural text column height', (
+    tester,
+  ) async {
+    for (final title in [
+      'Live Music',
+      'A Long Event Title That Wraps Across Several Lines',
+    ]) {
+      final gig = gigFixture(id: 'content-height-row', title: title);
+      await tester.pumpWidget(
+        plain(
+          SizedBox(
+            width: 320,
+            child: ExploreEventRow(
+              gig: gig,
+              venueName: 'The Foghorn',
+              lines: GigCardLines(
+                dateLine: 'WED, SEP 23 AT 8PM',
+                title: gig.title,
+                location: 'Southside',
+                price: gig.priceLabel,
+              ),
+              onTap: () {},
+            ),
+          ),
+        ),
+      );
+      final thumbnail = find.byType(EpNetworkImage);
+      final textColumn = find.descendant(
+        of: find.byType(ExploreEventRow),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is Expanded && widget.child is Column,
+        ),
+      );
+      final thumbnailRect = tester.getRect(thumbnail);
+      final textRect = tester.getRect(textColumn);
+      final dateRect = tester.getRect(find.text('WED, SEP 23 AT 8PM'));
+      final priceRect = tester.getRect(
+        find.byKey(ValueKey('gig-price-${gig.id}')),
+      );
+      expect(thumbnailRect.width, 96);
+      expect(thumbnailRect.height, closeTo(textRect.height, 0.1));
+      expect(thumbnailRect.top, closeTo(textRect.top, 0.1));
+      expect(textRect.top, closeTo(dateRect.top, 0.1));
+      expect(textRect.bottom, closeTo(priceRect.bottom, 0.1));
+      expect(tester.widget<EpNetworkImage>(thumbnail).fit, BoxFit.cover);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
   testWidgets('event imagery uses flyer photos for every fly key', (
     tester,
   ) async {
@@ -892,7 +983,7 @@ void main() {
       final row = tester.getRect(find.byType(ExploreEventRow));
       final date = tester.getRect(find.text('WED, SEP 23 AT 8PM'));
       final action = tester.getRect(find.byKey(const Key('poster-save')));
-      expect(action.center.dy, closeTo(date.center.dy, 0.1));
+      expect(action.top, closeTo(date.top, 0.1));
       expect(action.left - date.right, closeTo(8, 0.1));
       expect(action.right, closeTo(row.right, 0.1));
       expect(tester.takeException(), isNull, reason: 'scale $scale');
@@ -959,7 +1050,7 @@ void main() {
     );
     final save = find.byKey(ValueKey('save-${gig.id}'));
     expect(tester.widget<ExploreCardIconButton>(save).ring, isTrue);
-    expect(tester.getSize(save), const Size(28, 28));
+    expect(tester.getSize(save), const Size(36, 36));
     final actions = tester.widget<Wrap>(
       find.byKey(ValueKey('event-actions-${gig.id}')),
     );
@@ -967,8 +1058,8 @@ void main() {
     expect(find.byKey(ValueKey('share-${gig.id}')), findsNothing);
     expect(find.byIcon(Icons.ios_share), findsNothing);
     expect(
-      tester.getRect(save).center.dy,
-      closeTo(tester.getRect(find.text('WED, SEP 23 AT 8PM')).center.dy, 0.1),
+      tester.getRect(save).top,
+      closeTo(tester.getRect(find.text('WED, SEP 23 AT 8PM')).top, 0.1),
     );
     await tester.tap(find.byKey(const Key('qr-action')));
     expect(qrTaps, 1);
@@ -1048,9 +1139,9 @@ void main() {
         final date = tester.widget<Text>(find.text('WED, SEP 23 AT 8PM'));
         expect(date.textSpan, isNull);
         expect(date.style?.fontFamily, 'Azeret Mono');
-        expect(date.style?.fontSize, 13);
+        expect(date.style?.fontSize, 11);
         expect(date.style?.fontWeight, FontWeight.w400);
-        expect(date.style?.color, palette.ink);
+        expect(date.style?.color, palette.muted);
         expect(date.maxLines, 1);
         expect(date.overflow, TextOverflow.ellipsis);
         final location = tester.widget<Text>(find.text('Southside · 11.2 mi'));
@@ -1067,10 +1158,14 @@ void main() {
         );
         expect(price.color, Ep.accent);
         expect(price.decoration, isNull);
+        expect(
+          price.padding,
+          const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        );
         final label = price.child! as Text;
         expect(label.data, '\$12');
         expect(label.style?.fontFamily, 'Azeret Mono');
-        expect(label.style?.fontSize, 11);
+        expect(label.style?.fontSize, 13);
         expect(label.style?.color, Ep.ink);
         expect(tester.takeException(), isNull);
       }
@@ -1203,8 +1298,10 @@ void main() {
       final date = tester.getRect(find.text(lines.dateLine));
       final title = tester.getRect(find.text(lines.title.toUpperCase()));
       final location = tester.getRect(find.text(lines.location));
+      final price = tester.getRect(find.byKey(ValueKey('gig-price-${gig.id}')));
       expect(title.top - date.bottom, closeTo(8, 0.1));
-      expect(location.top - title.bottom, closeTo(6, 0.1));
+      expect(price.top - title.bottom, closeTo(6, 0.1));
+      expect(location.center.dy, closeTo(price.center.dy, 0.1));
     },
   );
 
@@ -1239,9 +1336,9 @@ void main() {
             );
             final date = tester.widget<Text>(find.text('WED, SEP 23 AT 8PM'));
             expect(date.style?.fontFamily, 'Azeret Mono');
-            expect(date.style?.fontSize, 14);
+            expect(date.style?.fontSize, 12);
             expect(date.style?.fontWeight, FontWeight.w400);
-            expect(date.style?.color, Ep.ink);
+            expect(date.style?.color, Ep.ink.withValues(alpha: 0.72));
             expect(date.maxLines, 1);
             expect(date.overflow, TextOverflow.ellipsis);
             final display = tester.widget<EpDisplay>(find.byType(EpDisplay));
@@ -1263,10 +1360,14 @@ void main() {
             );
             expect(price.color, Ep.accent);
             expect(price.decoration, isNull);
+            expect(
+              price.padding,
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            );
             final label = price.child! as Text;
             expect(label.data, 'FREE');
             expect(label.style?.fontFamily, 'Azeret Mono');
-            expect(label.style?.fontSize, 11);
+            expect(label.style?.fontSize, 13);
             expect(label.style?.color, Ep.ink);
             final scrim = tester.widget<DecoratedBox>(
               find.descendant(
@@ -1332,7 +1433,7 @@ void main() {
             find.descendant(of: button, matching: find.byType(Icon)),
           );
           expect(glyph.color, Ep.ink);
-          expect(glyph.size, 16);
+          expect(glyph.size, 20);
           expect(glyph.shadows, isNull);
           final circle = tester.widget<DecoratedBox>(
             find.descendant(of: button, matching: find.byType(DecoratedBox)),
@@ -1476,7 +1577,7 @@ void main() {
         final share = tester.getRect(find.byKey(const Key('featured-share')));
         for (final action in [save, share]) {
           expect(action.top - card.top, closeTo(8, 0.1));
-          expect(action.size, const Size(28, 28));
+          expect(action.size, const Size(36, 36));
         }
         expect(card.right - save.right, closeTo(8, 0.1));
         expect(save.left - share.right, closeTo(4, 0.1));

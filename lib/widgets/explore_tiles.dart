@@ -23,7 +23,7 @@ String _initialsFor(String title) {
   return '${words.first.characters.first}${words.last.characters.first}';
 }
 
-/// A 28px gig-card action with a centered 44px interaction target.
+/// A gig-card action with a 36px ring or circle and a centered 44px target.
 class ExploreCardIconButton extends StatelessWidget {
   const ExploreCardIconButton({
     super.key,
@@ -52,8 +52,10 @@ class ExploreCardIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.epColors;
     final ink = onPressed == null ? colors.contentDisabled : colors.ink;
+    final visualSize = ring || circle ? 36.0 : 28.0;
+    final iconSize = ring || circle ? 20.0 : 16.0;
     final button = SizedBox.square(
-      dimension: 28,
+      dimension: visualSize,
       child: OverflowBox(
         minWidth: 44,
         maxWidth: 44,
@@ -72,8 +74,8 @@ class ExploreCardIconButton extends StatelessWidget {
                 label: semanticLabel,
                 child: Center(
                   child: Container(
-                    width: 28,
-                    height: 28,
+                    width: visualSize,
+                    height: visualSize,
                     decoration: circle
                         ? const BoxDecoration(
                             shape: BoxShape.circle,
@@ -88,13 +90,13 @@ class ExploreCardIconButton extends StatelessWidget {
                         : null,
                     child: Center(
                       child: SizedBox.square(
-                        dimension: 16,
+                        dimension: iconSize,
                         child: circle
-                            ? Icon(icon, size: 16, color: Ep.ink)
+                            ? Icon(icon, size: 20, color: Ep.ink)
                             : ring
                             ? Icon(
                                 icon,
-                                size: 16,
+                                size: 20,
                                 color: onPressed == null
                                     ? colors.contentDisabled
                                     : active
@@ -138,7 +140,7 @@ class ExploreCardIconButton extends StatelessWidget {
   }
 }
 
-// OverflowBox expands painting and semantics, but its 28px ancestors still
+// OverflowBox expands painting and semantics, but its smaller ancestors still
 // reject out-of-bounds pointers. At the card boundary, hit-test the actual
 // 44px targets first so the surrounding layout cannot discard those taps.
 class _ExploreCardActionHitRegion extends SingleChildRenderObjectWidget {
@@ -510,7 +512,9 @@ class ExploreEventRow extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final poster = SizedBox(
       width: thumbnailSize,
-      height: double.infinity,
+      // The row stretches the poster to the text height; the poster must not
+      // contribute its own height during the intrinsic measurement.
+      height: 0,
       child: EpNetworkImage(
         url: imageUrl,
         fit: BoxFit.cover,
@@ -555,6 +559,7 @@ class ExploreEventRow extends StatelessWidget {
                     const SizedBox(height: 4),
                   ],
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
                         child: Text(
@@ -562,9 +567,9 @@ class ExploreEventRow extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: textTheme.epLabel.copyWith(
-                            fontSize: 13,
+                            fontSize: 11,
                             fontWeight: FontWeight.w400,
-                            color: context.epColors.ink,
+                            color: context.epColors.muted,
                           ),
                         ),
                       ),
@@ -625,12 +630,12 @@ class _GigPriceChip extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     key: ValueKey('gig-price-${gig.id}'),
     color: Ep.accent,
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
     child: Text(
       price.toUpperCase(),
       style: Theme.of(
         context,
-      ).textTheme.epChipLabel.copyWith(fontSize: 11, color: Ep.ink),
+      ).textTheme.epChipLabel.copyWith(fontSize: 13, color: Ep.ink),
     ),
   );
 }
@@ -707,9 +712,9 @@ class ExploreFeaturedCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: textTheme.epLabel.copyWith(
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight: FontWeight.w400,
-                        color: Ep.ink,
+                        color: Ep.ink.withValues(alpha: 0.72),
                       ),
                     ),
                     const SizedBox(height: 8),
