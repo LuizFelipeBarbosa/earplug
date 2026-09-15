@@ -25,6 +25,7 @@ class _PeopleScreenState extends State<PeopleScreen> {
   void initState() {
     super.initState();
     context.read<AppState>().ensureSocial();
+    unawaited(context.read<AppState>().loadSuggestedPeople());
   }
 
   @override
@@ -48,108 +49,110 @@ class _PeopleScreenState extends State<PeopleScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     return Material(
+      key: const Key('people-screen'),
       color: context.epColors.background,
-      child: Column(
-        key: const Key('people-screen'),
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              EpLayout.gutter,
-              EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
-              EpLayout.gutter,
-              0,
-            ),
-            child: EpIconPill(
-              key: const ValueKey('people-back-control'),
-              icon: Icons.arrow_back,
-              semanticLabel: 'Back',
-              onPressed: app.back,
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(
-              EpLayout.gutter,
-              20,
-              EpLayout.gutter,
-              0,
-            ),
-            child: EpDisplay('People', size: 44),
-          ),
-          if (!app.authed)
+      child: SafeArea(
+        top: true,
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(
+              padding: EdgeInsets.fromLTRB(
                 EpLayout.gutter,
-                24,
+                EpLayout.isDesktop(context) ? 0 : 22,
                 EpLayout.gutter,
-                0,
+                12,
               ),
-              child: EpPanel(
-                striped: true,
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const EpEyebrow('PEOPLE'),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Sign in to find and follow people.',
-                      style: Theme.of(context).textTheme.epBody.copyWith(
-                        color: context.epColors.muted,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      EpIconPill(
+                        key: const Key('people-back-control'),
+                        icon: Icons.arrow_back,
+                        semanticLabel: 'Back',
+                        onPressed: app.back,
                       ),
-                    ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  const EpDisplay('Find people', size: 44),
+                  if (app.authed) ...[
                     const SizedBox(height: 16),
-                    EpPill(
-                      key: const Key('people-sign-in'),
-                      label: 'Sign in',
-                      variant: EpPillVariant.primary,
-                      onPressed: () =>
-                          app.needAuth(const PendingAuth(PendingKind.myGigs)),
-                    ),
+                    _searchField(context),
                   ],
-                ),
-              ),
-            )
-          else ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                EpLayout.gutter,
-                16,
-                EpLayout.gutter,
-                0,
-              ),
-              child: EpUnderlineField(
-                fieldKey: const Key('people-search-field'),
-                icon: Icons.search,
-                hint: 'Search by name or email',
-                controller: _controller,
-                onChanged: _onQueryChanged,
+                ],
               ),
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  EpLayout.gutter,
-                  0,
-                  EpLayout.gutter,
-                  0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: EpLayout.gutter,
                 ),
                 children: [
-                  if (_query.isEmpty)
+                  if (!app.authed)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Sign in to find and follow people.',
+                            style: Theme.of(context).textTheme.epBody.copyWith(
+                              color: context.epColors.muted,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          EpPill(
+                            key: const Key('people-sign-in'),
+                            label: 'Sign in',
+                            variant: EpPillVariant.primary,
+                            onPressed: () => app.needAuth(
+                              const PendingAuth(PendingKind.myGigs),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (_query.isEmpty) ...[
+                    if (app.suggestedPeople.isNotEmpty) ...[
+                      EpSectionHeader(
+                        label: 'SUGGESTED · ${app.suggestedPeople.length}',
+                      ),
+                      for (final person in app.suggestedPeople)
+                        EpEntityRow(
+                          key: Key('people-suggested-${person.userId}'),
+                          leading: EpFanAvatar(
+                            name: person.name,
+                            imageUrl: person.avatarUrl,
+                            size: 40,
+                          ),
+                          title: person.name,
+                          sub: _suggestedSub(person),
+                          trailing: EpPill(
+                            key: Key('people-follow-${person.userId}'),
+                            label: 'Follow',
+                            variant: EpPillVariant.outline,
+                            onPressed: () =>
+                                app.requestFollowUser(person.userId),
+                          ),
+                        ),
+                    ],
+                    EpSectionHeader(
+                      label: 'YOUR FRIENDS · ${app.friendIds.length}',
+                    ),
                     if (app.friendIds.isEmpty)
                       Text(
-                        'No friends yet. Search for people you know.',
+                        'No friends yet. Follow people you go to shows with.',
                         style: Theme.of(context).textTheme.epBody.copyWith(
                           color: context.epColors.muted,
                         ),
                       )
-                    else ...[
-                      EpSectionHeader(
-                        label: 'YOUR FRIENDS · ${app.friendIds.length}',
-                      ),
+                    else
                       for (final id in app.friendIds) _FriendRow(userId: id),
-                    ]
-                  else if (app.peopleSearching)
+                  ] else if (app.peopleSearching)
                     Text(
                       'Searching…',
                       style: Theme.of(context).textTheme.epBody.copyWith(
@@ -182,10 +185,86 @@ class _PeopleScreenState extends State<PeopleScreen> {
               ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
+
+  Widget _searchField(BuildContext context) => Focus(
+    canRequestFocus: false,
+    skipTraversal: true,
+    child: Builder(
+      builder: (context) {
+        final focused = Focus.of(context).hasFocus;
+        return Container(
+          constraints: const BoxConstraints(minHeight: 44),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(EpLayout.pillRadius),
+            border: Border.all(
+              color: focused ? context.epColors.accent : context.epColors.line,
+              width: focused ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.search, size: 16, color: context.epColors.muted),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  key: const Key('people-search-field'),
+                  controller: _controller,
+                  onChanged: _onQueryChanged,
+                  textInputAction: TextInputAction.search,
+                  style: Theme.of(context).textTheme.epInput,
+                  decoration: InputDecoration(
+                    hintText: 'Search by name or email',
+                    hintStyle: Theme.of(
+                      context,
+                    ).textTheme.epInput.copyWith(color: context.epColors.muted),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    focusedErrorBorder: InputBorder.none,
+                  ),
+                ),
+              ),
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _controller,
+                builder: (context, value, _) => value.text.isEmpty
+                    ? const SizedBox.shrink()
+                    : IconButton(
+                        key: const Key('people-search-clear'),
+                        tooltip: 'Clear search',
+                        onPressed: () {
+                          _controller.clear();
+                          _onQueryChanged('');
+                        },
+                        color: context.epColors.muted,
+                        icon: const Icon(Icons.close, size: 18),
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+}
+
+String? _suggestedSub(SuggestedPerson person) {
+  final shows = person.sharedShows > 0
+      ? '${person.sharedShows} ${person.sharedShows == 1 ? 'show' : 'shows'} together'
+      : null;
+  final friends = person.mutualFriends > 0
+      ? '${person.mutualFriends} mutual ${person.mutualFriends == 1 ? 'friend' : 'friends'}'
+      : null;
+  if (shows != null && friends != null) return '$shows · $friends';
+  return shows ?? friends;
 }
 
 class _FriendRow extends StatefulWidget {

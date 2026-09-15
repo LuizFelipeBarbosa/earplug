@@ -1059,6 +1059,21 @@ class ConvexRepository implements EarplugRepository {
       _queryOne('social:mySocial', SocialGraph.fromJson);
 
   @override
+  Future<({List<SuggestedPerson> people, bool truncated})>
+  suggestedPeople() async {
+    final result = asCastMap(
+      await _convexService.query('social:suggestedPeople', const {}),
+    );
+    return (
+      people: [
+        for (final person in asCastMapList(result['people']))
+          SuggestedPerson.fromJson(person),
+      ],
+      truncated: result['truncated'] as bool,
+    );
+  }
+
+  @override
   Future<FriendsGoing> friendsGoing({
     required DateTime from,
     required DateTime to,

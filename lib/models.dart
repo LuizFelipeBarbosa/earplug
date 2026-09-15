@@ -1408,6 +1408,35 @@ class SocialUserDetail extends SocialUserCard {
   );
 }
 
+class SuggestedPerson {
+  final String userId;
+  final String name;
+  final String? avatarUrl;
+  final int sharedShows;
+  final int mutualFriends;
+  final bool followsMe;
+
+  const SuggestedPerson({
+    required this.userId,
+    required this.name,
+    this.avatarUrl,
+    this.sharedShows = 0,
+    this.mutualFriends = 0,
+    this.followsMe = false,
+  });
+
+  factory SuggestedPerson.fromJson(
+    Map<String, dynamic> json,
+  ) => SuggestedPerson(
+    userId: json['userId'] as String,
+    name: json['name'] as String,
+    avatarUrl: json['avatarUrl'] is String ? json['avatarUrl'] as String : null,
+    sharedShows: (json['sharedShows'] as num).toInt(),
+    mutualFriends: (json['mutualFriends'] as num).toInt(),
+    followsMe: json['followsMe'] is bool ? json['followsMe'] as bool : false,
+  );
+}
+
 class SocialGraph {
   final Set<String> following;
   final Set<String> followers;

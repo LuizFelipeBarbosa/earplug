@@ -14,6 +14,8 @@ mixin _SocialState on _AppStateCore {
   bool friendsGoingTruncated = false;
   List<SocialUserCard> peopleResults = const [];
   bool peopleSearching = false;
+  List<SuggestedPerson> suggestedPeople = const [];
+  bool suggestedTruncated = false;
   Map<String, KnownAttendees> knownAttendeesByGig = const {};
   final Map<String, Object> _knownAttendeesLoadTokens = {};
 
@@ -26,6 +28,7 @@ mixin _SocialState on _AppStateCore {
   Object? _socialLoadToken;
   Object? _friendsGoingLoadToken;
   Object? _peopleSearchToken;
+  Object? _suggestedPeopleLoadToken;
 
   final Memo<
     ({List<FriendsGoingEntry> entries, Map<String, Gig> gigIndex}),
@@ -98,6 +101,31 @@ mixin _SocialState on _AppStateCore {
     }
   }
 
+  Future<void> loadSuggestedPeople() async {
+    if (_disposed || !authed) return;
+    final sessionToken = _socialSessionToken;
+    final loadToken = Object();
+    _suggestedPeopleLoadToken = loadToken;
+    try {
+      final result = await repository.suggestedPeople();
+      if (_disposed ||
+          !identical(_socialSessionToken, sessionToken) ||
+          !identical(_suggestedPeopleLoadToken, loadToken)) {
+        return;
+      }
+      suggestedPeople = result.people;
+      suggestedTruncated = result.truncated;
+      notifyListeners();
+    } catch (error) {
+      if (_disposed ||
+          !identical(_socialSessionToken, sessionToken) ||
+          !identical(_suggestedPeopleLoadToken, loadToken)) {
+        return;
+      }
+      logError('suggestedPeople', error);
+    }
+  }
+
   Future<void> loadFriendsGoing({bool refresh = false}) async {
     if (_disposed || !authed || (_friendsGoingLoaded && !refresh)) return;
     final sessionToken = _socialSessionToken;
@@ -155,6 +183,7 @@ mixin _SocialState on _AppStateCore {
   void toggleFollowUser(String userId) {
     final previousSocial = social;
     final previousResults = peopleResults;
+    final previousSuggestedPeople = suggestedPeople;
     final wasOn = social.following.contains(userId);
     final createsFriendship = !wasOn && social.followers.contains(userId);
     final nextFollowing = wasOn
@@ -169,6 +198,12 @@ mixin _SocialState on _AppStateCore {
             ? card.copyWith(isFollowing: nowFollowing, isFriend: nowFriend)
             : card,
     ];
+    if (nowFollowing) {
+      suggestedPeople = [
+        for (final person in suggestedPeople)
+          if (person.userId != userId) person,
+      ];
+    }
     notifyListeners();
 
     if (createsFriendship) {
@@ -194,6 +229,7 @@ mixin _SocialState on _AppStateCore {
             logError('toggleFollowUser', error);
             social = previousSocial;
             peopleResults = previousResults;
+            suggestedPeople = previousSuggestedPeople;
             say(genericErrorMessage);
           }),
     );
@@ -280,6 +316,8 @@ mixin _SocialState on _AppStateCore {
     friendsGoingTruncated = false;
     peopleResults = const [];
     peopleSearching = false;
+    suggestedPeople = const [];
+    suggestedTruncated = false;
     knownAttendeesByGig = const {};
     _knownAttendeesLoadTokens.clear();
     _socialEnsured = false;
@@ -287,5 +325,6 @@ mixin _SocialState on _AppStateCore {
     _socialLoadToken = Object();
     _friendsGoingLoadToken = Object();
     _peopleSearchToken = Object();
+    _suggestedPeopleLoadToken = Object();
   }
 }

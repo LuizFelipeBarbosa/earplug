@@ -676,6 +676,7 @@ abstract class EarplugRepository {
   Future<List<SocialUserCard>> searchUsers(String q);
   Future<void> toggleFollowUser(String userId, {bool? on});
   Future<SocialGraph> mySocial();
+  Future<({List<SuggestedPerson> people, bool truncated})> suggestedPeople();
   Future<FriendsGoing> friendsGoing({
     required DateTime from,
     required DateTime to,

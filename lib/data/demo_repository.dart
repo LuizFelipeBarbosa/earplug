@@ -2496,6 +2496,30 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
+  Future<({List<SuggestedPerson> people, bool truncated})>
+  suggestedPeople() async {
+    if (!_auth.signedIn) {
+      return (people: <SuggestedPerson>[], truncated: false);
+    }
+    return (
+      people: [
+        for (final person in DemoData.people.values)
+          if (person.id != DemoData.demoUserId &&
+              !_followingUserIds.contains(person.id))
+            SuggestedPerson(
+              userId: person.id,
+              name: person.name,
+              avatarUrl: person.avatarUrl,
+              sharedShows: 3,
+              mutualFriends: 1,
+              followsMe: _followerUserIds.contains(person.id),
+            ),
+      ],
+      truncated: false,
+    );
+  }
+
+  @override
   Future<FriendsGoing> friendsGoing({
     required DateTime from,
     required DateTime to,

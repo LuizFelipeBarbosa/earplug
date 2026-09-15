@@ -20,10 +20,13 @@ class _SocialRepository extends DemoRepository {
   int mySocialCalls = 0;
   int friendsGoingCalls = 0;
   int knownAttendeesCalls = 0;
+  int suggestedPeopleCalls = 0;
   bool failToggle = false;
   bool failProfile = false;
   FriendsGoing friendsGoingResult = FriendsGoing.empty;
   KnownAttendees? knownAttendeesResult;
+  FutureOr<({List<SuggestedPerson> people, bool truncated})>?
+  suggestedPeopleResult;
   DateTime? lastFriendsGoingFrom;
   DateTime? lastFriendsGoingTo;
   final Map<String, Completer<List<SocialUserCard>>> searchGates = {};
@@ -32,6 +35,13 @@ class _SocialRepository extends DemoRepository {
   Future<SocialGraph> mySocial() async {
     mySocialCalls++;
     return super.mySocial();
+  }
+
+  @override
+  Future<({List<SuggestedPerson> people, bool truncated})>
+  suggestedPeople() async {
+    suggestedPeopleCalls++;
+    return suggestedPeopleResult ?? super.suggestedPeople();
   }
 
   @override
@@ -99,6 +109,14 @@ Future<AppState> _signedInApp(_SocialRepository repository) async {
   return app;
 }
 
+const _suggestedLina = SuggestedPerson(
+  userId: 'u-lina',
+  name: 'Lina',
+  sharedShows: 3,
+  mutualFriends: 1,
+  followsMe: true,
+);
+
 void main() {
   test(
     'ensureSocial loads the graph once and exposes Maya as the only friend',
@@ -118,8 +136,160 @@ void main() {
       await flushAsyncWork();
       expect(identical(app.social, social), isTrue);
       expect(repository.mySocialCalls, 0);
+      expect(repository.suggestedPeopleCalls, 0);
     },
   );
+
+  test('loadSuggestedPeople populates people and truncation', () async {
+    final repository = _SocialRepository(auth: FakeAuthService())
+      ..suggestedPeopleResult = (
+        people: const [_suggestedLina],
+        truncated: true,
+      );
+    final app = await _signedInApp(repository);
+
+    await app.loadSuggestedPeople();
+
+    expect(app.suggestedPeople, [_suggestedLina]);
+    expect(app.suggestedTruncated, isTrue);
+    expect(repository.suggestedPeopleCalls, 1);
+  });
+
+  test('loadSuggestedPeople does not query while signed out', () async {
+    final auth = FakeAuthService();
+    final repository = _SocialRepository(auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
+    addTearDown(app.dispose);
+
+    await app.loadSuggestedPeople();
+
+    expect(repository.suggestedPeopleCalls, 0);
+    expect(app.suggestedPeople, isEmpty);
+    expect(app.suggestedTruncated, isFalse);
+  });
+
+  test('loadSuggestedPeople ignores an older response', () async {
+    final first = Completer<({List<SuggestedPerson> people, bool truncated})>();
+    final repository = _SocialRepository(auth: FakeAuthService())
+      ..suggestedPeopleResult = first.future;
+    final app = await _signedInApp(repository);
+    final firstLoad = app.loadSuggestedPeople();
+    repository.suggestedPeopleResult = (
+      people: const [_suggestedLina],
+      truncated: true,
+    );
+
+    await app.loadSuggestedPeople();
+    first.complete((people: const <SuggestedPerson>[], truncated: false));
+    await firstLoad;
+
+    expect(app.suggestedPeople, [_suggestedLina]);
+    expect(app.suggestedTruncated, isTrue);
+  });
+
+  test('loadSuggestedPeople ignores responses after sign-out', () async {
+    final response =
+        Completer<({List<SuggestedPerson> people, bool truncated})>();
+    final repository = _SocialRepository(auth: FakeAuthService())
+      ..suggestedPeopleResult = response.future;
+    final app = await _signedInApp(repository);
+    final load = app.loadSuggestedPeople();
+
+    await app.signOut();
+    response.complete((people: const [_suggestedLina], truncated: true));
+    await load;
+
+    expect(app.suggestedPeople, isEmpty);
+    expect(app.suggestedTruncated, isFalse);
+  });
+
+  test(
+    'loadSuggestedPeople preserves existing suggestions on failure',
+    () async {
+      final repository = _SocialRepository(auth: FakeAuthService())
+        ..suggestedPeopleResult = (
+          people: const [_suggestedLina],
+          truncated: true,
+        );
+      final app = await _signedInApp(repository);
+      await flushAsyncWork();
+      await app.loadSuggestedPeople();
+      final friendsStatus = app.friendsStatus;
+      final response =
+          Completer<({List<SuggestedPerson> people, bool truncated})>();
+      repository.suggestedPeopleResult = response.future;
+      final load = app.loadSuggestedPeople();
+      response.completeError(Exception('suggestions unavailable'));
+      await load;
+
+      expect(app.suggestedPeople, [_suggestedLina]);
+      expect(app.suggestedTruncated, isTrue);
+      expect(app.friendsStatus, friendsStatus);
+    },
+  );
+
+  test('toggleFollowUser synchronously removes a suggested person', () async {
+    final repository = _SocialRepository(auth: FakeAuthService())
+      ..suggestedPeopleResult = (
+        people: const [
+          _suggestedLina,
+          SuggestedPerson(userId: 'u-theo', name: 'Theo'),
+        ],
+        truncated: false,
+      );
+    final app = await _signedInApp(repository);
+    await flushAsyncWork();
+    await app.loadSuggestedPeople();
+
+    app.toggleFollowUser('u-lina');
+
+    expect(app.suggestedPeople.map((person) => person.userId), ['u-theo']);
+    expect(app.isFollowingUser('u-lina'), isTrue);
+    await flushAsyncWork();
+  });
+
+  test(
+    'demo suggestions filter self and followed people in stable order',
+    () async {
+      final auth = FakeAuthService();
+      final repository = DemoRepository(auth: auth);
+      final signedOut = await repository.suggestedPeople();
+      expect(signedOut.people, isEmpty);
+      expect(signedOut.truncated, isFalse);
+
+      await auth.signInDemo();
+      final result = await repository.suggestedPeople();
+      expect(result.people.map((person) => person.userId), [
+        'u-lina',
+        'u-theo',
+      ]);
+      expect(result.truncated, isFalse);
+      for (final person in result.people) {
+        expect(person.sharedShows, 3);
+        expect(person.mutualFriends, 1);
+        expect(person.followsMe, isTrue);
+      }
+
+      await repository.toggleFollowUser('u-lina', on: true);
+      final afterFollow = await repository.suggestedPeople();
+      expect(afterFollow.people.map((person) => person.userId), ['u-theo']);
+    },
+  );
+
+  test('SuggestedPerson parses numeric counts and guards optional fields', () {
+    final person = SuggestedPerson.fromJson({
+      'userId': 's1',
+      'name': 'Ada',
+      'sharedShows': 3.0,
+      'mutualFriends': 1.0,
+    });
+    expect(person.userId, 's1');
+    expect(person.name, 'Ada');
+    expect(person.sharedShows, 3);
+    expect(person.mutualFriends, 1);
+    expect(person.avatarUrl, isNull);
+    expect(person.followsMe, isFalse);
+  });
 
   test('friendsGoing joins known gigs and drops unknown ids', () async {
     final auth = FakeAuthService();
@@ -209,13 +379,14 @@ void main() {
       final auth = FakeAuthService();
       await auth.signInDemo();
       final repository = DemoRepository(auth: auth);
-      final result = await repository.knownAttendees(
-        'g9',
-        now: DateTime.now(),
+      final result = await repository.knownAttendees('g9', now: DateTime.now());
+      final maya = result.people.firstWhere(
+        (person) => person.userId == 'u-maya',
       );
-      final maya = result.people.firstWhere((person) => person.userId == 'u-maya');
       expect(maya.relation, KnownRelation.friend);
-      final theo = result.people.firstWhere((person) => person.userId == 'u-theo');
+      final theo = result.people.firstWhere(
+        (person) => person.userId == 'u-theo',
+      );
       expect(theo.relation, KnownRelation.seen);
       expect(theo.sharedShows, 2);
     },
@@ -254,14 +425,22 @@ void main() {
 
   test('toggleFollowUser rolls back when persistence fails', () async {
     final auth = FakeAuthService();
-    final repository = _SocialRepository(auth: auth)..failToggle = true;
+    final repository = _SocialRepository(auth: auth)
+      ..failToggle = true
+      ..suggestedPeopleResult = (
+        people: const [_suggestedLina],
+        truncated: false,
+      );
     final app = await _signedInApp(repository);
     app.ensureSocial();
     await flushAsyncWork();
+    await app.loadSuggestedPeople();
     app.toggleFollowUser('u-lina');
     expect(app.isFollowingUser('u-lina'), isTrue);
+    expect(app.suggestedPeople, isEmpty);
     await flushAsyncWork();
     expect(app.isFollowingUser('u-lina'), isFalse);
+    expect(app.suggestedPeople, [_suggestedLina]);
     expect(app.toast, genericErrorMessage);
   });
 
@@ -331,16 +510,25 @@ void main() {
 
   test('signing out clears social state', () async {
     final auth = FakeAuthService();
-    final repository = _SocialRepository(auth: auth);
+    final repository = _SocialRepository(auth: auth)
+      ..suggestedPeopleResult = (
+        people: const [_suggestedLina],
+        truncated: true,
+      );
     final app = await _signedInApp(repository);
     app.ensureSocial();
     await app.searchPeople('Ma');
+    await app.loadSuggestedPeople();
     await flushAsyncWork();
     expect(app.socialLoaded, isTrue);
     expect(app.peopleResults, isNotEmpty);
+    expect(app.suggestedPeople, isNotEmpty);
+    expect(app.suggestedTruncated, isTrue);
     await app.signOut();
     expect(app.social, SocialGraph.empty);
     expect(app.socialLoaded, isFalse);
     expect(app.peopleResults, isEmpty);
+    expect(app.suggestedPeople, isEmpty);
+    expect(app.suggestedTruncated, isFalse);
   });
 }

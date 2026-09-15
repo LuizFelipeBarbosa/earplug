@@ -7,7 +7,8 @@ import 'package:earplug/models.dart';
 import 'package:flutter/foundation.dart' show protected;
 
 /// A configurable [DemoRepository] using the test harness's shared authentication.
-/// Unconfigured methods use the real demo behavior.
+/// Unconfigured methods use the real demo behavior, except [suggestedPeople],
+/// which defaults to an empty result.
 ///
 /// Method keys are plain strings checked against [futureMethods] and
 /// [streamMethods]. Typos such as `stub.fail('myBnds')` throw [ArgumentError].
@@ -129,6 +130,7 @@ class StubRepository extends DemoRepository {
     'startInstallmentCheckout',
     'startOrganizationOnboarding',
     'startTicketCheckout',
+    'suggestedPeople',
     'ticket',
     'ticketOrderStatus',
     'ticketSalesForGig',
@@ -787,6 +789,11 @@ class StubRepository extends DemoRepository {
   @override
   Future<({String url, String sessionId})> startTicketCheckout(String orderId) =>
       intercept('startTicketCheckout', () => super.startTicketCheckout(orderId));
+  @override
+  Future<({List<SuggestedPerson> people, bool truncated})> suggestedPeople() => intercept(
+    'suggestedPeople',
+    () async => (people: const <SuggestedPerson>[], truncated: false),
+  );
   @override
   Future<TicketSummary?> ticket(String ticketId) =>
       intercept('ticket', () => super.ticket(ticketId));
