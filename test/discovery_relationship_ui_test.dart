@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
@@ -101,6 +100,15 @@ void main() {
     expect(find.textContaining(DemoData.venues['v1']!.addr), findsWidgets);
     expect(find.byKey(const Key('venue-detail-distance')), findsOne);
     expect(find.byType(VenueMiniMap), findsOne);
+    expect(find.byKey(const Key('venue-map')), findsOne);
+    expect(find.byKey(const Key('venue-address-line')), findsOne);
+    expect(find.byKey(const Key('venue-area-line')), findsOne);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('venue-map'))).dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const Key('venue-detail-hero'))).dy,
+      ),
+    );
     expect(find.textContaining('DOOR POLICY'), findsNothing);
     expect(find.textContaining('PAST EVENTS'), findsNothing);
     await tester.scrollUntilVisible(
@@ -185,8 +193,7 @@ void main() {
         ),
       home: const Scaffold(body: VenueDetailScreen(venueId: 'v1')),
     );
-    expect(find.byKey(const Key('venue-photo-placeholder')), findsOne);
-    expect(find.byKey(const Key('venue-photo')), findsNothing);
+    expect(find.byKey(const Key('venue-map')), findsOne);
     await tester.scrollUntilVisible(
       find.text('No performers announced yet.'),
       200,
@@ -197,50 +204,6 @@ void main() {
     );
     expect(find.text('Nothing on the calendar right now.'), findsOne);
     expect(find.text('No performers announced yet.'), findsOne);
-  });
-
-  testWidgets('venue detail renders its photo above the header', (
-    tester,
-  ) async {
-    const photoUrl = 'https://example.com/venue.jpg';
-    const imageProvider = CachedNetworkImageProvider(photoUrl);
-    final image = await tester.runAsync(() => createTestImage(cache: false));
-    // Seed a decoded image so this test does not depend on a network request.
-    imageCache.putIfAbsent(
-      imageProvider,
-      () =>
-          OneFrameImageStreamCompleter(Future.value(ImageInfo(image: image!))),
-    );
-    addTearDown(() => imageCache.evict(imageProvider));
-
-    final auth = FakeAuthService();
-    await pumpApp(
-      tester,
-      auth: auth,
-      repository: StubRepository(auth: auth)
-        ..returns(
-          'venueDetail',
-          VenueDetail(
-            venue: DemoData.venues['v1']!.copyWith(photoUrls: const [photoUrl]),
-            gigs: const [],
-            bands: const {},
-            truncated: false,
-          ),
-        ),
-      home: const Scaffold(body: VenueDetailScreen(venueId: 'v1')),
-    );
-
-    final photo = find.byKey(const Key('venue-photo'));
-    expect(photo, findsOne);
-    expect(find.byKey(const Key('venue-photo-placeholder')), findsNothing);
-    expect(
-      tester.getBottomLeft(photo).dy,
-      lessThan(
-        tester.getTopLeft(find.byKey(const Key('venue-detail-hero'))).dy,
-      ),
-    );
-    final photoSize = tester.getSize(photo);
-    expect(photoSize.width / photoSize.height, closeTo(16 / 9, 0.001));
   });
 
   testWidgets('fan card exposes metadata and auth-gates save', (tester) async {

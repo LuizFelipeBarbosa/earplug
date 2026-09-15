@@ -1563,20 +1563,21 @@ void main() {
       expect(find.text('19 SEP'), findsNothing);
       expect(find.textContaining('SEP'), findsNothing);
       expect(find.text('1 SHOW'), findsOneWidget);
+      expect(find.byKey(const Key('venue-tile-map')), findsOneWidget);
+      expect(find.byKey(const Key('venue-map-overlay')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('venue-map-overlay')),
+          matching: find.text('1 SHOW'),
+        ),
+        findsOneWidget,
+      );
       expect(
         find.descendant(
           of: find.byType(ExploreVenueTile),
           matching: find.byType(EpBadge),
         ),
         findsNothing,
-      );
-      expect(
-        tester.getBottomLeft(find.text('THE FOGHORN')).dy,
-        lessThan(tester.getTopLeft(find.text('1 SHOW')).dy),
-      );
-      expect(
-        tester.getBottomLeft(find.text('1 SHOW')).dy,
-        lessThan(tester.getTopLeft(find.text('The Mission')).dy),
       );
 
       final unverified = Venue(
@@ -1607,6 +1608,15 @@ void main() {
       expect(find.text('19 SEP'), findsNothing);
       expect(find.textContaining('SEP'), findsNothing);
       expect(find.text('2 SHOWS'), findsOneWidget);
+      expect(find.byKey(const Key('venue-tile-map')), findsOneWidget);
+      expect(find.byKey(const Key('venue-map-overlay')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('venue-map-overlay')),
+          matching: find.text('2 SHOWS'),
+        ),
+        findsOneWidget,
+      );
       expect(
         find.descendant(
           of: find.byType(ExploreVenueTile),
@@ -1656,7 +1666,7 @@ void main() {
   );
 
   testWidgets(
-    'venue tiles align name, show count, and area line tops across different content',
+    'venue tiles align name and area line tops across different content',
     (tester) async {
       final shortVenue = Venue(
         id: 'short-venue',
@@ -1716,7 +1726,6 @@ void main() {
         );
         for (final (shortText, longText) in [
           (shortName, longName),
-          (find.text('1 SHOW'), find.text('2 SHOWS')),
           (find.text(shortVenue.area), find.text(longVenue.area)),
         ]) {
           expect(
@@ -1729,58 +1738,6 @@ void main() {
       }
     },
   );
-
-  testWidgets('venue tile uses photos and a no-photo placeholder', (
-    tester,
-  ) async {
-    final date = DateTime(2026, 9, 19);
-    final photoVenue = Venue(
-      id: 'venue-photo',
-      name: 'Photo Room',
-      area: 'Oakland',
-      addr: '1 Main St',
-      point: const LatLng(0, 0),
-      photoUrls: const ['https://example.com/venue.jpg'],
-    );
-    await tester.pumpWidget(
-      plain(
-        ExploreVenueTile(
-          entry: VenueWithShows(
-            venue: photoVenue,
-            gigs: [gigFixture(id: 'photo-show', startsAt: date)],
-          ),
-          onTap: () {},
-        ),
-      ),
-    );
-    final photoImage = find.byType(EpNetworkImage);
-    expect(photoImage, findsOneWidget);
-    expect(
-      tester.widget<EpNetworkImage>(photoImage).url,
-      'https://example.com/venue.jpg',
-    );
-
-    final emptyVenue = Venue(
-      id: 'venue-no-photo',
-      name: 'Empty Room',
-      area: 'Oakland',
-      addr: '2 Main St',
-      point: const LatLng(0, 0),
-    );
-    await tester.pumpWidget(
-      plain(
-        ExploreVenueTile(
-          entry: VenueWithShows(
-            venue: emptyVenue,
-            gigs: [gigFixture(id: 'empty-show', startsAt: date)],
-          ),
-          onTap: () {},
-        ),
-      ),
-    );
-    expect(find.byType(EpNetworkImage), findsNothing);
-    expect(find.text('NO PHOTO YET'), findsOneWidget);
-  });
 
   testWidgets('band row preserves follow pill and directory copy', (
     tester,

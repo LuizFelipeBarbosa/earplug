@@ -10,6 +10,7 @@ import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/fan_event_card.dart';
 import '../widgets/map_view.dart';
+import '../widgets/venue_mini_map.dart';
 
 class VenueDetailScreen extends StatefulWidget {
   const VenueDetailScreen({super.key, required this.venueId});
@@ -220,7 +221,32 @@ class _VenueContentState extends State<_VenueContent> {
         40,
       ),
       children: [
-        _VenuePhoto(venue: venue),
+        LayoutBuilder(
+          builder: (context, constraints) => VenueMapPreview(
+            key: const Key('venue-map'),
+            venue: venue,
+            height: constraints.maxWidth * 9 / 16,
+            overlayLabel: '${_gigs.length} SHOW${_gigs.length == 1 ? '' : 'S'}',
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          venue.addr,
+          key: const Key('venue-address-line'),
+          style: Theme.of(context).textTheme.epBody,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${venue.neighborhood ?? venue.area} · ${app.distanceOf(venue)}',
+          key: const Key('venue-area-line'),
+          style: Theme.of(
+            context,
+          ).textTheme.epBody.copyWith(color: context.epColors.muted),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         const SizedBox(height: 20),
         _VenueHeader(venue: venue),
         const SizedBox(height: 20),
@@ -270,32 +296,6 @@ String _venueTypeLabel(VenueType type) => switch (type) {
   VenueType.private => 'Private',
   VenueType.other => 'Other',
 };
-
-class _VenuePhoto extends StatelessWidget {
-  const _VenuePhoto({required this.venue});
-
-  final Venue venue;
-
-  @override
-  Widget build(BuildContext context) {
-    final placeholder = EpPanel(
-      key: const Key('venue-photo-placeholder'),
-      color: context.epColors.panel,
-      child: const Center(child: EpEyebrow('NO PHOTO YET')),
-    );
-    return AspectRatio(
-      aspectRatio: 16 / 9,
-      child: venue.photoUrls.isNotEmpty
-          ? EpNetworkImage(
-              key: const Key('venue-photo'),
-              url: venue.photoUrls.first,
-              fit: BoxFit.cover,
-              fallback: placeholder,
-            )
-          : placeholder,
-    );
-  }
-}
 
 class _VenueHeader extends StatelessWidget {
   const _VenueHeader({required this.venue});

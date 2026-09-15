@@ -10,6 +10,7 @@ import 'common.dart';
 import 'ep_rows.dart';
 import 'ep_text.dart';
 import 'fan_event_card.dart' show GigCardLines;
+import 'venue_mini_map.dart';
 
 String _initialsFor(String title) {
   final words = title
@@ -959,23 +960,19 @@ class ExploreCollectionCard extends StatelessWidget {
 /// Layout constants shared by [ExploreVenueTile] and
 /// [exploreVenueRailHeight], so the venues rail matches the tile's fixed slots.
 const _venueTileWidth = 220.0;
-const _venueTileImageAspectRatio = 4 / 3;
+const _venueTileMapAspectRatio = 4 / 3;
 const _venueTilePaddingHorizontal = 8.0;
 const _venueTilePaddingTop = 6.0;
 const _venueTilePaddingBottom = 4.0;
 const _venueTileNameSize = 20.0;
 const _venueTileNameMaxLines = 2;
-const _venueTileShowsCountSize = 16.0;
-
-/// Regular-weight mono for the show count (the owner asked for it unbolded).
-TextStyle _venueTileShowsCountStyle(TextTheme textTheme) => textTheme.epLabel
-    .copyWith(fontSize: _venueTileShowsCountSize, fontWeight: FontWeight.w400);
 const _venueTileLineGap = 2.0;
 const _venueTileAreaSeparator = ' · ';
 const _venueTileAreaMinChars = 3;
 
-({double nameHeight, double showsCountHeight, double areaHeight})
-_venueTileTextHeights(BuildContext context) {
+({double nameHeight, double areaHeight}) _venueTileTextHeights(
+  BuildContext context,
+) {
   final textTheme = Theme.of(context).textTheme;
   final scale = MediaQuery.textScalerOf(context).scale(1);
   // The text engine rounds each line box to whole pixels, so round each line
@@ -987,7 +984,6 @@ _venueTileTextHeights(BuildContext context) {
     nameHeight:
         lineHeight(textTheme.epDisplayAt(_venueTileNameSize)) *
         _venueTileNameMaxLines,
-    showsCountHeight: lineHeight(_venueTileShowsCountStyle(textTheme)),
     areaHeight: lineHeight(textTheme.epMeta),
   );
 }
@@ -996,19 +992,17 @@ _venueTileTextHeights(BuildContext context) {
 /// scale, computed from the same fixed text slots the tile renders.
 double exploreVenueRailHeight(BuildContext context) {
   final heights = _venueTileTextHeights(context);
-  const imageHeight = _venueTileWidth / _venueTileImageAspectRatio;
+  const mapHeight = _venueTileWidth / _venueTileMapAspectRatio;
 
-  return imageHeight +
+  return mapHeight +
       _venueTilePaddingTop +
       heights.nameHeight +
-      _venueTileLineGap +
-      heights.showsCountHeight +
       _venueTileLineGap +
       heights.areaHeight +
       _venueTilePaddingBottom;
 }
 
-/// Image-backed venue card with venue details below the image.
+/// Venue map with the show count above the name and area/distance rows.
 class ExploreVenueTile extends StatelessWidget {
   const ExploreVenueTile({
     super.key,
@@ -1028,10 +1022,6 @@ class ExploreVenueTile extends StatelessWidget {
     final venue = entry.venue;
     final venueLabel = venue.name.trim().isEmpty ? venue.addr : venue.name;
     final heights = _venueTileTextHeights(context);
-    final placeholder = EpPanel(
-      color: context.epColors.panel,
-      child: const Center(child: EpEyebrow('NO PHOTO YET')),
-    );
     return SizedBox(
       width: width,
       child: Semantics(
@@ -1043,16 +1033,12 @@ class ExploreVenueTile extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              AspectRatio(
-                aspectRatio: _venueTileImageAspectRatio,
-                child: venue.photoUrls.isNotEmpty
-                    ? EpNetworkImage(
-                        url: venue.photoUrls.first,
-                        fit: BoxFit.cover,
-                        cacheWidth: width.round(),
-                        fallback: placeholder,
-                      )
-                    : placeholder,
+              VenueMapPreview(
+                key: const Key('venue-tile-map'),
+                venue: venue,
+                height: width * 3 / 4,
+                overlayLabel:
+                    '${entry.gigs.length} SHOW${entry.gigs.length == 1 ? '' : 'S'}',
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(
@@ -1075,14 +1061,6 @@ class ExploreVenueTile extends StatelessWidget {
                           maxLines: _venueTileNameMaxLines,
                           overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: _venueTileLineGap),
-                    SizedBox(
-                      height: heights.showsCountHeight,
-                      child: Align(
-                        alignment: Alignment.topLeft,
-                        child: _VenueTileShowsLine(entry: entry),
                       ),
                     ),
                     const SizedBox(height: _venueTileLineGap),
@@ -1176,27 +1154,6 @@ class _VenueTileAreaLine extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-/// Show count in regular-weight mono on one left-aligned line.
-class _VenueTileShowsLine extends StatelessWidget {
-  const _VenueTileShowsLine({required this.entry});
-
-  final VenueWithShows entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final showCount =
-        '${entry.gigs.length} SHOW${entry.gigs.length == 1 ? '' : 'S'}';
-    return Text(
-      showCount,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: _venueTileShowsCountStyle(
-        Theme.of(context).textTheme,
-      ).copyWith(color: context.epColors.ink),
     );
   }
 }
