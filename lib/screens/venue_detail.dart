@@ -9,7 +9,6 @@ import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/fan_event_card.dart';
-import '../widgets/map_view.dart';
 import '../widgets/venue_mini_map.dart';
 
 class VenueDetailScreen extends StatefulWidget {
@@ -211,6 +210,7 @@ class _VenueContentState extends State<_VenueContent> {
     final detail = widget.detail;
     final app = widget.app;
     final venue = detail.venue;
+    final distance = app.distanceOf(venue);
 
     return ListView(
       key: const Key('venue-detail-content'),
@@ -225,6 +225,7 @@ class _VenueContentState extends State<_VenueContent> {
           builder: (context, constraints) => VenueMapPreview(
             key: const Key('venue-map'),
             venue: venue,
+            approximate: venue.exactAddress == null,
             height: constraints.maxWidth * 9 / 16,
             overlayLabel: '${_gigs.length} SHOW${_gigs.length == 1 ? '' : 'S'}',
           ),
@@ -237,28 +238,33 @@ class _VenueContentState extends State<_VenueContent> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
+        if (venue.exactAddress == null)
+          Text(
+            'Shared with ticket holders',
+            key: const Key('venue-detail-approx-note'),
+            style: Theme.of(
+              context,
+            ).textTheme.epBody.copyWith(color: context.epColors.muted),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         const SizedBox(height: 4),
-        Text(
-          '${venue.neighborhood ?? venue.area} · ${app.distanceOf(venue)}',
-          key: const Key('venue-area-line'),
-          style: Theme.of(
-            context,
-          ).textTheme.epBody.copyWith(color: context.epColors.muted),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        KeyedSubtree(
+          key: const Key('venue-detail-distance'),
+          child: Text(
+            '${venue.neighborhood ?? venue.area} · '
+            '${venue.exactAddress == null ? '~$distance' : distance}',
+            key: const Key('venue-area-line'),
+            style: Theme.of(
+              context,
+            ).textTheme.epBody.copyWith(color: context.epColors.muted),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
         const SizedBox(height: 20),
         _VenueHeader(venue: venue),
         const SizedBox(height: 20),
-        EpPanel(
-          height: 160,
-          child: VenueMiniMap(
-            key: const Key('venue-detail-map'),
-            venue: venue,
-            approximate: venue.exactAddress == null,
-          ),
-        ),
-        _VenueFacts(venue: venue, distance: app.distanceOf(venue)),
         EpSectionHeader(label: 'Upcoming · ${_gigs.length}'),
         if (_gigs.isEmpty)
           const _QuietNote('Nothing on the calendar right now.')
@@ -342,35 +348,6 @@ class _VenueHeader extends StatelessWidget {
             ).textTheme.epBody.copyWith(color: context.epColors.muted),
           ),
         ],
-      ],
-    );
-  }
-}
-
-/// Address and distance. Approximate venues never render the exact address.
-class _VenueFacts extends StatelessWidget {
-  const _VenueFacts({required this.venue, required this.distance});
-
-  final Venue venue;
-  final String distance;
-
-  @override
-  Widget build(BuildContext context) {
-    final approximate = venue.exactAddress == null;
-    return EpFactGrid(
-      cells: [
-        EpFactCell(
-          key: approximate ? const Key('venue-detail-approx-note') : null,
-          label: 'Address',
-          value: approximate ? venue.approx.label : venue.exactAddress!,
-          sub: approximate ? 'Shared with ticket holders' : null,
-          display: false,
-        ),
-        EpFactCell(
-          key: const Key('venue-detail-distance'),
-          label: 'From you',
-          value: approximate ? '~$distance' : distance,
-        ),
       ],
     );
   }

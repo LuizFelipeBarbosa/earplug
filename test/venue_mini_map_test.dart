@@ -33,12 +33,26 @@ void main() {
     expect(map.options.initialZoom, 15);
     expect(map.options.interactionOptions.flags, InteractiveFlag.none);
     expect(find.byType(MarkerLayer), findsOneWidget);
+    expect(find.byType(CircleLayer), findsNothing);
     final markers = tester
         .widget<MarkerLayer>(find.byType(MarkerLayer))
         .markers;
     expect(markers, hasLength(1));
     expect(markers.single.point, venue.point);
     expect(tester.getSize(find.byType(VenueMapPreview)).height, 160);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('renders an approximate area without a venue point marker', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      plain(const VenueMapPreview(venue: venue, approximate: true)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CircleLayer), findsOneWidget);
+    expect(find.byType(MarkerLayer), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

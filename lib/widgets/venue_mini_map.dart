@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../models.dart';
 import '../theme.dart';
+import 'approx_area_map.dart';
 import 'ep_map.dart';
 
 class VenueMapPreview extends StatelessWidget {
@@ -12,11 +13,13 @@ class VenueMapPreview extends StatelessWidget {
     required this.venue,
     this.height,
     this.overlayLabel,
+    this.approximate = false,
   });
 
   final Venue venue;
   final double? height;
   final String? overlayLabel;
+  final bool approximate;
 
   @override
   Widget build(BuildContext context) {
@@ -34,24 +37,31 @@ class VenueMapPreview extends StatelessWidget {
                 tiles: EpMapTiles.raster,
                 options: MapOptions(
                   initialCenter: point,
-                  initialZoom: 15,
+                  initialZoom: approximate ? 13 : 15,
                   interactionOptions: const InteractionOptions(
                     flags: InteractiveFlag.none,
                   ),
                   backgroundColor: context.epColors.background,
                 ),
                 layers: [
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: point,
-                        width: 48,
-                        height: 48,
-                        alignment: Alignment.center,
-                        child: const Center(child: _VenueDot()),
-                      ),
-                    ],
-                  ),
+                  if (approximate)
+                    approxAreaRingLayer(
+                      point,
+                      600,
+                      accent: context.epColors.accent,
+                    )
+                  else
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: point,
+                          width: 48,
+                          height: 48,
+                          alignment: Alignment.center,
+                          child: const Center(child: _VenueDot()),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),

@@ -1,7 +1,7 @@
 import 'package:earplug/screens/gig_create.dart';
 import 'package:earplug/screens/gig_detail.dart';
 import 'package:earplug/screens/venue_detail.dart';
-import 'package:earplug/widgets/map_view.dart';
+import 'package:earplug/widgets/venue_mini_map.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -19,7 +19,7 @@ void main() {
     expect(find.byKey(const Key('venue-detail-approx-note')), findsOne);
     expect(
       tester
-          .widget<VenueMiniMap>(find.byKey(const Key('venue-detail-map')))
+          .widget<VenueMapPreview>(find.byKey(const Key('venue-map')))
           .approximate,
       isTrue,
     );
