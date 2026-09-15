@@ -1,12 +1,10 @@
 import 'package:earplug/app_state.dart';
 import 'package:earplug/explore_ranking.dart';
-import 'package:earplug/flyer_styles.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
-import 'package:earplug/widgets/explore_friends.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +14,19 @@ import 'package:provider/provider.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
+
+class _GigLinesApp extends Fake implements AppState {
+  _GigLinesApp(this.venueValue, {this.distance = '11.2 mi'});
+
+  final Venue venueValue;
+  final String distance;
+
+  @override
+  Venue venue(String id) => venueValue;
+
+  @override
+  String distanceOf(Venue venue) => distance;
+}
 
 void main() {
   Widget plain(
@@ -31,6 +42,81 @@ void main() {
       ),
       child: Scaffold(body: child),
     ),
+  );
+
+  test('gig card lines use the start date, doors time, and exact distance', () {
+    const venue = Venue(
+      id: 'v1',
+      name: 'The Foghorn',
+      neighborhood: 'Southside',
+      area: 'Oakland',
+      city: 'San Francisco',
+      addr: '1 Main',
+      point: LatLng(0, 0),
+    );
+    final app = _GigLinesApp(venue);
+    final gig = gigFixture(
+      id: 'card-lines',
+      title: 'Neon Nights',
+      startsAt: DateTime(2026, 9, 23),
+      dateShort: 'TUE JUL 28',
+      price: 12,
+    );
+    final lines = gigCardLines(gig, app, showDistance: true);
+    expect(lines.dateLine, 'WED, SEP 23 AT 8PM');
+    expect(lines.title, 'Neon Nights');
+    expect(lines.location, 'Southside · 11.2 mi');
+    expect(lines.price, '\$12');
+    expect(gigCardLines(gig, app, showDistance: false).location, 'Southside');
+    expect(
+      gigCardLines(gigFixture(id: 'free'), app, showDistance: false).price,
+      'FREE',
+    );
+  });
+
+  test(
+    'gig card location falls back through area, city, and distance alone',
+    () {
+      const venue = Venue(
+        id: 'v1',
+        name: 'The Foghorn',
+        area: 'Oakland',
+        city: 'San Francisco',
+        addr: '1 Main',
+        point: LatLng(0, 0),
+      );
+      final gig = gigFixture(id: 'location-fallbacks');
+      for (final entry in [
+        (venue: venue, location: 'Oakland'),
+        (venue: venue.copyWith(area: ''), location: 'San Francisco'),
+        (venue: venue.copyWith(area: '', city: null), location: ''),
+      ]) {
+        expect(
+          gigCardLines(
+            gig,
+            _GigLinesApp(entry.venue),
+            showDistance: false,
+          ).location,
+          entry.location,
+        );
+        expect(
+          gigCardLines(
+            gig,
+            _GigLinesApp(entry.venue, distance: ''),
+            showDistance: true,
+          ).location,
+          entry.location,
+        );
+      }
+      expect(
+        gigCardLines(
+          gig,
+          _GigLinesApp(venue.copyWith(area: '', city: null)),
+          showDistance: true,
+        ).location,
+        '11.2 mi',
+      );
+    },
   );
 
   testWidgets('card icon button layers the fill beneath the ink outline', (
@@ -222,6 +308,77 @@ void main() {
     expect(taps, 5);
   });
 
+  testWidgets('circle action keeps its white glyph and 44px tap target', (
+    tester,
+  ) async {
+    var taps = 0;
+    await tester.pumpWidget(
+      plain(
+        Center(
+          child: ExploreCardIconButton(
+            icon: Icons.bookmark_border,
+            fillIcon: Icons.bookmark,
+            semanticLabel: 'Save event',
+            circle: true,
+            active: true,
+            color: Ep.accent,
+            iconShadows: const [Shadow(color: Ep.accent)],
+            onPressed: () => taps++,
+          ),
+        ),
+        brightness: Brightness.light,
+      ),
+    );
+    final button = find.byType(ExploreCardIconButton);
+    final buttonRect = tester.getRect(button);
+    final inkWell = find.descendant(of: button, matching: find.byType(InkWell));
+    expect(buttonRect.size, const Size(28, 28));
+    expect(tester.getRect(inkWell), buttonRect.inflate(8));
+    final circle = find.descendant(
+      of: button,
+      matching: find.byType(DecoratedBox),
+    );
+    final decoration =
+        tester.widget<DecoratedBox>(circle).decoration as BoxDecoration;
+    expect(decoration.shape, BoxShape.circle);
+    expect(decoration.color, Ep.background);
+    expect(decoration.border, isNull);
+    expect(tester.getRect(circle), buttonRect);
+    expect(
+      find.descendant(
+        of: button,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is DecoratedBox && widget.decoration is ShapeDecoration,
+        ),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: button, matching: find.byType(Stack)),
+      findsNothing,
+    );
+    expect(find.byIcon(Icons.bookmark), findsNothing);
+    final glyph = tester.widget<Icon>(find.byIcon(Icons.bookmark_border));
+    expect(glyph.size, 16);
+    expect(glyph.color, Ep.ink);
+    expect(glyph.shadows, isNull);
+    expect(
+      tester.getCenter(find.byIcon(Icons.bookmark_border)),
+      buttonRect.center,
+    );
+    await tester.tap(button);
+    for (final offset in const [
+      Offset(-21, 0),
+      Offset(21, 0),
+      Offset(0, -21),
+      Offset(0, 21),
+    ]) {
+      await tester.tapAt(buttonRect.center + offset);
+    }
+    expect(taps, 5);
+  });
+
   testWidgets('card actions receive overflow taps without opening the gig', (
     tester,
   ) async {
@@ -230,23 +387,15 @@ void main() {
       var saves = 0;
       var shares = 0;
       var opens = 0;
-      final actions = [
-        ExploreCardIconButton(
-          key: const Key('hit-save'),
-          icon: Icons.bookmark_border,
-          fillIcon: Icons.bookmark,
-          semanticLabel: 'Save event',
-          ring: !featured,
-          onPressed: () => saves++,
-        ),
-        ExploreCardIconButton(
-          key: const Key('hit-share'),
-          icon: Icons.ios_share,
-          semanticLabel: 'Share event',
-          ring: !featured,
-          onPressed: () => shares++,
-        ),
-      ];
+      final save = ExploreCardIconButton(
+        key: const Key('hit-save'),
+        icon: Icons.bookmark_border,
+        fillIcon: Icons.bookmark,
+        semanticLabel: 'Save event',
+        ring: !featured,
+        circle: featured,
+        onPressed: () => saves++,
+      );
       await tester.pumpWidget(
         plain(
           Center(
@@ -256,15 +405,36 @@ void main() {
                   ? ExploreFeaturedCard(
                       gig: gig,
                       venueName: 'The Foghorn',
+                      lines: GigCardLines(
+                        dateLine: 'WED, SEP 23 AT 8PM',
+                        title: gig.title,
+                        location: 'Southside · 11.2 mi',
+                        price: gig.priceLabel,
+                      ),
                       width: 320,
                       height: 200,
-                      actions: actions,
+                      actions: [
+                        ExploreCardIconButton(
+                          key: const Key('hit-share'),
+                          icon: Icons.ios_share,
+                          semanticLabel: 'Share event',
+                          circle: true,
+                          onPressed: () => shares++,
+                        ),
+                        save,
+                      ],
                       onTap: () => opens++,
                     )
                   : ExploreEventRow(
                       gig: gig,
                       venueName: 'The Foghorn',
-                      actions: actions,
+                      lines: GigCardLines(
+                        dateLine: 'WED, SEP 23 AT 8PM',
+                        title: gig.title,
+                        location: 'Southside · 11.2 mi',
+                        price: gig.priceLabel,
+                      ),
+                      saveAction: save,
                       onTap: () => opens++,
                     ),
             ),
@@ -272,29 +442,37 @@ void main() {
         ),
       );
       final saveRect = tester.getRect(find.byKey(const Key('hit-save')));
-      final shareRect = tester.getRect(find.byKey(const Key('hit-share')));
-      for (final offset in const [
-        Offset(-21, 0),
-        Offset(0, -21),
-        Offset(0, 21),
+      for (final offset in [
+        featured ? const Offset(21, 0) : const Offset(-21, 0),
+        const Offset(0, -21),
+        const Offset(0, 21),
       ]) {
         await tester.tapAt(saveRect.center + offset);
       }
-      for (final offset in const [Offset(0, -21), Offset(0, 21)]) {
-        await tester.tapAt(shareRect.center + offset);
-      }
       expect(saves, 3);
-      expect(shares, 2);
-      expect(opens, 0);
-      // The overlapping part of the targets belongs to the nearest button.
-      await tester.tapAt(saveRect.center + const Offset(17, 0));
-      expect(saves, 3);
-      expect(shares, 3);
       if (featured) {
-        await tester.tapAt(shareRect.center + const Offset(21, 0));
-        expect(shares, 4);
+        final shareRect = tester.getRect(find.byKey(const Key('hit-share')));
+        for (final offset in const [
+          Offset(-21, 0),
+          Offset(0, -21),
+          Offset(0, 21),
+        ]) {
+          await tester.tapAt(shareRect.center + offset);
+        }
+        expect(shares, 3);
+        // The overlapping part of the targets belongs to the nearest button.
+        await tester.tapAt(shareRect.center + const Offset(17, 0));
+        expect(saves, 4);
+        expect(shares, 3);
+      } else {
+        await tester.tapAt(saveRect.center);
+        expect(saves, 4);
+        expect(shares, 0);
+        expect(find.byIcon(Icons.ios_share), findsNothing);
       }
       expect(opens, 0);
+      await tester.tap(find.text(gig.title.toUpperCase()));
+      expect(opens, 1);
     }
   });
 
@@ -501,43 +679,41 @@ void main() {
     expect(tapped, isTrue);
   });
 
-  testWidgets('event row shows metadata, generated flyer, and taps', (
+  testWidgets('event row shows three lines, generated flyer, and taps', (
     tester,
   ) async {
     var tapped = false;
     final gig = gigFixture(
       id: 'event-row',
       title: 'Neon Nights',
-      startsAt: DateTime(2026, 9, 19),
-      flyKey: 'paper',
-      price: 0,
+      startsAt: DateTime(2026, 9, 23),
     );
     await tester.pumpWidget(
       plain(
         ExploreEventRow(
           gig: gig,
           venueName: 'The Foghorn',
+          lines: GigCardLines(
+            dateLine: 'WED, SEP 23 AT 8PM',
+            title: gig.title,
+            location: 'Southside · 11.2 mi',
+            price: gig.priceLabel,
+          ),
           onTap: () => tapped = true,
         ),
       ),
     );
     expect(find.text('NEON NIGHTS'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byType(ExploreEventRow),
-        matching: find.byType(GigFlyer),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: find.byType(ExploreEventRow),
-        matching: find.text('NN'),
-      ),
-      findsNothing,
-    );
-    expect(find.textContaining('19 SEP'), findsOneWidget);
-    expect(find.textContaining('The Foghorn'), findsOneWidget);
+    expect(find.byType(GigFlyer), findsOneWidget);
+    expect(find.text('NN'), findsNothing);
+    expect(find.text('WED, SEP 23 AT 8PM'), findsOneWidget);
+    expect(find.text('Southside · 11.2 mi'), findsOneWidget);
+    expect(find.text('FREE'), findsOneWidget);
+    final dateRect = tester.getRect(find.text('WED, SEP 23 AT 8PM'));
+    final titleRect = tester.getRect(find.text('NEON NIGHTS'));
+    final locationRect = tester.getRect(find.text('Southside · 11.2 mi'));
+    expect(titleRect.top - dateRect.bottom, closeTo(8, 0.1));
+    expect(locationRect.top - titleRect.bottom, closeTo(8, 0.1));
     await tester.tap(find.text('NEON NIGHTS'));
     expect(tapped, isTrue);
 
@@ -546,11 +722,18 @@ void main() {
         ExploreEventRow(
           gig: gigFixture(id: 'paid-row', title: 'Paid Night', price: 12),
           venueName: 'The Foghorn',
+          lines: const GigCardLines(
+            dateLine: 'WED, SEP 23 AT 8PM',
+            title: 'Paid Night',
+            location: 'Southside',
+            price: '\$12',
+          ),
           onTap: () {},
         ),
       ),
     );
     expect(find.textContaining('FREE'), findsNothing);
+    expect(find.text('\$12'), findsOneWidget);
   });
 
   testWidgets('cancelled event row shows the CANCELLED marker', (tester) async {
@@ -560,119 +743,64 @@ void main() {
       lifecycle: GigLifecycle.cancelled,
     );
     await tester.pumpWidget(
-      plain(ExploreEventRow(gig: gig, venueName: 'The Foghorn', onTap: () {})),
-    );
-    expect(find.text('CANCELLED'), findsOneWidget);
-    expect(find.byKey(ValueKey('gig-cancelled-${gig.id}')), findsOneWidget);
-  });
-
-  testWidgets('event row stretches actions and centers plain trailing icons', (
-    tester,
-  ) async {
-    final gig = gigFixture(id: 'trailing-row', title: 'Neon Nights');
-    await tester.pumpWidget(
       plain(
         ExploreEventRow(
           gig: gig,
           venueName: 'The Foghorn',
-          sub: 'Live music at The Foghorn',
-          stretchTrailing: true,
-          trailing: const Column(
-            mainAxisSize: MainAxisSize.max,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(Icons.bookmark_border, key: Key('row-trailing-top')),
-              Icon(Icons.circle, key: Key('row-trailing-bottom')),
-            ],
+          lines: GigCardLines(
+            dateLine: 'WED, SEP 23 AT 8PM',
+            title: gig.title,
+            location: 'Southside · 11.2 mi',
+            price: gig.priceLabel,
           ),
           onTap: () {},
         ),
       ),
     );
+    expect(find.text('CANCELLED'), findsOneWidget);
+    expect(find.byKey(ValueKey('gig-cancelled-${gig.id}')), findsOneWidget);
+  });
 
-    final thumbnail = find.descendant(
-      of: find.byType(ExploreEventRow),
-      matching: find.byType(EpNetworkImage),
-    );
-    expect(
-      tester.getRect(find.byKey(const Key('row-trailing-top'))).top,
-      closeTo(tester.getRect(thumbnail).top, 1),
-    );
-    expect(
-      tester.getRect(find.byKey(const Key('row-trailing-bottom'))).bottom,
-      closeTo(tester.getRect(thumbnail).bottom, 1),
-    );
-
+  testWidgets('event row supports supplied lines, sub, and thumbnail size', (
+    tester,
+  ) async {
+    final gig = gigFixture(id: 'custom-lines-row');
+    const sub = 'Maya and Dev are going';
     await tester.pumpWidget(
       plain(
         ExploreEventRow(
           gig: gig,
           venueName: 'The Foghorn',
-          sub: 'Live music at The Foghorn',
-          trailing: const Icon(Icons.chevron_right, key: Key('row-chevron')),
-          onTap: () {},
-        ),
-      ),
-    );
-    expect(
-      tester.getRect(find.byKey(const Key('row-chevron'))).center.dy,
-      closeTo(tester.getRect(find.byType(ExploreEventRow)).center.dy, 1),
-    );
-  });
-
-  testWidgets('event row shows known friends and hides them by default', (
-    tester,
-  ) async {
-    final gig = gigFixture(id: 'friends-row');
-    final friends = [
-      const SocialUserCard(userId: 'a', name: 'Maya'),
-      const SocialUserCard(userId: 'b', name: 'Dev'),
-    ];
-    await tester.pumpWidget(
-      plain(
-        ExploreEventRow(
-          gig: gig,
-          venueName: 'The Foghorn',
-          friends: friends,
-          onTap: () {},
-        ),
-      ),
-    );
-    expect(find.byType(ExploreAvatarStack), findsOneWidget);
-    expect(find.text('Maya and Dev are going'), findsOneWidget);
-
-    await tester.pumpWidget(
-      plain(ExploreEventRow(gig: gig, venueName: 'The Foghorn', onTap: () {})),
-    );
-    expect(find.byType(ExploreAvatarStack), findsNothing);
-  });
-
-  testWidgets('event row supports custom metadata and thumbnail size', (
-    tester,
-  ) async {
-    const meta = 'WED 23 SEP · 8PM · FREE · 11.2 mi';
-    await tester.pumpWidget(
-      plain(
-        ExploreEventRow(
-          gig: gigFixture(id: 'custom-meta-row'),
-          venueName: 'The Foghorn',
-          meta: meta,
+          lines: GigCardLines(
+            dateLine: 'WED, SEP 23 AT 8PM',
+            title: gig.title,
+            location: 'Southside · 11.2 mi',
+            price: gig.priceLabel,
+          ),
+          sub: sub,
           thumbnailSize: 72.5,
           onTap: () {},
         ),
       ),
     );
-
-    final metaText = tester.widget<Text>(
-      find.text('WED 23 SEP · 8PM · FREE · 11.2 MI'),
-    );
-    expect(metaText.semanticsLabel, meta);
-    expect(metaText.maxLines, 1);
+    final dateText = tester.widget<Text>(find.text('WED, SEP 23 AT 8PM'));
+    expect(dateText.maxLines, 1);
+    expect(dateText.overflow, TextOverflow.ellipsis);
     expect(find.textContaining('The Foghorn'), findsNothing);
-    final thumbnail = find.descendant(
-      of: find.byType(ExploreEventRow),
-      matching: find.byType(EpNetworkImage),
+    final subText = tester.widget<Text>(find.text(sub));
+    expect(subText.maxLines, 1);
+    expect(subText.overflow, TextOverflow.ellipsis);
+    expect(
+      subText.style?.color,
+      tester.element(find.byType(ExploreEventRow)).epColors.muted,
     );
+    expect(
+      tester.getRect(find.text(sub)).top,
+      greaterThan(
+        tester.getRect(find.byKey(ValueKey('gig-price-${gig.id}'))).bottom,
+      ),
+    );
+    final thumbnail = find.byType(EpNetworkImage);
     final thumbnailSize = tester.getSize(thumbnail);
     final rowHeight = tester.getSize(find.byType(ExploreEventRow)).height;
     expect(thumbnailSize.width, 72.5);
@@ -696,10 +824,26 @@ void main() {
       plain(
         Column(
           children: [
-            ExploreEventRow(gig: gig, venueName: 'The Foghorn', onTap: () {}),
+            ExploreEventRow(
+              gig: gig,
+              venueName: 'The Foghorn',
+              lines: GigCardLines(
+                dateLine: 'WED, SEP 23 AT 8PM',
+                title: gig.title,
+                location: 'Southside · 11.2 mi',
+                price: gig.priceLabel,
+              ),
+              onTap: () {},
+            ),
             ExploreFeaturedCard(
               gig: gig,
               venueName: 'The Foghorn',
+              lines: GigCardLines(
+                dateLine: 'WED, SEP 23 AT 8PM',
+                title: gig.title,
+                location: 'Southside · 11.2 mi',
+                price: gig.priceLabel,
+              ),
               onTap: () {},
             ),
           ],
@@ -714,234 +858,224 @@ void main() {
     expect(images.every((image) => image.url == flyerUrl), isTrue);
   });
 
-  testWidgets('event row renders lineup avatars and names', (tester) async {
-    final gig = gigFixture(id: 'lineup-row', title: 'Lineup Event');
-    await tester.pumpWidget(
-      plain(
-        ExploreEventRow(
-          gig: gig,
-          venueName: 'The Foghorn',
-          lineup: const [
-            ExploreLineupBand(name: 'Mission Creep', initials: 'MC'),
-            ExploreLineupBand(name: 'Static Bloom', initials: 'SB'),
-          ],
-          onTap: () {},
+  testWidgets('event row puts its save action at the end of the date line', (
+    tester,
+  ) async {
+    final gig = gigFixture(id: 'poster-actions', title: 'Live Music');
+    for (final scale in [1.0, 1.5]) {
+      await tester.pumpWidget(
+        plain(
+          SizedBox(
+            width: 300,
+            child: ExploreEventRow(
+              gig: gig,
+              venueName: 'The Foghorn',
+              lines: GigCardLines(
+                dateLine: 'WED, SEP 23 AT 8PM',
+                title: gig.title,
+                location: 'Southside · 11.2 mi',
+                price: gig.priceLabel,
+              ),
+              saveAction: ExploreCardIconButton(
+                key: const Key('poster-save'),
+                icon: Icons.bookmark_border,
+                semanticLabel: 'Save event',
+                ring: true,
+                onPressed: () {},
+              ),
+              onTap: () {},
+            ),
+          ),
+          textScaler: TextScaler.linear(scale),
         ),
-      ),
-    );
-
-    expect(find.text('Mission Creep'), findsOneWidget);
-    expect(find.text('Static Bloom'), findsOneWidget);
-    final missionCreep = tester.getTopLeft(find.text('Mission Creep'));
-    final staticBloom = tester.getTopLeft(find.text('Static Bloom'));
-    expect(staticBloom.dy, closeTo(missionCreep.dy, 0.5));
-    expect(staticBloom.dx, greaterThan(missionCreep.dx + 40));
-    expect(
-      find.descendant(
-        of: find.byType(ExploreEventRow),
-        matching: find.byType(EpAvatarTile),
-      ),
-      findsNWidgets(2),
-    );
+      );
+      final row = tester.getRect(find.byType(ExploreEventRow));
+      final date = tester.getRect(find.text('WED, SEP 23 AT 8PM'));
+      final action = tester.getRect(find.byKey(const Key('poster-save')));
+      expect(action.center.dy, closeTo(date.center.dy, 0.1));
+      expect(action.left - date.right, closeTo(8, 0.1));
+      expect(action.right, closeTo(row.right, 0.1));
+      expect(tester.takeException(), isNull, reason: 'scale $scale');
+    }
   });
 
-  testWidgets('event row places actions at the row top-right', (tester) async {
-    await tester.pumpWidget(
-      plain(
-        ExploreEventRow(
-          gig: gigFixture(id: 'poster-actions'),
-          venueName: 'The Foghorn',
-          actions: const [Icon(Icons.bookmark, key: Key('poster-save'))],
-          onTap: () {},
-        ),
-      ),
-    );
-    final row = tester.getRect(find.byType(ExploreEventRow));
-    final action = tester.getRect(find.byKey(const Key('poster-save')));
-    final poster = tester.getRect(
-      find.descendant(
-        of: find.byType(ExploreEventRow),
-        matching: find.byType(EpNetworkImage),
-      ),
-    );
-    expect(action.top, closeTo(poster.top, 1));
-    expect(action.right, lessThanOrEqualTo(row.right));
-    expect(action.left, greaterThan(row.center.dx));
-    expect(action.left, greaterThan(poster.right));
-
-    await tester.pumpWidget(
-      plain(
-        SizedBox(
-          width: 300,
-          child: ExploreEventRow(
-            gig: gigFixture(
-              id: 'narrow-actions',
-              title: 'A Very Long Event Title That Must Leave Room For Actions',
-            ),
+  testWidgets('event row never renders a chevron or share action', (
+    tester,
+  ) async {
+    final gig = gigFixture(id: 'actions-no-chevron', title: 'Action Event');
+    for (final withSave in [false, true]) {
+      await tester.pumpWidget(
+        plain(
+          ExploreEventRow(
+            gig: gig,
             venueName: 'The Foghorn',
-            actions: const [
-              Icon(Icons.bookmark, key: Key('narrow-save')),
-              Icon(Icons.ios_share, key: Key('narrow-share')),
-            ],
+            lines: GigCardLines(
+              dateLine: 'WED, SEP 23 AT 8PM',
+              title: gig.title,
+              location: 'Southside · 11.2 mi',
+              price: gig.priceLabel,
+            ),
+            saveAction: withSave
+                ? ExploreCardIconButton(
+                    icon: Icons.bookmark_border,
+                    semanticLabel: 'Save event',
+                    ring: true,
+                    onPressed: () {},
+                  )
+                : null,
             onTap: () {},
           ),
         ),
-      ),
-    );
-    expect(tester.takeException(), isNull);
+      );
+      expect(find.byIcon(Icons.chevron_right), findsNothing);
+      expect(find.byIcon(Icons.ios_share), findsNothing);
+    }
   });
 
-  testWidgets('event row omits the fallback chevron when actions are present', (
+  testWidgets('compact fan card keeps save and the optional QR action', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      plain(
-        ExploreEventRow(
-          gig: gigFixture(id: 'actions-no-chevron', title: 'Action Event'),
-          venueName: 'The Foghorn',
-          actions: const [Icon(Icons.bookmark)],
-          onTap: () {},
-        ),
-      ),
+    final gig = gigFixture(
+      id: 'compact-action-alignment',
+      startsAt: DateTime(2026, 9, 23),
     );
-    expect(find.byIcon(Icons.chevron_right), findsNothing);
-  });
-
-  testWidgets('compact card action rings align exactly with the poster top', (
-    tester,
-  ) async {
-    final gig = gigFixture(id: 'compact-action-alignment');
+    var qrTaps = 0;
     await pumpApp(
       tester,
       home: Scaffold(
         body: Consumer<AppState>(
-          builder: (context, app, _) => FanEventCard(gig: gig, app: app),
-        ),
-      ),
-    );
-    final poster = tester.getRect(find.byType(EpNetworkImage));
-    for (final action in ['save', 'share']) {
-      final button = find.byKey(ValueKey('$action-${gig.id}'));
-      expect(tester.widget<ExploreCardIconButton>(button).ring, isTrue);
-      expect(tester.getSize(button), const Size(28, 28));
-      final ring = find.descendant(
-        of: button,
-        matching: find.byWidgetPredicate(
-          (widget) =>
-              widget is DecoratedBox && widget.decoration is ShapeDecoration,
-        ),
-      );
-      expect(tester.getRect(button).top, closeTo(poster.top, 0.5));
-      expect(tester.getRect(ring).top, closeTo(poster.top, 0.5));
-    }
-  });
-
-  testWidgets('event row wraps long titles beside actions', (tester) async {
-    const title =
-        'A Very Long Event Title That Must Wrap Within A Narrow Card Width';
-    await tester.pumpWidget(
-      plain(
-        SizedBox(
-          width: 300,
-          child: ExploreEventRow(
-            gig: gigFixture(id: 'long-title-actions', title: title),
-            venueName: 'The Foghorn',
-            info: const ExploreGigInfo(
-              price: '\$15',
-              date: '23 SEP',
-              time: '8PM',
-              distance: '2.3 MI',
+          builder: (context, app, _) => FanEventCard(
+            gig: gig,
+            app: app,
+            trailingAction: ExploreCardIconButton(
+              key: const Key('qr-action'),
+              icon: Icons.qr_code,
+              semanticLabel: 'Show QR code',
+              onPressed: () => qrTaps++,
             ),
-            lineup: const [
-              ExploreLineupBand(name: 'Aster', initials: 'AS'),
-              ExploreLineupBand(name: 'Briar', initials: 'BR'),
-              ExploreLineupBand(name: 'Cinder', initials: 'CI'),
-            ],
-            actions: const [Icon(Icons.bookmark), Icon(Icons.ios_share)],
-            onTap: () {},
           ),
         ),
       ),
     );
-    expect(tester.takeException(), isNull);
-    final titleText = tester.widget<Text>(find.text(title.toUpperCase()));
-    expect(
-      tester.getSize(find.text(title.toUpperCase())).height,
-      greaterThan(24),
+    final save = find.byKey(ValueKey('save-${gig.id}'));
+    expect(tester.widget<ExploreCardIconButton>(save).ring, isTrue);
+    expect(tester.getSize(save), const Size(28, 28));
+    final actions = tester.widget<Wrap>(
+      find.byKey(ValueKey('event-actions-${gig.id}')),
     );
-    expect(titleText.softWrap, isTrue);
+    expect(actions.children, hasLength(2));
+    expect(find.byKey(ValueKey('share-${gig.id}')), findsNothing);
+    expect(find.byIcon(Icons.ios_share), findsNothing);
+    expect(
+      tester.getRect(save).center.dy,
+      closeTo(tester.getRect(find.text('WED, SEP 23 AT 8PM')).center.dy, 0.1),
+    );
+    await tester.tap(find.byKey(const Key('qr-action')));
+    expect(qrTaps, 1);
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('event row info uses regular weight for every metric span', (
+  testWidgets('event row wraps a long title below the save action', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      plain(
-        ExploreEventRow(
-          gig: gigFixture(id: 'structured-info'),
-          venueName: 'The Foghorn',
-          info: const ExploreGigInfo(
-            price: 'A VERY LONG PRICE LABEL',
-            date: '23 SEP',
-            time: '8PM',
-            distance: 'A VERY LONG DISTANCE LABEL',
+    const title =
+        'A Very Long Event Title That Must Wrap Within A Narrow Card Width';
+    final gig = gigFixture(id: 'long-title-actions', title: title, price: 15);
+    for (final scale in [1.0, 1.5]) {
+      await tester.pumpWidget(
+        plain(
+          SizedBox(
+            width: 300,
+            child: ExploreEventRow(
+              gig: gig,
+              venueName: 'The Foghorn',
+              lines: GigCardLines(
+                dateLine: 'WED, SEP 23 AT 8PM',
+                title: gig.title,
+                location: 'Southside · 11.2 mi',
+                price: gig.priceLabel,
+              ),
+              saveAction: ExploreCardIconButton(
+                icon: Icons.bookmark_border,
+                semanticLabel: 'Save event',
+                ring: true,
+                onPressed: () {},
+              ),
+              onTap: () {},
+            ),
           ),
-          onTap: () {},
+          textScaler: TextScaler.linear(scale),
         ),
-      ),
-    );
-    final infoText = tester.widget<Text>(
-      find.byWidgetPredicate(
-        (widget) => widget is Text && widget.textSpan != null,
-      ),
-    );
-    expect(infoText.softWrap, isTrue);
-    expect(infoText.overflow, isNot(TextOverflow.ellipsis));
-    final infoSpans = (infoText.textSpan! as TextSpan).children!
-        .whereType<TextSpan>()
-        .toList();
-    expect(
-      infoSpans.map((span) => span.style?.fontWeight),
-      everyElement(FontWeight.w400),
-    );
-    expect(infoSpans.first.style?.fontSize, 13);
-  });
-
-  testWidgets('event row info uses uniform metric separators', (tester) async {
-    await tester.pumpWidget(
-      plain(
-        ExploreEventRow(
-          gig: gigFixture(id: 'uniform-info'),
-          venueName: 'The Foghorn',
-          info: const ExploreGigInfo(
-            price: 'FREE',
-            date: '6 NOV',
-            time: '8PM',
-            distance: '11 MI',
-          ),
-          onTap: () {},
-        ),
-      ),
-    );
-    final infoText = tester.widget<Text>(
-      find.byWidgetPredicate(
-        (widget) => widget is Text && widget.textSpan != null,
-      ),
-    );
-    expect(
-      (infoText.textSpan! as TextSpan).toPlainText(),
-      'FREE · 6 NOV · 8PM · 11 MI',
-    );
-    expect(infoText.semanticsLabel, 'FREE · 6 NOV · 8PM · 11 MI');
-    final palette = tester.element(find.byType(ExploreEventRow)).epColors;
-    for (final span
-        in (infoText.textSpan! as TextSpan).children!.cast<TextSpan>()) {
-      expect(
-        span.style?.color,
-        span.text == ' · ' ? palette.muted : palette.ink,
       );
+      expect(tester.takeException(), isNull, reason: 'scale $scale');
+      final titleFinder = find.text(title.toUpperCase());
+      final titleText = tester.widget<Text>(titleFinder);
+      expect(tester.getSize(titleFinder).height, greaterThan(24));
+      expect(titleText.softWrap, isTrue);
+      expect(titleText.style?.fontSize, 18);
+      expect(titleText.overflow, TextOverflow.clip);
+      expect(
+        tester.getRect(titleFinder).top,
+        greaterThan(tester.getRect(find.byType(ExploreCardIconButton)).bottom),
+      );
+      expect(find.byType(ExploreLineupRow), findsNothing);
     }
   });
+
+  testWidgets(
+    'event row uses a regular mono date, muted location, and purple price',
+    (tester) async {
+      final gig = gigFixture(id: 'structured-lines', price: 12);
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(
+          plain(
+            ExploreEventRow(
+              gig: gig,
+              venueName: 'The Foghorn',
+              lines: GigCardLines(
+                dateLine: 'WED, SEP 23 AT 8PM',
+                title: gig.title,
+                location: 'Southside · 11.2 mi',
+                price: gig.priceLabel,
+              ),
+              onTap: () {},
+            ),
+            brightness: brightness,
+          ),
+        );
+        final row = find.byType(ExploreEventRow);
+        final palette = tester.element(row).epColors;
+        final date = tester.widget<Text>(find.text('WED, SEP 23 AT 8PM'));
+        expect(date.textSpan, isNull);
+        expect(date.style?.fontFamily, 'Azeret Mono');
+        expect(date.style?.fontSize, 13);
+        expect(date.style?.fontWeight, FontWeight.w400);
+        expect(date.style?.color, palette.ink);
+        expect(date.maxLines, 1);
+        expect(date.overflow, TextOverflow.ellipsis);
+        final location = tester.widget<Text>(find.text('Southside · 11.2 mi'));
+        expect(
+          location.style,
+          Theme.of(
+            tester.element(row),
+          ).textTheme.epCaption.copyWith(color: palette.muted),
+        );
+        expect(location.maxLines, 1);
+        expect(location.overflow, TextOverflow.ellipsis);
+        final price = tester.widget<Container>(
+          find.byKey(ValueKey('gig-price-${gig.id}')),
+        );
+        expect(price.color, Ep.accent);
+        expect(price.decoration, isNull);
+        final label = price.child! as Text;
+        expect(label.data, '\$12');
+        expect(label.style?.fontFamily, 'Azeret Mono');
+        expect(label.style?.fontSize, 11);
+        expect(label.style?.color, Ep.ink);
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
 
   testWidgets('lineup row shows all chips when wide and see all when narrow', (
     tester,
@@ -1002,22 +1136,6 @@ void main() {
     },
   );
 
-  testWidgets('lineup is pinned to the poster bottom edge', (tester) async {
-    await tester.pumpWidget(
-      plain(
-        ExploreEventRow(
-          gig: gigFixture(id: 'lineup-bottom'),
-          venueName: 'The Foghorn',
-          lineup: const [ExploreLineupBand(name: 'Aster', initials: 'AS')],
-          onTap: () {},
-        ),
-      ),
-    );
-    final poster = tester.getRect(find.byType(EpNetworkImage));
-    final lineup = tester.getRect(find.byType(ExploreLineupRow));
-    expect(lineup.bottom, closeTo(poster.bottom, 1));
-  });
-
   testWidgets('compact and featured cards have no ticket pills', (
     tester,
   ) async {
@@ -1038,6 +1156,12 @@ void main() {
         ExploreFeaturedCard(
           gig: gigFixture(id: 'featured-no-ticket'),
           venueName: 'The Foghorn',
+          lines: const GigCardLines(
+            dateLine: 'WED, SEP 23 AT 8PM',
+            title: 'featured-no-ticket',
+            location: 'Southside',
+            price: 'FREE',
+          ),
           onTap: () {},
         ),
       ),
@@ -1045,71 +1169,67 @@ void main() {
     expect(find.byType(EpPill), findsNothing);
   });
 
-  testWidgets('featured card renders meta and lineup chips', (tester) async {
-    final gig = gigFixture(id: 'featured-lineup', title: 'Featured Event');
-    await tester.pumpWidget(
-      plain(
-        ExploreFeaturedCard(
-          gig: gig,
-          venueName: 'The Foghorn',
-          meta: '23 Sep · 8PM · FREE · 11 MI',
-          lineup: const [
-            ExploreLineupBand(name: 'Aster', initials: 'AS'),
-            ExploreLineupBand(name: 'Briar', initials: 'BR'),
-            ExploreLineupBand(name: 'Cinder', initials: 'CI'),
-            ExploreLineupBand(name: 'Fourth', initials: 'FO'),
-          ],
-          onTap: () {},
-          width: 334,
-          height: 200,
+  testWidgets(
+    'featured card renders three lines and price without date blocks or lineup',
+    (tester) async {
+      const lines = GigCardLines(
+        dateLine: 'WED, SEP 23 AT 8PM',
+        title: 'Featured Event',
+        location: 'Southside · 11.2 mi',
+        price: 'free',
+      );
+      final gig = gigFixture(id: 'featured-lines', title: lines.title);
+      await tester.pumpWidget(
+        plain(
+          ExploreFeaturedCard(
+            gig: gig,
+            venueName: 'The Foghorn',
+            lines: lines,
+            onTap: () {},
+            width: 334,
+            height: 200,
+          ),
         ),
-      ),
-    );
-
-    expect(find.textContaining('23 SEP · 8PM · FREE · 11 MI'), findsOneWidget);
-    expect(find.text('Aster'), findsOneWidget);
-    expect(find.text('Briar'), findsNothing);
-    expect(find.text('Cinder'), findsNothing);
-    expect(find.byKey(const Key('lineup-see-all')), findsOneWidget);
-    expect(
-      tester.widget<Text>(find.text('See all')).style,
-      tester.widget<Text>(find.text('Aster')).style,
-    );
-    expect(
-      find.descendant(
-        of: find.byType(ExploreFeaturedCard),
-        matching: find.byType(EpDateBlock),
-      ),
-      findsNothing,
-    );
-  });
+      );
+      expect(find.text(lines.dateLine), findsOneWidget);
+      expect(find.text(lines.title.toUpperCase()), findsOneWidget);
+      expect(find.text(lines.location), findsOneWidget);
+      expect(find.text('FREE'), findsOneWidget);
+      expect(find.byKey(ValueKey('gig-price-${gig.id}')), findsOneWidget);
+      expect(find.byType(EpDateBlock), findsNothing);
+      expect(find.byType(ExploreLineupRow), findsNothing);
+      expect(find.byType(ExploreLineupWrap), findsNothing);
+      expect(find.byType(EpAvatarTile), findsNothing);
+      final date = tester.getRect(find.text(lines.dateLine));
+      final title = tester.getRect(find.text(lines.title.toUpperCase()));
+      final location = tester.getRect(find.text(lines.location));
+      expect(title.top - date.bottom, closeTo(8, 0.1));
+      expect(location.top - title.bottom, closeTo(6, 0.1));
+    },
+  );
 
   testWidgets(
-    'featured card uses regular info and medium lineup names at 14 points in both layouts',
+    'featured three-line typography and price match in both layouts',
     (tester) async {
-      const info = ExploreGigInfo(
-        price: 'FREE',
-        date: '23 SEP',
-        time: '8PM',
-        distance: '11 MI',
-      );
       for (final brightness in Brightness.values) {
         for (final flyKey in ['paper', 'panel']) {
           for (final size in [const Size(300, 380), const Size(334, 200)]) {
+            final gig = gigFixture(
+              id: 'featured-styles',
+              title: 'Featured Event',
+              flyKey: flyKey,
+            );
             await tester.pumpWidget(
               plain(
                 ExploreFeaturedCard(
-                  gig: gigFixture(
-                    id: 'featured-structured-info',
-                    title: 'Featured Event',
-                    flyKey: flyKey,
-                  ),
+                  gig: gig,
                   venueName: 'The Foghorn',
-                  meta: 'Legacy meta',
-                  info: info,
-                  lineup: const [
-                    ExploreLineupBand(name: 'Aster', initials: 'AS'),
-                  ],
+                  lines: GigCardLines(
+                    dateLine: 'WED, SEP 23 AT 8PM',
+                    title: gig.title,
+                    location: 'Southside · 11.2 mi',
+                    price: gig.priceLabel,
+                  ),
                   onTap: () {},
                   width: size.width,
                   height: size.height,
@@ -1117,51 +1237,37 @@ void main() {
                 brightness: brightness,
               ),
             );
-            final infoFinder = find.descendant(
-              of: find.byType(ExploreFeaturedCard),
-              matching: find.byWidgetPredicate(
-                (widget) =>
-                    widget is Text &&
-                    widget.textSpan?.toPlainText().contains(info.date) == true,
-              ),
+            final date = tester.widget<Text>(find.text('WED, SEP 23 AT 8PM'));
+            expect(date.style?.fontFamily, 'Azeret Mono');
+            expect(date.style?.fontSize, 14);
+            expect(date.style?.fontWeight, FontWeight.w400);
+            expect(date.style?.color, Ep.ink);
+            expect(date.maxLines, 1);
+            expect(date.overflow, TextOverflow.ellipsis);
+            final display = tester.widget<EpDisplay>(find.byType(EpDisplay));
+            expect(display.text, gig.title);
+            expect(display.size, 24);
+            expect(display.maxLines, 2);
+            expect(display.overflow, TextOverflow.ellipsis);
+            expect(display.color, Ep.ink);
+            final location = tester.widget<Text>(
+              find.text('Southside · 11.2 mi'),
             );
-            expect(infoFinder, findsOneWidget);
-            final infoText = tester.widget<Text>(infoFinder);
-            final infoSpan = infoText.textSpan! as TextSpan;
-            expect(infoSpan.toPlainText(), 'FREE · 23 SEP · 8PM · 11 MI');
-            expect(infoText.semanticsLabel, 'FREE · 23 SEP · 8PM · 11 MI');
-            expect(infoText.softWrap, isTrue);
-            expect(infoText.maxLines, isNull);
-            expect(infoText.overflow, isNull);
-            for (final span in infoSpan.children!.whereType<TextSpan>()) {
-              expect(span.style?.fontSize, 14);
-              expect(span.style?.fontWeight, FontWeight.w400);
-              expect(
-                span.style?.color,
-                span.text == ' · ' ? Ep.ink.withValues(alpha: 0.60) : Ep.ink,
-              );
-            }
-            final name = tester.widget<Text>(find.text('Aster'));
-            expect(name.style?.fontSize, 14);
-            expect(name.style?.fontWeight, FontWeight.w500);
-            expect(name.style?.fontFamily, 'Azeret Mono');
-            expect(name.style?.color, Ep.ink);
-            final avatarBorder = tester.widget<DecoratedBox>(
-              find.ancestor(
-                of: find.byType(EpAvatarTile),
-                matching: find.byWidgetPredicate(
-                  (widget) =>
-                      widget is DecoratedBox &&
-                      widget.position == DecorationPosition.foreground,
-                ),
-              ),
+            expect(location.style?.fontFamily, 'PP Telegraf');
+            expect(location.style?.fontSize, 14);
+            expect(location.style?.color, Ep.ink.withValues(alpha: 0.85));
+            expect(location.maxLines, 1);
+            expect(location.overflow, TextOverflow.ellipsis);
+            final price = tester.widget<Container>(
+              find.byKey(ValueKey('gig-price-${gig.id}')),
             );
-            expect(
-              (avatarBorder.decoration as BoxDecoration).border,
-              Border.all(color: Ep.ink),
-            );
-            final title = tester.widget<Text>(find.text('FEATURED EVENT'));
-            expect(title.style?.color, Ep.ink);
+            expect(price.color, Ep.accent);
+            expect(price.decoration, isNull);
+            final label = price.child! as Text;
+            expect(label.data, 'FREE');
+            expect(label.style?.fontFamily, 'Azeret Mono');
+            expect(label.style?.fontSize, 11);
+            expect(label.style?.color, Ep.ink);
             final scrim = tester.widget<DecoratedBox>(
               find.descendant(
                 of: find.byType(ExploreFeaturedCard),
@@ -1180,7 +1286,6 @@ void main() {
               Ep.background.withValues(alpha: 0),
               Ep.background.withValues(alpha: .94),
             ]);
-            expect(find.text('LEGACY META'), findsNothing);
             expect(tester.takeException(), isNull);
           }
         }
@@ -1189,14 +1294,14 @@ void main() {
   );
 
   testWidgets(
-    'featured fan actions contrast with generated flyers and photos',
+    'featured fan actions use black circles and white glyphs for every artwork',
     (tester) async {
       for (final artwork in [
-        (flyKey: 'paper', url: null, color: flyerStyles['paper']!.fg),
-        (flyKey: 'panel', url: '', color: flyerStyles['panel']!.fg),
-        (flyKey: 'accent', url: null, color: flyerStyles['accent']!.fg),
-        (flyKey: 'unknown', url: null, color: flyerStyles['paper']!.fg),
-        (flyKey: 'paper', url: 'https://example.com/flyer.jpg', color: Ep.ink),
+        (flyKey: 'paper', url: null),
+        (flyKey: 'panel', url: ''),
+        (flyKey: 'accent', url: null),
+        (flyKey: 'unknown', url: null),
+        (flyKey: 'paper', url: 'https://example.com/flyer.jpg'),
       ]) {
         final gig = gigFixture(
           id: 'featured-action-contrast',
@@ -1217,26 +1322,30 @@ void main() {
             ),
           ),
         );
-        for (final icon in [Icons.bookmark_border, Icons.ios_share]) {
-          final glyph = tester.widget<Icon>(find.byIcon(icon));
-          expect(glyph.color, artwork.color);
-          if (artwork.url != null && artwork.url!.isNotEmpty) {
-            expect(glyph.shadows, [
-              Shadow(
-                color: Ep.background.withValues(alpha: 0.60),
-                blurRadius: 4,
-              ),
-            ]);
-          } else {
-            expect(glyph.shadows, isNull);
-          }
+        expect(find.byKey(ValueKey('fan-event-${gig.id}')), findsOneWidget);
+        for (final action in ['share', 'save']) {
+          final button = find.byKey(ValueKey('$action-${gig.id}'));
+          final widget = tester.widget<ExploreCardIconButton>(button);
+          expect(widget.circle, isTrue);
+          expect(widget.ring, isFalse);
+          final glyph = tester.widget<Icon>(
+            find.descendant(of: button, matching: find.byType(Icon)),
+          );
+          expect(glyph.color, Ep.ink);
+          expect(glyph.size, 16);
+          expect(glyph.shadows, isNull);
+          final circle = tester.widget<DecoratedBox>(
+            find.descendant(of: button, matching: find.byType(DecoratedBox)),
+          );
+          final decoration = circle.decoration as BoxDecoration;
+          expect(decoration.color, Ep.background);
+          expect(decoration.shape, BoxShape.circle);
+          expect(decoration.border, isNull);
         }
-        expect(
-          tester.widget<Icon>(find.byIcon(Icons.bookmark)).color,
-          artwork.color.withValues(alpha: 0.22),
-        );
-        final info = tester.widget<Text>(find.text('FREE · 23 SEP · 8PM'));
-        expect(info.semanticsLabel, 'FREE · 23 SEP · 8PM');
+        expect(find.byIcon(Icons.bookmark), findsNothing);
+        expect(find.text('WED, SEP 23 AT 8PM'), findsOneWidget);
+        expect(find.text('FREE'), findsOneWidget);
+        expect(tester.takeException(), isNull);
       }
     },
   );
@@ -1251,7 +1360,17 @@ void main() {
     );
     await tester.pumpWidget(
       plain(
-        ExploreFeaturedCard(gig: gig, venueName: 'The Foghorn', onTap: () {}),
+        ExploreFeaturedCard(
+          gig: gig,
+          venueName: 'The Foghorn',
+          lines: GigCardLines(
+            dateLine: 'WED, SEP 23 AT 8PM',
+            title: gig.title,
+            location: 'Southside · 11.2 mi',
+            price: gig.priceLabel,
+          ),
+          onTap: () {},
+        ),
       ),
     );
 
@@ -1285,12 +1404,19 @@ void main() {
               tix: tix,
             ),
             venueName: 'The Foghorn',
+            lines: const GigCardLines(
+              dateLine: 'WED, SEP 23 AT 8PM',
+              title: 'A Long Featured Event Title',
+              location: 'Southside',
+              price: 'FREE',
+            ),
             onTap: () => tapped = true,
           ),
         ),
       );
       expect(find.text('A LONG FEATURED EVENT TITLE'), findsOneWidget);
-      expect(find.textContaining('THE FOGHORN · DOORS 8PM'), findsOneWidget);
+      expect(find.text('WED, SEP 23 AT 8PM'), findsOneWidget);
+      expect(find.text('Southside'), findsOneWidget);
       expect(find.text('RSVP'), findsNothing);
       expect(find.text('TICKETS'), findsNothing);
       expect(find.text('GOING'), findsNothing);
@@ -1299,62 +1425,42 @@ void main() {
     expect(tapped, isTrue);
   });
 
-  testWidgets('featured card shows known friends and hides them by default', (
-    tester,
-  ) async {
-    final gig = gigFixture(id: 'friends-featured');
-    final friends = [const SocialUserCard(userId: 'a', name: 'Maya')];
-    await tester.pumpWidget(
-      plain(
-        ExploreFeaturedCard(
-          gig: gig,
-          venueName: 'The Foghorn',
-          friends: friends,
-          onTap: () {},
-        ),
-      ),
-    );
-    expect(find.byType(ExploreAvatarStack), findsOneWidget);
-    expect(find.text('MAYA GOING'), findsOneWidget);
-
-    await tester.pumpWidget(
-      plain(
-        ExploreFeaturedCard(gig: gig, venueName: 'The Foghorn', onTap: () {}),
-      ),
-    );
-    expect(find.byType(ExploreAvatarStack), findsNothing);
-    expect(find.text('MAYA GOING'), findsNothing);
-  });
-
   testWidgets(
-    'featured actions and bounded friends cue occupy opposite corners',
+    'featured circle actions sit at the top-right with a four-pixel gap',
     (tester) async {
-      const friendName = 'Maya With A Very Long Name That Must Be Ellipsized';
+      final gig = gigFixture(
+        id: 'featured-action-corners',
+        title: 'Live Music',
+      );
       for (final width in [360.0, 240.0]) {
         await tester.pumpWidget(
           plain(
             Center(
               child: ExploreFeaturedCard(
-                gig: gigFixture(
-                  id: 'featured-action-corners',
-                  title: 'Live Music',
-                ),
+                gig: gig,
                 venueName: 'The Foghorn',
-                friends: const [SocialUserCard(userId: 'a', name: friendName)],
+                lines: GigCardLines(
+                  dateLine: 'WED, SEP 23 AT 8PM',
+                  title: gig.title,
+                  location: 'Southside · 11.2 mi',
+                  price: gig.priceLabel,
+                ),
                 width: width,
                 height: 180,
                 actions: [
+                  ExploreCardIconButton(
+                    key: const Key('featured-share'),
+                    icon: Icons.ios_share,
+                    semanticLabel: 'Share event',
+                    circle: true,
+                    onPressed: () {},
+                  ),
                   ExploreCardIconButton(
                     key: const Key('featured-save'),
                     icon: Icons.bookmark_border,
                     fillIcon: Icons.bookmark,
                     semanticLabel: 'Save event',
-                    onPressed: () {},
-                  ),
-                  ExploreCardIconButton(
-                    key: const Key('featured-share'),
-                    icon: Icons.ios_share,
-                    semanticLabel: 'Share event',
+                    circle: true,
                     onPressed: () {},
                   ),
                 ],
@@ -1365,91 +1471,61 @@ void main() {
           ),
         );
         expect(tester.takeException(), isNull, reason: 'width $width');
-        final cardRect = tester.getRect(find.byType(ExploreFeaturedCard));
-        final save = find.byKey(const Key('featured-save'));
-        final share = find.byKey(const Key('featured-share'));
-        for (final button in [save, share]) {
-          expect(tester.getRect(button).top - cardRect.top, closeTo(8, 1));
-          expect(tester.getSize(button), const Size(28, 28));
-          // Between each action and the card stack there is only its Row and
-          // Positioned, with no colored container or decoration behind it.
-          var reachedStack = false;
-          tester.element(button).visitAncestorElements((element) {
-            if (element.widget is Stack) {
-              reachedStack = true;
-              return false;
-            }
-            expect(element.widget, isNot(isA<Container>()));
-            expect(element.widget, isNot(isA<DecoratedBox>()));
-            return true;
-          });
-          expect(reachedStack, isTrue);
+        final card = tester.getRect(find.byType(ExploreFeaturedCard));
+        final save = tester.getRect(find.byKey(const Key('featured-save')));
+        final share = tester.getRect(find.byKey(const Key('featured-share')));
+        for (final action in [save, share]) {
+          expect(action.top - card.top, closeTo(8, 0.1));
+          expect(action.size, const Size(28, 28));
         }
-        expect(cardRect.right - tester.getRect(share).right, closeTo(8, 1));
-        expect(
-          tester.getRect(share).left - tester.getRect(save).right,
-          closeTo(4, 0.5),
-        );
-        final avatars = tester.getRect(find.byType(ExploreAvatarStack));
-        expect(avatars.left - cardRect.left, closeTo(8, 1));
-        expect(avatars.top - cardRect.top, closeTo(8, 1));
-        final cueText = find.text('$friendName going'.toUpperCase());
-        expect(tester.widget<Text>(cueText).maxLines, 1);
-        expect(tester.widget<Text>(cueText).overflow, TextOverflow.ellipsis);
-        expect(
-          tester.getRect(cueText).right,
-          lessThan(tester.getRect(save).left - 8),
-        );
+        expect(card.right - save.right, closeTo(8, 0.1));
+        expect(save.left - share.right, closeTo(4, 0.1));
       }
     },
   );
 
-  testWidgets(
-    'landscape featured card fits its title, meta and lineup at 1.0 and 1.5',
-    (tester) async {
-      final gig = gigFixture(
-        id: 'featured-landscape',
-        title: 'A Very Long Featured Event Title That Needs Trimming',
-        time: '8PM / 9PM',
-        tix: Ticketing.paid,
-      );
-      for (final scale in [1.0, 1.5]) {
-        await tester.pumpWidget(
-          plain(
-            ExploreFeaturedCard(
-              gig: gig,
-              venueName: 'A Venue With A Long Name',
-              meta: '23 Sep · 8PM · FREE · 11 MI',
-              lineup: const [
-                ExploreLineupBand(name: 'Aster', initials: 'AS'),
-                ExploreLineupBand(name: 'Briar', initials: 'BR'),
-                ExploreLineupBand(name: 'Cinder', initials: 'CI'),
-              ],
-              onTap: () {},
-              width: 334,
-              height: 200,
+  testWidgets('landscape featured card fits its three lines at 1.0 and 1.5', (
+    tester,
+  ) async {
+    final gig = gigFixture(
+      id: 'featured-landscape',
+      title: 'A Very Long Featured Event Title That Needs Trimming',
+      time: '8PM / 9PM',
+      tix: Ticketing.paid,
+    );
+    for (final scale in [1.0, 1.5]) {
+      await tester.pumpWidget(
+        plain(
+          ExploreFeaturedCard(
+            gig: gig,
+            venueName: 'A Venue With A Long Name',
+            lines: GigCardLines(
+              dateLine: 'WED, SEP 23 AT 8PM',
+              title: gig.title,
+              location: 'Southside · 11.2 mi',
+              price: gig.priceLabel,
             ),
-            textScaler: TextScaler.linear(scale),
+            onTap: () {},
+            width: 334,
+            height: 200,
           ),
-        );
-        await tester.pump();
-        expect(tester.takeException(), isNull, reason: 'scale $scale');
-        expect(
-          tester.getSize(find.byType(ExploreFeaturedCard)),
-          const Size(334, 200),
-        );
-        expect(
-          find.text('A VERY LONG FEATURED EVENT TITLE THAT NEEDS TRIMMING'),
-          findsOneWidget,
-        );
-        expect(
-          find.textContaining('23 SEP · 8PM · FREE · 11 MI'),
-          findsOneWidget,
-        );
-        expect(find.text('TICKETS'), findsNothing);
-      }
-    },
-  );
+          textScaler: TextScaler.linear(scale),
+        ),
+      );
+      await tester.pump();
+      expect(tester.takeException(), isNull, reason: 'scale $scale');
+      final card = tester.getRect(find.byType(ExploreFeaturedCard));
+      expect(card.size, const Size(334, 200));
+      expect(find.text(gig.title.toUpperCase()), findsOneWidget);
+      expect(find.text('WED, SEP 23 AT 8PM'), findsOneWidget);
+      expect(find.text('Southside · 11.2 mi'), findsOneWidget);
+      expect(find.text('TICKETS'), findsNothing);
+      final date = tester.getRect(find.text('WED, SEP 23 AT 8PM'));
+      final price = tester.getRect(find.byKey(ValueKey('gig-price-${gig.id}')));
+      expect(date.top, greaterThanOrEqualTo(card.top));
+      expect(price.bottom, lessThanOrEqualTo(card.bottom - 16));
+    }
+  });
 
   testWidgets('location row shows copy and handles taps', (tester) async {
     var tapped = false;
@@ -1804,13 +1880,23 @@ void main() {
       ExploreEventRow(
         gig: gig,
         venueName: 'A Venue With A Long Name',
-        friends: const [SocialUserCard(userId: 'a', name: 'Maya')],
+        lines: GigCardLines(
+          dateLine: 'WED, SEP 23 AT 8PM',
+          title: gig.title,
+          location: 'Southside · 11.2 mi',
+          price: gig.priceLabel,
+        ),
         onTap: () {},
       ),
       ExploreFeaturedCard(
         gig: gig,
         venueName: 'A Venue With A Long Name',
-        friends: const [SocialUserCard(userId: 'a', name: 'Maya')],
+        lines: GigCardLines(
+          dateLine: 'WED, SEP 23 AT 8PM',
+          title: gig.title,
+          location: 'Southside · 11.2 mi',
+          price: gig.priceLabel,
+        ),
         onTap: () {},
       ),
       ExploreLocationRow(label: 'A Location With A Long Name', onTap: () {}),
