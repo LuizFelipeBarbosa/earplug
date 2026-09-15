@@ -234,7 +234,6 @@ void main() {
     await _expandClusterContaining(tester, 'gig-marker-g1');
     await tester.tap(find.byKey(const Key('gig-marker-g1')));
     await tester.pumpAndSettle();
-    expect(find.text('OPEN GIG →'), findsOne);
     final cardFinder = find.byKey(const ValueKey('map-gig-card-g1'));
     expect(
       find.descendant(of: cardFinder, matching: find.byType(GigFlyer)),
@@ -308,16 +307,6 @@ void main() {
       tester.getSize(find.byKey(const Key('next-map-gig'))).height,
       lessThanOrEqualTo(32),
     );
-    final card = find.byKey(const ValueKey('map-gig-card-g2'));
-    final openButton = find.descendant(
-      of: card,
-      matching: find.widgetWithText(FilledButton, 'OPEN GIG →'),
-    );
-    final flyer = find.descendant(of: card, matching: find.byType(GigFlyer));
-    expect(
-      tester.getRect(openButton).bottom,
-      closeTo(tester.getRect(flyer).bottom, 1),
-    );
 
     await tester.tap(find.byKey(const Key('previous-map-gig')));
     await tester.pumpAndSettle();
@@ -332,7 +321,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('FOG CITY FEST — DAY SHOW'), findsOne);
 
-    await tester.tap(find.text('OPEN GIG →'));
+    await tester.tap(find.text('FOG CITY FEST — DAY SHOW'));
     await tester.pumpAndSettle();
     expect(harness.app.current.param, 'g7');
     harness.app.back();

@@ -12,6 +12,7 @@ import 'approx_area_map.dart';
 import 'common.dart';
 import 'ep_map.dart';
 import 'ep_text.dart';
+import 'fan_event_card.dart';
 
 class _Pin extends StatelessWidget {
   final int count;
@@ -432,8 +433,7 @@ class _GigMapViewState extends State<GigMapView> {
               onTapOutside: (_) => setState(() => selected = null),
               child: _MapGigCard(
                 gig: g,
-                flyer: app.flyer(g.flyKey),
-                venue: selectedGroup.venue,
+                app: app,
                 position: selectedIndex,
                 total: selectedGroup.gigs.length,
                 onPrevious: selectedIndex > 0
@@ -446,10 +446,6 @@ class _GigMapViewState extends State<GigMapView> {
                         () => selected = selectedGroup!.gigs[selectedIndex + 1],
                       )
                     : null,
-                onOpen: () {
-                  setState(() => selected = null);
-                  app.openGig(g.id);
-                },
               ),
             ),
           ),
@@ -460,33 +456,27 @@ class _GigMapViewState extends State<GigMapView> {
 
 class _MapGigCard extends StatelessWidget {
   final Gig gig;
-  final FlyerStyle flyer;
-  final Venue venue;
+  final AppState app;
   final int position;
   final int total;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
-  final VoidCallback onOpen;
 
   const _MapGigCard({
     required this.gig,
-    required this.flyer,
-    required this.venue,
+    required this.app,
     required this.position,
     required this.total,
     required this.onPrevious,
     required this.onNext,
-    required this.onOpen,
   });
 
   @override
   Widget build(BuildContext context) {
-    final areaLabel = venue.exactAddress == null ? 'Approx. area' : venue.area;
     return EpCard(
       key: ValueKey('map-gig-card-${gig.id}'),
       variant: EpCardVariant.raised,
       padding: EdgeInsets.all(total > 1 ? 10 : 12),
-      onTap: onOpen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -519,56 +509,11 @@ class _MapGigCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
           ],
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                GigFlyer(gig, flyer, width: 72, height: 96),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      EpDisplay(
-                        gig.title,
-                        size: 18,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      SizedBox(height: total > 1 ? 2 : 4),
-                      Text(
-                        '${venue.name} · $areaLabel',
-                        style: Theme.of(context).textTheme.epCaption,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        gig.dateLine,
-                        style: Theme.of(context).textTheme.epCaption,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const Spacer(),
-                      SizedBox(height: total > 1 ? 4 : 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          PriceBadge(gig),
-                          FilledButton(
-                            onPressed: onOpen,
-                            child: const Text(
-                              'OPEN GIG →',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+          FanEventCard(
+            gig: gig,
+            app: app,
+            showDistance: true,
+            rowKey: ValueKey('map-gig-${gig.id}'),
           ),
         ],
       ),

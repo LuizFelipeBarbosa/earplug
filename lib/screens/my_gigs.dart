@@ -135,16 +135,11 @@ class _MyGigsScreenState extends State<MyGigsScreen> {
                   for (final gig in upcoming)
                     Padding(
                       padding: const EdgeInsets.only(top: 16),
-                      // Keep the shared RSVP, save, share, and ticket actions.
                       child: FanEventCard(
                         key: ValueKey('upcoming-rsvp-${gig.id}'),
                         gig: gig,
                         app: app,
-                        trailingAction:
-                            gig.tix == Ticketing.rsvp &&
-                                gig.lifecycle == GigLifecycle.published
-                            ? _QrAction(gig: gig, venue: app.venue(gig.venueId))
-                            : null,
+                        showDistance: true,
                       ),
                     ),
                   if (upcoming.isNotEmpty)
@@ -174,7 +169,14 @@ class _MyGigsScreenState extends State<MyGigsScreen> {
                       onAction: () => app.resetTo(Screen.home),
                     ),
                   for (final gig in savedGigs)
-                    _GigActionsRow(gig: gig, app: app),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: FanEventCard(
+                        gig: gig,
+                        app: app,
+                        showDistance: true,
+                      ),
+                    ),
                 ],
               },
               _ProfileDetails(app: app),
@@ -373,63 +375,6 @@ class _TicketRow extends StatelessWidget {
     ),
     onTap: onTap,
   );
-}
-
-/// Secondary event controls use the shared card so save, share, RSVP, and
-/// external ticket behavior stay consistent with Going and the gig screens.
-class _GigActionsRow extends StatelessWidget {
-  const _GigActionsRow({required this.gig, required this.app});
-
-  final Gig gig;
-  final AppState app;
-
-  @override
-  Widget build(BuildContext context) {
-    final venue = app.venue(gig.venueId);
-    return EpGigRow(
-      key: ValueKey('fan-event-${gig.id}'),
-      date: gig.startsAt,
-      title: gig.title,
-      sub: [
-        venue.name,
-        'Doors ${gig.doorsLabel}',
-        gig.priceLabel,
-        if (gig.lifecycle == GigLifecycle.cancelled) 'Cancelled',
-      ].join(' · '),
-      onTap: () => app.openGig(gig.id),
-      trailing: EpIconPill(
-        key: ValueKey('gig-actions-${gig.id}'),
-        icon: Icons.more_horiz,
-        semanticLabel: 'Actions for ${gig.title}',
-        onPressed: () => showEpSheet(
-          context,
-          (sheetContext) => SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(EpLayout.gutter),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: EpIconPill(
-                      icon: Icons.close,
-                      semanticLabel: 'Close event actions',
-                      onPressed: () => Navigator.pop(sheetContext),
-                    ),
-                  ),
-                  Consumer<AppState>(
-                    builder: (context, app, _) =>
-                        FanEventCard(gig: gig, app: app),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _ListNote extends StatelessWidget {
@@ -1112,23 +1057,6 @@ class _SetupStep extends StatelessWidget {
         const SizedBox(height: 8),
         child,
       ],
-    );
-  }
-}
-
-class _QrAction extends StatelessWidget {
-  const _QrAction({required this.gig, required this.venue});
-
-  final Gig gig;
-  final Venue venue;
-
-  @override
-  Widget build(BuildContext context) {
-    return EpIconPill(
-      key: ValueKey('show-qr-${gig.id}'),
-      semanticLabel: 'Show QR code',
-      onPressed: () => showQrDialog(context, gig, venue),
-      icon: Icons.qr_code_2,
     );
   }
 }
