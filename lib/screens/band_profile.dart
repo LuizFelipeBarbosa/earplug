@@ -14,6 +14,7 @@ import '../widgets/branding.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
+import '../widgets/fan_event_card.dart';
 import '../widgets/photo_viewer.dart';
 import '../widgets/video_player_sheet.dart';
 import '../widgets/video_thumbnail.dart';
@@ -174,7 +175,22 @@ class _BandProfileViewState extends State<_BandProfileView> {
                 extent: 56 + topInset,
               ),
             ),
-            if (soundVideos.isNotEmpty || photos.isNotEmpty)
+            if (soundVideos.isNotEmpty) ...[
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: EpLayout.gutter),
+                  child: Column(children: [SizedBox(height: 20), EpHairline()]),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _BandSoundPanel(
+                  band: band,
+                  app: app,
+                  videos: soundVideos,
+                ),
+              ),
+            ],
+            if (photos.isNotEmpty)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -183,19 +199,12 @@ class _BandProfileViewState extends State<_BandProfileView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const SizedBox(height: 20),
-                      const EpHairline(),
-                      const EpSectionHeader(
-                        label: 'This is what we sound like',
-                        padding: EdgeInsets.only(top: 24, bottom: 12),
+                      EpSectionHeader(
+                        label:
+                            'Photos ${photos.length.toString().padLeft(2, '0')}',
+                        padding: const EdgeInsets.only(top: 24, bottom: 12),
                       ),
-                      _BandMediaGrid(
-                        band: band,
-                        app: app,
-                        videos: soundVideos,
-                        pinnedId: pinned?.id,
-                        photos: photos,
-                      ),
+                      _BandPhotoGrid(photos: photos),
                     ],
                   ),
                 ),
@@ -208,14 +217,21 @@ class _BandProfileViewState extends State<_BandProfileView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    EpSectionHeader(label: 'Upcoming · ${upcoming.length}'),
+                    EpSectionHeader(
+                      label:
+                          'Upcoming · ${upcoming.length} '
+                          '${upcoming.length == 1 ? 'SHOW' : 'SHOWS'}',
+                      padding: const EdgeInsets.only(top: 24, bottom: 12),
+                    ),
                     for (final gig in upcoming)
-                      _UpcomingGig(gig: gig, app: app),
-                    if (upcoming.isEmpty)
-                      Text(
-                        'Nothing on the calendar right now.',
-                        style: bodyStyle,
+                      FanEventCard(
+                        gig: gig,
+                        app: app,
+                        showDistance: true,
+                        rowKey: ValueKey('fan-event-${gig.id}'),
                       ),
+                    if (upcoming.isEmpty)
+                      _UpcomingEmptyState(band: band, app: app),
                   ],
                 ),
               ),
@@ -681,19 +697,49 @@ Uri bandLinkUri(String raw, {required bool instagram}) {
   return Uri.https('instagram.com', value.replaceFirst(RegExp(r'^@'), ''));
 }
 
-class _BandMediaGrid extends StatelessWidget {
-  const _BandMediaGrid({
+class _BandSoundPanel extends StatelessWidget {
+  const _BandSoundPanel({
     required this.band,
     required this.app,
     required this.videos,
-    required this.pinnedId,
-    required this.photos,
   });
 
   final Band band;
   final AppState app;
   final List<BandMedia> videos;
-  final String? pinnedId;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = videos.length.toString().padLeft(2, '0');
+    final unit = videos.length == 1 ? 'VIDEO' : 'VIDEOS';
+    return EpPanel(
+      striped: true,
+      padding: const EdgeInsets.fromLTRB(
+        EpLayout.gutter,
+        0,
+        EpLayout.gutter,
+        20,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          EpSectionHeader(
+            label: 'This is what we sound like · $count $unit',
+            padding: const EdgeInsets.only(top: 24, bottom: 12),
+          ),
+          for (var index = 0; index < videos.length; index++) ...[
+            if (index > 0) const SizedBox(height: 20),
+            _ClipTile(clip: videos[index], band: band, app: app),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BandPhotoGrid extends StatelessWidget {
+  const _BandPhotoGrid({required this.photos});
+
   final List<BandMedia> photos;
 
   @override
@@ -705,19 +751,6 @@ class _BandMediaGrid extends StatelessWidget {
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final clip in videos)
-              SizedBox(
-                width: width,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: width * 104 / 168),
-                  child: _ClipTile(
-                    clip: clip,
-                    band: band,
-                    app: app,
-                    pinned: clip.id == pinnedId,
-                  ),
-                ),
-              ),
             for (var index = 0; index < photos.length; index++)
               SizedBox(
                 width: width,
@@ -728,7 +761,7 @@ class _BandMediaGrid extends StatelessWidget {
                     label: photos[index].title,
                     child: Material(
                       key: ValueKey('band-photo-${photos[index].id}'),
-                      color: Colors.transparent,
+                      type: MaterialType.transparency,
                       child: InkWell(
                         onTap: () => showPhotoViewer(context, photos, index),
                         child: EpPanel(
@@ -750,206 +783,140 @@ class _BandMediaGrid extends StatelessWidget {
 }
 
 class _ClipTile extends StatelessWidget {
-  const _ClipTile({
-    required this.clip,
-    required this.band,
-    required this.app,
-    required this.pinned,
-  });
+  const _ClipTile({required this.clip, required this.band, required this.app});
 
   final BandMedia clip;
   final Band band;
   final AppState app;
-  final bool pinned;
 
   @override
   Widget build(BuildContext context) {
     final processing = clip.url == null || clip.url!.isEmpty;
-    final metadata = [
-      if (pinned) 'Pinned',
-      if (processing)
-        'Processing'
-      else if (clip.lenLabel.isNotEmpty)
-        clip.lenLabel,
-    ].join(' · ');
+    final metadata = processing ? 'Processing' : clip.lenLabel;
     final colors = context.epColors;
-    return Semantics(
-      button: true,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            if (processing) {
-              app.say('That clip is still processing.');
-              return;
-            }
-            showBandVideo(context, media: clip, bandName: band.name);
-          },
-          child: EpPanel(
-            child: Stack(
-              fit: StackFit.passthrough,
-              children: [
-                Positioned.fill(
-                  child: BandVideoThumbnail(
-                    media: clip,
-                    fallback: const EpPanel(striped: true),
-                  ),
-                ),
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          colors.background.withValues(alpha: .65),
-                          Colors.transparent,
-                          colors.background.withValues(alpha: .85),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AspectRatio(
+          aspectRatio: 16 / 9,
+          child: Semantics(
+            button: true,
+            label: clip.title,
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                key: ValueKey('band-clip-${clip.id}'),
+                onTap: () {
+                  if (processing) {
+                    app.say('That clip is still processing.');
+                    return;
+                  }
+                  showBandVideo(context, media: clip, bandName: band.name);
+                },
+                child: EpPanel(
+                  child: Stack(
+                    fit: StackFit.expand,
                     children: [
-                      if (metadata.isNotEmpty)
-                        EpMonoText(
-                          metadata,
-                          color: pinned ? colors.accent : colors.muted,
+                      BandVideoThumbnail(
+                        media: clip,
+                        fallback: const EpPanel(striped: true),
+                      ),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              colors.background.withValues(alpha: .65),
+                              colors.background.withValues(alpha: 0),
+                              colors.background.withValues(alpha: .85),
+                            ],
+                          ),
                         ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8),
-                        child: Center(child: PlayTriangle(size: 16)),
                       ),
-                      Text(
-                        clip.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.epBody,
-                      ),
+                      if (clip.pinned)
+                        Positioned(
+                          top: 10,
+                          left: 10,
+                          child: EpMonoText('Pinned', color: colors.accent),
+                        ),
+                      const Center(child: PlayTriangle(size: 24)),
+                      if (metadata.isNotEmpty)
+                        Positioned(
+                          bottom: 10,
+                          right: 10,
+                          child: EpMonoText(metadata, color: colors.muted),
+                        ),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
-      ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '${band.name} — ${clip.title}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.epBody,
+              ),
+            ),
+            const SizedBox(width: 12),
+            EpMonoText(
+              'REC · ${_areaStateLabel(band.area)}',
+              color: colors.muted,
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
 
-class _UpcomingGig extends StatelessWidget {
-  const _UpcomingGig({required this.gig, required this.app});
+String _areaStateLabel(String area) {
+  final trimmed = area.trim();
+  final lastComma = trimmed.lastIndexOf(',');
+  return lastComma == -1 ? trimmed : trimmed.substring(lastComma + 1).trim();
+}
 
-  final Gig gig;
+class _UpcomingEmptyState extends StatelessWidget {
+  const _UpcomingEmptyState({required this.band, required this.app});
+
+  final Band band;
   final AppState app;
 
   @override
   Widget build(BuildContext context) {
-    final venue = app.venue(gig.venueId);
-    final cancelled = gig.lifecycle == GigLifecycle.cancelled;
-    final going = app.rsvps.contains(gig.id);
-    final external = gig.tix == Ticketing.external;
-    final lineup = [
-      for (final id in gig.lineup)
-        if (app.band(id) case final Band band) band.name,
-    ];
-    return Column(
-      key: ValueKey('fan-event-${gig.id}'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (app.isDiscoveryBoosted(gig))
-          EpEyebrow(
-            'Discovery boost · Complete listing',
-            key: ValueKey('discovery-boost-${gig.id}'),
+    final following = app.follows.contains(band.id);
+    return DashedBox(
+      color: context.epColors.line,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.event_note_outlined, color: context.epColors.muted),
+          const SizedBox(height: 12),
+          const EpDisplay('No shows yet.', size: 20),
+          const SizedBox(height: 8),
+          Text(
+            'Follow ${band.name} to hear about new dates.',
+            style: Theme.of(
+              context,
+            ).textTheme.epBody.copyWith(color: context.epColors.muted),
+            textAlign: TextAlign.center,
           ),
-        Semantics(
-          label: gig.dateShort,
-          child: EpGigRow(
-            date: gig.startsAt,
-            title: gig.title,
-            sub: [
-              if (venue.id.isNotEmpty) venue.name,
-              if (venue.area.trim().isNotEmpty) venue.area,
-              if (gig.doorsLabel.trim().isNotEmpty) 'Doors ${gig.doorsLabel}',
-              gig.priceLabel,
-              if (lineup.isNotEmpty) lineup.join(' · '),
-            ].join(' · '),
-            onTap: () => app.openGig(gig.id),
+          const SizedBox(height: 16),
+          EpPill(
+            key: const ValueKey('band-upcoming-follow'),
+            label: following ? 'Following ✓' : 'Follow',
+            variant: following ? EpPillVariant.ink : EpPillVariant.primary,
+            onPressed: () => app.requestFollow(band.id),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(top: 8, bottom: 12),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              EpMonoText(
-                '${gig.ageRequirement.label} · '
-                '${cancelled ? 'Cancelled' : '${app.rsvpCount(gig)} going'}',
-                color: context.epColors.muted,
-              ),
-              Wrap(
-                key: ValueKey('event-actions-${gig.id}'),
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  EpIconPill(
-                    key: ValueKey('save-${gig.id}'),
-                    semanticLabel: app.saved.contains(gig.id)
-                        ? 'Remove saved event'
-                        : 'Save event',
-                    icon: app.saved.contains(gig.id)
-                        ? Icons.bookmark
-                        : Icons.bookmark_border,
-                    onPressed: () => app.requestSave(gig.id),
-                  ),
-                  EpIconPill(
-                    key: ValueKey('share-${gig.id}'),
-                    semanticLabel: 'Share event',
-                    icon: Icons.ios_share,
-                    onPressed: () => copyForUser(
-                      context,
-                      publicWebUrl('g/${gig.publicRef}'),
-                      successMessage:
-                          'Link copied: ${publicWebDisplayUrl('g/${gig.publicRef}')}',
-                    ),
-                  ),
-                  if (!cancelled)
-                    EpPill(
-                      key: ValueKey('ticket-action-${gig.id}'),
-                      label: external
-                          ? 'Tickets ↗'
-                          : (going ? 'Going ✓' : 'RSVP'),
-                      onPressed: () {
-                        if (external) {
-                          final url = gig.externalUrl;
-                          if (url == null || url.isEmpty) {
-                            app.say('No ticket link listed for this gig.');
-                            return;
-                          }
-                          openExternalForUser(context, url);
-                        } else if (going) {
-                          app.toggleRsvp(gig.id);
-                        } else {
-                          app.requestRsvp(gig.id);
-                        }
-                      },
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

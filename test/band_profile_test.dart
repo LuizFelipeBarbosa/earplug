@@ -598,20 +598,177 @@ void main() {
     expect(harness.app.current.screen, Screen.bandPreview);
   });
 
-  testWidgets('profile renders all demo photo tiles', (tester) async {
+  testWidgets('sound panel spans the page and stacks the pinned clip first', (
+    tester,
+  ) async {
     await _pumpProfile(tester);
-
+    final header = find.text('THIS IS WHAT WE SOUND LIKE · 05 VIDEOS');
     await tester.scrollUntilVisible(
-      find.text('THIS IS WHAT WE SOUND LIKE'),
+      header,
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    final mediaSection = find.ancestor(
-      of: find.text('THIS IS WHAT WE SOUND LIKE'),
+
+    final panel = find.ancestor(of: header, matching: find.byType(EpPanel));
+    final pageRect = tester.getRect(find.byType(CustomScrollView));
+    final panelRect = tester.getRect(panel);
+    expect(tester.widget<EpPanel>(panel).striped, isTrue);
+    expect(panelRect.left, pageRect.left);
+    expect(panelRect.right, pageRect.right);
+    expect(tester.getTopLeft(header).dx, pageRect.left + EpLayout.gutter);
+
+    final videos = DemoData.b1Media.where((media) => media.isVideo).toList();
+    final tiles = find.descendant(
+      of: panel,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is InkWell &&
+            widget.key is ValueKey<String> &&
+            (widget.key! as ValueKey<String>).value.startsWith('band-clip-'),
+      ),
+    );
+    expect(tiles, findsNWidgets(videos.length));
+    expect(tester.widget(tiles.first).key, const ValueKey('band-clip-bm1'));
+    expect(find.text('PINNED'), findsOneWidget);
+    expect(
+      find.descendant(of: tiles.first, matching: find.text('PINNED')),
+      findsOneWidget,
+    );
+    for (var index = 0; index < videos.length; index++) {
+      final rect = tester.getRect(tiles.at(index));
+      expect(rect.left, pageRect.left + EpLayout.gutter);
+      expect(rect.right, pageRect.right - EpLayout.gutter);
+      expect(rect.width / rect.height, closeTo(16 / 9, .001));
+      if (index > 0) {
+        expect(
+          rect.top,
+          greaterThan(tester.getRect(tiles.at(index - 1)).bottom),
+        );
+      }
+    }
+  });
+
+  testWidgets('a pinned clip moves ahead of earlier unpinned clips', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final videos = DemoData.b1Media.where((media) => media.isVideo).toList();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: StubRepository(auth: auth)
+        ..returns('mediaFor', [
+          for (final clip in videos) clip.copyWith(pinned: clip.id == 'bm3'),
+        ]),
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+
+    final firstClip = find.byKey(const ValueKey('band-clip-bm3'));
+    await tester.scrollUntilVisible(
+      firstClip,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('PINNED'), findsOneWidget);
+    expect(
+      find.descendant(of: firstClip, matching: find.text('PINNED')),
+      findsOneWidget,
+    );
+    final displayOrder = ['bm3', 'bm1', 'bm2', 'bm4', 'bm5'];
+    for (var index = 1; index < displayOrder.length; index++) {
+      expect(
+        tester
+            .getTopLeft(
+              find.byKey(ValueKey('band-clip-${displayOrder[index]}')),
+            )
+            .dy,
+        greaterThan(
+          tester
+              .getTopLeft(
+                find.byKey(ValueKey('band-clip-${displayOrder[index - 1]}')),
+              )
+              .dy,
+        ),
+      );
+    }
+  });
+
+  testWidgets('a fallback first video is not tagged pinned', (tester) async {
+    final auth = FakeAuthService();
+    final clip = DemoData.b1Media.first.copyWith(pinned: false);
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: StubRepository(auth: auth)..returns('mediaFor', [clip]),
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+
+    final header = find.text('THIS IS WHAT WE SOUND LIKE · 01 VIDEO');
+    await tester.scrollUntilVisible(
+      header,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(header, findsOneWidget);
+    expect(find.byKey(ValueKey('band-clip-${clip.id}')), findsOneWidget);
+    expect(find.text('PINNED'), findsNothing);
+    expect(find.text('PHOTOS 00'), findsNothing);
+  });
+
+  for (final area in [
+    'Berkeley, CA',
+    ' Berkeley, Alameda, CA ',
+    ' Berkeley ',
+  ]) {
+    testWidgets('clip captions use the band name and area suffix for "$area"', (
+      tester,
+    ) async {
+      final auth = FakeAuthService();
+      final band = DemoData.bands['b1']!.copyWith(area: area);
+      await pumpApp(
+        tester,
+        auth: auth,
+        repository: _profileRepository(auth: auth, profileBand: band),
+        home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+      );
+
+      final caption = find.text(
+        '${band.name} — ${DemoData.b1Media.first.title}',
+      );
+      await tester.scrollUntilVisible(
+        caption,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(caption, findsOneWidget);
+      expect(
+        find.text(area.contains(',') ? 'REC · CA' : 'REC · BERKELEY'),
+        findsNWidgets(5),
+      );
+    });
+  }
+
+  testWidgets('profile renders all demo photo tiles in a separate section', (
+    tester,
+  ) async {
+    await _pumpProfile(tester);
+
+    final header = find.text('PHOTOS 02');
+    await tester.scrollUntilVisible(
+      header,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(header, findsOneWidget);
+    final photosSection = find.ancestor(
+      of: header,
       matching: find.byType(SliverToBoxAdapter),
     );
     expect(
-      find.descendant(of: mediaSection, matching: find.text('PHOTOS')),
+      find.descendant(
+        of: photosSection,
+        matching: find.textContaining('THIS IS WHAT WE SOUND LIKE'),
+      ),
       findsNothing,
     );
     for (final photo in DemoData.b1Media.where(
@@ -624,8 +781,43 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(tile, findsOne);
+      expect(
+        find.descendant(of: photosSection, matching: tile),
+        findsOneWidget,
+      );
     }
   });
+
+  for (final withPhoto in [false, true]) {
+    testWidgets('no videos omit the sound panel (with photo: $withPhoto)', (
+      tester,
+    ) async {
+      final auth = FakeAuthService();
+      final photo = DemoData.b1Media.firstWhere((media) => !media.isVideo);
+      await pumpApp(
+        tester,
+        auth: auth,
+        repository: StubRepository(auth: auth)
+          ..returns('mediaFor', <BandMedia>[if (withPhoto) photo]),
+        home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+      );
+
+      await tester.scrollUntilVisible(
+        find.textContaining('UPCOMING · '),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.textContaining('THIS IS WHAT WE SOUND LIKE'), findsNothing);
+      expect(
+        find.textContaining('PHOTOS '),
+        withPhoto ? findsOneWidget : findsNothing,
+      );
+      if (withPhoto) {
+        expect(find.text('PHOTOS 01'), findsOneWidget);
+        expect(find.byKey(ValueKey('band-photo-${photo.id}')), findsOneWidget);
+      }
+    });
+  }
 
   testWidgets('a processing clip stays on the profile and shows a toast', (
     tester,
@@ -634,11 +826,24 @@ void main() {
     final clip = DemoData.b1Media.firstWhere(
       (media) => media.isVideo && !media.pinned,
     );
-    final clipTitle = find.text(clip.title);
-    await tester.ensureVisible(clipTitle);
+    final clipPanel = find.byKey(ValueKey('band-clip-${clip.id}'));
+    await tester.scrollUntilVisible(
+      clipPanel,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await Scrollable.ensureVisible(tester.element(clipPanel), alignment: 0.5);
     await tester.pumpAndSettle();
 
-    await tester.tap(clipTitle);
+    expect(
+      find.descendant(of: clipPanel, matching: find.text('PROCESSING')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: clipPanel, matching: find.text(clip.lenLabel)),
+      findsNothing,
+    );
+    await tester.tap(clipPanel);
     await tester.pump();
 
     expect(harness.app.toast, 'That clip is still processing.');
@@ -649,6 +854,129 @@ void main() {
     );
 
     // Flush app.say's 2.2s toast-clear timer so teardown sees no pending timer.
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  for (final upcoming in [
+    DemoData.bands['b1']!.upcoming,
+    ['g2'],
+  ]) {
+    testWidgets(
+      'upcoming renders shared event rows for ${upcoming.length} shows',
+      (tester) async {
+        final auth = FakeAuthService();
+        final band = DemoData.bands['b1']!.copyWith(upcoming: upcoming);
+        final harness = await pumpApp(
+          tester,
+          auth: auth,
+          repository: _profileRepository(
+            auth: auth,
+            profileBand: band,
+            feedGigs: [
+              for (final id in upcoming)
+                DemoData.gigs.firstWhere((gig) => gig.id == id),
+            ],
+          ),
+          home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+        );
+        final header = find.text(
+          upcoming.length == 1 ? 'UPCOMING · 1 SHOW' : 'UPCOMING · 2 SHOWS',
+        );
+        await tester.scrollUntilVisible(
+          header,
+          200,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(header, findsOneWidget);
+        double? previousBottom;
+        for (final id in upcoming) {
+          final row = find.byKey(ValueKey('fan-event-$id'));
+          expect(row, findsOneWidget);
+          final rect = tester.getRect(row);
+          if (previousBottom != null) {
+            expect(rect.top, greaterThanOrEqualTo(previousBottom));
+          }
+          previousBottom = rect.bottom;
+          for (final action in ['save', 'share']) {
+            expect(
+              find.descendant(
+                of: row,
+                matching: find.byKey(ValueKey('$action-$id')),
+              ),
+              findsOneWidget,
+            );
+          }
+          expect(find.byKey(ValueKey('ticket-action-$id')), findsNothing);
+        }
+
+        final firstRow = find.byKey(ValueKey('fan-event-${upcoming.first}'));
+        await Scrollable.ensureVisible(
+          tester.element(firstRow),
+          alignment: 0.5,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(
+            of: firstRow,
+            matching: find.text(
+              harness.app.gig(upcoming.first)!.title.toUpperCase(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(harness.app.current.screen, Screen.gig);
+        expect(harness.app.current.param, upcoming.first);
+      },
+    );
+  }
+
+  testWidgets('empty upcoming section lets the fan follow the band', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final band = DemoData.bands['b1']!.copyWith(upcoming: const []);
+    final repository = _profileRepository(
+      auth: auth,
+      profileBand: band,
+      feedGigs: const [],
+    );
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+
+    final follow = find.byKey(const ValueKey('band-upcoming-follow'));
+    await tester.scrollUntilVisible(
+      follow,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('UPCOMING · 0 SHOWS'), findsOneWidget);
+    final box = find.ancestor(of: follow, matching: find.byType(DashedBox));
+    expect(box, findsOneWidget);
+    expect(
+      find.descendant(of: box, matching: find.text('NO SHOWS YET.')),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Follow ${band.name} to hear about new dates.'),
+      findsOneWidget,
+    );
+    expect(harness.app.follows, isNot(contains(band.id)));
+    expect(tester.widget<EpPill>(follow).variant, EpPillVariant.primary);
+
+    await Scrollable.ensureVisible(tester.element(follow), alignment: 0.5);
+    await tester.pumpAndSettle();
+    await tester.tap(follow);
+    await tester.pumpAndSettle();
+
+    expect(repository.callsTo('toggleFollow'), 1);
+    expect(harness.app.follows, contains(band.id));
+    expect(tester.widget<EpPill>(follow).label, 'Following ✓');
+    expect(tester.widget<EpPill>(follow).variant, EpPillVariant.ink);
     await tester.pump(const Duration(seconds: 3));
   });
 
@@ -739,6 +1067,7 @@ StubRepository _profileRepository({
   required AuthService auth,
   Band? profileBand,
   BandProfileDetails? details,
+  List<Gig>? feedGigs,
   String role = 'admin',
   List<String> managedBandIds = const ['b1'],
 }) {
@@ -748,7 +1077,7 @@ StubRepository _profileRepository({
       'feed',
       () => Stream.value(
         FeedSnapshot(
-          gigs: DemoData.gigs,
+          gigs: feedGigs ?? DemoData.gigs,
           venues: DemoData.venues,
           bands: {...DemoData.bands, profileBand.id: profileBand},
         ),
