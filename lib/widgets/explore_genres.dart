@@ -113,6 +113,7 @@ class ExploreGenrePageBody extends StatelessWidget {
       EpEyebrow('$gigPhrase · $bandPhrase'),
     ];
 
+    var endedInRowList = false;
     if (page.gigCount == 0) {
       children.addAll([
         Text(
@@ -130,19 +131,31 @@ class ExploreGenrePageBody extends StatelessWidget {
         ),
       ]);
     } else {
-      _addBucket(children, 'Tonight', page.tonight);
-      _addBucket(children, 'This week', page.week);
-      _addBucket(children, 'Later', page.later);
+      endedInRowList = _addBucket(
+        children,
+        'Tonight',
+        page.tonight,
+        afterRowList: endedInRowList,
+      );
+      endedInRowList = _addBucket(
+        children,
+        'This week',
+        page.week,
+        afterRowList: endedInRowList,
+      );
+      endedInRowList = _addBucket(
+        children,
+        'Later',
+        page.later,
+        afterRowList: endedInRowList,
+      );
     }
 
     if (page.bandIds.isNotEmpty) {
       children.addAll([
         EpSectionHeader(
           label: 'Bands playing ${page.label.toUpperCase()}',
-          padding: const EdgeInsets.only(
-            top: kFeedSectionGap,
-            bottom: kFeedHeaderGap,
-          ),
+          padding: feedSectionHeaderPadding(afterRowList: endedInRowList),
         ),
         // Same extent as the browse page's BANDS rail: sized to the tile's
         // tallest content so no dead space opens up above the All bands row.
@@ -172,19 +185,25 @@ class ExploreGenrePageBody extends StatelessWidget {
     );
   }
 
-  void _addBucket(List<Widget> children, String label, List<Gig> gigs) {
-    if (gigs.isEmpty) return;
+  bool _addBucket(
+    List<Widget> children,
+    String label,
+    List<Gig> gigs, {
+    required bool afterRowList,
+  }) {
+    if (gigs.isEmpty) return afterRowList;
     children.add(
       EpSectionHeader(
         label: '$label · ${gigs.length}',
-        padding: const EdgeInsets.only(
-          top: kFeedSectionGap,
-          bottom: kFeedHeaderGap,
+        padding: feedSectionHeaderPadding(
+          afterRowList: afterRowList,
+          beforeRowList: true,
         ),
       ),
     );
     children.addAll(
       gigs.map((gig) => FanEventCard(gig: gig, app: app, showDistance: true)),
     );
+    return true;
   }
 }

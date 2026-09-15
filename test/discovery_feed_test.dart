@@ -517,7 +517,13 @@ void main() {
       final bands = find.byKey(const Key('feed-bands'));
       final sections = [
         // The pinned controls no longer precede FEATURED after scrolling.
-        (label: 'FEATURED', previous: null, content: featured),
+        (
+          label: 'FEATURED',
+          previous: null,
+          content: featured,
+          previousIsRowList: false,
+          contentIsRowList: false,
+        ),
         (
           label: 'JUST FOR YOU · ${forYou.length}',
           previous: featured,
@@ -525,6 +531,8 @@ void main() {
             Key('feed-for-you-${forYou.first.id}'),
             skipOffstage: false,
           ),
+          previousIsRowList: false,
+          contentIsRowList: true,
         ),
         (
           label: 'VENUES',
@@ -533,9 +541,51 @@ void main() {
             skipOffstage: false,
           ),
           content: venues,
+          previousIsRowList: true,
+          contentIsRowList: false,
         ),
-        (label: 'BANDS', previous: venues, content: bands),
+        (
+          label: 'BANDS',
+          previous: venues,
+          content: bands,
+          previousIsRowList: false,
+          contentIsRowList: false,
+        ),
       ];
+      double visibleBottom(Finder finder, bool isRowList) => tester
+          .getRect(
+            isRowList
+                ? find
+                      .descendant(
+                        of: finder,
+                        matching: find.byType(
+                          IntrinsicHeight,
+                          skipOffstage: false,
+                        ),
+                        skipOffstage: false,
+                      )
+                      .first
+                : finder,
+          )
+          .bottom;
+
+      double visibleTop(Finder finder, bool isRowList) => tester
+          .getRect(
+            isRowList
+                ? find
+                      .descendant(
+                        of: finder,
+                        matching: find.byType(
+                          IntrinsicHeight,
+                          skipOffstage: false,
+                        ),
+                        skipOffstage: false,
+                      )
+                      .first
+                : finder,
+          )
+          .top;
+
       for (final section in sections) {
         // Measure the header's row, excluding outer padding and including
         // the full See more tap target where present.
@@ -553,13 +603,14 @@ void main() {
         final headerRect = tester.getRect(headerRow);
         if (section.previous case final previous?) {
           expect(
-            headerRect.top - tester.getRect(previous).bottom,
+            headerRect.top - visibleBottom(previous, section.previousIsRowList),
             closeTo(kFeedSectionGap, 1),
             reason: '${section.label}: previous content to header',
           );
         }
         expect(
-          tester.getRect(section.content).top - headerRect.bottom,
+          visibleTop(section.content, section.contentIsRowList) -
+              headerRect.bottom,
           closeTo(kFeedHeaderGap, 1),
           reason: '${section.label}: header to first content',
         );

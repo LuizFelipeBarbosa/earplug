@@ -115,10 +115,7 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
             child: _gutter(
               EpSectionHeader(
                 label: 'FEATURED',
-                padding: const EdgeInsets.only(
-                  top: kFeedSectionGap,
-                  bottom: kFeedHeaderGap,
-                ),
+                padding: feedSectionHeaderPadding(),
               ),
             ),
           ),
@@ -161,9 +158,8 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
           child: _gutter(
             EpSectionHeader(
               label: 'JUST FOR YOU · ${home.forYou.length}',
-              padding: const EdgeInsets.only(
-                top: kFeedSectionGap,
-                bottom: kFeedHeaderGap,
+              padding: feedSectionHeaderPadding(
+                beforeRowList: home.forYou.isNotEmpty,
               ),
             ),
           ),
@@ -211,9 +207,8 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
                 action: 'See more',
                 actionKey: const Key('feed-toggle-venues'),
                 onAction: () => app.go(Screen.exploreCollection, 'venues'),
-                padding: const EdgeInsets.only(
-                  top: kFeedSectionGap,
-                  bottom: kFeedHeaderGap,
+                padding: feedSectionHeaderPadding(
+                  afterRowList: home.forYou.isNotEmpty,
                 ),
               ),
             ),

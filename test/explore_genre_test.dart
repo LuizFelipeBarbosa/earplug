@@ -5,6 +5,7 @@ import 'package:earplug/explore_ranking.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_carousel.dart';
+import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/explore_genres.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
@@ -60,8 +61,6 @@ ExploreGenrePage _page({
   bandIds: bandIds,
 );
 
-Widget _textBandTile(String id) => Text(id);
-
 void main() {
   testWidgets('rail renders All and chips in order with feed counts', (
     tester,
@@ -101,9 +100,7 @@ void main() {
     await tester.pump();
     expect(selections, ['punk']);
     expect(
-      tester
-          .widget<EpPill>(find.byKey(const Key('feed-genre-punk')))
-          .selected,
+      tester.widget<EpPill>(find.byKey(const Key('feed-genre-punk'))).selected,
       isTrue,
     );
     await tester.tap(find.byKey(const Key('feed-genre-punk')));
@@ -139,9 +136,11 @@ void main() {
                 tonight: [gigs[0]],
                 week: [gigs[1]],
                 later: [gigs[2]],
+                bandIds: const ['b1'],
               ),
               app: context.read<AppState>(),
-              bandTile: _textBandTile,
+              bandTile: (id) =>
+                  SizedBox(key: ValueKey('band-tile-$id'), height: 40),
               onAllBands: () {},
             ),
           ),
@@ -152,14 +151,51 @@ void main() {
     expect(find.text('TONIGHT · 1'), findsOneWidget);
     expect(find.text('THIS WEEK · 1'), findsOneWidget);
     expect(find.text('LATER · 1'), findsOneWidget);
-    final tonightHeader = tester.getTopLeft(find.text('TONIGHT · 1')).dy;
-    final weekHeader = tester.getTopLeft(find.text('THIS WEEK · 1')).dy;
-    final laterHeader = tester.getTopLeft(find.text('LATER · 1')).dy;
-    expect(tonightHeader, lessThan(weekHeader));
-    expect(weekHeader, lessThan(laterHeader));
+    expect(find.text('BANDS PLAYING PUNK'), findsOneWidget);
+    expect(find.byKey(const Key('band-tile-b1')), findsOneWidget);
+
+    Rect headerRect(String label) => tester.getRect(
+      find
+          .descendant(
+            of: find.widgetWithText(EpSectionHeader, label),
+            matching: find.byType(Row),
+          )
+          .first,
+    );
+
+    Rect visibleRowRect(String gigId) => tester.getRect(
+      find
+          .descendant(
+            of: find.byKey(Key('fan-event-$gigId')),
+            matching: find.byType(IntrinsicHeight),
+          )
+          .first,
+    );
+
+    final tonightHeader = headerRect('TONIGHT · 1');
+    final weekHeader = headerRect('THIS WEEK · 1');
+    final laterHeader = headerRect('LATER · 1');
+    expect(tonightHeader.top, lessThan(weekHeader.top));
+    expect(weekHeader.top, lessThan(laterHeader.top));
     expect(find.byKey(const Key('fan-event-tonight-1')), findsOneWidget);
     expect(find.byKey(const Key('fan-event-week-1')), findsOneWidget);
     expect(find.byKey(const Key('fan-event-later-1')), findsOneWidget);
+
+    final tonightContent = visibleRowRect('tonight-1');
+    expect(
+      tonightContent.top - tonightHeader.bottom,
+      closeTo(kFeedHeaderGap, 1),
+    );
+    expect(weekHeader.top - tonightContent.bottom, closeTo(kFeedSectionGap, 1));
+    final weekContent = visibleRowRect('week-1');
+    expect(weekContent.top - weekHeader.bottom, closeTo(kFeedHeaderGap, 1));
+    expect(laterHeader.top - weekContent.bottom, closeTo(kFeedSectionGap, 1));
+    final laterContent = visibleRowRect('later-1');
+    expect(laterContent.top - laterHeader.bottom, closeTo(kFeedHeaderGap, 1));
+    expect(
+      headerRect('BANDS PLAYING PUNK').top - laterContent.bottom,
+      closeTo(kFeedSectionGap, 1),
+    );
   });
 
   testWidgets('body empty state still renders bands and actions', (
