@@ -323,8 +323,24 @@ void main() {
   });
 
   testWidgets('featured carousel shows cards and opens a gig', (tester) async {
+    final auth = FakeAuthService();
+    final gigs = DemoData.gigs.take(3).toList();
     final harness = await pumpApp(
       tester,
+      auth: auth,
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'feed',
+          () => Stream.value(
+            FeedSnapshot(
+              gigs: gigs,
+              venues: DemoData.venues,
+              bands: DemoData.bands,
+            ),
+          ),
+        ),
+      // Keep the first show upcoming regardless of when the test runs.
+      now: () => gigs.first.startsAt.subtract(const Duration(hours: 12)),
       home: const Scaffold(body: ExploreScreen()),
     );
     final carousel = find.byKey(const Key('explore-featured'));

@@ -684,12 +684,14 @@ class EpSectionHeader extends StatelessWidget {
     super.key,
     required this.label,
     this.action,
+    this.actionKey,
     this.onAction,
     this.padding = const EdgeInsets.only(top: 24, bottom: 4),
   });
 
   final String label;
   final String? action;
+  final Key? actionKey;
   final VoidCallback? onAction;
   final EdgeInsets padding;
 
@@ -704,6 +706,7 @@ class EpSectionHeader extends StatelessWidget {
           const SizedBox(width: 12),
           Flexible(
             child: TextButton(
+              key: actionKey,
               onPressed: onAction,
               style: TextButton.styleFrom(
                 foregroundColor: context.epColors.ink,

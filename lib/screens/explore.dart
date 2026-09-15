@@ -289,7 +289,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
           slivers.add(
             SliverToBoxAdapter(
               child: _gutter(
-                EpSectionHeader(label: 'VENUES · ${venues.length}'),
+                EpSectionHeader(
+                  label: 'VENUES',
+                  action: 'See more',
+                  actionKey: const Key('explore-toggle-venues'),
+                  onAction: () => app.go(Screen.exploreCollection, 'venues'),
+                ),
               ),
             ),
           );
@@ -315,18 +320,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
             ),
           );
         }
-        slivers.add(
-          SliverToBoxAdapter(
-            child: _gutter(
-              EpMenuRow(
-                key: const Key('explore-toggle-venues'),
-                icon: Icons.place_outlined,
-                label: 'All venues',
-                onTap: () => app.go(Screen.exploreCollection, 'venues'),
-              ),
-            ),
-          ),
-        );
         final bandIds = <String>[];
         for (final id in [...home.recommendedBandIds, ...app.exploreBandIds]) {
           if (!bandIds.contains(id) && app.band(id) != null) bandIds.add(id);
@@ -335,9 +328,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
         slivers.add(
           SliverToBoxAdapter(
             child: _gutter(
-              const EpSectionHeader(
+              EpSectionHeader(
                 label: 'BANDS',
-                padding: EdgeInsets.only(top: 32, bottom: 4),
+                action: 'See more',
+                actionKey: const Key('explore-toggle-bands'),
+                onAction: () => app.go(Screen.exploreCollection, 'bands'),
+                padding: const EdgeInsets.only(top: 32, bottom: 4),
               ),
             ),
           ),
@@ -367,34 +363,32 @@ class _ExploreScreenState extends State<ExploreScreen> {
         slivers.add(
           SliverToBoxAdapter(
             child: _gutter(
-              EpMenuRow(
-                key: const Key('explore-toggle-bands'),
-                icon: Icons.groups_outlined,
-                label: 'All bands',
-                onTap: () => app.go(Screen.exploreCollection, 'bands'),
+              Column(
+                children: [
+                  const SizedBox(
+                    height: EpLayout.formSectionGap,
+                    child: Center(child: EpHairline()),
+                  ),
+                  app.authed
+                      ? EpMenuRow(
+                          key: const Key('explore-find-people'),
+                          icon: Icons.group_outlined,
+                          label: 'Find people',
+                          sub: 'Follow people to see where they are going',
+                          onTap: () => app.go(Screen.people),
+                        )
+                      : EpMenuRow(
+                          key: const Key('explore-friends-sign-in'),
+                          icon: Icons.group_outlined,
+                          label: 'Sign in to see friends',
+                          sub: 'See where friends are going',
+                          onTap: () => app.needAuth(
+                            const PendingAuth(PendingKind.myGigs),
+                          ),
+                        ),
+                  const SizedBox(height: 24),
+                ],
               ),
-            ),
-          ),
-        );
-        slivers.add(
-          SliverToBoxAdapter(
-            child: _gutter(
-              app.authed
-                  ? EpMenuRow(
-                      key: const Key('explore-find-people'),
-                      icon: Icons.group_outlined,
-                      label: 'Find people',
-                      sub: 'Follow people to see where they are going',
-                      onTap: () => app.go(Screen.people),
-                    )
-                  : EpMenuRow(
-                      key: const Key('explore-friends-sign-in'),
-                      icon: Icons.group_outlined,
-                      label: 'Sign in to see friends',
-                      sub: 'See where friends are going',
-                      onTap: () =>
-                          app.needAuth(const PendingAuth(PendingKind.myGigs)),
-                    ),
             ),
           ),
         );

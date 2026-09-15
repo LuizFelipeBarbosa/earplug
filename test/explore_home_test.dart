@@ -5,6 +5,7 @@ import 'package:earplug/screens/explore.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -403,31 +404,101 @@ void main() {
     expect(h.app.current.param, 'bFollow');
   });
 
-  testWidgets('bands rail hugs its tiles and sits 32 under the venues row', (
-    tester,
-  ) async {
-    await _pumpExplore(tester, signedIn: true, gigs: _gigs, bands: _bands);
-    final rail = find.byKey(const Key('explore-bands'));
-    final allBands = find.byKey(const Key('explore-toggle-bands'));
-    await _scrollTo(tester, allBands);
-    expect(rail, findsOneWidget);
-    final railRect = tester.getRect(rail);
-    expect(railRect.height, exploreBandRailHeight(tester.element(rail)));
-    // The first avatar starts on the gutter, under the heading's left edge.
-    final heading = find.text('BANDS');
-    expect(
-      tester.getTopLeft(find.byKey(const Key('explore-band-card-bFollow'))).dx,
-      tester.getTopLeft(heading).dx,
-    );
-    // No dead space between the rail and the All bands row.
-    expect(tester.getTopLeft(allBands).dy, railRect.bottom);
-    // The heading keeps 32px clear of the All venues row above it.
-    final allVenues = find.byKey(const Key('explore-toggle-venues'));
-    expect(
-      tester.getTopLeft(heading).dy - tester.getRect(allVenues).bottom,
-      32,
-    );
-  });
+  testWidgets(
+    'bands rail hugs its tiles and header sits 32 under the venues rail',
+    (tester) async {
+      await _pumpExplore(tester, signedIn: true, gigs: _gigs, bands: _bands);
+      final rail = find.byKey(const Key('explore-bands'));
+      final allBands = find.byKey(const Key('explore-toggle-bands'));
+      final findPeople = find.byKey(const Key('explore-find-people'));
+      await _scrollTo(tester, findPeople);
+      expect(rail, findsOneWidget);
+      final railRect = tester.getRect(rail);
+      expect(railRect.height, exploreBandRailHeight(tester.element(rail)));
+      // The first avatar starts on the gutter, under the heading's left edge.
+      final heading = find.text('BANDS');
+      expect(
+        tester
+            .getTopLeft(find.byKey(const Key('explore-band-card-bFollow')))
+            .dx,
+        tester.getTopLeft(heading).dx,
+      );
+      expect(find.widgetWithText(EpMenuRow, 'All venues'), findsNothing);
+      expect(find.widgetWithText(EpMenuRow, 'All bands'), findsNothing);
+      expect(find.text('VENUES'), findsOneWidget);
+      expect(heading, findsOneWidget);
+
+      final allVenues = find.byKey(const Key('explore-toggle-venues'));
+      for (final action in [allVenues, allBands]) {
+        expect(tester.widget(action), isA<TextButton>());
+        expect(
+          find.descendant(of: action, matching: find.text('SEE MORE')),
+          findsOneWidget,
+        );
+        final header = find.ancestor(
+          of: action,
+          matching: find.byType(EpSectionHeader),
+        );
+        final label = find.descendant(
+          of: header,
+          matching: find.byType(EpEyebrow),
+        );
+        expect(
+          (tester.getCenter(action).dy - tester.getCenter(label).dy).abs(),
+          lessThan(4),
+        );
+        final headerRect = tester.getRect(header);
+        expect(
+          tester.getRect(action).right,
+          inInclusiveRange(headerRect.right - 4, headerRect.right),
+        );
+        expect(
+          headerRect.right,
+          tester.getRect(find.byType(ExploreScreen)).right - EpLayout.gutter,
+        );
+      }
+
+      // The venues rail and its header's bottom padding now sit between actions.
+      // After accounting for them, the BANDS header still has 32px above its row.
+      final venuesHeader = tester.widget<EpSectionHeader>(
+        find.ancestor(of: allVenues, matching: find.byType(EpSectionHeader)),
+      );
+      expect(
+        tester.getTopLeft(allBands).dy -
+            tester.getRect(allVenues).bottom -
+            tester.getRect(find.byKey(const Key('explore-venues'))).height -
+            venuesHeader.padding.bottom,
+        EpLayout.formSectionGap,
+      );
+      expect(
+        tester.getTopLeft(findPeople).dy - railRect.bottom,
+        EpLayout.formSectionGap,
+      );
+      final bottomBlock = find.ancestor(
+        of: findPeople,
+        matching: find.byType(SliverToBoxAdapter),
+      );
+      // The first hairline separates the rail; the menu row has its own below.
+      final hairline = find
+          .descendant(of: bottomBlock, matching: find.byType(EpHairline))
+          .first;
+      expect(hairline, findsOneWidget);
+      expect(tester.getRect(hairline).height, 1);
+      expect(tester.getTopLeft(hairline).dy, greaterThan(railRect.bottom));
+      expect(
+        tester.getRect(hairline).bottom,
+        lessThan(tester.getTopLeft(findPeople).dy),
+      );
+      final bottomColumn = find.ancestor(
+        of: findPeople,
+        matching: find.byType(Column),
+      );
+      expect(
+        tester.getRect(bottomColumn).bottom - tester.getRect(findPeople).bottom,
+        24,
+      );
+    },
+  );
 
   testWidgets('pinned genre rail stays below the status bar when scrolled', (
     tester,
