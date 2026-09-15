@@ -1146,6 +1146,10 @@ const _venueTilePaddingBottom = 4.0;
 const _venueTileNameSize = 20.0;
 const _venueTileNameMaxLines = 2;
 const _venueTileShowsCountSize = 16.0;
+
+/// Regular-weight mono for the show count (the owner asked for it unbolded).
+TextStyle _venueTileShowsCountStyle(TextTheme textTheme) => textTheme.epLabel
+    .copyWith(fontSize: _venueTileShowsCountSize, fontWeight: FontWeight.w400);
 const _venueTileLineGap = 2.0;
 const _venueTileInlineGap = 6.0;
 const _venueTileAreaSeparator = ' · ';
@@ -1174,9 +1178,7 @@ double exploreVenueRailHeight(BuildContext context) {
   final nameHeight =
       lineHeight(textTheme.epDisplayAt(_venueTileNameSize)) *
       _venueTileNameMaxLines;
-  final showsCountHeight = lineHeight(
-    textTheme.epDisplayAt(_venueTileShowsCountSize),
-  );
+  final showsCountHeight = lineHeight(_venueTileShowsCountStyle(textTheme));
   final monoHeight = lineHeight(textTheme.epChipLabel);
   final badgeHeight =
       monoHeight + _venueTileBadgeVerticalPadding + _venueTileBadgeBorderHeight;
@@ -1358,11 +1360,13 @@ class _VenueTileShowsLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final showCount =
         '${entry.gigs.length} SHOW${entry.gigs.length == 1 ? '' : 'S'}';
-    return EpDisplay(
+    return Text(
       showCount,
-      size: _venueTileShowsCountSize,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
+      style: _venueTileShowsCountStyle(
+        Theme.of(context).textTheme,
+      ).copyWith(color: context.epColors.ink),
     );
   }
 }
