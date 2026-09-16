@@ -1761,6 +1761,35 @@ enum ArtistApplicationStatus {
       this == ArtistApplicationStatus.offered;
 }
 
+enum ApplicationDeclineReason {
+  slotFilled('slot_filled'),
+  notAFit('not_a_fit'),
+  lineupFull('lineup_full'),
+  dateConflict('date_conflict'),
+  other('other');
+
+  const ApplicationDeclineReason(this.wireValue);
+
+  final String wireValue;
+
+  static ApplicationDeclineReason fromWire(Object? value) => switch (value) {
+    'slot_filled' => ApplicationDeclineReason.slotFilled,
+    'not_a_fit' => ApplicationDeclineReason.notAFit,
+    'lineup_full' => ApplicationDeclineReason.lineupFull,
+    'date_conflict' => ApplicationDeclineReason.dateConflict,
+    _ => ApplicationDeclineReason.other,
+  };
+
+  String get label => switch (this) {
+    ApplicationDeclineReason.slotFilled =>
+      'Slot filled — hosts can see your profile for future nights',
+    ApplicationDeclineReason.notAFit => 'Not the fit for this night',
+    ApplicationDeclineReason.lineupFull => 'Lineup already full',
+    ApplicationDeclineReason.dateConflict => 'Date conflict on the host side',
+    ApplicationDeclineReason.other => 'The host passed this time',
+  };
+}
+
 enum ArtistApplicationReviewAction {
   underReview('under_review'),
   shortlisted('shortlisted'),
@@ -2194,6 +2223,12 @@ class ArtistApplication {
     this.availabilityNote,
     this.lineupNote,
     this.decidedAt,
+    this.viewedAt,
+    this.shortlistedAt,
+    this.declineReason,
+    this.declineNote,
+    this.hostNote,
+    this.hostNoteAt,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -2208,6 +2243,12 @@ class ArtistApplication {
   final String? availabilityNote;
   final String? lineupNote;
   final DateTime? decidedAt;
+  final DateTime? viewedAt;
+  final DateTime? shortlistedAt;
+  final ApplicationDeclineReason? declineReason;
+  final String? declineNote;
+  final String? hostNote;
+  final DateTime? hostNoteAt;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -2223,6 +2264,14 @@ class ArtistApplication {
         availabilityNote: asOptionalString(json['availabilityNote']),
         lineupNote: asOptionalString(json['lineupNote']),
         decidedAt: asOptionalDate(json['decidedAt']),
+        viewedAt: asOptionalDate(json['viewedAt']),
+        shortlistedAt: asOptionalDate(json['shortlistedAt']),
+        declineReason: json['declineReason'] == null
+            ? null
+            : ApplicationDeclineReason.fromWire(json['declineReason']),
+        declineNote: asOptionalString(json['declineNote']),
+        hostNote: asOptionalString(json['hostNote']),
+        hostNoteAt: asOptionalDate(json['hostNoteAt']),
         createdAt: asDate(json['createdAt']),
         updatedAt: asDate(json['updatedAt']),
       );
@@ -2232,6 +2281,12 @@ class ArtistApplication {
   ArtistApplication copyWith({
     ArtistApplicationStatus? status,
     Object? decidedAt = _unchanged,
+    Object? viewedAt = _unchanged,
+    Object? shortlistedAt = _unchanged,
+    Object? declineReason = _unchanged,
+    Object? declineNote = _unchanged,
+    Object? hostNote = _unchanged,
+    Object? hostNoteAt = _unchanged,
     DateTime? updatedAt,
   }) => ArtistApplication(
     id: id,
@@ -2246,6 +2301,24 @@ class ArtistApplication {
     decidedAt: identical(decidedAt, _unchanged)
         ? this.decidedAt
         : decidedAt as DateTime?,
+    viewedAt: identical(viewedAt, _unchanged)
+        ? this.viewedAt
+        : viewedAt as DateTime?,
+    shortlistedAt: identical(shortlistedAt, _unchanged)
+        ? this.shortlistedAt
+        : shortlistedAt as DateTime?,
+    declineReason: identical(declineReason, _unchanged)
+        ? this.declineReason
+        : declineReason as ApplicationDeclineReason?,
+    declineNote: identical(declineNote, _unchanged)
+        ? this.declineNote
+        : declineNote as String?,
+    hostNote: identical(hostNote, _unchanged)
+        ? this.hostNote
+        : hostNote as String?,
+    hostNoteAt: identical(hostNoteAt, _unchanged)
+        ? this.hostNoteAt
+        : hostNoteAt as DateTime?,
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );

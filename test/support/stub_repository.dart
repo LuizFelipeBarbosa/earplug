@@ -84,6 +84,7 @@ class StubRepository extends DemoRepository {
     'listBands',
     'manageGigs',
     'manageOpportunities',
+    'markApplicationViewed',
     'me',
     'mediaFor',
     'moveMediaWithinKind',
@@ -121,6 +122,7 @@ class StubRepository extends DemoRepository {
     'saveOrganizationApplicationDraft',
     'searchBands',
     'sendOffer',
+    'setApplicationHostNote',
     'setBandAvatar',
     'setBandBanner',
     'setVenueAddressDisclosure',
@@ -156,6 +158,7 @@ class StubRepository extends DemoRepository {
     'myOrganizations',
     'publicGig',
     'upcomingGigsForBand',
+    'watchMyApplications',
     'watchVenues',
   };
 
@@ -492,6 +495,9 @@ class StubRepository extends DemoRepository {
   Future<List<Opportunity>> manageOpportunities(String organizationId) =>
       intercept('manageOpportunities', () => super.manageOpportunities(organizationId));
   @override
+  Future<DateTime?> markApplicationViewed(String applicationId) =>
+      intercept('markApplicationViewed', () => super.markApplicationViewed(applicationId));
+  @override
   Future<UserProfile?> me() => intercept('me', super.me);
   @override
   Future<List<BandMedia>> mediaFor(String bandId) =>
@@ -755,6 +761,12 @@ class StubRepository extends DemoRepository {
     ),
   );
   @override
+  Future<void> setApplicationHostNote({required String applicationId, required String note}) =>
+      intercept(
+        'setApplicationHostNote',
+        () => super.setApplicationHostNote(applicationId: applicationId, note: note),
+      );
+  @override
   Future<void> setBandAvatar({required String bandId, required String mediaId}) =>
       intercept('setBandAvatar', () => super.setBandAvatar(bandId: bandId, mediaId: mediaId));
   @override
@@ -955,6 +967,9 @@ class StubRepository extends DemoRepository {
       intercept('venueDetail', () => super.venueDetail(venueId));
   @override
   Future<List<Venue>> venues() => intercept('venues', super.venues);
+  @override
+  Stream<List<BandApplication>> watchMyApplications(String bandId) =>
+      _interceptStream('watchMyApplications', () => super.watchMyApplications(bandId));
   @override
   Stream<List<Venue>> watchVenues() => _interceptStream('watchVenues', super.watchVenues);
 }

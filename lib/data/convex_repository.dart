@@ -1669,6 +1669,41 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Stream<List<BandApplication>> watchMyApplications(String bandId) {
+    return _convexService.subscribe(
+      'artistApplications:forBand',
+      {'bandId': bandId},
+      (decoded) {
+        return [
+          for (final json in asCastMapList(decoded))
+            BandApplication.fromJson(json),
+        ];
+      },
+    );
+  }
+
+  @override
+  Future<DateTime?> markApplicationViewed(String applicationId) async {
+    final result = asCastMap(
+      await _convexService.mutation('artistApplications:markViewed', {
+        'applicationId': applicationId,
+      }),
+    );
+    return asOptionalDate(result['viewedAt']);
+  }
+
+  @override
+  Future<void> setApplicationHostNote({
+    required String applicationId,
+    required String note,
+  }) async {
+    await _convexService.mutation('artistApplications:setHostNote', {
+      'applicationId': applicationId,
+      'note': note,
+    });
+  }
+
+  @override
   Future<ArtistApplication?> myApplicationFor({
     required String opportunityId,
     required String bandId,

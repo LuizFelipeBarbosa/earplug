@@ -235,6 +235,8 @@ class DemoRepository implements EarplugRepository {
   final StreamController<List<OrganizationMembership>>
   _organizationsController =
       StreamController<List<OrganizationMembership>>.broadcast();
+  final StreamController<void> _applicationsController =
+      StreamController<void>.broadcast();
 
   late final Map<String, Band> _bands;
   late final Map<String, Venue> _venues;
@@ -4061,6 +4063,7 @@ class DemoRepository implements EarplugRepository {
       revision: existing.revision + 1,
       updatedAt: now,
     );
+    _emitApplications();
   }
 
   @override
@@ -4099,6 +4102,7 @@ class DemoRepository implements EarplugRepository {
       revision: existing.revision + 1,
       updatedAt: now,
     );
+    _emitApplications();
   }
 
   @override
@@ -4252,6 +4256,7 @@ class DemoRepository implements EarplugRepository {
         applicationCount: opportunity.applicationCount + countChange,
       );
     }
+    _emitApplications();
   }
 
   @override
@@ -4380,6 +4385,7 @@ class DemoRepository implements EarplugRepository {
       existing,
       applicationCount: existing.applicationCount + 1,
     );
+    _emitApplications();
     return id;
   }
 
@@ -4404,10 +4410,14 @@ class DemoRepository implements EarplugRepository {
       opportunity,
       applicationCount: opportunity.applicationCount - 1,
     );
+    _emitApplications();
   }
 
   @override
-  Future<List<BandApplication>> myApplications(String bandId) async => [
+  Future<List<BandApplication>> myApplications(String bandId) async =>
+      _myApplicationsSync(bandId);
+
+  List<BandApplication> _myApplicationsSync(String bandId) => [
     for (final application in _artistApplications.values)
       if (application.bandId == bandId)
         BandApplication(
@@ -4415,6 +4425,42 @@ class DemoRepository implements EarplugRepository {
           opportunity: _opportunities[application.opportunityId]!,
         ),
   ]..sort((a, b) => b.application.createdAt.compareTo(a.application.createdAt));
+
+  @override
+  Stream<List<BandApplication>> watchMyApplications(String bandId) async* {
+    yield _myApplicationsSync(bandId);
+    yield* _applicationsController.stream.map(
+      (_) => _myApplicationsSync(bandId),
+    );
+  }
+
+  void _emitApplications() => _applicationsController.add(null);
+
+  @override
+  Future<DateTime?> markApplicationViewed(String applicationId) async {
+    final existing = _requireArtistApplication(applicationId);
+    if (existing.viewedAt != null || !existing.status.isActive) {
+      return existing.viewedAt;
+    }
+    final viewedAt = DateTime.now();
+    _artistApplications[applicationId] = existing.copyWith(viewedAt: viewedAt);
+    _emitApplications();
+    return viewedAt;
+  }
+
+  @override
+  Future<void> setApplicationHostNote({
+    required String applicationId,
+    required String note,
+  }) async {
+    final existing = _requireArtistApplication(applicationId);
+    final trimmed = note.trim();
+    _artistApplications[applicationId] = existing.copyWith(
+      hostNote: trimmed.isEmpty ? null : trimmed,
+      hostNoteAt: trimmed.isEmpty ? null : DateTime.now(),
+    );
+    _emitApplications();
+  }
 
   @override
   Future<ArtistApplication?> myApplicationFor({
@@ -4554,6 +4600,7 @@ class DemoRepository implements EarplugRepository {
       decidedAt: application.decidedAt,
       updatedAt: now,
     );
+    _emitApplications();
     return (bookingId: bookingId, offerId: '$bookingId-offer-1', revision: 1);
   }
 
@@ -4751,6 +4798,7 @@ class DemoRepository implements EarplugRepository {
     } else if (application?.status == ArtistApplicationStatus.offered) {
       _shortlistBookingApplication(booking, now);
     }
+    _emitApplications();
     return (status: updated.status, revision: updated.revision);
   }
 
@@ -5734,6 +5782,7 @@ class DemoRepository implements EarplugRepository {
       decidedAt: null,
       updatedAt: now,
     );
+    _emitApplications();
   }
 
   Booking _confirmBooking(Booking booking, DateTime now) {
@@ -5792,6 +5841,7 @@ class DemoRepository implements EarplugRepository {
     }
     _opportunities[opportunity.id] = updatedOpportunity;
     _emitFeed();
+    _emitApplications();
     return booking.copyWith(
       status: BookingStatus.confirmed,
       revision: booking.revision + 1,

@@ -910,6 +910,15 @@ abstract class EarplugRepository {
 
   Future<List<BandApplication>> myApplications(String bandId);
 
+  Stream<List<BandApplication>> watchMyApplications(String bandId);
+
+  Future<DateTime?> markApplicationViewed(String applicationId);
+
+  Future<void> setApplicationHostNote({
+    required String applicationId,
+    required String note,
+  });
+
   Future<ArtistApplication?> myApplicationFor({
     required String opportunityId,
     required String bandId,
