@@ -8,8 +8,9 @@ import 'package:earplug/screens/gig_create.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
-import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
+import 'package:earplug/widgets/sheets.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
@@ -19,118 +20,311 @@ import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
 void main() {
-  testWidgets('name and date complete three required fields without a venue', (
+  testWidgets('floating controls overlay the list at the header inset', (
     tester,
   ) async {
     final app = (await _pumpGigCreate(tester)).app;
-    app.setGfName('Three Fields Done');
-    app.setGfDate(DateTime.now().add(const Duration(days: 2)));
-    await tester.pump();
-
-    final progress = find.byKey(const ValueKey('gig-required-progress'));
-    expect(
-      find.descendant(
-        of: progress,
-        matching: find.text('3 OF 4 REQUIRED DONE'),
-      ),
-      findsOne,
-    );
-    final readiness = tester.widget<EpReadinessBar>(
-      find.byType(EpReadinessBar),
-    );
-    expect(readiness.done, 3);
-    expect(readiness.total, 4);
-    expect(app.canPublishGig, isFalse);
-    expect(
-      tester
-          .widget<EpPill>(find.widgetWithText(EpPill, 'PUBLISH GIG'))
-          .onPressed,
-      isNull,
-    );
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('gig-publish-hint')),
-        matching: find.text('STILL NEEDS A VENUE'),
-      ),
-      findsOne,
-    );
-    final timesSlot = find.byKey(const ValueKey('gig-slot-times'));
-    expect(
-      find.descendant(of: timesSlot, matching: find.byIcon(Icons.check)),
-      findsOne,
-    );
-    expect(find.text('Doors 8PM · Start 9PM'), findsOne);
-  });
-
-  testWidgets('details toggle reveals and hides the optional rows', (
-    tester,
-  ) async {
-    await _pumpGigCreate(tester);
-    final body = find.byKey(const ValueKey('gig-details-body'));
-    const optionalKeys = [
-      'gig-slot-cover',
-      'gig-slot-access',
-      'gig-slot-audience',
-    ];
-    expect(body, findsNothing);
-    for (final key in optionalKeys) {
-      expect(find.byKey(ValueKey(key)), findsNothing);
-    }
-    final toggle = find.byKey(const ValueKey('gig-details-toggle'));
-    await _scrollTo(tester, toggle);
-    expect(
-      find.descendant(of: toggle, matching: find.byIcon(Icons.expand_more)),
-      findsOne,
-    );
-    await _toggleDetails(tester);
-    expect(body, findsOne);
-    for (final key in optionalKeys) {
-      expect(
-        find.descendant(of: body, matching: find.byKey(ValueKey(key))),
-        findsOne,
+    final close = find.byKey(const Key('gig-close'));
+    final save = find.byKey(const Key('gig-save'));
+    final top = headerTopPad(tester.element(close));
+    final list = find.byType(ListView);
+    final padding = tester.widget<ListView>(list).padding as EdgeInsets;
+    expect(padding, EdgeInsets.fromLTRB(20, top + 60, 20, tabBarClearance));
+    for (final control in [close, save]) {
+      expect(tester.getTopLeft(control).dy, top);
+      expect(tester.getSize(control).height, greaterThanOrEqualTo(44));
+      expect(find.ancestor(of: control, matching: list), findsNothing);
+      final positioned = find.ancestor(
+        of: control,
+        matching: find.byType(Positioned),
       );
+      expect(positioned, findsOne);
+      expect(tester.widget<Positioned>(positioned).top, top);
     }
+    expect(tester.getTopLeft(close).dx, EpLayout.gutter);
+    expect(tester.getTopRight(save).dx, 390 - EpLayout.gutter);
+    expect(tester.widget<EpPill>(save).variant, EpPillVariant.primary);
+    expect(tester.widget<EpPill>(save).size, EpPillSize.chip);
+    final saveState = find.byKey(const Key('gig-save-state'));
+    expect(tester.widget<EpMonoText>(saveState).text, app.gfSaveState);
     expect(
-      find.descendant(of: toggle, matching: find.byIcon(Icons.expand_less)),
-      findsOne,
+      tester.widget<EpMonoText>(saveState).color,
+      tester.element(saveState).epColors.contentSecondary,
     );
-
-    await _toggleDetails(tester);
-    expect(body, findsNothing);
-    for (final key in optionalKeys) {
-      expect(find.byKey(ValueKey(key)), findsNothing);
+    expect(find.byType(ScreenHeader), findsNothing);
+    expect(find.byType(AppBar), findsNothing);
+    expect(find.byType(EpBottomCta), findsNothing);
+    for (final key in [
+      'gig-required-progress',
+      'gig-save-draft',
+      'gig-slot-date',
+      'gig-slot-times',
+      'gig-poster-thumb',
+      'gig-publish-hint',
+    ]) {
+      expect(find.byKey(ValueKey(key), skipOffstage: false), findsNothing);
     }
+    expect(find.text('NEW GIG'), findsNothing);
+    expect(find.text('REQUIRED'), findsNothing);
+    await _toggleDetails(tester);
+    await _scrollTo(tester, find.byKey(const Key('gig-slot-notes')));
+    expect(tester.getTopLeft(close).dy, top);
+    expect(tester.getTopLeft(save).dy, top);
   });
 
-  testWidgets('poster thumbnail stays exactly 66 by 82', (tester) async {
-    final app = (await _pumpGigCreate(tester)).app;
-    final thumbnail = find.byKey(const ValueKey('gig-poster-thumb'));
-    expect(tester.getSize(thumbnail), const Size(66, 82));
+  testWidgets('Save waits for persistence before opening the fan preview', (
+    tester,
+  ) async {
+    final repository = _GatedSaveRepository(auth: FakeAuthService());
+    final gate = repository.saveGate;
+    final app = (await _pumpGigCreate(tester, repository: repository)).app;
+    await tester.enterText(find.byKey(const Key('gig-name-field')), 'Save Me');
+    await tester.tap(find.byKey(const Key('gig-save')));
+    await tester.pump();
+    expect(repository.saveCalls, 1);
+    expect(app.gfPreviewing, isFalse);
+    expect(find.byKey(const Key('redesigned-gig-draft-preview')), findsNothing);
+    expect(
+      tester.widget<EpMonoText>(find.byKey(const Key('gig-save-state'))).text,
+      app.gfSaveState,
+    );
 
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(app.gfProject?.title, 'Save Me');
+    expect(app.gfPreviewing, isTrue);
+    expect(find.byKey(const Key('redesigned-gig-draft-preview')), findsOne);
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('gig-save')), findsOne);
+    expect(app.gfName, 'Save Me');
+  });
+
+  testWidgets('Close saves edited drafts using the existing close flow', (
+    tester,
+  ) async {
+    final repository = _CountingDraftRepository(auth: FakeAuthService());
+    final app = (await _pumpGigCreate(tester, repository: repository)).app;
+    await tester.enterText(find.byKey(const Key('gig-name-field')), 'Keep Me');
+    await tester.tap(find.byKey(const Key('gig-close')));
+    await tester.pumpAndSettle();
+    expect(repository.createCalls, 1);
+    expect(
+      (await repository.getGigProject(app.gfProject!.id)).title,
+      'Keep Me',
+    );
+  });
+
+  testWidgets('square flyer fills the content width with the name beneath it', (
+    tester,
+  ) async {
+    final app = (await _pumpGigCreate(tester)).app;
+    final flyer = find.byKey(const Key('gig-flyer'));
+    final name = find.byKey(const Key('gig-name-field'));
+    expect(tester.getSize(flyer), const Size(350, 350));
+    expect(tester.getTopLeft(flyer).dx, EpLayout.gutter);
+    expect(tester.getTopLeft(name).dy, tester.getBottomLeft(flyer).dy + 16);
+    final field = tester.widget<TextField>(name);
+    expect(field.decoration?.hintText, 'Name your gig');
+    expect(field.decoration?.label, isNull);
+    expect(field.decoration?.labelText, isNull);
+    expect(field.style?.fontSize, 32);
+    expect(field.textCapitalization, TextCapitalization.words);
+    expect(
+      field.decoration?.hintStyle?.color,
+      tester.element(name).epColors.contentSecondary,
+    );
+    expect(tester.getSize(name).height, greaterThanOrEqualTo(44));
+
+    await tester.enterText(name, 'Riptide Release');
+    await tester.pump();
+    expect(app.gfName, 'Riptide Release');
+    expect(
+      find.descendant(of: flyer, matching: find.text('RIPTIDE RELEASE')),
+      findsOne,
+    );
     tester.platformDispatcher.textScaleFactorTestValue = 1.5;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-    app.setGfName('A very long gig name that must fit inside the thumbnail');
     await tester.pump();
-    expect(tester.getSize(thumbnail), const Size(66, 82));
+    expect(tester.getSize(flyer), const Size(350, 350));
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('unfilled required picker values use the accent color', (
+  for (final target in ['gig-flyer', 'gig-flyer-edit']) {
+    testWidgets(
+      '$target opens the flyer sheet and presses update both posters',
+      (tester) async {
+        final app = (await _pumpGigCreate(tester)).app;
+        await tester.tap(find.byKey(Key(target)));
+        await tester.pumpAndSettle();
+        expect(find.text('FLYER'), findsOne);
+        final sheetPoster = find.descendant(
+          of: find.byType(EpFormSheet),
+          matching: find.byType(EpPoster),
+        );
+        expect(tester.getSize(sheetPoster), const Size(120, 158));
+        await tester.tap(find.byKey(const Key('press-accent')));
+        await tester.pump();
+        expect(app.gfFly, 'accent');
+        final pagePoster = find.descendant(
+          of: find.byKey(const Key('gig-flyer')),
+          matching: find.byType(EpPoster),
+        );
+        expect(tester.widget<EpPoster>(pagePoster).style, app.flyer('accent'));
+        expect(tester.widget<EpPoster>(sheetPoster).style, app.flyer('accent'));
+        await _closeFlyerSheet(tester);
+        expect(tester.widget<EpPoster>(pagePoster).style, app.flyer('accent'));
+      },
+    );
+  }
+
+  testWidgets('When opens the calendar and wheels and shows the chosen times', (
     tester,
   ) async {
-    await _pumpGigCreate(tester);
-    for (final placeholder in [
-      'Pick a date',
-      'Set doors and start',
-      'Choose a venue',
-    ]) {
-      final value = find.text(placeholder);
-      await _scrollTo(tester, value);
+    final app = (await _pumpGigCreate(tester)).app;
+    final slot = find.byKey(const Key('gig-slot-when'));
+    await _scrollTo(tester, slot);
+    final placeholder = find.text('Pick a date and time');
+    expect(
+      tester.widget<Text>(placeholder).style?.color,
+      tester.element(placeholder).epColors.accent,
+    );
+    await tester.tap(slot);
+    await tester.pumpAndSettle();
+    expect(find.text('WHEN'), findsOne);
+    final wheel = find.byKey(const Key('gig-doors-wheel'));
+    expect(wheel, findsOne);
+    expect(find.byKey(const Key('gig-start-wheel')), findsOne);
+    final now = DateTime.now();
+    final date = DateTime(now.year, now.month + 1, 15);
+    final day = find.byKey(
+      ValueKey('day-${date.year}-${date.month}-${date.day}'),
+    );
+    final calendar = find.descendant(
+      of: find.descendant(
+        of: find.byType(EpFormSheet),
+        matching: find.byType(ListView),
+      ),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(day, 100, scrollable: calendar);
+    await tester.pumpAndSettle();
+    await tester.tap(day);
+    await tester.pumpAndSettle();
+    final picker = tester.widget<CupertinoDatePicker>(wheel);
+    final point =
+        tester.getTopLeft(wheel) +
+        Offset(
+          tester.getSize(wheel).width * .15,
+          tester.getSize(wheel).height / 2,
+        );
+    await tester.dragFrom(point, Offset(0, picker.itemExtent), touchSlopY: 0);
+    await tester.pumpAndSettle();
+    expect(app.gfDate, date);
+    expect(app.gfDoorsLabel, '7PM');
+    await tester.tap(find.text('DONE'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: slot, matching: find.text('DOORS 7PM · START 9PM')),
+      findsOne,
+    );
+    expect(
+      find.descendant(of: slot, matching: find.byType(EpDisplay)),
+      findsOne,
+    );
+    expect(placeholder, findsNothing);
+  });
+
+  testWidgets('venue shows its placeholder then the chosen name and area', (
+    tester,
+  ) async {
+    final app = (await _pumpGigCreate(tester)).app;
+    final slot = find.byKey(const Key('gig-slot-venue'));
+    await _scrollTo(tester, slot);
+    final placeholder = find.text('Choose a venue');
+    expect(
+      tester.widget<Text>(placeholder).style?.color,
+      tester.element(placeholder).epColors.accent,
+    );
+    await tester.tap(slot);
+    await tester.pumpAndSettle();
+    expect(find.text('WHERE IS IT'), findsOne);
+    await _scrollTo(tester, find.text('THE FOGHORN CLUB'));
+    await tester.tap(find.text('THE FOGHORN CLUB'));
+    await tester.pumpAndSettle();
+    expect(app.gfVenueId, 'v1');
+    final venue = app.venue('v1');
+    final value = find.descendant(of: slot, matching: find.text(venue.name));
+    expect(
+      tester.widget<Text>(value).style?.color,
+      tester.element(value).epColors.contentPrimary,
+    );
+    expect(
+      find.descendant(of: slot, matching: find.text(venue.area.toUpperCase())),
+      findsOne,
+    );
+    expect(placeholder, findsNothing);
+  });
+
+  testWidgets(
+    'details toggle reveals five ordered cards and hides them again',
+    (tester) async {
+      await _pumpGigCreate(tester);
+      final body = find.byKey(const Key('gig-details-body'));
+      expect(body, findsNothing);
+      await _toggleDetails(tester);
+      expect(body, findsOne);
       expect(
-        tester.widget<Text>(value).style?.color,
-        tester.element(value).epColors.accent,
+        find.descendant(of: body, matching: find.byType(EpCard)),
+        findsNWidgets(5),
       );
-    }
+      var previousTop = -double.infinity;
+      for (final key in [
+        'gig-slot-cover',
+        'gig-slot-access',
+        'gig-slot-audience',
+        'gig-slot-lineup',
+        'gig-slot-notes',
+      ]) {
+        final slot = find.byKey(Key(key));
+        expect(find.descendant(of: body, matching: slot), findsOne);
+        final top = tester.getTopLeft(slot).dy;
+        expect(top, greaterThan(previousTop));
+        previousTop = top;
+      }
+      expect(find.byIcon(Icons.expand_less), findsOne);
+      await _toggleDetails(tester);
+      expect(body, findsNothing);
+      expect(find.byIcon(Icons.expand_more), findsOne);
+    },
+  );
+
+  testWidgets('empty lineup and notes retain their editing flows', (
+    tester,
+  ) async {
+    final app = (await _pumpGigCreate(tester)).app;
+    await app.saveGigDraft();
+    await tester.pumpAndSettle();
+    await app.removeGigPerformer(app.gfPerformers.single.id);
+    await tester.pumpAndSettle();
+    await _toggleDetails(tester);
+    expect(find.text('Add performers'), findsOne);
+    final notes = find.byKey(const Key('gig-slot-notes'));
+    await _scrollTo(tester, notes);
+    await tester.tap(notes);
+    await tester.pumpAndSettle();
+    final field = find.widgetWithText(
+      TextField,
+      'Accessibility, set times, parking, or anything fans should know',
+    );
+    await tester.enterText(field, 'Step-free entry');
+    await tester.tap(find.text('CLOSE'));
+    await tester.pumpAndSettle();
+    expect(app.gfDesc, 'Step-free entry');
+    expect(
+      find.descendant(of: notes, matching: find.text('Step-free entry')),
+      findsOne,
+    );
   });
 
   testWidgets('published gigs open with details expanded', (tester) async {
@@ -142,170 +336,13 @@ void main() {
     await tester.pumpAndSettle();
     app.editPublishedGig();
     await tester.pumpAndSettle();
-
-    expect(find.text('EDIT GIG'), findsOne);
-    final toggle = find.byKey(const ValueKey('gig-details-toggle'));
-    await _scrollTo(tester, toggle);
-    expect(find.byKey(const ValueKey('gig-details-body')), findsOne);
-    expect(find.text('PUBLISH UPDATES'), findsOne);
+    await _scrollTo(tester, find.byKey(const Key('gig-details-toggle')));
+    expect(find.byKey(const Key('gig-details-body')), findsOne);
     await _toggleDetails(tester);
-    expect(find.byKey(const ValueKey('gig-details-body')), findsNothing);
+    expect(find.byKey(const Key('gig-details-body')), findsNothing);
   });
 
-  testWidgets(
-    'the flyer, its presses and every sheet render and drive the form',
-    (tester) async {
-      final app = (await _pumpGigCreate(tester)).app;
-
-      // Progress counts only the four required fields; details start collapsed.
-      expect(find.text('NEW GIG'), findsOne);
-      expect(find.text('0 OF 4 REQUIRED DONE'), findsOne);
-      expect(find.text('DRAFT'), findsOne);
-      expect(find.text('REQUIRED'), findsOne);
-      expect(find.text('GIG NAME'), findsNothing);
-      expect(find.text('NAME · REQUIRED'), findsOne);
-      expect(find.text('DOORS AND START TIME'), findsNothing);
-      expect(find.text('DATE · REQUIRED'), findsOne);
-      expect(find.text('TIMES · REQUIRED'), findsOne);
-      expect(find.text('VENUE · REQUIRED'), findsOne);
-      expect(find.text('POSTER'), findsOne);
-      expect(find.text('STILL NEEDS A NAME + A DATE + A VENUE'), findsOne);
-
-      // Typing in the inline name row updates the docked poster.
-      await tester.enterText(
-        find.byKey(const Key('gig-name-field')),
-        'Riptide Release',
-      );
-      await tester.pump();
-      expect(app.gfName, 'Riptide Release');
-      expect(find.text('NAME'), findsOne);
-      expect(find.text('STILL NEEDS A DATE + A VENUE'), findsOne);
-
-      // When sheet — pick a day from the rolling calendar.
-      await _scrollTo(tester, find.byKey(const ValueKey('gig-slot-date')));
-      await tester.tap(find.text('Pick a date'));
-      await tester.pumpAndSettle();
-      expect(find.text('WHEN IS IT'), findsOne);
-      expect(find.text('DOORS 8PM'), findsOne);
-      // Tomorrow, not "the 1st" — on the last day of a month tomorrow falls in
-      // the next one, and the calendar shows four months at once, so a bare day
-      // number matches a past cell first and taps nothing.
-      final now = DateTime.now();
-      final tomorrow = DateTime(now.year, now.month, now.day + 1);
-      final tomorrowCell = find.byKey(
-        ValueKey('day-${tomorrow.year}-${tomorrow.month}-${tomorrow.day}'),
-      );
-      await tester.scrollUntilVisible(
-        tomorrowCell,
-        80,
-        scrollable: find.byType(Scrollable).last,
-      );
-      final calendar = find.byType(Scrollable).last;
-      final cellCenter = tester.getCenter(tomorrowCell);
-      if (cellCenter.dy > 580) {
-        await tester.drag(calendar, Offset(0, 520 - cellCenter.dy));
-        await tester.pumpAndSettle();
-      }
-      await tester.tap(tomorrowCell);
-      await tester.pump();
-      expect(app.gfDate, tomorrow);
-      await tester.tap(find.text('DOORS 7PM'));
-      await tester.pump();
-      expect(app.gfDoorsLabel, '7PM');
-      await tester.tap(find.text('DONE'));
-      await tester.pumpAndSettle();
-
-      // Venue sheet.
-      await _scrollTo(tester, find.byKey(const ValueKey('gig-slot-venue')));
-      await tester.tap(find.text('Choose a venue'));
-      await tester.pumpAndSettle();
-      expect(find.text('WHERE IS IT'), findsOne);
-      await tester.tap(find.text('THE FOGHORN CLUB'));
-      await tester.pumpAndSettle();
-      expect(app.gfVenueId, 'v1');
-      expect(
-        find.text('READY. FANS NEARBY SEE IT AS SOON AS YOU PUBLISH.'),
-        findsOne,
-      );
-
-      // Price sheet — a preset closes it, the custom field stays open.
-      await _toggleDetails(tester);
-      expect(find.text('COVER'), findsOne);
-      expect(find.text('ACCESS'), findsOne);
-      expect(find.text('AUDIENCE'), findsOne);
-      expect(find.text('LINEUP · 1'), findsOne);
-      final priceSlot = find.text('COVER');
-      await _scrollTo(tester, priceSlot);
-      await tester.tap(priceSlot);
-      await tester.pumpAndSettle();
-      // The sheet title repeats the checklist row's label behind it.
-      expect(find.text('COVER'), findsNWidgets(2));
-      await tester.enterText(
-        find.widgetWithText(TextField, 'Other amount'),
-        '7',
-      );
-      await tester.pump();
-      expect(app.gfPrice, '\$7');
-      await tester.tap(find.text('\$10'));
-      await tester.pumpAndSettle();
-      expect(app.gfPrice, '\$10');
-
-      // Tickets sheet — cap chips, then swap to an external link.
-      final ticketSlot = find.text('ACCESS');
-      await _scrollTo(tester, ticketSlot);
-      await tester.tap(ticketSlot);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('100'));
-      await tester.pump();
-      expect(app.gfCap, '100');
-      await tester.tap(find.text('External ticket link'));
-      await tester.pump();
-      await tester.enterText(
-        find.widgetWithText(TextField, 'https://…'),
-        'https://dice.fm/riptide',
-      );
-      await tester.pump();
-      expect(app.gfExt, 'https://dice.fm/riptide');
-      await tester.tap(find.text('DONE'));
-      await tester.pumpAndSettle();
-
-      // Poster presses sit beside the docked poster at the top of the list.
-      final press = find.byKey(const ValueKey('press-accent'));
-      await _scrollTo(tester, press, delta: -240);
-      await tester.tap(press);
-      await tester.pump();
-      expect(app.gfFly, 'accent');
-
-      // Autosave aside, the draft can still be saved from the end of the list.
-      await _scrollTo(tester, find.text('SAVE DRAFT'));
-      expect(find.text('SAVE DRAFT'), findsOne);
-      final saveDraft = tester.widget<EpPill>(
-        find.byKey(const ValueKey('gig-save-draft')),
-      );
-      expect(saveDraft.variant, EpPillVariant.outline);
-      expect(saveDraft.size, EpPillSize.chip);
-
-      // Publish, then the live-flyer confirmation.
-      await tester.tap(find.text('PUBLISH GIG'));
-      await tester.pumpAndSettle();
-      expect(app.gfPublished, isTrue);
-      expect(find.text('PUBLISHED'), findsOne);
-      expect(find.text("IT'S LIVE."), findsOne);
-      expect(find.text('earplug.app/g/riptide-release'), findsOne);
-      expect(find.text('OPEN PUBLIC GIG'), findsOne);
-      expect(find.text('SHARE LINK'), findsOne);
-      expect(app.allGigs.last.title, 'Riptide Release');
-      expect(app.allGigs.last.flyKey, 'accent');
-
-      await tester.tap(find.text('MAKE ANOTHER'));
-      await tester.pumpAndSettle();
-      expect(find.text('NAME · REQUIRED'), findsOne);
-      expect(find.byKey(const ValueKey('gig-details-body')), findsNothing);
-      expect(app.gfPrice, 'FREE');
-    },
-  );
-
-  testWidgets('the editing slots stay in one column for enlarged text', (
+  testWidgets('detail cards stay in one column for enlarged text', (
     tester,
   ) async {
     tester.platformDispatcher.textScaleFactorTestValue = 1.5;
@@ -314,20 +351,20 @@ void main() {
     await _toggleDetails(tester);
     await _scrollTo(
       tester,
-      find.byKey(const ValueKey('gig-slot-date')),
+      find.byKey(const Key('gig-slot-when')),
       delta: -240,
     );
-
     final leftEdges = <double>[];
-    for (final key in const [
-      'gig-slot-date',
-      'gig-slot-times',
+    for (final key in [
+      'gig-slot-when',
       'gig-slot-venue',
       'gig-slot-cover',
       'gig-slot-access',
       'gig-slot-audience',
+      'gig-slot-lineup',
+      'gig-slot-notes',
     ]) {
-      final slot = find.byKey(ValueKey(key));
+      final slot = find.byKey(Key(key));
       await _scrollTo(tester, slot);
       leftEdges.add(tester.getTopLeft(slot).dx);
     }
@@ -348,7 +385,7 @@ void main() {
     expect(
       find.descendant(
         of: coverSlot,
-        matching: find.text('Tickets · Set a price'),
+        matching: find.text('Set the cover charge'),
       ),
       findsOne,
     );
@@ -359,31 +396,31 @@ void main() {
       find.descendant(of: coverSlot, matching: find.text(r'Tickets · $10.00')),
       findsOne,
     );
-    expect(find.text('Tickets · Set a price'), findsNothing);
+    expect(find.text('Set the cover charge'), findsNothing);
   });
 
   testWidgets(
-    'uploaded art swaps the press for a drop slot and an overlay toggle',
+    'custom press exposes art and overlay controls in the flyer sheet',
     (tester) async {
       final app = (await _pumpGigCreate(tester)).app;
       expect(find.textContaining('TEXT OVERLAY'), findsNothing);
 
+      await _openFlyerSheet(tester);
       final custom = find.byKey(const ValueKey('press-custom'));
-      await _scrollTo(tester, custom);
       await tester.tap(custom);
       await tester.pump();
       expect(app.gfCustomFlyer, isTrue);
-      expect(_artPlaceholder, findsOne);
+      expect(_artPlaceholder, findsNWidgets(2));
       expect(find.text('ADD FLYER ART'), findsOne);
       expect(find.text('TEXT OVERLAY · ON'), findsOne);
-      expect(find.text('YOUR GIG NAME'), findsOne);
+      expect(find.text('YOUR GIG NAME'), findsNWidgets(2));
 
-      // Overlay off hides the printed details but keeps the checklist rows.
+      // Overlay off hides the printed details on both posters.
       await tester.tap(find.text('TEXT OVERLAY · ON'));
       await tester.pump();
       expect(find.text('TEXT OVERLAY · OFF'), findsOne);
       expect(find.text('YOUR GIG NAME'), findsNothing);
-      expect(find.text('DATE · REQUIRED'), findsOne);
+      expect(find.byKey(const Key('gig-slot-when')), findsOne);
       expect(app.gfShowOverlay, isFalse);
       expect(app.gfDate, isNull);
       await app.saveGigDraft();
@@ -397,8 +434,8 @@ void main() {
     final harness = await _pumpGigCreate(tester);
     harness.picker.nextPhoto = photoFixture(filename: 'flyer.png');
 
+    await _openFlyerSheet(tester);
     final custom = find.byKey(const ValueKey('press-custom'));
-    await _scrollTo(tester, custom);
     await tester.tap(custom);
     await tester.pump();
     await tester.tap(find.text('ADD FLYER ART'));
@@ -406,7 +443,7 @@ void main() {
 
     expect(harness.app.gfFlyerArt, isNotNull);
     expect(harness.app.gfFlyerStorageId, isNotNull);
-    expect(find.byType(Image), findsOne);
+    expect(find.byType(Image), findsNWidgets(2));
     expect(_artPlaceholder, findsNothing);
     await harness.app.saveGigDraft();
     await tester.pumpAndSettle();
@@ -424,8 +461,8 @@ void main() {
     app.setGfDate(DateTime.now().add(const Duration(days: 2)));
     app.setGfVenue('v1');
 
+    await _openFlyerSheet(tester);
     final custom = find.byKey(const ValueKey('press-custom'));
-    await _scrollTo(tester, custom);
     await tester.tap(custom);
     await tester.pump();
     await tester.tap(find.text('ADD FLYER ART'));
@@ -433,8 +470,17 @@ void main() {
 
     expect(app.gfFlyerUploading, isTrue);
     expect(app.gigMissing, contains('your flyer art'));
+    final strip = find.descendant(
+      of: find.byKey(const Key('gig-flyer')),
+      matching: find.byType(LinearProgressIndicator),
+    );
+    expect(tester.widget<LinearProgressIndicator>(strip).minHeight, 2);
+    await tester.tap(find.text('CLOSE'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byKey(const Key('gig-save')));
+    await tester.pumpAndSettle();
     final disabledPublish = tester.widget<EpPill>(
-      find.widgetWithText(EpPill, 'PUBLISH GIG'),
+      find.byKey(const Key('gig-preview-publish')),
     );
     expect(disabledPublish.onPressed, isNull);
     expect(repository.publishCalls, 0);
@@ -446,7 +492,10 @@ void main() {
     expect(app.gfFlyerStorageId, isNotNull);
     expect(app.gigMissing, isNot(contains('your flyer art')));
 
-    await tester.tap(find.text('PUBLISH GIG'));
+    final publish = find.byKey(const Key('gig-preview-publish'));
+    await tester.ensureVisible(publish);
+    await tester.pumpAndSettle();
+    await tester.tap(publish);
     await tester.pumpAndSettle();
     expect(repository.publishCalls, 1);
     expect(repository.publishedFlyStorageId, app.gfFlyerStorageId);
@@ -464,7 +513,7 @@ void main() {
     expect(app.gfAgeRequirement, AgeRequirement.allAges);
 
     await _toggleDetails(tester);
-    final ageSlot = find.text('AUDIENCE');
+    final ageSlot = find.byKey(const Key('gig-slot-audience'));
     await _scrollTo(tester, ageSlot);
     await tester.tap(ageSlot);
     await tester.pumpAndSettle();
@@ -538,16 +587,39 @@ void main() {
     await _toggleDetails(tester);
     final accessSlot = find.byKey(const ValueKey('gig-slot-access'));
     await _scrollTo(tester, accessSlot);
-    Finder doneIndicator() =>
-        find.descendant(of: accessSlot, matching: find.byIcon(Icons.check));
-
-    app.setGfTix(Ticketing.external);
+    await tester.tap(accessSlot);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('External ticket link'));
     await tester.pump();
-    expect(doneIndicator(), findsNothing);
+    await tester.tap(find.text('DONE'));
+    await tester.pumpAndSettle();
+    final placeholder = find.text('Tickets and age access');
+    expect(
+      tester.widget<Text>(placeholder).style?.color,
+      tester.element(placeholder).epColors.accent,
+    );
 
-    app.setGfExt('https://dice.fm/show');
-    await tester.pump();
-    expect(doneIndicator(), findsOne);
+    await tester.tap(accessSlot);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'https://…'),
+      'https://dice.fm/show',
+    );
+    await tester.tap(find.text('DONE'));
+    await tester.pumpAndSettle();
+    expect(app.gfExt, 'https://dice.fm/show');
+    expect(placeholder, findsNothing);
+    expect(
+      find.descendant(of: accessSlot, matching: find.text('External link')),
+      findsOne,
+    );
+    expect(
+      find.descendant(
+        of: accessSlot,
+        matching: find.text('HTTPS://DICE.FM/SHOW'),
+      ),
+      findsOne,
+    );
   });
 
   testWidgets('paid tickets stay disabled until Stripe can sell tickets', (
@@ -703,9 +775,13 @@ void main() {
         ),
         findsOne,
       );
+      final priceValue = find.descendant(
+        of: coverSlot,
+        matching: find.text(r'Tickets · $12.00'),
+      );
       expect(
-        find.descendant(of: coverSlot, matching: find.byIcon(Icons.check)),
-        findsOne,
+        tester.widget<Text>(priceValue).style?.color,
+        tester.element(priceValue).epColors.contentPrimary,
       );
       await tester.tap(coverSlot);
       await tester.pumpAndSettle();
@@ -749,7 +825,7 @@ void main() {
     await tester.pump();
     expect(app.canPublishGig, isFalse);
     expect(app.gigMissing, ['ticket price and capacity']);
-    expect(find.text('STILL NEEDS TICKET PRICE AND CAPACITY'), findsOne);
+    expect(find.byKey(const Key('gig-publish-hint')), findsNothing);
 
     await _toggleDetails(tester);
     final coverSlot = find.byKey(const ValueKey('gig-slot-cover'));
@@ -757,13 +833,14 @@ void main() {
     expect(
       find.descendant(
         of: coverSlot,
-        matching: find.text('Tickets · Set a price'),
+        matching: find.text('Set the cover charge'),
       ),
       findsOne,
     );
+    final placeholder = find.text('Set the cover charge');
     expect(
-      find.descendant(of: coverSlot, matching: find.byIcon(Icons.check)),
-      findsNothing,
+      tester.widget<Text>(placeholder).style?.color,
+      tester.element(placeholder).epColors.accent,
     );
     await tester.tap(coverSlot);
     await tester.pumpAndSettle();
@@ -819,8 +896,7 @@ void main() {
     expect(tester.widget<TextField>(capacityField).controller!.text, '5000');
     await tester.tap(find.text('DONE'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('PUBLISH GIG'));
-    await tester.pumpAndSettle();
+    await _publishFromPreview(tester);
     expect(app.gfPublished, isTrue);
     expect(app.gfProject?.ticketPriceMinor, 1235);
     expect(app.gfProject?.ticketCapacity, 5000);
@@ -974,7 +1050,7 @@ void main() {
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
     expect(app.gfPreviewing, isFalse);
-    expect(find.text('NEW GIG'), findsOne);
+    expect(find.byKey(const Key('gig-flyer')), findsOne);
     expect(app.gfName, 'Current Draft Noise');
     expect(app.gfDesc, 'Everything entered in the editor stays visible.');
   });
@@ -1049,6 +1125,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(app.gfFlyerUrl, 'demo://flyer/stored-flyer');
+    await _openFlyerSheet(tester);
     final clearArt = find.byKey(const ValueKey('clear-flyer-art'));
     expect(clearArt, findsOne);
     await tester.ensureVisible(clearArt);
@@ -1160,8 +1237,30 @@ void main() {
   });
 }
 
-/// The docked poster's empty custom-art slot, which draws no label of its own.
+/// Custom art placeholders appear in the page flyer and sheet preview.
 final _artPlaceholder = find.byIcon(Icons.add_photo_alternate_outlined);
+
+Future<void> _openFlyerSheet(WidgetTester tester) async {
+  final flyer = find.byKey(const Key('gig-flyer'));
+  await _scrollTo(tester, flyer, delta: -240);
+  await tester.tap(flyer);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _closeFlyerSheet(WidgetTester tester) async {
+  await tester.tap(find.text('CLOSE'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _publishFromPreview(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('gig-save')));
+  await tester.pumpAndSettle();
+  final publish = find.byKey(const Key('gig-preview-publish'));
+  await tester.ensureVisible(publish);
+  await tester.pumpAndSettle();
+  await tester.tap(publish);
+  await tester.pumpAndSettle();
+}
 
 Future<void> _toggleDetails(WidgetTester tester) async {
   final toggle = find.byKey(const ValueKey('gig-details-toggle'));
@@ -1180,6 +1279,8 @@ Future<void> _scrollTo(
     delta,
     scrollable: find.byType(Scrollable).first,
   );
+  // Keep targets below the floating controls when bringing them into view.
+  await Scrollable.ensureVisible(tester.element(finder), alignment: .2);
   await tester.pumpAndSettle();
 }
 
@@ -1189,6 +1290,7 @@ Future<AppHarness> _pumpGigCreate(
 }) => pumpApp(
   tester,
   repository: repository,
+  size: const Size(390, 844),
   // Let the demo streams land before the form opens, the way they have by the
   // time a real user reaches this screen.
   beforePump: (app) async {

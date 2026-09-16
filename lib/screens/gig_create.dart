@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../band_media_state.dart';
+import '../date_names.dart';
 import '../flyer_styles.dart';
 import '../models.dart';
 import '../money.dart';
@@ -14,7 +15,6 @@ import '../services/media_picker.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
-import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
@@ -82,7 +82,7 @@ Future<FlyerEntryProposal?> _extractFlyerProposal(
   }
 }
 
-/// A live poster dock followed by the draft's editing checklist.
+/// A flyer-first editor with autosaved fields and a separate fan preview.
 class GigCreateScreen extends StatefulWidget {
   const GigCreateScreen({super.key});
 
@@ -122,287 +122,234 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
     }
     if (app.gfPreviewing) return const GigDraftPreview();
 
+    final palette = context.epColors;
     final venue = app.gfVenueId == null ? null : app.venue(app.gfVenueId!);
-    final nameDone = app.gfName.trim().isNotEmpty;
-    final dateDone = app.gfDate != null;
-    final venueDone = app.gfVenueId != null;
-    final coverDone =
-        app.gfTix != Ticketing.paid || app.gfTicketPriceMinor != null;
-    final accessDone =
-        app.gfTix != Ticketing.external || app.validExternalTicketUrl;
-    final lineupDone = app.gfPerformers.isNotEmpty;
-    // Doors and start have usable defaults, so times are done with the date.
-    final requiredDone = [
-      nameDone,
-      dateDone,
-      dateDone,
-      venueDone,
-    ].where((complete) => complete).length;
+    final date = app.gfDate;
     final editingPublished =
         app.gfProject?.status == GigProjectStatus.published;
     final detailsExpanded = _detailsExpanded ?? editingPublished;
-    final missing = app.gigMissing.join(' + ');
 
     return Stack(
       children: [
-        Column(
+        ListView(
+          padding: EdgeInsets.fromLTRB(
+            EpLayout.gutter,
+            headerTopPad(context) + 44 + 16,
+            EpLayout.gutter,
+            tabBarClearance,
+          ),
           children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: context.epColors.line),
-                ),
-              ),
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  EpLayout.gutter,
-                  headerTopPad(context),
-                  EpLayout.gutter,
-                  16,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        EpIconPill(
-                          icon: Icons.close,
-                          semanticLabel: 'Close',
-                          onPressed: app.closeGigCreate,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: EpDisplay(
-                            editingPublished ? 'Edit gig' : 'New gig',
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        TextButton(
-                          onPressed: app.previewGigDraft,
-                          child: const EpMonoText('Preview'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    EpReadinessBar(done: requiredDone, total: 4),
-                    const SizedBox(height: 8),
-                    Semantics(
-                      liveRegion: true,
-                      child: EpEyebrow(
-                        '$requiredDone OF 4 REQUIRED DONE',
-                        key: const ValueKey('gig-required-progress'),
+            AspectRatio(
+              key: const Key('gig-flyer'),
+              aspectRatio: 1,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  const _DraftPoster(),
+                  Positioned.fill(
+                    child: Semantics(
+                      button: true,
+                      label: 'Edit flyer',
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: InkWell(onTap: () => showGigFlyerSheet(context)),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    EpMonoText(app.gfSaveState),
-                  ],
-                ),
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(
-                  EpLayout.gutter,
-                  20,
-                  EpLayout.gutter,
-                  actionBarClearance(context) + 80,
-                ),
-                children: [
-                  const _PosterDock(),
-                  const EpSectionHeader(label: 'REQUIRED'),
-                  _SlotRow(
-                    label: 'Name',
-                    done: nameDone,
-                    required: true,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (nameDone && !_nameFocus.hasFocus) ...[
-                          EpDisplay(app.gfName, size: 24),
-                          const SizedBox(height: 8),
-                        ],
-                        EpUnderlineField(
-                          fieldKey: const Key('gig-name-field'),
-                          controller: _name,
-                          focusNode: _nameFocus,
-                          hint: 'Give it a name',
-                          onChanged: app.setGfName,
-                        ),
-                      ],
-                    ),
                   ),
-                  _SlotRow(
-                    key: const ValueKey('gig-slot-date'),
-                    label: 'Date',
-                    done: dateDone,
-                    required: true,
-                    value: dateDone ? app.gfDateLabel : 'Pick a date',
-                    onTap: () => showWhenSheet(context),
-                  ),
-                  _SlotRow(
-                    key: const ValueKey('gig-slot-times'),
-                    label: 'Times',
-                    done: dateDone,
-                    required: true,
-                    value: dateDone
-                        ? 'Doors ${app.gfDoorsLabel} · Start ${app.gfStartLabel}'
-                        : 'Set doors and start',
-                    semanticHint:
-                        'A start earlier than doors is treated as after midnight',
-                    onTap: () => showWhenSheet(context),
-                  ),
-                  _SlotRow(
-                    key: const ValueKey('gig-slot-venue'),
-                    label: 'Venue',
-                    done: venueDone,
-                    required: true,
-                    value: venue?.name ?? 'Choose a venue',
-                    sub: venue?.area,
-                    onTap: () => showVenueSheet(context),
-                  ),
-                  _SlotRow(
-                    key: const ValueKey('gig-details-toggle'),
-                    label: 'DETAILS · OPTIONAL',
-                    done: false,
-                    value: 'Cover · Access · Audience · Lineup · Notes',
-                    trailingIcon: detailsExpanded
-                        ? Icons.expand_less
-                        : Icons.expand_more,
-                    expanded: detailsExpanded,
-                    onTap: () =>
-                        setState(() => _detailsExpanded = !detailsExpanded),
-                  ),
-                  if (detailsExpanded)
-                    Column(
-                      key: const ValueKey('gig-details-body'),
-                      children: [
-                        _SlotRow(
-                          key: const ValueKey('gig-slot-cover'),
-                          label: 'Cover',
-                          done: coverDone,
-                          required: true,
-                          value: app.gfTix == Ticketing.paid
-                              ? 'Tickets · ${app.gfTicketPriceMinor == null ? 'Set a price' : Money(app.gfTicketPriceMinor!).label}'
-                              : app.gfPrice == 'FREE'
-                              ? 'Free'
-                              : app.gfPrice,
-                          sub: app.gfTix == Ticketing.paid
-                              ? 'In-app checkout'
-                              : app.gfPrice == 'FREE'
-                              ? null
-                              : 'At the door',
-                          onTap: () => app.gfTix == Ticketing.paid
-                              ? showTicketsSheet(context)
-                              : showPriceSheet(context),
-                        ),
-                        _SlotRow(
-                          key: const ValueKey('gig-slot-access'),
-                          label: 'Access',
-                          done: accessDone,
-                          required: true,
-                          value: switch (app.gfTix) {
-                            Ticketing.rsvp =>
-                              'In-app RSVP · ${app.gfCap == 'No cap' ? 'No cap' : 'RSVP cap ${app.gfCap}'}',
-                            Ticketing.external => 'External link',
-                            Ticketing.paid => 'Paid tickets',
-                          },
-                          sub: switch (app.gfTix) {
-                            Ticketing.rsvp => null,
-                            Ticketing.external =>
-                              app.gfExt.isEmpty ? 'Add ticket URL' : app.gfExt,
-                            Ticketing.paid => 'In-app checkout',
-                          },
-                          onTap: () => showTicketsSheet(context),
-                        ),
-                        _SlotRow(
-                          key: const ValueKey('gig-slot-audience'),
-                          label: 'Audience',
-                          done: true,
-                          value: app.gfAgeRequirement.label,
-                          semanticHint: 'Age requirement',
-                          onTap: () => showAgeSheet(context),
-                        ),
-                        _SlotRow(
-                          label: 'Lineup · ${app.gfPerformers.length}',
-                          done: lineupDone,
-                          required: true,
-                          child: const _LineupField(),
-                        ),
-                        _SlotRow(
-                          label: 'Notes for fans · optional',
-                          done: app.gfDesc.trim().isNotEmpty,
-                          value: app.gfDesc.trim().isEmpty
-                              ? 'Accessibility, set times, parking'
-                              : app.gfDesc,
-                          onTap: () => showEpSheet(
-                            context,
-                            (_) => const EpFormSheet(
-                              title: 'Notes for fans',
-                              child: _AdditionalInfoField(),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  const EpHairline(),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: EpPill(
-                      key: const ValueKey('gig-save-draft'),
-                      label: 'Save draft',
-                      variant: EpPillVariant.outline,
-                      size: EpPillSize.chip,
-                      onPressed: app.saveGigDraft,
+                  Positioned(
+                    right: 12,
+                    bottom: 12,
+                    child: EpIconPill(
+                      key: const Key('gig-flyer-edit'),
+                      icon: Icons.edit,
+                      semanticLabel: 'Edit flyer',
+                      filled: true,
+                      onPressed: () => showGigFlyerSheet(context),
                     ),
                   ),
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            TextField(
+              key: const Key('gig-name-field'),
+              controller: _name,
+              focusNode: _nameFocus,
+              textCapitalization: TextCapitalization.words,
+              style: Theme.of(context).textTheme
+                  .epDisplayAt(32)
+                  .copyWith(color: palette.contentPrimary),
+              decoration: InputDecoration(
+                hintText: 'Name your gig',
+                hintStyle: Theme.of(context).textTheme
+                    .epDisplayAt(32)
+                    .copyWith(color: palette.contentSecondary),
+                filled: false,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                enabledBorder: UnderlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(color: palette.ink),
+                ),
+                focusedBorder: UnderlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(color: palette.accent, width: 1.5),
+                ),
+              ),
+              onChanged: app.setGfName,
+            ),
+            const SizedBox(height: 16),
+            _SlotRow(
+              key: const Key('gig-slot-when'),
+              placeholder: 'Pick a date and time',
+              value: date == null
+                  ? null
+                  : '${weekdayNames[date.weekday - 1]}, '
+                        '${monthNames[date.month - 1]} ${date.day}',
+              display: true,
+              sub: date == null
+                  ? null
+                  : 'Doors ${app.gfDoorsLabel} · Start ${app.gfStartLabel}',
+              onTap: () => showGigWhenSheet(context),
+            ),
+            _SlotRow(
+              key: const Key('gig-slot-venue'),
+              placeholder: 'Choose a venue',
+              value: venue?.name,
+              sub: venue?.area,
+              onTap: () => showVenueSheet(context),
+            ),
+            _SlotRow(
+              key: const Key('gig-details-toggle'),
+              value: 'More details',
+              sub: 'Cover · Access · Audience · Lineup · Notes',
+              trailingIcon: detailsExpanded
+                  ? Icons.expand_less
+                  : Icons.expand_more,
+              expanded: detailsExpanded,
+              onTap: () => setState(() => _detailsExpanded = !detailsExpanded),
+            ),
+            if (detailsExpanded)
+              Column(
+                key: const Key('gig-details-body'),
+                children: [
+                  _SlotRow(
+                    key: const Key('gig-slot-cover'),
+                    placeholder: 'Set the cover charge',
+                    value: app.gfTix == Ticketing.paid
+                        ? app.gfTicketPriceMinor == null
+                              ? null
+                              : 'Tickets · ${Money(app.gfTicketPriceMinor!).label}'
+                        : app.gfPrice.isEmpty
+                        ? null
+                        : app.gfPrice == 'FREE'
+                        ? 'Free'
+                        : app.gfPrice,
+                    sub: app.gfTix == Ticketing.paid
+                        ? 'In-app checkout'
+                        : app.gfPrice.isEmpty || app.gfPrice == 'FREE'
+                        ? null
+                        : 'At the door',
+                    onTap: () => app.gfTix == Ticketing.paid
+                        ? showTicketsSheet(context)
+                        : showPriceSheet(context),
+                  ),
+                  _SlotRow(
+                    key: const Key('gig-slot-access'),
+                    placeholder: 'Tickets and age access',
+                    value: switch (app.gfTix) {
+                      Ticketing.rsvp =>
+                        'In-app RSVP · ${app.gfCap == 'No cap' ? 'No cap' : 'RSVP cap ${app.gfCap}'}',
+                      Ticketing.external =>
+                        app.validExternalTicketUrl ? 'External link' : null,
+                      Ticketing.paid => 'Paid tickets',
+                    },
+                    sub: switch (app.gfTix) {
+                      Ticketing.rsvp => null,
+                      Ticketing.external =>
+                        app.gfExt.isEmpty ? 'Add ticket URL' : app.gfExt,
+                      Ticketing.paid => 'In-app checkout',
+                    },
+                    onTap: () => showTicketsSheet(context),
+                  ),
+                  _SlotRow(
+                    key: const Key('gig-slot-audience'),
+                    placeholder: 'Who is this for',
+                    value: app.gfAgeRequirement.label,
+                    semanticHint: 'Age requirement',
+                    onTap: () => showAgeSheet(context),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 12),
+                    child: EpCard(
+                      key: Key('gig-slot-lineup'),
+                      padding: EdgeInsets.all(16),
+                      child: _LineupField(),
+                    ),
+                  ),
+                  _SlotRow(
+                    key: const Key('gig-slot-notes'),
+                    placeholder: 'Notes for fans',
+                    value: app.gfDesc.trim().isEmpty ? null : app.gfDesc,
+                    onTap: () => showEpSheet(
+                      context,
+                      (_) => const EpFormSheet(
+                        title: 'Notes for fans',
+                        child: _AdditionalInfoField(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
           ],
         ),
         Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: DecoratedBox(
-            // An opaque surface under the shared CTA removes its fading edge.
-            decoration: BoxDecoration(
-              color: context.epColors.background,
-              border: Border(top: BorderSide(color: context.epColors.line)),
-            ),
-            child: Semantics(
-              liveRegion: true,
-              child: EpBottomCta(
-                hint: missing.isEmpty
-                    ? 'Ready. Fans nearby see it as soon as you publish.'
-                    : null,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (missing.isNotEmpty) ...[
-                      Center(
-                        child: EpEyebrow(
-                          'Still needs $missing',
-                          key: const ValueKey('gig-publish-hint'),
+          top: headerTopPad(context),
+          left: EpLayout.gutter,
+          right: EpLayout.gutter,
+          child: Row(
+            children: [
+              EpIconPill(
+                key: const Key('gig-close'),
+                icon: Icons.close,
+                semanticLabel: 'Close',
+                filled: true,
+                onPressed: app.closeGigCreate,
+              ),
+              Expanded(
+                child: Center(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: palette.background.withValues(alpha: .72),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Semantics(
+                        liveRegion: true,
+                        child: EpMonoText(
+                          app.gfSaveState,
+                          key: const Key('gig-save-state'),
+                          color: palette.contentSecondary,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                    ],
-                    EpPill(
-                      label: editingPublished
-                          ? 'Publish updates'
-                          : 'Publish gig',
-                      variant: EpPillVariant.primary,
-                      size: EpPillSize.large,
-                      expand: true,
-                      onPressed: app.canPublishGig ? app.publishGig : null,
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
+              SizedBox(
+                height: 44,
+                child: EpPill(
+                  key: const Key('gig-save'),
+                  label: 'Save',
+                  variant: EpPillVariant.primary,
+                  size: EpPillSize.chip,
+                  onPressed: () async {
+                    await app.saveGigDraft();
+                    if (context.mounted) app.previewGigDraft();
+                  },
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -410,121 +357,86 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
   }
 }
 
-/// Checklist rows can contain an inline field or the complete lineup editor.
+/// Label-free picker cards show either their current value or an invitation.
 class _SlotRow extends StatelessWidget {
   const _SlotRow({
     super.key,
-    required this.label,
-    required this.done,
-    this.required = false,
+    this.placeholder = '',
     this.value,
     this.sub,
+    this.display = false,
     this.semanticHint,
     this.trailingIcon = Icons.chevron_right,
     this.expanded,
-    this.child,
-    this.onTap,
+    required this.onTap,
   });
 
-  final String label;
-  final bool done;
-  final bool required;
+  final String placeholder;
   final String? value;
   final String? sub;
+  final bool display;
   final String? semanticHint;
   final IconData trailingIcon;
   final bool? expanded;
-  final Widget? child;
-  final VoidCallback? onTap;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.epColors;
-    return Semantics(
-      button: onTap != null,
-      hint: semanticHint,
-      expanded: expanded,
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const EpHairline(),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 3),
-                    child: done
-                        ? Icon(Icons.check, size: 16, color: palette.accent)
-                        : Container(
-                            width: 14,
-                            height: 14,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: required
-                                    ? palette.accent
-                                    : palette.outline,
-                              ),
-                            ),
-                          ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        EpEyebrow(
-                          required && !done ? '$label · required' : label,
-                          color: required && !done
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Semantics(
+        hint: semanticHint,
+        expanded: expanded,
+        child: EpCard(
+          padding: const EdgeInsets.all(16),
+          onTap: onTap,
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (display && value != null)
+                      EpDisplay(value!, size: 24)
+                    else
+                      Text(
+                        value ?? placeholder,
+                        style: Theme.of(context).textTheme.epBody.copyWith(
+                          color: value == null
                               ? palette.accent
-                              : palette.muted,
+                              : palette.contentPrimary,
                         ),
-                        const SizedBox(height: 4),
-                        if (child != null)
-                          child!
-                        else
-                          Text(
-                            value!,
-                            style: Theme.of(context).textTheme.epBody.copyWith(
-                              color: done
-                                  ? palette.ink
-                                  : required
-                                  ? palette.accent
-                                  : palette.muted,
-                            ),
-                          ),
-                        if (sub != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            sub!,
-                            style: Theme.of(
-                              context,
-                            ).textTheme.epBody.copyWith(color: palette.muted),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  if (onTap != null) ...[
-                    const SizedBox(width: 12),
-                    Icon(trailingIcon, size: 16, color: palette.muted),
+                      ),
+                    if (sub != null) ...[
+                      const SizedBox(height: 4),
+                      EpMonoText(sub!, color: palette.contentSecondary),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(width: 12),
+              Icon(trailingIcon, size: 16, color: palette.contentSecondary),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _PosterDock extends StatelessWidget {
-  const _PosterDock();
+Future<void> showGigFlyerSheet(BuildContext context) => showEpSheet(
+  context,
+  (_) => EpFormSheet(
+    title: 'FLYER',
+    child: _GigFlyerBody(onPickArt: () => _pickGigFlyerArt(context)),
+  ),
+);
+
+class _GigFlyerBody extends StatelessWidget {
+  const _GigFlyerBody({required this.onPickArt});
+
+  final VoidCallback onPickArt;
 
   @override
   Widget build(BuildContext context) {
@@ -533,14 +445,16 @@ class _PosterDock extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _DraftPoster(),
+        const SizedBox(
+          width: 120,
+          height: 158,
+          child: _DraftPoster(compact: true),
+        ),
         const SizedBox(width: 16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const EpEyebrow('Poster'),
-              const SizedBox(height: 8),
               Wrap(
                 children: [
                   for (final key in flyerPicks)
@@ -569,7 +483,7 @@ class _PosterDock extends StatelessWidget {
               ),
               if (app.gfCustomFlyer) ...[
                 TextButton(
-                  onPressed: () => _pickGigFlyerArt(context),
+                  onPressed: onPickArt,
                   child: EpMonoText(hasArt ? 'Change art' : 'Add flyer art'),
                 ),
                 if (hasArt)
@@ -597,10 +511,12 @@ class _PosterDock extends StatelessWidget {
   }
 }
 
-/// Keep only the title and artwork at thumbnail size; Preview has full details.
+/// Shared artwork rendering for the square flyer and its sheet preview.
 /// Persisted artwork keeps the app's URL resolution, caching and error fallback.
 class _DraftPoster extends StatelessWidget {
-  const _DraftPoster();
+  const _DraftPoster({this.compact = false});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -622,11 +538,8 @@ class _DraftPoster extends StatelessWidget {
         ),
       ),
     );
-    return SizedBox(
-      key: const ValueKey('gig-poster-thumb'),
-      width: 66,
-      height: 82,
-      child: ClipRect(
+    return LayoutBuilder(
+      builder: (context, constraints) => ClipRect(
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -635,13 +548,15 @@ class _DraftPoster extends StatelessWidget {
                 Image.memory(
                   art.bytes,
                   fit: BoxFit.cover,
-                  cacheWidth: (66 * MediaQuery.devicePixelRatioOf(context))
-                      .round(),
+                  cacheWidth:
+                      (constraints.maxWidth *
+                              MediaQuery.devicePixelRatioOf(context))
+                          .round(),
                 )
               else
                 EpNetworkImage(
                   url: app.gfFlyerUrl,
-                  cacheWidth: 66,
+                  cacheWidth: constraints.maxWidth.round(),
                   fit: BoxFit.cover,
                   fallback: placeholder,
                 ),
@@ -662,9 +577,9 @@ class _DraftPoster extends StatelessWidget {
             if (showDetails)
               EpPoster(
                 title: app.gfName.trim().isEmpty ? 'Your gig name' : app.gfName,
-                height: 82,
-                titleSize: 10,
-                padding: const EdgeInsets.all(6),
+                height: constraints.maxHeight,
+                titleSize: compact ? 16 : 32,
+                padding: EdgeInsets.all(compact ? 10 : 20),
                 style: app.gfCustomFlyer
                     ? FlyerStyle(
                         base: palette.background.withValues(alpha: 0),
@@ -697,10 +612,10 @@ class _LineupField extends StatelessWidget {
       children: [
         if (performers.isEmpty)
           Text(
-            'Add at least one performer.',
+            'Add performers',
             style: Theme.of(
               context,
-            ).textTheme.epBody.copyWith(color: context.epColors.muted),
+            ).textTheme.epBody.copyWith(color: context.epColors.accent),
           )
         else
           ReorderableListView.builder(
