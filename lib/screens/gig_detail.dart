@@ -126,7 +126,7 @@ class GigDetailPresentation extends StatefulWidget {
     this.onBack,
     this.flyerBytes,
     this.venueSet = true,
-    this.footer,
+    this.previewCta,
   });
 
   final Gig gig;
@@ -136,7 +136,7 @@ class GigDetailPresentation extends StatefulWidget {
   final VoidCallback? onBack;
   final Uint8List? flyerBytes;
   final bool venueSet;
-  final Widget? footer;
+  final Widget? previewCta;
 
   bool get isPreview => previewLabel != null;
 
@@ -282,10 +282,6 @@ class _GigDetailPresentationState extends State<GigDetailPresentation> {
                       app: app,
                       interactive: interactive,
                     ),
-                  if (widget.footer != null) ...[
-                    const SizedBox(height: _sectionGap),
-                    widget.footer!,
-                  ],
                 ],
               ),
             ),
@@ -308,7 +304,9 @@ class _GigDetailPresentationState extends State<GigDetailPresentation> {
           left: 0,
           right: 0,
           bottom: 0,
-          child: _GigCta(gig: gig, app: app, previewLabel: previewLabel),
+          child: widget.isPreview && widget.previewCta != null
+              ? widget.previewCta!
+              : _GigCta(gig: gig, app: app, previewLabel: previewLabel),
         ),
       ],
     );

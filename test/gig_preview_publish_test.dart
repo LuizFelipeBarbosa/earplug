@@ -1,4 +1,5 @@
 import 'package:earplug/app_state.dart';
+import 'package:earplug/models.dart';
 import 'package:earplug/screens/gig_create.dart';
 import 'package:earplug/screens/gig_detail.dart';
 import 'package:earplug/widgets/ep_text.dart';
@@ -58,48 +59,78 @@ void main() {
     expect(find.text("IT'S LIVE."), findsOneWidget);
   });
 
-  testWidgets('preview publish scrolls inline after the venue card', (
+  testWidgets('preview publish stays pinned to the bottom while scrolling', (
     tester,
   ) async {
     final app = (await _pumpGigCreate(tester)).app;
+    tester.view.padding = const FakeViewPadding(bottom: 24);
     app.setGfName('Some Gig');
     app.setGfDate(DateTime.now().add(const Duration(days: 2)));
     app.setGfVenue('v1');
     app.previewGigDraft();
     await tester.pumpAndSettle();
 
-    final venue = find.byKey(const Key('gig-venue-card'));
     final publish = find.byKey(const Key('gig-preview-publish'));
-
-    await tester.ensureVisible(venue);
-    await tester.pumpAndSettle();
-    final scrollable = Scrollable.of(tester.element(venue));
-    // Compare content coordinates so the widgets need not be visible together.
-    final venueBottom =
-        tester.getBottomLeft(venue).dy + scrollable.position.pixels;
-
-    await tester.ensureVisible(publish);
-    await tester.pumpAndSettle();
-    expect(Scrollable.of(tester.element(publish)), same(scrollable));
-    final publishTop =
-        tester.getTopLeft(publish).dy + scrollable.position.pixels;
-    expect(venueBottom, lessThanOrEqualTo(publishTop));
-
-    final offset = scrollable.position.pixels;
-    expect(offset, greaterThan(0));
-    final topBeforeScroll = tester.getTopLeft(publish).dy;
-    scrollable.position.jumpTo(offset / 2);
-    await tester.pump();
+    final bar = find.byType(EpBottomCta);
+    expect(publish, findsOneWidget);
+    expect(bar, findsOneWidget);
+    expect(find.ancestor(of: publish, matching: bar), findsOneWidget);
+    final readyCopy = find.descendant(
+      of: bar,
+      matching: find.byType(EpMonoText),
+    );
     expect(
-      tester.getTopLeft(publish).dy - topBeforeScroll,
-      closeTo(offset / 2, 0.01),
+      tester.widget<EpMonoText>(readyCopy).text,
+      'Fans nearby see it as soon as you publish.',
+    );
+    expect(find.byKey(const Key('gig-buy-tickets')), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is EpPill &&
+            (widget.label.startsWith('RSVP') ||
+                widget.label == 'Going ✓' ||
+                widget.label == 'Tickets ↗'),
+      ),
+      findsNothing,
+    );
+
+    // EpBottomCta adds 32px below the pill after applying SafeArea. Read
+    // the inset above SafeArea, which removes it from the pill's MediaQuery.
+    final mediaQuery = MediaQuery.of(tester.element(bar));
+    final expectedBottom =
+        mediaQuery.size.height - mediaQuery.padding.bottom - 32;
+    expect(tester.getBottomLeft(publish).dy, closeTo(expectedBottom, 0.01));
+    expect(tester.getBottomRight(publish).dy, closeTo(expectedBottom, 0.01));
+    final publishRect = tester.getRect(publish);
+
+    final controller = tester
+        .widget<ListView>(find.byType(ListView))
+        .controller!;
+    expect(controller.position.maxScrollExtent, greaterThan(0));
+    controller.jumpTo(controller.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+
+    expect(controller.offset, greaterThan(0));
+    expect(tester.getRect(publish), publishRect);
+    expect(publish.hitTestable(), findsOneWidget);
+    // Content clears the visible copy as well as the pill; the scrim's
+    // transparent top edge can extend above them.
+    expect(
+      tester.getBottomLeft(find.byKey(const Key('gig-venue-card'))).dy,
+      lessThanOrEqualTo(tester.getTopLeft(readyCopy).dy),
     );
   });
 
-  testWidgets('null footer leaves the fan presentation without publish UI', (
+  testWidgets('null preview CTA preserves the read-only RSVP stand-in', (
     tester,
   ) async {
-    final gig = gigFixture(id: 'fan-gig', title: 'Fan gig');
+    final gig = gigFixture(
+      id: 'preview-gig',
+      title: 'Preview gig',
+      price: 0,
+      tix: Ticketing.rsvp,
+    );
     await pumpApp(
       tester,
       beforePump: (_) async {
@@ -111,13 +142,28 @@ void main() {
             gig: gig,
             app: context.watch<AppState>(),
             performers: const [],
-            footer: null,
+            previewLabel: 'Draft preview',
+            previewCta: null,
           ),
         ),
       ),
     );
 
     expect(find.byType(GigDetailPresentation), findsOneWidget);
+    final bar = find.byType(EpBottomCta);
+    expect(bar, findsOneWidget);
+    expect(tester.widget<EpBottomCta>(bar).hint, 'Free RSVP · preview only');
+    expect(
+      find.descendant(of: bar, matching: find.text('FREE RSVP · PREVIEW ONLY')),
+      findsOneWidget,
+    );
+    final pill = find.descendant(of: bar, matching: find.byType(EpPill));
+    expect(tester.widget<EpPill>(pill).label, 'RSVP');
+    expect(tester.widget<EpPill>(pill).onPressed, isNull);
+    expect(
+      find.descendant(of: pill, matching: find.text('RSVP')),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('gig-preview-publish')), findsNothing);
     expect(tester.takeException(), isNull);
   });

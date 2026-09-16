@@ -30,7 +30,7 @@ class GigDraftPreview extends StatelessWidget {
         onBack: app.closeGigPreview,
         flyerBytes: app.gfFlyerArt?.bytes,
         venueSet: app.gfVenueId != null,
-        footer: const _GigPreviewFooter(),
+        previewCta: const _GigPreviewFooter(),
       ),
     );
   }
@@ -44,37 +44,39 @@ class _GigPreviewFooter extends StatelessWidget {
     final app = context.watch<AppState>();
     final editingPublished =
         app.gfProject?.status == GigProjectStatus.published;
+    final hint = app.gfFlyerUploading
+        ? 'Still uploading your flyer'
+        : !app.canPublishGig
+        ? 'Still needs ${app.gigMissing.join(' + ')}'
+        : null;
+    final publish = EpPill(
+      key: const Key('gig-preview-publish'),
+      label: editingPublished ? 'Publish updates' : 'Publish gig',
+      variant: EpPillVariant.primary,
+      size: EpPillSize.large,
+      expand: true,
+      onPressed: (app.canPublishGig && !app.gfFlyerUploading)
+          ? app.publishGig
+          : null,
+    );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        EpPill(
-          key: const Key('gig-preview-publish'),
-          label: editingPublished ? 'Publish updates' : 'Publish gig',
-          variant: EpPillVariant.primary,
-          size: EpPillSize.large,
-          expand: true,
-          onPressed: (app.canPublishGig && !app.gfFlyerUploading)
-              ? app.publishGig
-              : null,
-        ),
-        const SizedBox(height: 12),
-        if (app.gfFlyerUploading)
-          const EpEyebrow(
-            'Still uploading your flyer',
-            key: Key('gig-publish-hint'),
-          )
-        else if (!app.canPublishGig)
-          EpEyebrow(
-            'Still needs ${app.gigMissing.join(' + ')}',
-            key: const Key('gig-publish-hint'),
-          )
-        else
-          EpMonoText(
-            'Fans nearby see it as soon as you publish.',
-            color: context.epColors.contentSecondary,
-          ),
-      ],
+    return EpBottomCta(
+      key: hint == null ? null : const Key('gig-publish-hint'),
+      hint: hint,
+      child: hint != null
+          ? publish
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                EpMonoText(
+                  'Fans nearby see it as soon as you publish.',
+                  color: context.epColors.contentSecondary,
+                ),
+                const SizedBox(height: 12),
+                publish,
+              ],
+            ),
     );
   }
 }
