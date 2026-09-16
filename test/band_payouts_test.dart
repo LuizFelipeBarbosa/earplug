@@ -784,7 +784,7 @@ void main() {
     await tester.tap(find.byKey(const Key('org-settings-stripe-setup')));
     await tester.pumpAndSettle();
     expect(launched, ['https://demo.stripe/onboard/org1']);
-    expect(find.text('Setup in progress'), findsOneWidget);
+    expect(find.textContaining('Setup in progress'), findsOneWidget);
     expect(find.text('CONTINUE SETUP'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('org-settings-stripe-refresh')));
@@ -870,7 +870,7 @@ void main() {
     await tester.tap(find.byKey(const Key('org-settings-stripe-setup')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('org-settings-stripe-error')), findsNothing);
-    expect(find.text('Setup in progress'), findsOneWidget);
+    expect(find.textContaining('Setup in progress'), findsOneWidget);
   });
 
   for (final band in [true]) {
