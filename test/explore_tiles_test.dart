@@ -918,7 +918,7 @@ void main() {
   });
 
   testWidgets(
-    'paid price renders as plain text, free price renders as an accent badge',
+    'paid and free prices both render as an accent badge',
     (tester) async {
       for (final gig in [
         gigFixture(id: 'paid-price', price: 12),
@@ -943,13 +943,14 @@ void main() {
         final price = tester.widget(
           find.byKey(ValueKey('gig-price-${gig.id}')),
         );
-        if (gig.free) {
-          expect(price, isA<Container>());
-          expect((price as Container).color, Ep.accent);
-        } else {
-          expect(price, isA<Text>());
-          expect(price, isNot(isA<Container>()));
-        }
+        final palette = tester
+            .element(find.byKey(ValueKey('gig-price-${gig.id}')))
+            .epColors;
+        expect(price, isA<Container>());
+        expect((price as Container).color, palette.accent);
+        expect(price.child, isA<Text>());
+        final label = price.child! as Text;
+        expect(label.style?.color, palette.onAccent);
       }
     },
   );
@@ -1338,7 +1339,7 @@ void main() {
   });
 
   testWidgets(
-    'event row uses a regular mono date, muted location, and plain paid price',
+    'event row uses a regular mono date, muted location, and an accent paid price',
     (tester) async {
       final gig = gigFixture(id: 'structured-lines', price: 12);
       for (final brightness in Brightness.values) {
@@ -1380,14 +1381,14 @@ void main() {
         final price = tester.widget(
           find.byKey(ValueKey('gig-price-${gig.id}')),
         );
-        expect(price, isA<Text>());
-        expect(price, isNot(isA<Container>()));
-        final label = price as Text;
+        expect(price, isA<Container>());
+        expect((price as Container).color, palette.accent);
+        expect(price.child, isA<Text>());
+        final label = price.child! as Text;
         expect(label.data, '\$12');
-        expect(label.textAlign, TextAlign.right);
         expect(label.style?.fontFamily, 'Azeret Mono');
         expect(label.style?.fontSize, 13);
-        expect(label.style?.color, palette.ink);
+        expect(label.style?.color, palette.onAccent);
         expect(tester.takeException(), isNull);
       }
     },
@@ -1579,7 +1580,10 @@ void main() {
             final price = tester.widget<Container>(
               find.byKey(ValueKey('gig-price-${gig.id}')),
             );
-            expect(price.color, Ep.accent);
+            final palette = tester
+                .element(find.byType(ExploreFeaturedCard))
+                .epColors;
+            expect(price.color, palette.accent);
             expect(price.decoration, isNull);
             expect(
               price.padding,
@@ -1589,7 +1593,7 @@ void main() {
             expect(label.data, 'FREE');
             expect(label.style?.fontFamily, 'Azeret Mono');
             expect(label.style?.fontSize, 13);
-            expect(label.style?.color, Ep.ink);
+            expect(label.style?.color, palette.onAccent);
             final scrim = tester.widget<DecoratedBox>(
               find.descendant(
                 of: find.byType(ExploreFeaturedCard),

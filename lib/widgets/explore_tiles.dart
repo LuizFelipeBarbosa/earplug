@@ -548,7 +548,6 @@ class ExploreEventRow extends StatelessWidget {
       priceChip: _GigPriceChip(
         gig: gig,
         price: lines.price,
-        inkColor: context.epColors.ink,
       ),
       saveAction: saveAction,
       sub: sub,
@@ -748,33 +747,23 @@ class _GigPriceChip extends StatelessWidget {
   const _GigPriceChip({
     required this.gig,
     required this.price,
-    required this.inkColor,
   });
 
   final Gig gig;
   final String price;
-  final Color inkColor;
 
   @override
   Widget build(BuildContext context) {
     final labelStyle = Theme.of(context).textTheme.epChipLabel;
-    if (gig.free) {
-      return Container(
-        key: ValueKey('gig-price-${gig.id}'),
-        color: Ep.accent,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        child: Text(
-          price.toUpperCase(),
-          style: labelStyle.copyWith(fontSize: 13, color: Ep.ink),
-        ),
-      );
-    }
-
-    return Text(
-      price.toUpperCase(),
+    final colors = context.epColors;
+    return Container(
       key: ValueKey('gig-price-${gig.id}'),
-      textAlign: TextAlign.right,
-      style: labelStyle.copyWith(fontSize: 13, color: inkColor),
+      color: colors.accent,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      child: Text(
+        price.toUpperCase(),
+        style: labelStyle.copyWith(fontSize: 13, color: colors.onAccent),
+      ),
     );
   }
 }
@@ -882,7 +871,6 @@ class ExploreFeaturedCard extends StatelessWidget {
                         _GigPriceChip(
                           gig: gig,
                           price: lines.price,
-                          inkColor: Ep.ink,
                         ),
                       ],
                     ),
