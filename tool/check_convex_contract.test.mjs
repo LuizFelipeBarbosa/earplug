@@ -183,6 +183,7 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing gigs.js:doorRoster",
     "missing gigs.js:checkInTicket",
     "missing venues.js:create",
+    "missing venues.js:createForOrganization",
     "missing bands.js:bySlug",
     "missing bands.js:archive",
     "missing bands.js:archiveStatus",

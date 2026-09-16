@@ -6,6 +6,7 @@ import 'package:earplug/screens/org_venues.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_text.dart';
+import 'package:earplug/widgets/form_bits.dart';
 import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -352,6 +353,82 @@ void main() {
     },
   );
 
+  testWidgets('a manager can tap + Add venue to open the create flow', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgVenuesScreen()),
+    );
+    harness.app.myOrganizations = [
+      OrganizationMembership(
+        organization: DemoData.organizations['org1']!,
+        role: OrganizationRole.manager,
+      ),
+    ];
+    await enterOrganizer(tester, harness, 'org1');
+
+    final pill = find.byKey(const Key('org-venues-add'));
+    expect(tester.widget<EpPill>(pill).onPressed, isNotNull);
+    await tester.tap(pill);
+    await tester.pumpAndSettle();
+
+    expect(harness.app.current.screen, Screen.orgVenueEdit);
+    expect(harness.app.current.param, 'new');
+  });
+
+  testWidgets('the empty state offers Add venue to managers only', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = StubRepository(auth: auth)
+      ..returns('venueConsentsForOrganization', const <VenueConsentRow>[])
+      ..wraps<OrganizationDashboard>(
+        'organizationDashboard',
+        (real) => OrganizationDashboard(
+          organization: real.organization,
+          role: real.role,
+          viaPlatformAdmin: real.viaPlatformAdmin,
+          verification: real.verification,
+          venues: const [],
+          memberCount: real.memberCount,
+          pendingVenueConsents: real.pendingVenueConsents,
+          privateDetails: real.privateDetails,
+        ),
+      );
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgVenuesScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    expect(find.text('No venues yet — add one.'), findsOneWidget);
+    await tester.tap(_addVenueAction);
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.orgVenueEdit);
+    expect(harness.app.current.param, 'new');
+
+    harness.app.resetTo(Screen.orgVenues);
+    harness.app.myOrganizations = [
+      OrganizationMembership(
+        organization: DemoData.organizations['org1']!,
+        role: OrganizationRole.door,
+      ),
+    ];
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('org-venues-add')), findsNothing);
+    expect(_addVenueAction, findsNothing);
+  });
+
   testWidgets('tapping a venue card opens its edit flow', (tester) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
@@ -390,6 +467,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
+final _addVenueAction = find.byWidgetPredicate(
+  (widget) => widget is TextAction && widget.label == 'Add venue',
+);
 
 /// A second org1 venue with no public capacity.
 const _annex = Venue(

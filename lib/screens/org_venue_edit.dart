@@ -10,8 +10,13 @@ import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/venue_location_editor.dart';
 
+/// Edits one organization venue, or creates one when [venueId] is
+/// [OrgVenueEditScreen.newVenueId]: the same form, empty, whose save creates
+/// the venue and returns to VENUES.
 class OrgVenueEditScreen extends StatefulWidget {
   const OrgVenueEditScreen({super.key, required this.venueId});
+
+  static const newVenueId = 'new';
 
   final String venueId;
 
@@ -48,6 +53,8 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
   bool _savingDisclosure = false;
   String? _success;
   int _locationEditorRevision = 0;
+
+  bool get _isNew => widget.venueId == OrgVenueEditScreen.newVenueId;
 
   @override
   void didChangeDependencies() {
@@ -129,6 +136,13 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
   }
 
   Future<void> _load() async {
+    if (_isNew) {
+      setState(() {
+        _loading = false;
+        _loadError = null;
+      });
+      return;
+    }
     final app = context.read<AppState>();
     final organizationId = app.organizationId;
     setState(() {
@@ -177,7 +191,61 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
     });
   }
 
+  Future<void> _create() async {
+    final app = context.read<AppState>();
+    if (_saving || !app.canManageOrganization(app.organizationId)) return;
+
+    final needs = [
+      if (_name.text.trim().isEmpty) 'name',
+      if (_location.address.trim().isEmpty) 'address',
+      if (_location.pin == null) 'map pin',
+    ];
+    if (needs.isNotEmpty) {
+      setState(() {
+        _success = null;
+        _error = 'Needs: ${needs.join(', ')}';
+      });
+      revealFormFeedback(this, _scrollController);
+      return;
+    }
+
+    final organizationId = app.organizationId;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _saving = true;
+      _success = null;
+      _error = null;
+    });
+    try {
+      await app.createOrganizationVenue(
+        organizationId: organizationId,
+        name: _name.text.trim(),
+        addr: _location.address.trim(),
+        point: _location.pin!,
+        area: _location.areaLabel,
+        description: _description.text.trim(),
+        venueType: _venueType,
+        capacityPublic: int.tryParse(_publicCapacity.text.trim()),
+        loadInNotes: _loadInNotes.text.trim(),
+      );
+      if (!_requestIsCurrent(organizationId)) return;
+      app.say('Venue created');
+      app.back();
+    } on Object catch (error) {
+      if (!_requestIsCurrent(organizationId)) return;
+      setState(() {
+        _error =
+            serverErrorMessage(error) ??
+            'Venue could not be created. Check your connection and retry.';
+      });
+      revealFormFeedback(this, _scrollController);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _save() async {
+    if (_isNew) return _create();
     final app = context.read<AppState>();
     if (_saving ||
         _savingDisclosure ||
@@ -276,6 +344,7 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
     final canManage = app.canManageOrganization(app.organizationId);
     final isOwner =
         app.organizerRoleFor(app.organizationId) == OrganizationRole.owner;
+    final showForm = _isNew || venue != null;
 
     final listView = ListView(
       controller: _scrollController,
@@ -295,14 +364,15 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
           )
         else if (_loadError != null)
           _LoadError(message: _loadError!, onRetry: _load)
-        else if (venue != null) ...[
+        else if (showForm) ...[
           Row(
             children: [
               CircleIconButton(onTap: app.back),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  venue.name,
+                  venue?.name ?? 'New venue',
+                  key: const Key('org-venue-title'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.epPageHeading,
@@ -310,9 +380,10 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
               ),
             ],
           ),
-          EpEyebrow(
-            '${venue.approx.label}${venue.verified ? ' · Verified' : ''}',
-          ),
+          if (venue != null)
+            EpEyebrow(
+              '${venue.approx.label}${venue.verified ? ' · Verified' : ''}',
+            ),
           FormSection(
             title: 'Public',
             description:
@@ -391,7 +462,8 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
                   },
                   showNameField: false,
                   enabled: canManage,
-                  initialCenter: _location.pin ?? venue.approx.centroid,
+                  initialCenter:
+                      _location.pin ?? venue?.approx.centroid ?? _bayAreaCenter,
                   initialZoom: _location.pin == null ? 11.5 : 15,
                 ),
                 const SizedBox(height: EpLayout.fieldGap),
@@ -408,7 +480,9 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
               ],
             ),
           ),
-          if (isOwner)
+          // Disclosure is a per-venue owner switch, so it waits for the venue
+          // to exist; a new venue starts on-ticket.
+          if (isOwner && venue != null)
             FormSection(
               title: 'Address disclosure',
               description: 'Control when the exact address becomes visible.',
@@ -436,7 +510,7 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
       ],
     );
 
-    if (!canManage || venue == null || _loading || _loadError != null) {
+    if (!canManage || !showForm || _loading || _loadError != null) {
       return listView;
     }
     return Stack(
@@ -448,7 +522,12 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
           bottom: EpLayout.isDesktop(context) ? 0 : 67,
           child: StickyActionBar(
             key: const Key('org-venue-save'),
-            primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',
+            primaryLabel: switch ((_isNew, _saving)) {
+              (true, true) => 'CREATING…',
+              (true, false) => 'CREATE VENUE',
+              (false, true) => 'SAVING…',
+              (false, false) => 'SAVE CHANGES',
+            },
             onPrimary: _saving || _savingDisclosure ? null : _save,
           ),
         ),
@@ -481,6 +560,8 @@ class _LoadError extends StatelessWidget {
 class _VenueNotFound implements Exception {
   const _VenueNotFound();
 }
+
+const _bayAreaCenter = LatLng(37.7749, -122.4194);
 
 String _venueTypeLabel(VenueType type) => switch (type) {
   VenueType.bar => 'Bar',

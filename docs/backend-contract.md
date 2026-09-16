@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.36)
+# EarPlug Convex function contract (FROZEN — v1.37)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -1169,6 +1169,19 @@ those throw `"A band needs at least one admin"`. `add` and `remove` move
 No existing function's shape changed; `bandInvites:*` and
 `bands:profileDetails` are untouched.
 
+**v1.37 — organizer venue creation.** Added
+`venues:createForOrganization({ organizationId, name, addr, lat, lng, area?,
+description?, venueType?, capacityPublic?, loadInNotes?, capacity? }) ->
+Id<"venues">`, the "+ Add venue" path for organization owners and managers.
+Until now organization venues came only from `organizationApplications:approve`.
+The mutation applies the same validation as `venues:updateProfile` and
+`venues:updatePrivateDetails`, refuses an address any venue already uses
+(public column or private details — legacy adoption stays with the approval
+flow), and inserts a `verified`, `onTicket` venue managed by the organization
+whose public columns carry only the approximate label (`area` is the fallback
+label away from known neighborhoods) plus its `venuePrivateDetails` row. No
+existing function's shape changed.
+
 ## Reconciliation
 
 Verified against the current source as of v1.17; these deployed, client-required contract surfaces were previously undocumented:
@@ -1178,6 +1191,7 @@ Verified against the current source as of v1.17; these deployed, client-required
 - `gigs:checkInTicket({ projectId, payload: string }) -> { status: "checkedIn"|"alreadyCheckedIn", fanName, checkedInAt } | { status: "invalid" } | { status: "wrongGig" }` — `requireProjectAdmin`; validates a `TICKET_PREFIX`-prefixed 64-hex-character token through `gigRsvps.by_ticketToken`, then patches `checkedInAt` and `checkedInBy` once.
 - `interactions:ticketForGig({ gigId }) -> { payload: string, checkedInAt: number|null }` — authenticated; requires an RSVP, mints or reuses its `ticketToken`, and returns it with `TICKET_PREFIX`.
 - `venues:create({ bandId, name, area, addr, lat, lng }) -> { venue: VenuePayload, created: boolean }` — `requireBandAdmin(bandId)`; trims and length-validates text, range-validates coordinates, then deduplicates by normalized address before normalized name.
+- `venues:createForOrganization({ organizationId, name, addr, lat, lng, area?, description?, venueType?, capacityPublic?, loadInNotes?, capacity? }) -> Id<"venues">` — `requireOrganizationRole(organizationId, ["owner", "manager"])`; validates like `updateProfile` + `updatePrivateDetails`, rejects an address any venue already uses, and inserts a verified on-ticket managed venue with its private details.
 - `bands:setBandAvatar` / `bands:clearBandAvatar` / `bands:setBandBanner` / `bands:clearBandBanner` — `{ bandId, mediaId }` for set or `{ bandId }` for clear, returning `null`; admin-only, setting or clearing the band's avatar/banner storage id from its existing photo without deleting the blob.
 - `bands:archive({ bandId }) -> { bandId, archivedAt: number, alreadyArchived: boolean }` — admin-only soft-delete tombstone; first use sets `archivedAt`/`archivedBy` and schedules future published-gig cancellation plus follow/invite/performer-invite cleanup, while retries schedule the same cleanup as repair.
 - `bands:archiveStatus({ bandId }) -> { bandId, archivedAt: number|null }` — admin-only and deliberately readable after archiving so the original admin can verify the outcome while public and management reads hide the band.

@@ -25,6 +25,7 @@ export const requiredClientFunctions = Object.freeze({
   "gigs.js:doorRoster": "Query",
   "gigs.js:checkInTicket": "Mutation",
   "venues.js:create": "Mutation",
+  "venues.js:createForOrganization": "Mutation",
   "bands.js:bySlug": "Query",
   "bands.js:archive": "Mutation",
   "bands.js:archiveStatus": "Query",

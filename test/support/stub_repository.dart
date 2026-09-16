@@ -5,6 +5,7 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
 import 'package:flutter/foundation.dart' show protected;
+import 'package:latlong2/latlong.dart';
 
 /// A configurable [DemoRepository] using the test harness's shared authentication.
 /// Unconfigured methods use the real demo behavior, except [suggestedPeople],
@@ -68,6 +69,7 @@ class StubRepository extends DemoRepository {
     'createBand',
     'createBandInvite',
     'createGigDraft',
+    'createOrganizationVenue',
     'deleteCurrentUser',
     'disputesForBooking',
     'doorRoster',
@@ -448,6 +450,33 @@ class StubRepository extends DemoRepository {
   @override
   Future<GigProject> createGigDraft(String bandId) =>
       intercept('createGigDraft', () => super.createGigDraft(bandId));
+  @override
+  Future<String> createOrganizationVenue({
+    required String organizationId,
+    required String name,
+    required String addr,
+    required LatLng point,
+    String? area,
+    String? description,
+    VenueType? venueType,
+    int? capacityPublic,
+    String? loadInNotes,
+    int? capacity,
+  }) => intercept(
+    'createOrganizationVenue',
+    () => super.createOrganizationVenue(
+      organizationId: organizationId,
+      name: name,
+      addr: addr,
+      point: point,
+      area: area,
+      description: description,
+      venueType: venueType,
+      capacityPublic: capacityPublic,
+      loadInNotes: loadInNotes,
+      capacity: capacity,
+    ),
+  );
   @override
   Future<void> deleteCurrentUser() => intercept('deleteCurrentUser', super.deleteCurrentUser);
   @override

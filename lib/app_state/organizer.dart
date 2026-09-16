@@ -151,6 +151,37 @@ mixin _OrganizerState on _AppStateCore {
     resetTo(isHostOrganization(id) ? Screen.orgDash : Screen.orgOpportunities);
   }
 
+  /// Adds a venue to [organizationId] and reloads its dashboard so the
+  /// VENUES list and host readiness see it. Throws on failure — the caller
+  /// shows the reason inline.
+  Future<String> createOrganizationVenue({
+    required String organizationId,
+    required String name,
+    required String addr,
+    required LatLng point,
+    String? area,
+    String? description,
+    VenueType? venueType,
+    int? capacityPublic,
+    String? loadInNotes,
+    int? capacity,
+  }) async {
+    final venueId = await repository.createOrganizationVenue(
+      organizationId: organizationId,
+      name: name,
+      addr: addr,
+      point: point,
+      area: area,
+      description: description,
+      venueType: venueType,
+      capacityPublic: capacityPublic,
+      loadInNotes: loadInNotes,
+      capacity: capacity,
+    );
+    await refreshOrganizationDashboard(organizationId);
+    return venueId;
+  }
+
   Future<bool> requestVenueApproval(
     String opportunityId, {
     String? message,

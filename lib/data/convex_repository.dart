@@ -917,6 +917,36 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<String> createOrganizationVenue({
+    required String organizationId,
+    required String name,
+    required String addr,
+    required LatLng point,
+    String? area,
+    String? description,
+    VenueType? venueType,
+    int? capacityPublic,
+    String? loadInNotes,
+    int? capacity,
+  }) async {
+    final result = await _convexService
+        .mutation('venues:createForOrganization', {
+          'organizationId': organizationId,
+          'name': name,
+          'addr': addr,
+          'lat': point.latitude,
+          'lng': point.longitude,
+          'area': ?area,
+          'description': ?description,
+          'venueType': ?venueType?.wireValue,
+          'capacityPublic': ?capacityPublic,
+          'loadInNotes': ?loadInNotes,
+          'capacity': ?capacity,
+        });
+    return asString(result);
+  }
+
+  @override
   Future<void> updateVenueProfile({
     required String venueId,
     String? name,

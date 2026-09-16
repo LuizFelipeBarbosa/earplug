@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
+import { setupOrganization } from "./orgFixtures.test-helpers";
 import schema from "./schema";
 
 function bandFields(name: string) {
@@ -1032,5 +1033,188 @@ describe("organization-managed venue location mutations", () => {
       ctx.db.get(onTicketVenueId),
     );
     expect(storedPrivateVenue?.normalizedAddr).toBeUndefined();
+  });
+});
+
+describe("venues:createForOrganization", () => {
+  async function setup() {
+    const t = convexTest(schema);
+    return setupOrganization(t, {
+      prefix: "create_venue",
+      roles: ["owner", "manager", "door", { label: "stranger", role: null }],
+    });
+  }
+
+  const input = {
+    name: "  The Side Room ",
+    addr: " 2455 Harrison St, San Francisco ",
+    lat: 37.7585,
+    lng: -122.4123,
+    area: " Mission, San Francisco ",
+  };
+
+  test("owners and managers create a private-by-default managed venue", async () => {
+    const { t, as, organizationId } = await setup();
+    const venueId = await as("manager").mutation(
+      api.venues.createForOrganization,
+      {
+        organizationId,
+        ...input,
+        description: " Back room with a small stage. ",
+        venueType: "club",
+        capacityPublic: 120,
+        loadInNotes: " Load in through the alley. ",
+        capacity: 140,
+      },
+    );
+
+    const { venue, privateDetails } = await t.run(async (ctx) => ({
+      venue: await ctx.db.get(venueId),
+      privateDetails: await ctx.db
+        .query("venuePrivateDetails")
+        .withIndex("by_venueId", (q) => q.eq("venueId", venueId))
+        .unique(),
+    }));
+    expect(venue).toMatchObject({
+      name: "The Side Room",
+      normalizedName: "the side room",
+      slug: "the-side-room",
+      status: "verified",
+      addressDisclosure: "onTicket",
+      managedByOrganizationId: organizationId,
+      venueType: "club",
+      description: "Back room with a small stage.",
+      capacityPublic: 120,
+      approxLabel: "Mission, San Francisco",
+      neighborhood: "Mission",
+      city: "San Francisco",
+    });
+    // Public columns carry only the approximate location.
+    expect(venue?.addr).toBe("Mission, San Francisco");
+    expect(venue?.area).toBe("Mission, San Francisco");
+    expect(venue?.normalizedAddr).toBeUndefined();
+    expect(venue?.lat).toBe(venue?.approxLat);
+    expect(venue?.lng).toBe(venue?.approxLng);
+    expect(privateDetails).toMatchObject({
+      addr: "2455 Harrison St, San Francisco",
+      normalizedAddr: "2455 harrison st, san francisco",
+      lat: 37.7585,
+      lng: -122.4123,
+      loadInNotes: "Load in through the alley.",
+      capacity: 140,
+    });
+
+    const dashboard = await as("owner").query(api.organizations.dashboard, {
+      organizationId,
+    });
+    expect(dashboard.venues.map((entry) => entry._id)).toEqual([venueId]);
+    expect(dashboard.venues[0].exactAddr).toBeNull();
+  });
+
+  test("uses the area as the public label away from known neighborhoods", async () => {
+    const { t, as, organizationId } = await setup();
+    const venueId = await as("owner").mutation(
+      api.venues.createForOrganization,
+      {
+        organizationId,
+        name: "Field Stage",
+        addr: "1 Remote Rd",
+        lat: 38.9,
+        lng: -123.5,
+        area: " North Coast ",
+      },
+    );
+    const venue = await t.run((ctx) => ctx.db.get(venueId));
+    expect(venue).toMatchObject({
+      area: "North Coast",
+      addr: "North Coast",
+      approxLabel: "North Coast",
+    });
+    expect(venue?.neighborhood).toBeUndefined();
+    expect(venue?.city).toBeUndefined();
+  });
+
+  test("rejects door staff, non-members and organizations the caller cannot manage", async () => {
+    const { as, organizationId } = await setup();
+    for (const label of ["door", "stranger"]) {
+      await expect(
+        as(label).mutation(api.venues.createForOrganization, {
+          organizationId,
+          ...input,
+        }),
+      ).rejects.toThrow();
+    }
+  });
+
+  test("validates text, coordinates and capacities", async () => {
+    const { as, organizationId } = await setup();
+    const create = (overrides: Record<string, unknown>) =>
+      as("owner").mutation(api.venues.createForOrganization, {
+        organizationId,
+        ...input,
+        ...overrides,
+      });
+    await expect(create({ name: "   " })).rejects.toThrow(
+      "Venue name is required",
+    );
+    await expect(create({ addr: "" })).rejects.toThrow(
+      "Venue address is required",
+    );
+    await expect(create({ lat: 91 })).rejects.toThrow("valid map location");
+    await expect(create({ capacityPublic: 1.5 })).rejects.toThrow(
+      "Venue capacity must be an integer",
+    );
+    await expect(create({ capacity: -1 })).rejects.toThrow(
+      "Venue capacity must be an integer",
+    );
+    await expect(create({ description: "x".repeat(1001) })).rejects.toThrow(
+      "Venue description is too long",
+    );
+  });
+
+  test("refuses an address another venue already uses, public or private", async () => {
+    const { t, as, organizationId } = await setup();
+    await as("owner").mutation(api.venues.createForOrganization, {
+      organizationId,
+      ...input,
+    });
+    await expect(
+      as("owner").mutation(api.venues.createForOrganization, {
+        organizationId,
+        ...input,
+        name: "Same Address Again",
+        addr: "2455  harrison st,  San Francisco",
+      }),
+    ).rejects.toThrow("Another venue already uses that address");
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("venues", {
+        ...venueFields("Legacy Public Room"),
+        addr: "99 Public St",
+        normalizedAddr: "99 public st",
+      });
+    });
+    await expect(
+      as("owner").mutation(api.venues.createForOrganization, {
+        organizationId,
+        ...input,
+        name: "Claiming Legacy",
+        addr: "99 Public St",
+      }),
+    ).rejects.toThrow("Another venue already uses that address");
+  });
+
+  test("a suspended organization cannot add venues", async () => {
+    const t = convexTest(schema);
+    const { as, organizationId } = await setupOrganization(t, {
+      prefix: "suspended_create_venue",
+      organization: { status: "suspended" },
+    });
+    await expect(
+      as("owner").mutation(api.venues.createForOrganization, {
+        organizationId,
+        ...input,
+      }),
+    ).rejects.toThrow("Organization suspended");
   });
 });

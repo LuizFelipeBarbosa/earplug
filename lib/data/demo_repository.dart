@@ -2238,6 +2238,79 @@ class DemoRepository implements EarplugRepository {
       _venuePrivateDetails[venueId];
 
   @override
+  Future<String> createOrganizationVenue({
+    required String organizationId,
+    required String name,
+    required String addr,
+    required LatLng point,
+    String? area,
+    String? description,
+    VenueType? venueType,
+    int? capacityPublic,
+    String? loadInNotes,
+    int? capacity,
+  }) async {
+    _requireOrganization(organizationId);
+    if (!_organizationMemberships.any(
+      (membership) =>
+          membership.organization.id == organizationId &&
+          (membership.role == OrganizationRole.owner ||
+              membership.role == OrganizationRole.manager),
+    )) {
+      throw StateError('Only organization owners and managers can add venues');
+    }
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) throw StateError('Venue name is required');
+    final trimmedAddr = addr.trim();
+    if (trimmedAddr.isEmpty) throw StateError('Venue address is required');
+    String normalize(String value) =>
+        value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+    final normalizedAddr = normalize(trimmedAddr);
+    final addressTaken =
+        _venuePrivateDetails.values.any(
+          (details) => normalize(details.addr) == normalizedAddr,
+        ) ||
+        _venues.values.any((venue) => normalize(venue.addr) == normalizedAddr);
+    if (addressTaken) {
+      throw StateError('Another venue already uses that address');
+    }
+
+    final venueId = 'demo-venue-${_nextVenueId++}';
+    final label = area?.trim() ?? '';
+    final approx = ApproxLocation(
+      centroid: point,
+      label: label.isEmpty ? 'Bay Area' : label,
+    );
+    final trimmedDescription = description?.trim() ?? '';
+    final trimmedLoadIn = loadInNotes?.trim() ?? '';
+    _venues[venueId] = Venue(
+      id: venueId,
+      name: trimmedName,
+      area: approx.label,
+      addr: approx.label,
+      point: approx.centroid,
+      slug: _uniqueVenueSlug(trimmedName),
+      description: trimmedDescription.isEmpty ? null : trimmedDescription,
+      venueType: venueType,
+      capacityPublic: capacityPublic,
+      approx: approx,
+      disclosure: AddressDisclosure.onTicket,
+      verified: true,
+      managedByOrganizationId: organizationId,
+      supportsApproxLocation: true,
+    );
+    _venuePrivateDetails[venueId] = VenuePrivateDetails(
+      venueId: venueId,
+      addr: trimmedAddr,
+      point: point,
+      loadInNotes: trimmedLoadIn.isEmpty ? null : trimmedLoadIn,
+      capacity: capacity,
+    );
+    _emitFeed();
+    return venueId;
+  }
+
+  @override
   Future<void> updateVenueProfile({
     required String venueId,
     String? name,

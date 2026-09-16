@@ -8,6 +8,7 @@ import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/readiness_memory.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
@@ -249,6 +250,50 @@ void main() {
     expect(stub.callsTo('organizationDashboard'), 2);
     app.dispose();
   });
+
+  testWidgets(
+    'createOrganizationVenue creates, refreshes the dashboard and rethrows',
+    (tester) async {
+      final auth = FakeAuthService();
+      final stub = StubRepository(auth: auth)
+        ..returns('organizationDashboard', _dashboard(memberCount: 1))
+        ..returns('createOrganizationVenue', 'v-new');
+      final harness = await _pump(tester, stub);
+      final app = harness.app;
+      expect(app.organizationDashboardFor(_org1), isNull);
+      await tester.pump();
+      expect(stub.callsTo('organizationDashboard'), 1);
+
+      stub.returns('organizationDashboard', _dashboard(memberCount: 2));
+      final venueId = await app.createOrganizationVenue(
+        organizationId: _org1,
+        name: 'The Annex',
+        addr: '1 Annex St',
+        point: const LatLng(37.7785, -122.4056),
+        area: 'SoMa, San Francisco',
+      );
+      expect(venueId, 'v-new');
+      expect(stub.callsTo('createOrganizationVenue'), 1);
+      expect(stub.callsTo('organizationDashboard'), 2);
+      expect(app.organizationDashboardFor(_org1)?.memberCount, 2);
+
+      stub.fail(
+        'createOrganizationVenue',
+        StateError('Venue name is required'),
+      );
+      await expectLater(
+        app.createOrganizationVenue(
+          organizationId: _org1,
+          name: '',
+          addr: '1 Annex St',
+          point: const LatLng(37.7785, -122.4056),
+        ),
+        throwsStateError,
+      );
+      expect(stub.callsTo('organizationDashboard'), 2);
+      app.dispose();
+    },
+  );
 
   testWidgets('a failed dashboard load is not retried until a refresh', (
     tester,

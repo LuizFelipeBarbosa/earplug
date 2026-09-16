@@ -638,6 +638,22 @@ abstract class EarplugRepository {
   Future<OrganizationInviteAcceptance> acceptOrganizationInvite(String token);
   Future<Venue?> resolveVenue(String ref);
   Future<VenuePrivateDetails?> venuePrivateDetails(String venueId);
+
+  /// Adds a venue managed by [organizationId] and returns its id. The street
+  /// address stays private ([point] is the exact pin); [area] is the public
+  /// fallback label when the pin is not near a known neighborhood.
+  Future<String> createOrganizationVenue({
+    required String organizationId,
+    required String name,
+    required String addr,
+    required LatLng point,
+    String? area,
+    String? description,
+    VenueType? venueType,
+    int? capacityPublic,
+    String? loadInNotes,
+    int? capacity,
+  });
   Future<void> updateVenueProfile({
     required String venueId,
     String? name,

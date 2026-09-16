@@ -157,6 +157,138 @@ void main() {
     expect(details?.capacity, DemoData.venuePrivateDetails['v1']!.capacity);
   });
 
+  testWidgets('creating a venue needs a name and pin, then lists it', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgVenueEditScreen(venueId: 'new')),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    expect(find.text('New venue'), findsOneWidget);
+    expect(find.byKey(const Key('org-venue-disclosure')), findsNothing);
+    final save = find.byKey(const Key('org-venue-save'));
+    expect(tester.widget<StickyActionBar>(save).primaryLabel, 'CREATE VENUE');
+
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(find.text('Needs: name, address, map pin'), findsOneWidget);
+    expect(
+      (await repository.organizationDashboard('org1')).venues,
+      hasLength(1),
+    );
+
+    // The feedback reveal scrolled to the bottom; the public fields above
+    // are lazily built, so jump back to the top before filling them in.
+    tester.widget<ListView>(find.byType(ListView)).controller!.jumpTo(0);
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const Key('org-venue-public-name')),
+      '  The Annex ',
+    );
+    await tester.enterText(
+      find.byKey(const Key('org-venue-public-description')),
+      'Small room behind the club.',
+    );
+    await tester.tap(find.byKey(const Key('org-venue-type-club')));
+    await tester.enterText(
+      find.byKey(const Key('org-venue-public-capacity')),
+      '90',
+    );
+    final address = find.byKey(const Key('org-venue-private-address'));
+    await _scrollTo(tester, address);
+    await tester.enterText(address, '22 V');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    final suggestion = find.byKey(const Key('org-venue-private-suggestion-0'));
+    await tester.ensureVisible(suggestion);
+    await tester.pump();
+    await tester.tap(suggestion);
+    await tester.pump();
+    final loadIn = find.byKey(const Key('org-venue-private-load-in'));
+    await _scrollTo(tester, loadIn);
+    await tester.enterText(loadIn, 'Ring the side bell.');
+
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    final venues = (await repository.organizationDashboard('org1')).venues;
+    expect(venues, hasLength(2));
+    final created = venues.singleWhere((venue) => venue.name == 'The Annex');
+    expect(created.managedByOrganizationId, 'org1');
+    expect(created.description, 'Small room behind the club.');
+    expect(created.venueType, VenueType.club);
+    expect(created.capacityPublic, 90);
+    expect(created.disclosure, AddressDisclosure.onTicket);
+    expect(created.exactAddress, isNull);
+    final details = await repository.venuePrivateDetails(created.id);
+    expect(details?.addr, '22 Valencia St');
+    expect(
+      details?.point,
+      (harness.geocoding as FakeGeocodingService).suggestions.first.point,
+    );
+    expect(details?.loadInNotes, 'Ring the side bell.');
+    expect(harness.app.toast, 'Venue created');
+    expect(
+      harness.app.organizationDashboardFor('org1')?.venues.map((v) => v.id),
+      contains(created.id),
+    );
+  });
+
+  testWidgets('a rejected venue creation shows the server reason', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = StubRepository(auth: auth)
+      ..fail(
+        'createOrganizationVenue',
+        StateError('Another venue already uses that address'),
+      );
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgVenueEditScreen(venueId: 'new')),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    await tester.enterText(
+      find.byKey(const Key('org-venue-public-name')),
+      'Duplicate Room',
+    );
+    final address = find.byKey(const Key('org-venue-private-address'));
+    await _scrollTo(tester, address);
+    await tester.enterText(address, '22 V');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    final suggestion = find.byKey(const Key('org-venue-private-suggestion-0'));
+    await tester.ensureVisible(suggestion);
+    await tester.pump();
+    await tester.tap(suggestion);
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('org-venue-save')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Text>(find.byKey(const Key('org-venue-save-error'))).data,
+      'Another venue already uses that address',
+    );
+    expect(repository.callsTo('createOrganizationVenue'), 1);
+    expect(
+      (await repository.organizationDashboard('org1')).venues,
+      hasLength(1),
+    );
+  });
+
   testWidgets('venue profile and disclosure saves cannot overlap', (
     tester,
   ) async {

@@ -170,9 +170,8 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
     );
   }
 
-  /// The client has no organizer venue-creation flow yet, so the add
-  /// affordance renders disabled until one exists.
-  VoidCallback? get _onAddVenue => null;
+  void _onAddVenue() =>
+      context.read<AppState>().go(Screen.orgVenueEdit, 'new');
 
   @override
   Widget build(BuildContext context) {
@@ -235,10 +234,8 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
           if (venues.isEmpty)
             EmptyNote(
               message: 'No venues yet — add one.',
-              actionLabel: canManage && _onAddVenue != null
-                  ? 'Add venue'
-                  : null,
-              onAction: _onAddVenue,
+              actionLabel: canManage ? 'Add venue' : null,
+              onAction: canManage ? _onAddVenue : null,
             )
           else
             for (final venue in venues) ...[
