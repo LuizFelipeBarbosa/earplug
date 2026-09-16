@@ -156,6 +156,73 @@ void main() {
     expect(harness.app.current.param, 'g2');
   });
 
+  for (final size in [const Size(402, 900), const Size(1280, 1100)]) {
+    testWidgets('members row opens the band members sheet at $size', (
+      tester,
+    ) async {
+      final auth = FakeAuthService();
+      await pumpApp(
+        tester,
+        size: size,
+        auth: auth,
+        repository: StubRepository(auth: auth)
+          ..returns(
+            'bandProfileDetails',
+            const BandProfileDetails(memberNames: ['Avery', 'Morgan']),
+          ),
+        home: const Scaffold(body: BandDashScreen()),
+      );
+
+      final row = find.byKey(const Key('band-command-members'));
+      expect(tester.widget<EpMenuRow>(row).trailingText, '2');
+      await _tapAfterScroll(tester, row);
+      await tester.pumpAndSettle();
+
+      final sheet = find.byKey(const Key('band-members-sheet'));
+      expect(sheet, findsOne);
+      expect(find.text('BAND MEMBERS · 2'), findsOne);
+      for (final member in ['Avery', 'Morgan']) {
+        expect(
+          find.descendant(
+            of: sheet,
+            matching: find.byKey(ValueKey('accepted-member-$member')),
+          ),
+          findsOne,
+        );
+      }
+    });
+  }
+
+  testWidgets('invitation navigation opens the sheet on dashboard arrival', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: BandDashScreen()),
+      beforePump: (app) => app.openInvitationPanel(),
+    );
+
+    expect(harness.app.current.screen, Screen.bandDash);
+    expect(harness.app.current.param, 'members');
+    expect(harness.app.canGoBack, isFalse);
+    final sheet = find.byKey(const Key('band-members-sheet'));
+    expect(sheet, findsOne);
+    expect(find.byKey(const ValueKey('accepted-member-Band admin')), findsOne);
+
+    Navigator.of(tester.element(sheet)).pop();
+    await tester.pumpAndSettle();
+    await harness.app.refreshBandInvite('b1');
+    await tester.pumpAndSettle();
+    expect(harness.app.current.param, 'members');
+    expect(sheet, findsNothing);
+
+    harness.app.returnToBandDashboard();
+    await tester.pumpAndSettle();
+    harness.app.openInvitationPanel();
+    await tester.pumpAndSettle();
+    expect(sheet, findsOne);
+  });
+
   for (final ticketing in Ticketing.values) {
     testWidgets(
       'dashboard uses the public gig door roster for ${ticketing.name}',
@@ -371,7 +438,10 @@ void main() {
     await expectAction('discovery-show', Screen.gigCreate);
     await expectAction('setup-preview', Screen.bandPreview, param: 'b1');
     await expectAction('setup-social', Screen.bandEdit, param: 'links');
-    await expectAction('setup-members', Screen.bandEdit, param: 'members');
+    await expectAction('setup-members', Screen.bandDash, param: 'members');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('band-members-sheet')), findsOne);
+    expect(find.byKey(const ValueKey('accepted-member-Band admin')), findsOne);
   });
 
   testWidgets('members can use the dashboard without admin setup controls', (
@@ -402,6 +472,14 @@ void main() {
 
     harness.app.openBandEditor();
     expect(harness.app.current.screen, Screen.bandPreview);
+
+    await _tapAfterScroll(
+      tester,
+      find.byKey(const Key('band-command-members')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('band-members-sheet')), findsOne);
+    expect(find.byKey(const ValueKey('accepted-member-Band admin')), findsOne);
   });
 
   testWidgets('single-band switcher lists the managed account', (tester) async {

@@ -5,14 +5,46 @@ import '../app_state.dart';
 import '../band_media_state.dart';
 import '../models.dart';
 import '../theme.dart';
+import '../widgets/band_members_panel.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
+import '../widgets/ep_sheet.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/sheets.dart';
 import 'door_mode.dart';
 
-class BandDashScreen extends StatelessWidget {
+class BandDashScreen extends StatefulWidget {
   const BandDashScreen({super.key});
+
+  @override
+  State<BandDashScreen> createState() => _BandDashScreenState();
+}
+
+class _BandDashScreenState extends State<BandDashScreen> {
+  String? _lastSection;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final app = context.read<AppState>();
+    final section = app.current.screen == Screen.bandDash
+        ? app.current.param
+        : null;
+    if (section == _lastSection) return;
+    final band = app.myBand;
+    if (section == 'members' && band == null) return;
+    _lastSection = section;
+    if (section == 'members') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted ||
+            app.current.screen != Screen.bandDash ||
+            app.current.param != 'members') {
+          return;
+        }
+        _showBandMembersSheet(context, band!.id);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +87,7 @@ class BandDashScreen extends StatelessWidget {
                     const SizedBox(height: 40),
                     EpStatGrid(stats: stats, valueSize: 48),
                     _UpcomingGigs(app: app, gigs: gigs),
-                    _MenuRows(app: app, isAdmin: isAdmin),
+                    _MenuRows(app: app, bandId: band.id, isAdmin: isAdmin),
                   ],
                 ),
               ),
@@ -97,11 +129,32 @@ class BandDashScreen extends StatelessWidget {
         _NextUp(app: app, gig: next, isAdmin: isAdmin, displaySize: 44),
         const SizedBox(height: 28),
         EpStatGrid(stats: stats),
-        _MenuRows(app: app, isAdmin: isAdmin),
+        _MenuRows(app: app, bandId: band.id, isAdmin: isAdmin),
         if (isAdmin) _Readiness(app: app, bandId: band.id, expanded: false),
       ],
     );
   }
+}
+
+Future<void> _showBandMembersSheet(BuildContext context, String bandId) {
+  return showEpSheet(
+    context,
+    (ctx) => KeyedSubtree(
+      key: const Key('band-members-sheet'),
+      child: EpSheetShell(
+        padding: const EdgeInsets.fromLTRB(
+          EpLayout.gutter,
+          20,
+          EpLayout.gutter,
+          24,
+        ),
+        maxHeightFactor: .88,
+        scrollable: true,
+        header: const SizedBox.shrink(),
+        children: [BandMembersPanel(bandId: bandId)],
+      ),
+    ),
+  );
 }
 
 class _Header extends StatelessWidget {
@@ -288,9 +341,14 @@ class _UpcomingGigs extends StatelessWidget {
 }
 
 class _MenuRows extends StatelessWidget {
-  const _MenuRows({required this.app, required this.isAdmin});
+  const _MenuRows({
+    required this.app,
+    required this.bandId,
+    required this.isAdmin,
+  });
 
   final AppState app;
+  final String bandId;
   final bool isAdmin;
 
   @override
@@ -340,6 +398,14 @@ class _MenuRows extends StatelessWidget {
             label: 'Edit profile',
             onTap: app.openBandEditor,
           ),
+        EpMenuRow(
+          key: const Key('band-command-members'),
+          icon: Icons.group_outlined,
+          label: 'Band members',
+          trailingText:
+              '${app.profileDetailsFor(bandId)?.memberNames.length ?? 0}',
+          onTap: () => _showBandMembersSheet(context, bandId),
+        ),
         EpMenuRow(
           key: const Key('band-public-profile'),
           icon: Icons.mic_none,

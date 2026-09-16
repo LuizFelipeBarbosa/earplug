@@ -107,12 +107,12 @@ mixin _NavigationState on _AppStateCore {
     if (current.screen == Screen.explore) ensureSocial();
   }
 
-  void resetTo(Screen s) {
+  void resetTo(Screen s, [String? param]) {
     _set(() {
-      _stack = [ScreenEntry(s)];
+      _stack = [ScreenEntry(s, param)];
       _syncPublicGigSubscriptionForCurrentScreen();
     });
-    replaceBrowserPath(_browserPathFor(s, null));
+    replaceBrowserPath(_browserPathFor(s, param));
     _refreshVisibleBandDashboard();
     _onBandChanged();
     _onOrganizationChanged();
@@ -201,7 +201,10 @@ mixin _NavigationState on _AppStateCore {
     if (section == 'members') unawaited(refreshBandInvite(bandId));
   }
 
-  void openInvitationPanel() => openBandEditor(section: 'members');
+  void openInvitationPanel() {
+    resetTo(Screen.bandDash, 'members');
+    unawaited(refreshBandInvite(bandId));
+  }
 
   void openVenue(String id) {
     if (current.screen == Screen.venue && current.param == id) return;
