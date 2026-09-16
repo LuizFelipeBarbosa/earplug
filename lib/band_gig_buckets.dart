@@ -3,14 +3,13 @@ import 'models.dart';
 /// The booking and hosting history shown in a band's My Gigs tab.
 class BandGigBuckets {
   const BandGigBuckets._({
-    required this.nextUp,
     required this.upcoming,
     required this.hosting,
     required this.drafts,
     required this.past,
   });
 
-  final Booking? nextUp;
+  /// Live bookings that start after `now`, earliest first.
   final List<Booking> upcoming;
   final List<GigProject> hosting;
   final List<GigProject> drafts;
@@ -89,8 +88,7 @@ class BandGigBuckets {
     datedPast.sort((a, b) => b.date.compareTo(a.date));
 
     return BandGigBuckets._(
-      nextUp: futureBookings.firstOrNull,
-      upcoming: List.unmodifiable(futureBookings.skip(1)),
+      upcoming: List.unmodifiable(futureBookings),
       hosting: List.unmodifiable(hosting),
       drafts: List.unmodifiable(drafts),
       past: List.unmodifiable([

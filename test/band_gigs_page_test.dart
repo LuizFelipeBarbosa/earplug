@@ -354,22 +354,23 @@ void main() {
     },
   );
 
-  testWidgets('MY GIGS next booking opens booking detail', (tester) async {
+  testWidgets('MY GIGS upcoming row opens booking detail', (tester) async {
     final harness = await _pumpScreen(
       tester,
       home: const Scaffold(body: GigManagerScreen()),
     );
     await _signInBand(tester, harness);
-    final card = find.byKey(const Key('my-gigs-next-up'));
-    expect(card, findsOneWidget);
+    final row = find.byKey(const Key('band-booking-bk2'));
+    expect(find.text('UPCOMING · 1'), findsOneWidget);
+    expect(row, findsOneWidget);
     expect(
-      find.descendant(of: card, matching: find.text('THE FOGHORN CLUB')),
+      find.descendant(of: row, matching: find.text('THE FOGHORN CLUB')),
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey('band-booking-bk1')), findsNothing);
     expect(find.byKey(const ValueKey('band-booking-bk3')), findsNothing);
 
-    await tester.tap(find.byKey(const Key('my-gigs-next-up-view')));
+    await tester.tap(row);
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.bookingDetail);
     expect(harness.app.current.param, 'bk2');
@@ -379,8 +380,8 @@ void main() {
   for (final refundedMinor in [0, 2550]) {
     testWidgets(
       refundedMinor == 0
-          ? 'MY GIGS next booking shows artist net with no refunds'
-          : 'MY GIGS next booking keeps artist net after a refund',
+          ? 'MY GIGS lists a paid booking with no refunds'
+          : 'MY GIGS lists a paid booking after a refund',
       (tester) async {
         final auth = FakeAuthService();
         await auth.signInDemo();
@@ -423,16 +424,11 @@ void main() {
           repository: repository,
           beforePump: (app) => app.switchToBand('b1'),
         );
-        final card = find.byKey(const Key('my-gigs-next-up'));
-        expect(card, findsOneWidget);
-        final details = tester.widgetList<EpMonoText>(
-          find.descendant(of: card, matching: find.byType(EpMonoText)),
-        );
+        final row = find.byKey(const Key('band-booking-paid-booking'));
+        expect(row, findsOneWidget);
         expect(
-          details.any(
-            (text) => text.text.endsWith(' · ${booking.fee.artistNet.label}'),
-          ),
-          isTrue,
+          find.descendant(of: row, matching: find.text('BOOKED')),
+          findsOneWidget,
         );
         expectNoFieldInCard(tester);
         expect(tester.takeException(), isNull);
@@ -457,7 +453,13 @@ void main() {
       final card = find.byKey(const ValueKey('band-booking-bk3'));
       await _reveal(tester, card);
       expect(card, findsOneWidget);
-      expect(find.byKey(const ValueKey('band-booking-bk2')), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('my-gigs-past-body')),
+          matching: find.byKey(const ValueKey('band-booking-bk2')),
+        ),
+        findsNothing,
+      );
 
       await tester.tap(card);
       await tester.pumpAndSettle();

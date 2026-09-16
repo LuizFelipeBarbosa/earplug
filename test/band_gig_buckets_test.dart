@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 final _now = DateTime.utc(2026, 9, 15, 12);
 
 void main() {
-  test('nextUp is earliest live future booking; upcoming is sorted', () {
+  test('upcoming holds every live future booking, earliest first', () {
     final latest = _booking('latest', days: 5);
     final first = _booking('first', days: 1);
     final middle = _booking('middle', days: 3);
@@ -13,8 +13,7 @@ void main() {
 
     final buckets = _buckets(bookings: bookings);
 
-    expect(buckets.nextUp, same(first));
-    expect(buckets.upcoming, [middle, latest]);
+    expect(buckets.upcoming, [first, middle, latest]);
     expect(buckets.past, isEmpty);
     expect(bookings, [latest, first, middle]);
   });
@@ -38,7 +37,6 @@ void main() {
       ],
     );
 
-    expect(buckets.nextUp, isNull);
     expect(buckets.upcoming, isEmpty);
     expect(buckets.hosting, isEmpty);
     expect(buckets.drafts, isEmpty);
@@ -59,7 +57,6 @@ void main() {
 
     expect(entries.map((entry) => entry.booking), [paid, live, completed]);
     expect(entries.every((entry) => !entry.cancelled), isTrue);
-    expect(buckets.nextUp, isNull);
     expect(buckets.upcoming, isEmpty);
     expect(buckets.cancelledCount, 0);
   });
@@ -73,8 +70,7 @@ void main() {
     );
     final buckets = _buckets(bookings: [paid, completed]);
 
-    expect(buckets.nextUp, completed);
-    expect(buckets.upcoming, [paid]);
+    expect(buckets.upcoming, [completed, paid]);
     expect(buckets.past.cast<BandPastBooking>().map((entry) => entry.booking), [
       paid,
       completed,
@@ -84,7 +80,6 @@ void main() {
   test('a live booking exactly at now is neither before nor after', () {
     final buckets = _buckets(bookings: [_booking('now', days: 0)]);
 
-    expect(buckets.nextUp, isNull);
     expect(buckets.upcoming, isEmpty);
     expect(buckets.past, isEmpty);
   });
@@ -107,7 +102,6 @@ void main() {
       ],
     );
 
-    expect(buckets.nextUp, isNull);
     expect(buckets.upcoming, isEmpty);
     expect(buckets.past, hasLength(4));
     expect(
@@ -210,7 +204,6 @@ void main() {
   test('empty inputs produce empty buckets', () {
     final buckets = _buckets();
 
-    expect(buckets.nextUp, isNull);
     expect(buckets.upcoming, isEmpty);
     expect(buckets.hosting, isEmpty);
     expect(buckets.drafts, isEmpty);
