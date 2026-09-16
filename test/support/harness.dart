@@ -10,6 +10,7 @@ import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/geocoding_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:earplug/services/media_upload_service.dart';
+import 'package:earplug/services/readiness_memory.dart';
 import 'package:earplug/services/recent_searches.dart';
 import 'package:earplug/services/stadia_map_style_repository.dart';
 import 'package:earplug/theme.dart';
@@ -59,6 +60,7 @@ Future<AppHarness> pumpApp(
   EarplugRepository? repository,
   MediaUploadService? uploader,
   RecentSearchesStore? recentSearchesStore,
+  ReadinessMemoryStore? readinessMemoryStore,
   LocationService? locationService,
   GeocodingService? geocoding,
   ReverseGeocodingService? reverseGeocoding,
@@ -90,6 +92,7 @@ Future<AppHarness> pumpApp(
     reverseGeocoding: reverseGeocoding,
     mediaUploadService: resolvedUploader,
     recentSearchesStore: resolvedRecentSearchesStore,
+    readinessMemoryStore: readinessMemoryStore ?? MemoryReadinessMemoryStore(),
     now: now,
     initialOpportunityRef: initialOpportunityRef,
   );

@@ -17,6 +17,7 @@ mixin _BandConsoleState on _AppStateCore {
   void resetTo(Screen s);
   void needAuth(PendingAuth p);
   Future<void> refreshManagedGigs();
+  Future<void> reconcileReadiness(String bandId);
 
   int _membershipsGeneration = 0;
 
@@ -294,6 +295,7 @@ mixin _BandConsoleState on _AppStateCore {
     if (!isAdminOf(id) || !_bandSetupLoading.add(id)) return;
     try {
       _bandSetupStatuses[id] = await repository.bandSetupStatus(id);
+      unawaited(reconcileReadiness(id));
     } catch (error) {
       logError('bandSetupStatus', error);
     } finally {
@@ -320,6 +322,7 @@ mixin _BandConsoleState on _AppStateCore {
         id,
         now: _now(),
       );
+      unawaited(reconcileReadiness(id));
     } catch (error) {
       logError('bandDiscoveryReadiness', error);
     } finally {

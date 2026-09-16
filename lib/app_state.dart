@@ -20,6 +20,7 @@ import 'flyer_styles.dart';
 import 'memo.dart';
 import 'models.dart';
 import 'navigation.dart';
+import 'readiness_model.dart';
 import 'search_query.dart';
 import 'services/auth_service.dart';
 import 'services/browser_history.dart';
@@ -28,6 +29,7 @@ import 'services/geocoding_service.dart';
 import 'services/location_service.dart';
 import 'services/media_picker.dart';
 import 'services/media_upload_service.dart';
+import 'services/readiness_memory.dart' as readiness_memory;
 import 'services/recent_searches.dart' as recent_searches;
 import 'services/statement_pdf.dart' deferred as statement_pdf;
 import 'services/web_shell.dart';
@@ -36,6 +38,7 @@ export 'date_names.dart' show dateLabel, monthLabel, timeLabel;
 export 'discovery_filters.dart';
 export 'discovery_policy.dart';
 export 'navigation.dart';
+export 'readiness_model.dart';
 
 part 'app_state/band_console.dart';
 part 'app_state/band_create.dart';
@@ -50,6 +53,7 @@ part 'app_state/navigation.dart';
 part 'app_state/opportunities.dart';
 part 'app_state/organizer.dart';
 part 'app_state/payments.dart';
+part 'app_state/readiness.dart';
 part 'app_state/session.dart';
 part 'app_state/social.dart';
 part 'app_state/tickets.dart';
@@ -70,6 +74,7 @@ mixin _AppStateCore on ChangeNotifier {
   AuthService get auth;
   LocationService get locationService;
   recent_searches.RecentSearchesStore get recentSearchesStore;
+  readiness_memory.ReadinessMemoryStore get readinessMemoryStore;
   ReverseGeocodingService? get reverseGeocoding;
   MediaUploadService get mediaUploader;
   DateTime Function() get _now;
@@ -108,6 +113,8 @@ mixin _AppStateCore on ChangeNotifier {
   void _clearOpportunityState();
   // ignore: unused_element
   void _clearSocialState();
+  // ignore: unused_element
+  void _clearReadinessState();
   void _clearSessionSensitiveState();
   void _syncPublicGigSubscriptionForCurrentScreen();
   Future<void> _loadPublicGig(String id);
@@ -155,6 +162,7 @@ class AppState extends ChangeNotifier
         _OpportunityState,
         _BookingState,
         _PaymentState,
+        _ReadinessState,
         _FinanceState,
         _TicketState,
         _OrganizerState,
@@ -169,6 +177,7 @@ class AppState extends ChangeNotifier
     ReverseGeocodingService? reverseGeocoding,
     MediaUploadService? mediaUploadService,
     recent_searches.RecentSearchesStore? recentSearchesStore,
+    readiness_memory.ReadinessMemoryStore? readinessMemoryStore,
     String? initialJoinToken,
     String? initialPerformerInviteToken,
     String? initialGigId,
@@ -194,6 +203,7 @@ class AppState extends ChangeNotifier
          reverseGeocoding,
          mediaUploadService,
          recentSearchesStore,
+         readinessMemoryStore,
          initialJoinToken,
          initialPerformerInviteToken,
          initialGigId,
@@ -224,6 +234,7 @@ class AppState extends ChangeNotifier
     ReverseGeocodingService? reverseGeocoding,
     MediaUploadService? mediaUploadService,
     recent_searches.RecentSearchesStore? recentSearchesStore,
+    readiness_memory.ReadinessMemoryStore? readinessMemoryStore,
     String? initialJoinToken,
     String? initialPerformerInviteToken,
     String? initialGigId,
@@ -251,6 +262,7 @@ class AppState extends ChangeNotifier
       reverseGeocoding: reverseGeocoding,
       mediaUploadService: mediaUploadService,
       recentSearchesStore: recentSearchesStore,
+      readinessMemoryStore: readinessMemoryStore,
       initialJoinToken: initialJoinToken,
       initialPerformerInviteToken: initialPerformerInviteToken,
       initialGigId: initialGigId,
@@ -279,6 +291,7 @@ class AppState extends ChangeNotifier
     this.reverseGeocoding,
     MediaUploadService? providedMediaUploader,
     recent_searches.RecentSearchesStore? providedRecentSearchesStore,
+    readiness_memory.ReadinessMemoryStore? providedReadinessMemoryStore,
     String? initialJoinToken,
     String? initialPerformerInviteToken,
     String? initialGigId,
@@ -307,6 +320,9 @@ class AppState extends ChangeNotifier
     recentSearchesStore =
         providedRecentSearchesStore ??
         recent_searches.PrefsRecentSearchesStore();
+    readinessMemoryStore =
+        providedReadinessMemoryStore ??
+        readiness_memory.PrefsReadinessMemoryStore();
     unawaited(loadRecentSearches());
     _stopBrowserHistory = listenForBrowserBack(_popAppStack);
     authed = auth.signedIn;
@@ -442,6 +458,8 @@ class AppState extends ChangeNotifier
   late final MediaUploadService mediaUploader;
   @override
   late final recent_searches.RecentSearchesStore recentSearchesStore;
+  @override
+  late final readiness_memory.ReadinessMemoryStore readinessMemoryStore;
 
   StreamSubscription<bool>? _authSubscription;
   StreamSubscription<Interactions>? _interactionsSubscription;
@@ -521,6 +539,7 @@ class AppState extends ChangeNotifier
     _bandDiscoveryBoundaryRefreshPending.clear();
     _bandInvites.clear();
     _bandInviteLoading.clear();
+    _clearReadinessState();
     _scheduleDiscoveryBoundaryRefresh();
     _media?.clearForSignOut();
     _resetBandForm();
