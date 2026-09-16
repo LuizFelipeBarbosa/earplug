@@ -579,8 +579,76 @@ void main() {
     final draftCard = find.byKey(const ValueKey('org-opp-opp2'));
     expect(openCard, findsOneWidget);
     expect(draftCard, findsOneWidget);
+    // Nothing is booked yet: both listings sit under ACTIVE, where the meta
+    // line counts slots and the pill counts applications instead of bookings.
+    expect(find.textContaining('CONFIRMED ·'), findsNothing);
     expect(
-      find.descendant(of: openCard, matching: find.text('0/2 slots booked')),
+      find.descendant(
+        of: openCard,
+        matching: find.textContaining('2 slots · closes'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: openCard, matching: find.text('2 APPLIED')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('slots booked'), findsNothing);
+    expect(
+      find.descendant(of: draftCard, matching: find.text('DRAFT')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: draftCard, matching: find.text('0 APPLIED')),
+      findsOneWidget,
+    );
+
+    final repository = harness.app.repository as DemoRepository;
+    Future<void> book(String applicationId) async {
+      final sent = await repository.sendOffer(
+        applicationId: applicationId,
+        grossMinor: 0,
+        cancellationTemplate: CancellationTemplate.standard,
+      );
+      await repository.respondToOffer(
+        bookingId: sent.bookingId,
+        accept: true,
+        expectedRevision: sent.revision,
+      );
+    }
+
+    // One of two slots booked keeps the listing ACTIVE; the booked application
+    // leaves the applied count.
+    await repository.reviewApplication(
+      applicationId: 'app1',
+      action: ArtistApplicationReviewAction.shortlisted,
+    );
+    await book('app1');
+    await harness.app.refreshOpportunities('org1');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('CONFIRMED ·'), findsNothing);
+    expect(
+      find.descendant(of: openCard, matching: find.text('1 APPLIED')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('slots booked'), findsNothing);
+
+    // Both slots booked moves the listing under CONFIRMED, where the meta line
+    // counts slots whose status is booked; the draft stays behind.
+    await book('app2');
+    await harness.app.refreshOpportunities('org1');
+    await tester.pumpAndSettle();
+    expect(find.text('CONFIRMED · 1'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: openCard,
+        matching: find.textContaining('2/2 slots booked'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('org-opp-applied-opp1')), findsNothing);
+    expect(
+      find.descendant(of: draftCard, matching: find.text('DRAFT')),
       findsOneWidget,
     );
     expect(
@@ -589,28 +657,6 @@ void main() {
         matching: find.textContaining('slots booked'),
       ),
       findsNothing,
-    );
-
-    final repository = harness.app.repository as DemoRepository;
-    await repository.reviewApplication(
-      applicationId: 'app1',
-      action: ArtistApplicationReviewAction.shortlisted,
-    );
-    final sent = await repository.sendOffer(
-      applicationId: 'app1',
-      grossMinor: 0,
-      cancellationTemplate: CancellationTemplate.standard,
-    );
-    await repository.respondToOffer(
-      bookingId: sent.bookingId,
-      accept: true,
-      expectedRevision: sent.revision,
-    );
-    await harness.app.refreshOpportunities('org1');
-    await tester.pumpAndSettle();
-    expect(
-      find.descendant(of: openCard, matching: find.text('1/2 slots booked')),
-      findsOneWidget,
     );
     harness.app.dispose();
   });
