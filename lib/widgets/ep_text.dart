@@ -102,7 +102,7 @@ class EpMonoText extends StatelessWidget {
   }
 }
 
-enum EpPillVariant { primary, ink, outline, ghost }
+enum EpPillVariant { primary, ink, outline, ghost, accentOutline }
 
 enum EpPillSize { chip, regular, large }
 
@@ -144,19 +144,29 @@ class EpPill extends StatelessWidget {
         : switch (effectiveVariant) {
             EpPillVariant.primary => palette.accent,
             EpPillVariant.ink => palette.ink,
-            EpPillVariant.outline || EpPillVariant.ghost => Colors.transparent,
+            EpPillVariant.accentOutline when selected =>
+              palette.accent.withValues(alpha: .18),
+            EpPillVariant.outline ||
+            EpPillVariant.ghost ||
+            EpPillVariant.accentOutline => Colors.transparent,
           };
     final foreground = !enabled
         ? palette.contentDisabled
         : switch (effectiveVariant) {
             EpPillVariant.primary || EpPillVariant.ink => palette.onAccent,
+            EpPillVariant.accentOutline => palette.accent,
             EpPillVariant.outline || EpPillVariant.ghost => palette.ink,
           };
-    final shape = StadiumBorder(
-      side: !enabled || effectiveVariant == EpPillVariant.outline
-          ? BorderSide(color: palette.outline)
-          : BorderSide.none,
-    );
+    final side = !enabled
+        ? BorderSide(color: palette.outline)
+        : switch (effectiveVariant) {
+            EpPillVariant.outline => BorderSide(color: palette.outline),
+            EpPillVariant.accentOutline => BorderSide(color: palette.accent),
+            EpPillVariant.primary ||
+            EpPillVariant.ink ||
+            EpPillVariant.ghost => BorderSide.none,
+          };
+    final shape = StadiumBorder(side: side);
     final (horizontal, vertical, minHeight, labelSize) = switch (size) {
       EpPillSize.chip => (16.0, 8.0, 36.0, 11.0),
       EpPillSize.regular => (24.0, 12.0, 44.0, 12.0),

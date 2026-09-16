@@ -471,7 +471,7 @@ class EpChip extends StatelessWidget {
   }
 }
 
-enum EpStatusPillTone { success, selected, warning, neutral }
+enum EpStatusPillTone { success, selected, warning, attention, neutral }
 
 /// Small, textual state marker. Color is never the only status signal.
 class StatusPill extends StatelessWidget {
@@ -490,6 +490,7 @@ class StatusPill extends StatelessWidget {
       EpStatusPillTone.success => context.epColors.success,
       EpStatusPillTone.selected => context.epColors.accent,
       EpStatusPillTone.warning => context.epColors.ink,
+      EpStatusPillTone.attention => context.epColors.attention,
       EpStatusPillTone.neutral => context.epColors.muted,
     };
     return Semantics(

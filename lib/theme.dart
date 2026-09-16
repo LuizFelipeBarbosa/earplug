@@ -42,9 +42,11 @@ abstract final class Ep {
 
   // Status.
   static const success = Color(0xFF4CD7A3);
+  static const attention = Color(0xFFD9A44A);
   static const warning = ink;
   static const destructive = Color(0xFFFF6B6B);
   static const successTint = Color(0xFF15352C);
+  static const attentionTint = Color(0xFF3A2E14);
   static const warningTint = panel;
   static const destructiveTint = Color(0xFF3B1C20);
 
@@ -115,9 +117,11 @@ class EpPalette extends ThemeExtension<EpPalette> {
     required this.contentSecondary,
     required this.contentDisabled,
     required this.success,
+    required this.attention,
     required this.warning,
     required this.destructive,
     required this.successTint,
+    required this.attentionTint,
     required this.warningTint,
     required this.destructiveTint,
   });
@@ -140,9 +144,11 @@ class EpPalette extends ThemeExtension<EpPalette> {
     contentSecondary: Ep.contentSecondary,
     contentDisabled: Ep.contentDisabled,
     success: Ep.success,
+    attention: Ep.attention,
     warning: Ep.warning,
     destructive: Ep.destructive,
     successTint: Ep.successTint,
+    attentionTint: Ep.attentionTint,
     warningTint: Ep.warningTint,
     destructiveTint: Ep.destructiveTint,
   );
@@ -165,9 +171,11 @@ class EpPalette extends ThemeExtension<EpPalette> {
     contentSecondary: Color(0xFF5F5C69),
     contentDisabled: Color(0xFF8A8792),
     success: Color(0xFF087A5B),
+    attention: Color(0xFF8A5A00),
     warning: Color(0xFF0A0A0B),
     destructive: Color(0xFFB4232D),
     successTint: Color(0xFFE0F3EC),
+    attentionTint: Color(0xFFF6ECD4),
     warningTint: Color(0xFFE9E8E4),
     destructiveTint: Color(0xFFFAE6E8),
   );
@@ -189,9 +197,11 @@ class EpPalette extends ThemeExtension<EpPalette> {
   final Color contentSecondary;
   final Color contentDisabled;
   final Color success;
+  final Color attention;
   final Color warning;
   final Color destructive;
   final Color successTint;
+  final Color attentionTint;
   final Color warningTint;
   final Color destructiveTint;
 
@@ -229,9 +239,11 @@ class EpPalette extends ThemeExtension<EpPalette> {
     Color? contentSecondary,
     Color? contentDisabled,
     Color? success,
+    Color? attention,
     Color? warning,
     Color? destructive,
     Color? successTint,
+    Color? attentionTint,
     Color? warningTint,
     Color? destructiveTint,
   }) => EpPalette(
@@ -252,9 +264,11 @@ class EpPalette extends ThemeExtension<EpPalette> {
     contentSecondary: contentSecondary ?? this.contentSecondary,
     contentDisabled: contentDisabled ?? this.contentDisabled,
     success: success ?? this.success,
+    attention: attention ?? this.attention,
     warning: warning ?? this.warning,
     destructive: destructive ?? this.destructive,
     successTint: successTint ?? this.successTint,
+    attentionTint: attentionTint ?? this.attentionTint,
     warningTint: warningTint ?? this.warningTint,
     destructiveTint: destructiveTint ?? this.destructiveTint,
   );
@@ -288,9 +302,11 @@ class EpPalette extends ThemeExtension<EpPalette> {
       )!,
       contentDisabled: Color.lerp(contentDisabled, other.contentDisabled, t)!,
       success: Color.lerp(success, other.success, t)!,
+      attention: Color.lerp(attention, other.attention, t)!,
       warning: Color.lerp(warning, other.warning, t)!,
       destructive: Color.lerp(destructive, other.destructive, t)!,
       successTint: Color.lerp(successTint, other.successTint, t)!,
+      attentionTint: Color.lerp(attentionTint, other.attentionTint, t)!,
       warningTint: Color.lerp(warningTint, other.warningTint, t)!,
       destructiveTint: Color.lerp(destructiveTint, other.destructiveTint, t)!,
     );

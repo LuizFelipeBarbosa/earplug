@@ -1,6 +1,7 @@
 import 'dart:ui' show Tristate;
 
 import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
@@ -142,6 +143,90 @@ void main() {
         brightness: brightness,
       );
       expect(_pillMaterial(tester).color, palette.ink);
+    }
+  });
+
+  testWidgets('accent outline pill keeps the accent outline when selected', (
+    tester,
+  ) async {
+    for (final brightness in Brightness.values) {
+      final palette = buildEpTheme(brightness).extension<EpPalette>()!;
+      for (final selected in [false, true]) {
+        await _pump(
+          tester,
+          EpPill(
+            label: 'Needs setup',
+            icon: Icons.bolt,
+            variant: EpPillVariant.accentOutline,
+            selected: selected,
+            onPressed: () {},
+          ),
+          brightness: brightness,
+        );
+        final material = _pillMaterial(tester);
+        expect(
+          material.color,
+          selected ? palette.accent.withValues(alpha: .18) : Colors.transparent,
+        );
+        final side = (material.shape! as StadiumBorder).side;
+        expect(side.color, palette.accent);
+        expect(side.width, 1);
+        expect(
+          tester.widget<Text>(find.text('NEEDS SETUP')).style!.color,
+          palette.accent,
+        );
+        expect(tester.widget<Icon>(find.byType(Icon)).color, palette.accent);
+      }
+      await _pump(
+        tester,
+        const EpPill(
+          label: 'Needs setup',
+          variant: EpPillVariant.accentOutline,
+        ),
+        brightness: brightness,
+      );
+      final disabled = _pillMaterial(tester);
+      expect(disabled.color, Colors.transparent);
+      expect((disabled.shape! as StadiumBorder).side.color, palette.outline);
+      expect(
+        tester.widget<Text>(find.text('NEEDS SETUP')).style!.color,
+        palette.contentDisabled,
+      );
+    }
+  });
+
+  testWidgets('status pill tones colour the label only', (tester) async {
+    for (final brightness in Brightness.values) {
+      final palette = buildEpTheme(brightness).extension<EpPalette>()!;
+      for (final tone in EpStatusPillTone.values) {
+        await _pump(
+          tester,
+          StatusPill(label: 'Attention', tone: tone),
+          brightness: brightness,
+        );
+        final expected = switch (tone) {
+          EpStatusPillTone.success => palette.success,
+          EpStatusPillTone.selected => palette.accent,
+          EpStatusPillTone.warning => palette.ink,
+          EpStatusPillTone.attention => palette.attention,
+          EpStatusPillTone.neutral => palette.muted,
+        };
+        expect(
+          tester.widget<Text>(find.text('ATTENTION')).style!.color,
+          expected,
+        );
+        final decoration =
+            tester
+                    .widget<Container>(
+                      find.descendant(
+                        of: find.byType(StatusPill),
+                        matching: find.byType(Container),
+                      ),
+                    )
+                    .decoration!
+                as BoxDecoration;
+        expect(decoration.border!.top.color, palette.line);
+      }
     }
   });
 
