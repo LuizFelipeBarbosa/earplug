@@ -5,19 +5,21 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_edit.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/band_identity_editor.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_text.dart';
-import 'package:earplug/widgets/form_bits.dart';
 import 'package:earplug/widgets/genre_autocomplete_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
 void main() {
   testWidgets(
-    'editor opens on the identity fields with one links card and save action',
+    'editor opens on the header banner, one links card and a pinned save bar',
     (tester) async {
       final semantics = tester.ensureSemantics();
       await pumpApp(
@@ -27,20 +29,55 @@ void main() {
       );
 
       expect(find.text('EDIT BAND'), findsOne);
-      expect(find.byKey(const ValueKey('band-identity-header')), findsNothing);
-      expect(
-        find.byKey(const ValueKey('band-header-image-control')),
-        findsNothing,
-      );
-      expect(find.byKey(const ValueKey('band-header-change')), findsNothing);
-      expect(find.byKey(const ValueKey('band-artwork-error')), findsNothing);
-      expect(
-        find.text('Shown at the top of your public page.'),
-        findsNothing,
-      );
-      expect(find.text('Header image'), findsNothing);
       expect(find.bySemanticsLabel('Back'), findsOne);
       expect(find.bySemanticsLabel('Preview public page'), findsOne);
+
+      // Banner-only header: no avatar editing anywhere on this screen.
+      final header = tester.widget<BandIdentityHeader>(
+        find.byType(BandIdentityHeader),
+      );
+      expect(header.showAvatar, isFalse);
+      expect(header.onAvatarTap, isNull);
+      expect(header.onBannerTap, isNotNull);
+      final banner = find.byKey(const ValueKey('band-identity-header'));
+      expect(banner, findsOne);
+      expect(find.byKey(const ValueKey('band-header-image-control')), findsOne);
+      expect(find.text('PROFILE IMAGE'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('band-profile-image-control')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('band-profile-avatar-frame')),
+        findsNothing,
+      );
+      final bannerRect = tester.getRect(banner);
+      expect(bannerRect.left, EpLayout.gutter);
+      expect(bannerRect.width, 390 - 2 * EpLayout.gutter);
+      expect(bannerRect.width / bannerRect.height, closeTo(2.65, .001));
+
+      final change = find.byKey(const ValueKey('band-header-change'));
+      expect(change, findsOne);
+      expect(
+        find.descendant(of: change, matching: find.text('Change')),
+        findsOne,
+      );
+      expect(
+        find.descendant(
+          of: change,
+          matching: find.byIcon(Icons.photo_camera_outlined),
+        ),
+        findsOne,
+      );
+      // The pill floats 12pt inside the banner's bottom-right corner (the
+      // banner's hairline border shifts it by one more point).
+      final changeRect = tester.getRect(change);
+      expect(changeRect.right, closeTo(bannerRect.right - 12, 1));
+      expect(changeRect.bottom, closeTo(bannerRect.bottom - 12, 1));
+      expect(find.text('Shown at the top of your public page.'), findsOne);
+      expect(find.byKey(const ValueKey('band-artwork-error')), findsNothing);
+      expect(find.text('Header image'), findsNothing);
+
       expect(find.text('BAND NAME · REQUIRED'), findsOne);
       expect(find.bySemanticsLabel('BAND NAME · REQUIRED'), findsOne);
       expect(
@@ -61,42 +98,44 @@ void main() {
       expect(find.text('MANAGE VIDEOS AND PHOTOS'), findsNothing);
       expect(find.textContaining('ACCEPTED MEMBERS'), findsNothing);
       expect(find.text('PREVIEW'), findsNothing);
-      expect(find.text('PROFILE IMAGE'), findsNothing);
-      expect(
-        find.byKey(const ValueKey('band-profile-image-control')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const ValueKey('band-profile-avatar-frame')),
-        findsNothing,
-      );
 
+      // One pinned, full-width save bar; nothing but back, title and eye in
+      // the header row.
       final save = find.byKey(const ValueKey('save-band-profile'));
-      final pill = tester.widget<EpPill>(save);
-      expect(pill.label, 'Save');
+      expect(save, findsOne);
+      expect(tester.widget(save), isA<EpBottomCta>());
+      final pill = _savePill(tester);
+      expect(pill.label, 'Save changes');
       expect(pill.variant, EpPillVariant.primary);
-      expect(pill.size, EpPillSize.chip);
+      expect(pill.size, EpPillSize.large);
+      expect(pill.expand, isTrue);
       expect(pill.onPressed, isNotNull);
-      expect(find.descendant(of: save, matching: find.text('SAVE')), findsOne);
-      expect(find.text('SAVE CHANGES'), findsNothing);
-      expect(find.byType(StickyActionBar), findsNothing);
-
-      final header = tester.getRect(
-        find
-            .ancestor(
-              of: find.byKey(const ValueKey('band-edit-back')),
-              matching: find.byType(Row),
-            )
-            .first,
+      expect(
+        find.descendant(of: save, matching: find.text('SAVE CHANGES')),
+        findsOne,
       );
+      expect(find.text('SAVE'), findsNothing);
+      final headerRow = find
+          .ancestor(
+            of: find.byKey(const ValueKey('band-edit-back')),
+            matching: find.byType(Row),
+          )
+          .first;
+      expect(
+        find.descendant(of: headerRow, matching: find.byType(EpPill)),
+        findsNothing,
+      );
+      final eye = tester.getRect(
+        find.byKey(const ValueKey('band-edit-preview')),
+      );
+      expect(eye.right, 390 - EpLayout.gutter);
       final saveRect = tester.getRect(save);
-      expect(saveRect.top, greaterThanOrEqualTo(header.top));
-      expect(saveRect.bottom, lessThanOrEqualTo(header.bottom));
-      expect(saveRect.right, 390 - 16);
-      final eye = tester.getRect(find.byKey(const ValueKey('band-edit-preview')));
-      expect(saveRect.left, eye.right + 8);
-      final nameLabel = tester.getRect(find.text('BAND NAME · REQUIRED'));
-      expect(nameLabel.top, header.bottom + 18);
+      expect(saveRect.left, 0);
+      expect(saveRect.width, 390);
+      expect(saveRect.bottom, 3000);
+      final pillRect = tester.getRect(_savePillFinder);
+      expect(pillRect.width, 390 - 2 * EpLayout.gutter);
+      expect(pillRect.bottom, 3000 - 32);
 
       expect(find.byType(EpCard), findsNothing);
       final linksCard = find
@@ -134,6 +173,41 @@ void main() {
       semantics.dispose();
     },
   );
+
+  for (final inset in [34.0, 0.0]) {
+    testWidgets('the save bar sits on the bottom safe inset ($inset)', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        size: const Size(390, 844),
+        home: MediaQuery(
+          data: MediaQueryData(
+            size: const Size(390, 844),
+            padding: EdgeInsets.only(bottom: inset),
+          ),
+          child: const Scaffold(body: BandEditScreen()),
+        ),
+      );
+
+      // The tab bar is hidden here, so the bar ends at the viewport's bottom
+      // and lifts its pill above the inset (EpBottomCta pads 32 below it).
+      final bar = find.byKey(const ValueKey('save-band-profile'));
+      final barRect = tester.getRect(bar);
+      expect(barRect.left, 0);
+      expect(barRect.width, 390);
+      expect(barRect.bottom, 844);
+      final pillRect = tester.getRect(_savePillFinder);
+      expect(pillRect.width, 390 - 2 * EpLayout.gutter);
+      expect(pillRect.bottom, 844 - inset - 32);
+
+      // The last form action scrolls clear of the pinned bar.
+      await _scrollToKey(tester, const Key('archive-band'));
+      final archive = find.byKey(const Key('archive-band'));
+      expect(tester.getRect(archive).bottom, lessThanOrEqualTo(barRect.top));
+      expect(archive.hitTestable(), findsOne);
+    });
+  }
 
   testWidgets('about limits the bio and updates its live counter', (
     tester,
@@ -252,6 +326,112 @@ void main() {
     expect(find.byKey(const ValueKey('edit-youtube')).hitTestable(), findsOne);
   });
 
+  testWidgets(
+    'header artwork can be replaced and cleared without losing the draft',
+    (tester) async {
+      final auth = FakeAuthService();
+      final repository = _ArtworkAuditRepository(auth: auth);
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        home: const Scaffold(body: BandEditScreen()),
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('edit-band-name')),
+        'Unsaved New Name',
+      );
+      harness.picker.nextPhoto = photoFixture(filename: 'new_banner.png');
+      await tester.tap(find.byKey(const ValueKey('band-header-image-control')));
+      await tester.pumpAndSettle();
+      expect(find.text('Replace'), findsOne);
+      expect(find.text('Use initials instead'), findsNothing);
+      await tester.tap(find.text('Replace'));
+      await tester.pumpAndSettle();
+
+      expect(
+        harness.media
+            .photosFor('b1')
+            .singleWhere((photo) => photo.isBanner)
+            .title,
+        'NEW BANNER',
+      );
+      expect(
+        tester
+            .widget<BandIdentityHeader>(find.byType(BandIdentityHeader))
+            .bannerBytes,
+        isNotNull,
+      );
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('edit-band-name')))
+            .controller!
+            .text,
+        'Unsaved New Name',
+      );
+      expect(harness.app.myBand!.name, 'Foghorn Diet');
+
+      await tester.tap(find.byKey(const ValueKey('band-header-change')));
+      await tester.pumpAndSettle();
+      expect(find.text('Replace'), findsOne);
+      expect(find.text('Use initials instead'), findsOne);
+      await tester.tap(find.text('Use initials instead'));
+      await tester.pumpAndSettle();
+      expect(repository.clearBannerCalls, 1);
+      expect(
+        tester
+            .widget<BandIdentityHeader>(find.byType(BandIdentityHeader))
+            .bannerBytes,
+        isNull,
+      );
+      expect(harness.app.myBand!.headerImageUrl, isNull);
+      expect(find.text('FD'), findsOne);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('edit-band-name')))
+            .controller!
+            .text,
+        'Unsaved New Name',
+      );
+    },
+  );
+
+  testWidgets('failed banner replacement restores the saved artwork', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = StubRepository(auth: auth)
+      ..fail('setBandBanner', StateError('banner assignment failed'));
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: BandEditScreen()),
+    );
+    final savedUrl = harness.app.myBand!.headerImageUrl;
+    harness.picker.nextPhoto = photoFixture(filename: 'failed_banner.png');
+    await tester.tap(find.byKey(const ValueKey('band-header-image-control')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Replace'));
+    await tester.pumpAndSettle();
+
+    final header = tester.widget<BandIdentityHeader>(
+      find.byType(BandIdentityHeader),
+    );
+    expect(header.bannerBytes, isNull);
+    expect(header.bannerUrl, savedUrl);
+    expect(header.bannerBusy, isFalse);
+    expect(find.text('FD'), findsOne);
+    expect(find.byKey(const ValueKey('band-artwork-error')), findsOne);
+    expect(find.textContaining('header image could not be saved'), findsOne);
+    expect(
+      harness.media
+          .photosFor('b1')
+          .where((photo) => photo.title == 'FAILED BANNER'),
+      hasLength(1),
+    );
+  });
+
   testWidgets('archive dialog preserves irreversible consequence copy', (
     tester,
   ) async {
@@ -293,14 +473,16 @@ void main() {
           expect(tester.takeException(), isNull);
         }
         await _scrollToKey(tester, const Key('archive-band'));
-        expect(find.byKey(const Key('archive-band')).hitTestable(), findsOne);
+        final archive = find.byKey(const Key('archive-band'));
+        expect(archive.hitTestable(), findsOne);
         expect(tester.takeException(), isNull);
-        expect(find.byType(StickyActionBar), findsNothing);
-        await _scrollToTop(tester);
+        // The pinned bar stays in reach and never covers the last action.
+        final bar = find.byKey(const ValueKey('save-band-profile'));
         expect(
-          find.byKey(const ValueKey('save-band-profile')).hitTestable(),
-          findsOne,
+          tester.getRect(archive).bottom,
+          lessThanOrEqualTo(tester.getRect(bar).top),
         );
+        expect(_savePillFinder.hitTestable(), findsOne);
       },
     );
   }
@@ -475,14 +657,16 @@ void main() {
     await _tapSave(tester);
     await tester.pump();
     expect(find.descendant(of: save, matching: find.text('SAVING…')), findsOne);
-    expect(tester.widget<EpPill>(save).onPressed, isNull);
+    expect(_savePill(tester).onPressed, isNull);
 
     repository.firstSave.completeError(StateError('offline'));
     await tester.pumpAndSettle();
     expect(find.textContaining('could not be saved'), findsOne);
-    await _scrollToTop(tester);
-    expect(find.descendant(of: save, matching: find.text('SAVE')), findsOne);
-    expect(tester.widget<EpPill>(save).onPressed, isNotNull);
+    expect(
+      find.descendant(of: save, matching: find.text('SAVE CHANGES')),
+      findsOne,
+    );
+    expect(_savePill(tester).onPressed, isNotNull);
 
     await _tapSave(tester);
     await tester.pumpAndSettle();
@@ -564,23 +748,18 @@ void main() {
   });
 }
 
-/// Brings the header back into view and taps its Save pill. Callers pump
-/// afterwards so pending and settled states can both be observed.
-Future<void> _tapSave(WidgetTester tester) async {
-  await _scrollToTop(tester);
-  final save = find.byKey(const ValueKey('save-band-profile'));
-  await tester.ensureVisible(save);
-  await tester.pumpAndSettle();
-  await tester.tap(save);
-}
+/// The one pill inside the pinned save bar.
+final _savePillFinder = find.descendant(
+  of: find.byKey(const ValueKey('save-band-profile')),
+  matching: find.byType(EpPill),
+);
 
-/// Drops field focus first: a focused field re-reveals its caret after any
-/// jump and would drag the header back out of the viewport.
-Future<void> _scrollToTop(WidgetTester tester) async {
-  FocusManager.instance.primaryFocus?.unfocus();
-  tester.widget<ListView>(find.byType(ListView)).controller!.jumpTo(0);
-  await tester.pumpAndSettle();
-}
+EpPill _savePill(WidgetTester tester) => tester.widget<EpPill>(_savePillFinder);
+
+/// The save bar is pinned, so its pill is always in reach: tap it directly.
+/// Callers pump afterwards so pending and settled states can both be
+/// observed.
+Future<void> _tapSave(WidgetTester tester) => tester.tap(_savePillFinder);
 
 Future<void> _scrollToKey(WidgetTester tester, Key key) async {
   await _scrollToFinder(tester, find.byKey(key));
@@ -609,6 +788,18 @@ class _ControlledProfileRepository extends DemoRepository {
     updateCalls++;
     if (updateCalls == 1) await firstSave.future;
     await super.updateBandProfile(update);
+  }
+}
+
+class _ArtworkAuditRepository extends StubRepository {
+  _ArtworkAuditRepository({required super.auth});
+
+  int clearBannerCalls = 0;
+
+  @override
+  Future<void> clearBandBanner(String bandId) async {
+    clearBannerCalls++;
+    await super.clearBandBanner(bandId);
   }
 }
 

@@ -2,14 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../band_media_state.dart';
 import '../models.dart';
+import '../services/media_picker.dart';
 import '../theme.dart';
+import '../widgets/band_identity_editor.dart';
 import '../widgets/brand_icons.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/genre_autocomplete_field.dart';
+import '../widgets/sheets.dart';
+
+/// The pinned save bar's height above the safe area: EpBottomCta's 20/32
+/// vertical padding around one large pill.
+const double _actionZoneHeight = 20 + 52 + 32;
+
+/// Room the list keeps below its last control so it can scroll clear of the
+/// pinned save bar (the bar plus a 16pt gap; the safe inset is added
+/// separately).
+const double _footerClearance = _actionZoneHeight + 16;
 
 class BandEditScreen extends StatefulWidget {
   const BandEditScreen({super.key});
@@ -40,6 +53,9 @@ class _BandEditScreenState extends State<BandEditScreen> {
   bool _youtubeDirty = false;
   bool _saving = false;
   bool _saved = false;
+  bool _bannerUploading = false;
+  PickedMedia? _bannerPreview;
+  String? _artworkError;
   String? _error;
 
   @override
@@ -129,6 +145,89 @@ class _BandEditScreenState extends State<BandEditScreen> {
     });
   }
 
+  Future<void> _changeArtwork() async {
+    final app = context.read<AppState>();
+    final media = context.read<BandMediaController>();
+    final band = app.myBand;
+    if (band == null || !app.isAdminOf(band.id)) return;
+
+    final PickedMedia? picked;
+    try {
+      picked = await media.pickFlyerArt();
+    } on MediaPickException catch (error) {
+      app.say(error.message);
+      return;
+    }
+    if (!mounted || picked == null) return;
+
+    setState(() {
+      _artworkError = null;
+      _bannerPreview = picked;
+      _bannerUploading = true;
+    });
+
+    final mediaId = await media.uploadHeldPhoto(band.id, picked);
+    final assigned = mediaId != null && await media.setBanner(band.id, mediaId);
+    if (!mounted) return;
+    setState(() {
+      _bannerUploading = false;
+      if (!assigned) {
+        _bannerPreview = null;
+        _artworkError =
+            'The header image could not be saved. Choose it again here; the failed upload remains available in Media.';
+      }
+    });
+  }
+
+  void _showArtworkSheet() {
+    final app = context.read<AppState>();
+    final band = app.myBand;
+    if (band == null || !app.isAdminOf(band.id)) return;
+
+    final hasArtwork = band.headerImageUrl != null || _bannerPreview != null;
+    showEpActionSheet(
+      context,
+      header: 'Header image',
+      items: [
+        EpActionSheetItem(
+          label: 'Replace',
+          icon: Icons.photo_library_outlined,
+          onPressed: _changeArtwork,
+        ),
+        if (hasArtwork)
+          EpActionSheetItem(
+            label: 'Use initials instead',
+            icon: Icons.delete_outline,
+            destructive: true,
+            onPressed: _clearArtwork,
+          ),
+      ],
+    );
+  }
+
+  Future<void> _clearArtwork() async {
+    final app = context.read<AppState>();
+    final media = context.read<BandMediaController>();
+    final band = app.myBand;
+    if (band == null || !app.isAdminOf(band.id)) return;
+
+    setState(() {
+      _artworkError = null;
+      _bannerUploading = true;
+    });
+
+    final cleared = await media.clearBanner(band.id);
+    if (!mounted) return;
+    setState(() {
+      _bannerUploading = false;
+      if (cleared) {
+        _bannerPreview = null;
+      } else {
+        _artworkError = 'The header image could not be removed. Try again.';
+      }
+    });
+  }
+
   Future<void> _save() async {
     final name = _name.text.trim();
     final area = _area.text.trim();
@@ -193,10 +292,10 @@ class _BandEditScreenState extends State<BandEditScreen> {
           child: ListView(
             controller: _scrollController,
             padding: EdgeInsets.fromLTRB(
-              16,
+              EpLayout.gutter,
               headerTopPad(context),
-              16,
-              MediaQuery.paddingOf(context).bottom + 24,
+              EpLayout.gutter,
+              _footerClearance + MediaQuery.paddingOf(context).bottom,
             ),
             children: [
               Row(
@@ -220,17 +319,6 @@ class _BandEditScreenState extends State<BandEditScreen> {
                     semanticLabel: 'Preview public page',
                     onPressed: app.previewPublicProfile,
                   ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    height: 44,
-                    child: EpPill(
-                      key: const ValueKey('save-band-profile'),
-                      label: _saving ? 'Saving…' : 'Save',
-                      variant: EpPillVariant.primary,
-                      size: EpPillSize.chip,
-                      onPressed: _saving ? null : _save,
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 18),
@@ -239,6 +327,41 @@ class _BandEditScreenState extends State<BandEditScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    ListenableBuilder(
+                      listenable: Listenable.merge([_name, _area]),
+                      builder: (context, _) => BandIdentityHeader(
+                        showAvatar: false,
+                        name: _name.text,
+                        area: _area.text,
+                        initials: band.initials,
+                        color: band.color,
+                        bannerUrl: band.headerImageUrl,
+                        bannerBytes: _bannerPreview?.bytes,
+                        bannerBusy: _bannerUploading,
+                        onBannerTap: _saving ? null : _showArtworkSheet,
+                      ),
+                    ),
+                    const SizedBox(height: 9),
+                    EpMonoText(
+                      'Shown at the top of your public page.',
+                      color: context.epColors.contentSecondary,
+                      keepCase: true,
+                    ),
+                    if (_artworkError case final error?) ...[
+                      const SizedBox(height: 8),
+                      Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          error,
+                          key: const ValueKey('band-artwork-error'),
+                          style: Theme.of(context).textTheme.epCaption.copyWith(
+                            fontSize: 11,
+                            color: context.epColors.destructive,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
                     _IdentityField(
                       fieldKey: const ValueKey('edit-band-name'),
                       label: 'BAND NAME',
@@ -413,6 +536,23 @@ class _BandEditScreenState extends State<BandEditScreen> {
                 ),
               ),
             ],
+          ),
+        ),
+        // The tab bar is hidden on this screen, so the bar sits on the
+        // viewport's bottom edge and pads the safe inset itself.
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: EpBottomCta(
+            key: const ValueKey('save-band-profile'),
+            child: EpPill(
+              label: _saving ? 'Saving…' : 'Save changes',
+              variant: EpPillVariant.primary,
+              size: EpPillSize.large,
+              expand: true,
+              onPressed: _saving ? null : _save,
+            ),
           ),
         ),
       ],
