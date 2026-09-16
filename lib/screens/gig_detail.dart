@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../app_links.dart';
 import '../app_state.dart';
+import '../flyer_styles.dart';
 import '../models.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
@@ -406,6 +407,7 @@ class _Flyer extends StatelessWidget {
       );
       final custom =
           bytes != null || (gig.flyKey == 'custom' && gig.flyerUrl != null);
+      final style = flyerStyles[gig.flyKey];
       return RepaintBoundary(
         key: const ValueKey('gig-detail-flyer'),
         child: SizedBox(
@@ -442,7 +444,9 @@ class _Flyer extends StatelessWidget {
                       children: [
                         ImageFiltered(
                           imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                          child: ColoredBox(color: context.epColors.panel),
+                          child: style != null
+                              ? GigFlyer(gig, style)
+                              : ColoredBox(color: context.epColors.panel),
                         ),
                         ColoredBox(
                           color: context.epColors.background.withValues(
@@ -460,6 +464,15 @@ class _Flyer extends StatelessWidget {
                 height: contentHeight,
                 child: custom
                     ? _image(context, BoxFit.contain)
+                    : style != null
+                    ? FittedBox(
+                        fit: BoxFit.contain,
+                        child: SizedBox(
+                          width: 240,
+                          height: 300,
+                          child: GigFlyer(gig, style),
+                        ),
+                      )
                     : Container(
                         key: const ValueKey('gig-detail-flyer-placeholder'),
                         color: context.epColors.panel,

@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
+import 'package:earplug/flyer_styles.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/gig_detail.dart';
 import 'package:earplug/services/auth_service.dart';
@@ -94,21 +95,26 @@ void main() {
       of: flyer,
       matching: find.byKey(const ValueKey('gig-detail-flyer-placeholder')),
     );
-    expect(placeholder, findsOne);
-    expect(
-      find.descendant(of: flyer, matching: find.byType(GigFlyer)),
-      findsNothing,
+    expect(placeholder, findsNothing);
+    final pressPanel = find.descendant(
+      of: flyer,
+      matching: find.byType(FittedBox),
     );
-    expect(
-      tester.widget<Container>(placeholder).color,
-      tester.element(flyer).epColors.panel,
+    expect(pressPanel, findsOne);
+    expect(tester.widget<FittedBox>(pressPanel).fit, BoxFit.contain);
+    final press = find.descendant(
+      of: pressPanel,
+      matching: find.byType(GigFlyer),
     );
+    expect(press, findsOne);
+    expect(tester.widget<GigFlyer>(press).style, flyerStyles['paper']);
+    expect(tester.getSize(press), const Size(240, 300));
     final blur = find.descendant(
       of: flyer,
       matching: find.byType(ImageFiltered),
     );
     expect(blur, findsOne);
-    expect(tester.widget<ImageFiltered>(blur).child, isA<ColoredBox>());
+    expect(tester.widget<ImageFiltered>(blur).child, isA<GigFlyer>());
     final scrim = tester.widgetList<ColoredBox>(
       find.descendant(of: flyer, matching: find.byType(ColoredBox)),
     );
@@ -236,13 +242,96 @@ void main() {
     await tester.pump();
     expect(tester.getTopLeft(flyer).dy, 0);
     expect(tester.getSize(flyer).height, 47 + 402 * 1.25);
-    expect(tester.getTopLeft(placeholder).dy, 47);
-    expect(tester.getSize(placeholder).height, 402 * 1.25);
+    expect(tester.getTopLeft(press).dy, 47);
+    expect(tester.getSize(pressPanel).height, 402 * 1.25);
     expect(tester.getSize(header).height, 44 + EpLayout.gutter * 2 + 47);
     expect(tester.widget<Opacity>(titleFade).opacity, 0.0);
     expect(tester.getTopLeft(back).dy, 47 + EpLayout.gutter);
     expect(tester.getTopLeft(back).dx, EpLayout.gutter);
     expect(tester.getTopRight(share).dx, size.width - EpLayout.gutter);
+  });
+
+  testWidgets('unknown flyer keys keep the neutral hero placeholder', (
+    tester,
+  ) async {
+    await _pumpPresentation(
+      tester,
+      gigFixture(id: 'legacy-flyer', flyKey: 'legacy-removed'),
+    );
+
+    final flyer = find.byKey(const ValueKey('gig-detail-flyer'));
+    final placeholder = find.descendant(
+      of: flyer,
+      matching: find.byKey(const ValueKey('gig-detail-flyer-placeholder')),
+    );
+    expect(placeholder, findsOne);
+    expect(
+      find.descendant(of: flyer, matching: find.byType(GigFlyer)),
+      findsNothing,
+    );
+    expect(
+      tester.widget<Container>(placeholder).color,
+      tester.element(flyer).epColors.panel,
+    );
+    expect(
+      find.descendant(
+        of: placeholder,
+        matching: find.byIcon(Icons.image_outlined),
+      ),
+      findsOne,
+    );
+    final blur = find.descendant(
+      of: flyer,
+      matching: find.byType(ImageFiltered),
+    );
+    expect(blur, findsOne);
+    expect(tester.widget<ImageFiltered>(blur).child, isA<ColoredBox>());
+
+    tester.view.padding = const FakeViewPadding(top: 47);
+    await tester.pump();
+    expect(tester.getTopLeft(placeholder).dy, 47);
+    expect(tester.getSize(placeholder).height, 402 * 1.25);
+  });
+
+  testWidgets('draft preview contains the press design without cropping', (
+    tester,
+  ) async {
+    await _pumpPresentation(
+      tester,
+      gigFixture(id: 'press-preview', flyKey: 'accent'),
+      previewLabel: 'PRIVATE DRAFT',
+      size: const Size(402, 600),
+    );
+
+    final flyer = find.byKey(const ValueKey('gig-detail-flyer'));
+    expect(tester.getSize(flyer), const Size(402, 360));
+    expect(
+      find.byKey(const ValueKey('gig-detail-flyer-placeholder')),
+      findsNothing,
+    );
+    final pressPanel = find.descendant(
+      of: flyer,
+      matching: find.byType(FittedBox),
+    );
+    expect(tester.widget<FittedBox>(pressPanel).fit, BoxFit.contain);
+    final press = find.descendant(
+      of: pressPanel,
+      matching: find.byType(GigFlyer),
+    );
+    expect(press, findsOne);
+    expect(tester.widget<GigFlyer>(press).style, flyerStyles['accent']);
+    expect(tester.getSize(press), const Size(240, 300));
+    // The capped content height leaves equal space beside the 4:5 press.
+    expect(tester.getTopLeft(press), const Offset(57, 0));
+    expect(tester.getBottomRight(press), const Offset(345, 360));
+    final blur = find.descendant(
+      of: flyer,
+      matching: find.byType(ImageFiltered),
+    );
+    final backdrop = find.descendant(of: blur, matching: find.byType(GigFlyer));
+    expect(backdrop, findsOne);
+    expect(tester.widget<GigFlyer>(backdrop).style, flyerStyles['accent']);
+    expect(tester.getRect(backdrop), tester.getRect(flyer));
   });
 
   testWidgets(
