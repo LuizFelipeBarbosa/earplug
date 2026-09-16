@@ -23,6 +23,11 @@ class EpMap extends StatefulWidget {
     this.layers = const [],
     this.tiles = kIsWeb ? EpMapTiles.raster : EpMapTiles.vector,
     this.showAttribution = true,
+    this.attributionPadding = const EdgeInsets.only(
+      bottom: 6,
+      right: 6,
+      left: 4,
+    ),
   });
 
   final MapOptions options;
@@ -30,6 +35,7 @@ class EpMap extends StatefulWidget {
   final List<Widget> layers;
   final EpMapTiles tiles;
   final bool showAttribution;
+  final EdgeInsets attributionPadding;
 
   @override
   State<EpMap> createState() => _EpMapState();
@@ -188,7 +194,10 @@ class _EpMapState extends State<EpMap> {
         if (!raster && !ready && _error == null) const _MapLoading(),
         if (!raster && !ready && _error != null) _MapError(onRetry: _retry),
         if (widget.showAttribution && (raster || style != null))
-          _MapAttribution(entries: attributions),
+          _MapAttribution(
+            entries: attributions,
+            padding: widget.attributionPadding,
+          ),
       ],
     );
   }
@@ -251,20 +260,21 @@ class _MapError extends StatelessWidget {
 }
 
 class _MapAttribution extends StatelessWidget {
-  const _MapAttribution({required this.entries});
+  const _MapAttribution({required this.entries, required this.padding});
 
   final List<_AttributionEntry> entries;
+  final EdgeInsets padding;
 
   @override
   Widget build(BuildContext context) {
     if (entries.isEmpty) return const SizedBox.shrink();
 
     return Positioned(
-      top: 4,
-      left: 4,
-      right: 4,
+      bottom: padding.bottom,
+      left: padding.left,
+      right: padding.right,
       child: Align(
-        alignment: Alignment.topRight,
+        alignment: Alignment.bottomRight,
         child: Container(
           constraints: const BoxConstraints(maxWidth: 280),
           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),

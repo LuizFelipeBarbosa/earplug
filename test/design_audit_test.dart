@@ -49,14 +49,18 @@ void main() {
   ];
 
   setUpAll(() async {
-    for (final (family, path) in [
-      ('Archivo', 'assets/fonts/Archivo-Regular.ttf'),
-      ('Archivo Black', 'assets/fonts/ArchivoBlack-Regular.ttf'),
-      ('MaterialIcons', 'fonts/MaterialIcons-Regular.otf'),
-    ]) {
-      final loader = FontLoader(family)..addFont(rootBundle.load(path));
-      await loader.load();
-    }
+    final telegraf = FontLoader('PP Telegraf')
+      ..addFont(rootBundle.load('assets/fonts/PPTelegraf-Regular.otf'))
+      ..addFont(rootBundle.load('assets/fonts/PPTelegraf-Ultrabold.otf'));
+    await telegraf.load();
+
+    final azeretMono = FontLoader('Azeret Mono')
+      ..addFont(rootBundle.load('assets/fonts/AzeretMono-Regular.ttf'));
+    await azeretMono.load();
+
+    final materialIcons = FontLoader('MaterialIcons')
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+    await materialIcons.load();
   });
 
   for (final view in views) {
@@ -152,6 +156,33 @@ void main() {
               app.go(screen, 'opp2');
             case Screen.bookingDetail || Screen.checkoutCancel:
               app.go(screen, 'bk1');
+            case Screen.hostedGig:
+              final startsAt = DateTime.now().add(const Duration(days: 2));
+              repository.returns('manageGigs', [
+                GigProject(
+                  id: 'published-rsvp',
+                  bandId: 'b1',
+                  publicGigId: 'g2',
+                  status: GigProjectStatus.published,
+                  revision: 2,
+                  publishedRevision: 2,
+                  title: 'Riptide Release Show',
+                  doorsAt: startsAt.subtract(const Duration(hours: 1)),
+                  startsAt: startsAt,
+                  venueId: 'v1',
+                  price: 0,
+                  flyKey: 'blue',
+                  overlay: true,
+                  desc: '',
+                  ticketing: Ticketing.rsvp,
+                  ageRequirement: AgeRequirement.allAges,
+                  cap: 'No cap',
+                  updatedAt: DateTime.now(),
+                  performers: const [],
+                ),
+              ]);
+              await app.refreshManagedGigs();
+              app.openHostedGig('published-rsvp');
             case Screen.reviewCompose:
               app.go(screen, 'bk4');
             case Screen.checkoutReturn:
@@ -162,6 +193,8 @@ void main() {
               app.go(screen, 'application-review-1');
             case Screen.orgJoin:
               app.go(screen, 'design-preview');
+            case Screen.exploreCollection:
+              app.go(screen, 'tonight');
             default:
               app.go(screen);
           }

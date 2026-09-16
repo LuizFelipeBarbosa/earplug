@@ -154,6 +154,7 @@ class Venue {
   final String? managedByOrganizationId;
   final String? exactAddress;
   final bool supportsApproxLocation;
+  final List<String> photoUrls;
 
   const Venue({
     required this.id,
@@ -173,6 +174,7 @@ class Venue {
     this.managedByOrganizationId,
     String? exactAddress,
     this.supportsApproxLocation = false,
+    this.photoUrls = const [],
   }) : // `approx` is the public constructor argument for the private override.
        // ignore: prefer_initializing_formals
        _approx = approx,
@@ -206,6 +208,7 @@ class Venue {
         description: description,
         venueType: venueType,
         capacityPublic: capacityPublic,
+        photoUrls: asStringList(json['photoUrls']),
       );
     }
 
@@ -235,6 +238,7 @@ class Venue {
       ),
       exactAddress: exactAddress,
       supportsApproxLocation: true,
+      photoUrls: asStringList(json['photoUrls']),
     );
   }
 
@@ -258,6 +262,7 @@ class Venue {
     Object? managedByOrganizationId = _unchanged,
     Object? exactAddress = _unchanged,
     bool? supportsApproxLocation,
+    List<String>? photoUrls,
   }) => Venue(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -289,6 +294,7 @@ class Venue {
         : exactAddress as String?,
     supportsApproxLocation:
         supportsApproxLocation ?? this.supportsApproxLocation,
+    photoUrls: photoUrls ?? this.photoUrls,
   );
 }
 
@@ -854,9 +860,7 @@ class OrganizationApplication {
       hostDisplayName: asOptionalString(json['hostDisplayName']),
       hostPhone: asOptionalString(json['hostPhone']),
       hostArea: asOptionalString(json['hostArea']),
-      hostAgreementAcceptedAt: asOptionalDate(
-        json['hostAgreementAcceptedAt'],
-      ),
+      hostAgreementAcceptedAt: asOptionalDate(json['hostAgreementAcceptedAt']),
       organizerAgreementAcceptedAt: asOptionalDate(
         json['organizerAgreementAcceptedAt'],
       ),
@@ -953,15 +957,9 @@ class AdminApplicationRow {
       application: OrganizationApplication.fromJson(
         asFilteredMap(json['application']),
       ),
-      applicantUserId: asString(
-        json['applicantUserId'] ?? applicant['userId'],
-      ),
-      applicantName: asString(
-        json['applicantName'] ?? applicant['name'],
-      ),
-      applicantEmail: asString(
-        json['applicantEmail'] ?? applicant['email'],
-      ),
+      applicantUserId: asString(json['applicantUserId'] ?? applicant['userId']),
+      applicantName: asString(json['applicantName'] ?? applicant['name']),
+      applicantEmail: asString(json['applicantEmail'] ?? applicant['email']),
     );
   }
 }
@@ -1223,9 +1221,8 @@ class UserProfile {
   final String? bio;
   final FanCity? homeLocation;
   final bool locationPersonalizationEnabled;
+  final bool shareRsvpsWithFriends;
   final bool followedBandUpdatesEnabled;
-  final bool profileTutorialAvailable;
-  final bool profileTutorialCompleted;
   final FanOnboarding? fanOnboarding;
 
   const UserProfile({
@@ -1238,9 +1235,8 @@ class UserProfile {
     this.bio,
     this.homeLocation,
     this.locationPersonalizationEnabled = false,
+    this.shareRsvpsWithFriends = true,
     this.followedBandUpdatesEnabled = true,
-    this.profileTutorialAvailable = true,
-    this.profileTutorialCompleted = false,
     this.fanOnboarding,
   });
 
@@ -1259,16 +1255,12 @@ class UserProfile {
         json['locationPersonalizationEnabled'] is bool
         ? json['locationPersonalizationEnabled'] as bool
         : false,
+    shareRsvpsWithFriends: json['shareRsvpsWithFriends'] is bool
+        ? json['shareRsvpsWithFriends'] as bool
+        : true,
     followedBandUpdatesEnabled: json['followedBandUpdatesEnabled'] is bool
         ? json['followedBandUpdatesEnabled'] as bool
         : true,
-    // Presence is a compatibility capability. Backends released before the
-    // tutorial mutation omit this key; showing its controls against those
-    // deployments guarantees a function-not-found error on completion.
-    profileTutorialAvailable: json['profileTutorialCompleted'] is bool,
-    profileTutorialCompleted: json['profileTutorialCompleted'] is bool
-        ? json['profileTutorialCompleted'] as bool
-        : false,
     fanOnboarding: switch (json['fanOnboarding']) {
       final Map<Object?, Object?> value => FanOnboarding.fromJson(
         Map<String, dynamic>.from(value),
@@ -1289,9 +1281,8 @@ class UserProfile {
     Object? bio = _unchanged,
     Object? homeLocation = _unchanged,
     bool? locationPersonalizationEnabled,
+    bool? shareRsvpsWithFriends,
     bool? followedBandUpdatesEnabled,
-    bool? profileTutorialAvailable,
-    bool? profileTutorialCompleted,
     Object? fanOnboarding = _unchanged,
   }) {
     return UserProfile(
@@ -1309,17 +1300,291 @@ class UserProfile {
           : homeLocation as FanCity?,
       locationPersonalizationEnabled:
           locationPersonalizationEnabled ?? this.locationPersonalizationEnabled,
+      shareRsvpsWithFriends:
+          shareRsvpsWithFriends ?? this.shareRsvpsWithFriends,
       followedBandUpdatesEnabled:
           followedBandUpdatesEnabled ?? this.followedBandUpdatesEnabled,
-      profileTutorialAvailable:
-          profileTutorialAvailable ?? this.profileTutorialAvailable,
-      profileTutorialCompleted:
-          profileTutorialCompleted ?? this.profileTutorialCompleted,
       fanOnboarding: identical(fanOnboarding, _unchanged)
           ? this.fanOnboarding
           : fanOnboarding as FanOnboarding?,
     );
   }
+}
+
+class SocialUserCard {
+  final String userId;
+  final String name;
+  final String? avatarUrl;
+  final bool isFollowing;
+  final bool followsMe;
+  final bool isFriend;
+
+  const SocialUserCard({
+    required this.userId,
+    required this.name,
+    this.avatarUrl,
+    this.isFollowing = false,
+    this.followsMe = false,
+    this.isFriend = false,
+  });
+
+  /// Relationship flags default to false for nested friends-going entries.
+  factory SocialUserCard.fromJson(Map<String, dynamic> json) => SocialUserCard(
+    userId: json['userId'] as String,
+    name: json['name'] as String,
+    avatarUrl: json['avatarUrl'] is String ? json['avatarUrl'] as String : null,
+    isFollowing: json['isFollowing'] is bool
+        ? json['isFollowing'] as bool
+        : false,
+    followsMe: json['followsMe'] is bool ? json['followsMe'] as bool : false,
+    isFriend: json['isFriend'] is bool ? json['isFriend'] as bool : false,
+  );
+
+  SocialUserCard copyWith({
+    bool? isFollowing,
+    bool? followsMe,
+    bool? isFriend,
+  }) => SocialUserCard(
+    userId: userId,
+    name: name,
+    avatarUrl: avatarUrl,
+    isFollowing: isFollowing ?? this.isFollowing,
+    followsMe: followsMe ?? this.followsMe,
+    isFriend: isFriend ?? this.isFriend,
+  );
+}
+
+class SocialUserDetail extends SocialUserCard {
+  final int followedBandCount;
+  final List<({String bandId, String name})> mutualBands;
+
+  const SocialUserDetail({
+    required super.userId,
+    required super.name,
+    super.avatarUrl,
+    super.isFollowing,
+    super.followsMe,
+    super.isFriend,
+    required this.followedBandCount,
+    required this.mutualBands,
+  });
+
+  factory SocialUserDetail.fromJson(
+    Map<String, dynamic> json,
+  ) => SocialUserDetail(
+    userId: json['userId'] as String,
+    name: json['name'] as String,
+    avatarUrl: json['avatarUrl'] is String ? json['avatarUrl'] as String : null,
+    isFollowing: json['isFollowing'] is bool
+        ? json['isFollowing'] as bool
+        : false,
+    followsMe: json['followsMe'] is bool ? json['followsMe'] as bool : false,
+    isFriend: json['isFriend'] is bool ? json['isFriend'] as bool : false,
+    followedBandCount: (json['followedBandCount'] as num).toInt(),
+    mutualBands: [
+      for (final band in (json['mutualBands'] as List))
+        (
+          bandId: (band as Map)['bandId'] as String,
+          name: band['name'] as String,
+        ),
+    ],
+  );
+}
+
+class SuggestedPerson {
+  final String userId;
+  final String name;
+  final String? avatarUrl;
+  final int sharedShows;
+  final int mutualFriends;
+  final bool followsMe;
+
+  const SuggestedPerson({
+    required this.userId,
+    required this.name,
+    this.avatarUrl,
+    this.sharedShows = 0,
+    this.mutualFriends = 0,
+    this.followsMe = false,
+  });
+
+  factory SuggestedPerson.fromJson(
+    Map<String, dynamic> json,
+  ) => SuggestedPerson(
+    userId: json['userId'] as String,
+    name: json['name'] as String,
+    avatarUrl: json['avatarUrl'] is String ? json['avatarUrl'] as String : null,
+    sharedShows: (json['sharedShows'] as num).toInt(),
+    mutualFriends: (json['mutualFriends'] as num).toInt(),
+    followsMe: json['followsMe'] is bool ? json['followsMe'] as bool : false,
+  );
+}
+
+class SocialGraph {
+  final Set<String> following;
+  final Set<String> followers;
+  final Set<String> friends;
+  final int followingCount;
+  final int followerCount;
+  final bool truncated;
+  final bool shareRsvpsWithFriends;
+
+  const SocialGraph({
+    required this.following,
+    required this.followers,
+    required this.friends,
+    required this.followingCount,
+    required this.followerCount,
+    required this.truncated,
+    required this.shareRsvpsWithFriends,
+  });
+
+  static const empty = SocialGraph(
+    following: {},
+    followers: {},
+    friends: {},
+    followingCount: 0,
+    followerCount: 0,
+    truncated: false,
+    shareRsvpsWithFriends: true,
+  );
+
+  factory SocialGraph.fromJson(Map<String, dynamic> json) {
+    final following = Set<String>.from(json['following'] as List);
+    final followers = Set<String>.from(json['followers'] as List);
+    return SocialGraph(
+      following: following,
+      followers: followers,
+      friends: following.intersection(followers),
+      followingCount: (json['followingCount'] as num).toInt(),
+      followerCount: (json['followerCount'] as num).toInt(),
+      truncated: json['truncated'] as bool,
+      shareRsvpsWithFriends: json['shareRsvpsWithFriends'] as bool,
+    );
+  }
+
+  SocialGraph copyWith({
+    Set<String>? following,
+    Set<String>? followers,
+    bool? shareRsvpsWithFriends,
+  }) {
+    final nextFollowing = following ?? this.following;
+    final nextFollowers = followers ?? this.followers;
+    return SocialGraph(
+      following: nextFollowing,
+      followers: nextFollowers,
+      friends: nextFollowing.intersection(nextFollowers),
+      followingCount: nextFollowing.length,
+      followerCount: nextFollowers.length,
+      truncated: truncated,
+      shareRsvpsWithFriends:
+          shareRsvpsWithFriends ?? this.shareRsvpsWithFriends,
+    );
+  }
+}
+
+class FriendsGoingEntry {
+  final String gigId;
+  final DateTime startsAt;
+  final List<SocialUserCard> friends;
+
+  const FriendsGoingEntry({
+    required this.gigId,
+    required this.startsAt,
+    required this.friends,
+  });
+
+  factory FriendsGoingEntry.fromJson(Map<String, dynamic> json) =>
+      FriendsGoingEntry(
+        gigId: json['gigId'] as String,
+        startsAt: DateTime.fromMillisecondsSinceEpoch(
+          (json['startsAt'] as num).toInt(),
+        ),
+        friends: [
+          for (final friend in (json['friends'] as List))
+            SocialUserCard.fromJson(Map<String, dynamic>.from(friend as Map)),
+        ],
+      );
+}
+
+class FriendsGoing {
+  final List<FriendsGoingEntry> entries;
+  final bool truncated;
+
+  const FriendsGoing({required this.entries, required this.truncated});
+
+  static const empty = FriendsGoing(entries: [], truncated: false);
+
+  factory FriendsGoing.fromJson(Map<String, dynamic> json) => FriendsGoing(
+    entries: [
+      for (final entry in (json['entries'] as List))
+        FriendsGoingEntry.fromJson(Map<String, dynamic>.from(entry as Map)),
+    ],
+    truncated: json['truncated'] as bool,
+  );
+}
+
+enum KnownRelation {
+  friend('friend'),
+  seen('seen');
+
+  const KnownRelation(this.wireValue);
+
+  final String wireValue;
+
+  static KnownRelation fromWire(Object? value) =>
+      value == 'friend' ? KnownRelation.friend : KnownRelation.seen;
+}
+
+class KnownAttendee {
+  final String userId;
+  final String name;
+  final String? avatarUrl;
+  final KnownRelation relation;
+  final int sharedShows;
+
+  const KnownAttendee({
+    required this.userId,
+    required this.name,
+    this.avatarUrl,
+    required this.relation,
+    this.sharedShows = 0,
+  });
+
+  factory KnownAttendee.fromJson(Map<String, dynamic> json) => KnownAttendee(
+    userId: asString(json['userId']),
+    name: asString(json['name']),
+    avatarUrl: asOptionalString(json['avatarUrl']),
+    relation: KnownRelation.fromWire(json['relation']),
+    sharedShows: asFiniteInt(json['sharedShows']),
+  );
+}
+
+class KnownAttendees {
+  final List<KnownAttendee> people;
+  final int goingCount;
+  final bool truncated;
+
+  const KnownAttendees({
+    required this.people,
+    required this.goingCount,
+    required this.truncated,
+  });
+
+  static const empty = KnownAttendees(
+    people: [],
+    goingCount: 0,
+    truncated: false,
+  );
+
+  factory KnownAttendees.fromJson(Map<String, dynamic> json) => KnownAttendees(
+    people: [
+      for (final person in (json['people'] as List))
+        KnownAttendee.fromJson(Map<String, dynamic>.from(person as Map)),
+    ],
+    goingCount: asFiniteInt(json['goingCount']),
+    truncated: json['truncated'] == true,
+  );
 }
 
 /// Print texture laid over a flyer's base color.
@@ -1496,6 +1761,35 @@ enum ArtistApplicationStatus {
       this == ArtistApplicationStatus.offered;
 }
 
+enum ApplicationDeclineReason {
+  slotFilled('slot_filled'),
+  notAFit('not_a_fit'),
+  lineupFull('lineup_full'),
+  dateConflict('date_conflict'),
+  other('other');
+
+  const ApplicationDeclineReason(this.wireValue);
+
+  final String wireValue;
+
+  static ApplicationDeclineReason fromWire(Object? value) => switch (value) {
+    'slot_filled' => ApplicationDeclineReason.slotFilled,
+    'not_a_fit' => ApplicationDeclineReason.notAFit,
+    'lineup_full' => ApplicationDeclineReason.lineupFull,
+    'date_conflict' => ApplicationDeclineReason.dateConflict,
+    _ => ApplicationDeclineReason.other,
+  };
+
+  String get label => switch (this) {
+    ApplicationDeclineReason.slotFilled =>
+      'Slot filled — hosts can see your profile for future nights',
+    ApplicationDeclineReason.notAFit => 'Not the fit for this night',
+    ApplicationDeclineReason.lineupFull => 'Lineup already full',
+    ApplicationDeclineReason.dateConflict => 'Date conflict on the host side',
+    ApplicationDeclineReason.other => 'The host passed this time',
+  };
+}
+
 enum ArtistApplicationReviewAction {
   underReview('under_review'),
   shortlisted('shortlisted'),
@@ -1565,9 +1859,7 @@ class VenueConsent {
     opportunityId: asString(json['opportunityId']),
     venueId: asString(json['venueId']),
     venueOrganizationId: asString(json['venueOrganizationId']),
-    requestingOrganizationId: asString(
-      json['requestingOrganizationId'],
-    ),
+    requestingOrganizationId: asString(json['requestingOrganizationId']),
     status: VenueConsentStatus.fromWire(json['status']),
     message: asOptionalString(json['message']),
     note: asOptionalString(json['note']),
@@ -1642,9 +1934,7 @@ class VenueConsentRow extends VenueConsent {
       startsAt: asDate(json['startsAt']),
       endsAt: asOptionalDate(json['endsAt']),
       venueName: asString(json['venueName']),
-      requestingOrganizationName: asString(
-        json['requestingOrganizationName'],
-      ),
+      requestingOrganizationName: asString(json['requestingOrganizationName']),
     );
   }
 }
@@ -1933,6 +2223,12 @@ class ArtistApplication {
     this.availabilityNote,
     this.lineupNote,
     this.decidedAt,
+    this.viewedAt,
+    this.shortlistedAt,
+    this.declineReason,
+    this.declineNote,
+    this.hostNote,
+    this.hostNoteAt,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -1947,6 +2243,12 @@ class ArtistApplication {
   final String? availabilityNote;
   final String? lineupNote;
   final DateTime? decidedAt;
+  final DateTime? viewedAt;
+  final DateTime? shortlistedAt;
+  final ApplicationDeclineReason? declineReason;
+  final String? declineNote;
+  final String? hostNote;
+  final DateTime? hostNoteAt;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -1962,6 +2264,14 @@ class ArtistApplication {
         availabilityNote: asOptionalString(json['availabilityNote']),
         lineupNote: asOptionalString(json['lineupNote']),
         decidedAt: asOptionalDate(json['decidedAt']),
+        viewedAt: asOptionalDate(json['viewedAt']),
+        shortlistedAt: asOptionalDate(json['shortlistedAt']),
+        declineReason: json['declineReason'] == null
+            ? null
+            : ApplicationDeclineReason.fromWire(json['declineReason']),
+        declineNote: asOptionalString(json['declineNote']),
+        hostNote: asOptionalString(json['hostNote']),
+        hostNoteAt: asOptionalDate(json['hostNoteAt']),
         createdAt: asDate(json['createdAt']),
         updatedAt: asDate(json['updatedAt']),
       );
@@ -1971,6 +2281,12 @@ class ArtistApplication {
   ArtistApplication copyWith({
     ArtistApplicationStatus? status,
     Object? decidedAt = _unchanged,
+    Object? viewedAt = _unchanged,
+    Object? shortlistedAt = _unchanged,
+    Object? declineReason = _unchanged,
+    Object? declineNote = _unchanged,
+    Object? hostNote = _unchanged,
+    Object? hostNoteAt = _unchanged,
     DateTime? updatedAt,
   }) => ArtistApplication(
     id: id,
@@ -1985,6 +2301,24 @@ class ArtistApplication {
     decidedAt: identical(decidedAt, _unchanged)
         ? this.decidedAt
         : decidedAt as DateTime?,
+    viewedAt: identical(viewedAt, _unchanged)
+        ? this.viewedAt
+        : viewedAt as DateTime?,
+    shortlistedAt: identical(shortlistedAt, _unchanged)
+        ? this.shortlistedAt
+        : shortlistedAt as DateTime?,
+    declineReason: identical(declineReason, _unchanged)
+        ? this.declineReason
+        : declineReason as ApplicationDeclineReason?,
+    declineNote: identical(declineNote, _unchanged)
+        ? this.declineNote
+        : declineNote as String?,
+    hostNote: identical(hostNote, _unchanged)
+        ? this.hostNote
+        : hostNote as String?,
+    hostNoteAt: identical(hostNoteAt, _unchanged)
+        ? this.hostNoteAt
+        : hostNoteAt as DateTime?,
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -2002,9 +2336,7 @@ class ApplicantRow {
   final String? contactEmail;
 
   factory ApplicantRow.fromJson(Map<String, dynamic> json) => ApplicantRow(
-    application: ArtistApplication.fromJson(
-      asFilteredMap(json['application']),
-    ),
+    application: ArtistApplication.fromJson(asFilteredMap(json['application'])),
     band: _bandFromJson(asFilteredMap(json['band'])),
     contactEmail: asOptionalString(json['contactEmail']),
   );
@@ -2036,10 +2368,7 @@ class ApplicantRow {
       'heroUrl': asOptionalString(json['heroUrl']),
       'pastShows': [
         for (final show in asFilteredMapList(json['pastShows']))
-          {
-            'title': asString(show['title']),
-            'meta': asString(show['meta']),
-          },
+          {'title': asString(show['title']), 'meta': asString(show['meta'])},
       ],
     });
   }
@@ -2529,12 +2858,8 @@ class Booking {
       json['cancellationTemplate'],
     ),
     termsNotes: asOptionalString(json['termsNotes']),
-    organizerAcceptedTermsAt: asDate(
-      json['organizerAcceptedTermsAt'],
-    ),
-    artistAcceptedTermsAt: asOptionalDate(
-      json['artistAcceptedTermsAt'],
-    ),
+    organizerAcceptedTermsAt: asDate(json['organizerAcceptedTermsAt']),
+    artistAcceptedTermsAt: asOptionalDate(json['artistAcceptedTermsAt']),
     confirmedAt: asOptionalDate(json['confirmedAt']),
     completedAt: asOptionalDate(json['completedAt']),
     cancelledAt: asOptionalDate(json['cancelledAt']),
@@ -4285,13 +4610,9 @@ class ArtistInsights {
     returningSuppressed: json['returningSuppressed'] == true,
     attribution: Attribution.fromJson(asFilteredMap(json['attribution'])),
     byArea: InsightPartition.fromJson(asFilteredMap(json['byArea'])),
-    byVenueType: InsightPartition.fromJson(
-      asFilteredMap(json['byVenueType']),
-    ),
+    byVenueType: InsightPartition.fromJson(asFilteredMap(json['byVenueType'])),
     byWeekday: InsightPartition.fromJson(asFilteredMap(json['byWeekday'])),
-    byPriceBand: InsightPartition.fromJson(
-      asFilteredMap(json['byPriceBand']),
-    ),
+    byPriceBand: InsightPartition.fromJson(asFilteredMap(json['byPriceBand'])),
     estimatedDraw: json['estimatedDraw'] is Map
         ? EstimatedDraw.fromJson(asFilteredMap(json['estimatedDraw']))
         : null,
@@ -5055,6 +5376,7 @@ class FanHistoryItem {
   final DateTime startsAt;
   final String venueName;
   final List<String> bandNames;
+  final List<String> genres;
   final String flyKey;
   final String? flyerUrl;
   final FanHistoryStatus status;
@@ -5065,6 +5387,7 @@ class FanHistoryItem {
     required this.startsAt,
     required this.venueName,
     required this.bandNames,
+    this.genres = const [],
     required this.flyKey,
     required this.flyerUrl,
     required this.status,
@@ -5078,6 +5401,9 @@ class FanHistoryItem {
     ),
     venueName: json['venueName'] as String,
     bandNames: List<String>.from(json['bandNames'] as List),
+    genres: json['genres'] is List
+        ? List<String>.from(json['genres'] as List)
+        : const [],
     flyKey: json['flyKey'] as String,
     flyerUrl: json['flyerUrl'] as String?,
     status: FanHistoryStatus.values.byName(json['status'] as String),

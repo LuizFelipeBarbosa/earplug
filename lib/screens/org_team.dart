@@ -364,16 +364,13 @@ class _OrgTeamScreenState extends State<OrgTeamScreen> {
                       children: [
                         SelectableText(
                           link,
-                          style: epText(size: 11.5, weight: FontWeight.w700),
+                          style: Theme.of(context).textTheme.epBody,
                         ),
                         const SizedBox(height: 7),
                         Text(
                           'ACTIVE · EXPIRES ${_expiryLabel(invite.expiresAt)}',
-                          style: epText(
-                            size: 11,
-                            weight: FontWeight.w800,
-                            color: context.epColors.accent,
-                          ),
+                          style: Theme.of(context).textTheme.epChipLabel
+                              .copyWith(color: context.epColors.accent),
                         ),
                       ],
                     ),

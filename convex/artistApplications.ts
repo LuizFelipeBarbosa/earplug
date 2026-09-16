@@ -6,6 +6,7 @@ import {
   mutation,
   query,
 } from "./_generated/server";
+import { applicationStatusPatch } from "./lib/applicationStamps";
 import {
   ALL_ORGANIZATION_ROLES,
   requireOrganizationRole,
@@ -28,7 +29,12 @@ import {
   assertApplicationTransition,
 } from "./lib/opportunityStatus";
 import { bandIsInvited } from "./lib/opportunityVisibility";
-import { artistApplicationStatusValidator } from "./schema";
+import {
+  artistApplicationStatusValidator,
+  declineReasonValidator,
+} from "./schema";
+
+export const MAX_HOST_NOTE_CHARS = 280;
 
 export const applicationPayloadValidator = v.object({
   _id: v.id("artistApplications"),
@@ -40,6 +46,12 @@ export const applicationPayloadValidator = v.object({
   askMinor: v.union(v.number(), v.null()),
   availabilityNote: v.union(v.string(), v.null()),
   lineupNote: v.union(v.string(), v.null()),
+  viewedAt: v.union(v.number(), v.null()),
+  shortlistedAt: v.union(v.number(), v.null()),
+  declineReason: v.union(declineReasonValidator, v.null()),
+  declineNote: v.union(v.string(), v.null()),
+  hostNote: v.union(v.string(), v.null()),
+  hostNoteAt: v.union(v.number(), v.null()),
   decidedAt: v.union(v.number(), v.null()),
   createdAt: v.number(),
   updatedAt: v.number(),
@@ -69,6 +81,12 @@ function toApplicationPayload(
     askMinor: application.askMinor ?? null,
     availabilityNote: application.availabilityNote ?? null,
     lineupNote: application.lineupNote ?? null,
+    viewedAt: application.viewedAt ?? null,
+    shortlistedAt: application.shortlistedAt ?? null,
+    declineReason: application.declineReason ?? null,
+    declineNote: application.declineNote ?? null,
+    hostNote: application.hostNote ?? null,
+    hostNoteAt: application.hostNoteAt ?? null,
     decidedAt: application.decidedAt ?? null,
     createdAt: application.createdAt,
     updatedAt: application.updatedAt,
@@ -214,6 +232,8 @@ export const review = mutation({
       v.literal("shortlisted"),
       v.literal("declined"),
     ),
+    declineReason: v.optional(declineReasonValidator),
+    declineNote: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -235,23 +255,81 @@ export const review = mutation({
     assertApplicationTransition(application.status, args.action);
     const now = Date.now();
     if (args.action === "declined") {
+      const declineNote = normalizeNote(args.declineNote, "Decline note");
       await ctx.db.patch(application._id, {
-        status: "declined",
+        ...applicationStatusPatch(application, args.action, now),
         decidedBy: user._id,
         decidedAt: now,
-        updatedAt: now,
+        ...(args.declineReason !== undefined
+          ? { declineReason: args.declineReason }
+          : {}),
+        ...(declineNote !== undefined ? { declineNote } : {}),
       });
       await ctx.db.patch(opportunity._id, {
         applicationCount: Math.max(0, opportunity.applicationCount - 1),
         updatedAt: now,
       });
     } else {
-      await ctx.db.patch(application._id, {
-        status: args.action,
-        updatedAt: now,
-      });
+      await ctx.db.patch(
+        application._id,
+        applicationStatusPatch(application, args.action, now),
+      );
     }
     return null;
+  },
+});
+
+export const markViewed = mutation({
+  args: { applicationId: v.id("artistApplications") },
+  returns: v.object({ viewedAt: v.union(v.number(), v.null()) }),
+  handler: async (ctx, args) => {
+    const application = await ctx.db.get(args.applicationId);
+    if (!application) throw new Error("Application not found");
+    const opportunity = await ctx.db.get(application.opportunityId);
+    if (!opportunity) throw new Error("Opportunity not found");
+    await requireOrganizationRole(ctx, opportunity.organizationId, [
+      "owner",
+      "manager",
+    ]);
+    if (application.viewedAt !== undefined) {
+      return { viewedAt: application.viewedAt };
+    }
+    if (
+      application.status !== "submitted" &&
+      application.status !== "under_review"
+    ) {
+      return { viewedAt: null };
+    }
+    const now = Date.now();
+    await ctx.db.patch(application._id, { viewedAt: now });
+    return { viewedAt: now };
+  },
+});
+
+export const setHostNote = mutation({
+  args: {
+    applicationId: v.id("artistApplications"),
+    note: v.string(),
+  },
+  returns: v.object({ hostNote: v.union(v.string(), v.null()) }),
+  handler: async (ctx, args) => {
+    const application = await ctx.db.get(args.applicationId);
+    if (!application) throw new Error("Application not found");
+    const opportunity = await ctx.db.get(application.opportunityId);
+    if (!opportunity) throw new Error("Opportunity not found");
+    await requireOrganizationRole(ctx, opportunity.organizationId, [
+      "owner",
+      "manager",
+    ]);
+    if (!APPLICATION_ACTIVE_STATUSES.includes(application.status)) {
+      throw new Error("Cannot add a note to a closed application");
+    }
+    const hostNote = normalizeNote(args.note, "Host note", MAX_HOST_NOTE_CHARS);
+    await ctx.db.patch(application._id, {
+      hostNote,
+      hostNoteAt: hostNote === undefined ? undefined : Date.now(),
+    });
+    return { hostNote: hostNote ?? null };
   },
 });
 

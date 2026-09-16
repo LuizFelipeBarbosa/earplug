@@ -134,6 +134,14 @@ export const artistApplicationStatusValidator = v.union(
   v.literal("expired"),
 );
 
+export const declineReasonValidator = v.union(
+  v.literal("slot_filled"),
+  v.literal("not_a_fit"),
+  v.literal("lineup_full"),
+  v.literal("date_conflict"),
+  v.literal("other"),
+);
+
 export const bookingStatusValidator = v.union(
   v.literal("offer_sent"),
   v.literal("artist_accepted"),
@@ -347,6 +355,7 @@ export default defineSchema({
     locationPersonalizationEnabled: v.optional(v.boolean()),
     followedBandUpdatesEnabled: v.optional(v.boolean()),
     profileTutorialCompleted: v.optional(v.boolean()),
+    shareRsvpsWithFriends: v.optional(v.boolean()),
     // Clerk user.deleted tombstone; milliseconds since epoch.
     deletedAt: v.optional(v.number()),
     // Clerk's updated_at (ms epoch) from the last applied webhook guards
@@ -354,7 +363,8 @@ export default defineSchema({
     clerkUpdatedAt: v.optional(v.number()),
   })
     .index("by_clerk_id", ["clerkId"])
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .searchIndex("search_name", { searchField: "name" }),
 
   platformAdmins: defineTable({
     userId: v.id("users"),
@@ -610,9 +620,12 @@ export default defineSchema({
     availabilityNote: v.optional(v.string()),
     lineupNote: v.optional(v.string()),
     status: artistApplicationStatusValidator,
-    // Set when another applicant's confirmed booking auto-declines this
-    // application because its slot has been filled.
-    declineReason: v.optional(v.union(v.literal("slot_filled"))),
+    viewedAt: v.optional(v.number()),
+    shortlistedAt: v.optional(v.number()),
+    declineReason: v.optional(declineReasonValidator),
+    declineNote: v.optional(v.string()),
+    hostNote: v.optional(v.string()),
+    hostNoteAt: v.optional(v.number()),
     decidedBy: v.optional(v.id("users")),
     decidedAt: v.optional(v.number()),
     createdAt: v.number(),
@@ -1267,6 +1280,14 @@ export default defineSchema({
     .index("by_user_band", ["userId", "bandId"])
     .index("by_user", ["userId"])
     .index("by_band", ["bandId"]),
+
+  userFollows: defineTable({
+    followerId: v.id("users"),
+    followeeId: v.id("users"),
+  })
+    .index("by_follower_followee", ["followerId", "followeeId"])
+    .index("by_follower", ["followerId"])
+    .index("by_followee", ["followeeId"]),
 
   gigRsvps: defineTable({
     userId: v.id("users"),

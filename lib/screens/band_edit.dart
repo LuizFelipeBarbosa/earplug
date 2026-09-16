@@ -413,10 +413,11 @@ class _BandEditScreenState extends State<BandEditScreen> {
                         child: Text(
                           error,
                           key: const ValueKey('band-artwork-error'),
-                          style: epText(
-                            size: 11,
-                            color: context.epColors.warning,
-                          ),
+                          style: Theme.of(context).textTheme.epCaption
+                              .copyWith(
+                                fontSize: 11,
+                                color: context.epColors.warning,
+                              ),
                         ),
                       ),
                     ],
@@ -526,18 +527,22 @@ class _BandEditScreenState extends State<BandEditScreen> {
                 title: 'Credits',
                 description:
                     'Acknowledge producers, artists, labels, and collaborators.',
-                child: EpLabeledField(
-                  fieldKey: const ValueKey('edit-credits'),
-                  controller: _credits,
-                  enabled: !_saving,
-                  onChanged: (value) {
-                    _creditsDirty = true;
-                    _draftChanged(value);
-                  },
-                  minLines: 3,
-                  maxLines: 6,
-                  label: 'CREDITS',
-                  hint: 'Who helped make the work',
+                // A lone field in a section otherwise merges its label into
+                // the section heading's semantics node.
+                child: MergeSemantics(
+                  child: EpLabeledField(
+                    fieldKey: const ValueKey('edit-credits'),
+                    controller: _credits,
+                    enabled: !_saving,
+                    onChanged: (value) {
+                      _creditsDirty = true;
+                      _draftChanged(value);
+                    },
+                    minLines: 3,
+                    maxLines: 6,
+                    label: 'CREDITS',
+                    hint: 'Who helped make the work',
+                  ),
                 ),
               ),
               KeyedSubtree(
@@ -590,7 +595,7 @@ class _MediaManagementRow extends StatelessWidget {
       child: Material(
         color: context.epColors.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(EpLayout.cardRadius),
           side: BorderSide(color: context.epColors.border),
         ),
         clipBehavior: Clip.antiAlias,
@@ -606,7 +611,7 @@ class _MediaManagementRow extends StatelessWidget {
                     Icons.play_arrow_rounded,
                     color: onTap == null
                         ? context.epColors.contentDisabled
-                        : context.epColors.volt,
+                        : context.epColors.accent,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -701,10 +706,9 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
           if (members.isEmpty)
             Text(
               'No additional members have joined yet.',
-              style: epText(
-                size: 11.5,
-                color: context.epColors.contentSecondary,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.epCaption.copyWith(fontSize: 11.5),
             )
           else
             Wrap(
@@ -730,10 +734,9 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
                 invite.revoked
                     ? 'The previous invitation was revoked.'
                     : 'The previous invitation expired.',
-                style: epText(
-                  size: 11,
-                  color: context.epColors.contentSecondary,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.epCaption.copyWith(fontSize: 11),
               ),
             if (invite != null) const SizedBox(height: 8),
             EpButton(
@@ -757,14 +760,14 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
                   SelectableText(
                     invite.url,
                     key: const ValueKey('band-invite-url'),
-                    style: epText(size: 11.5, weight: FontWeight.w700),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epBody.copyWith(fontSize: 11.5),
                   ),
                   const SizedBox(height: 7),
                   Text(
                     'ACTIVE · EXPIRES ${_expiryLabel(invite.expiresAt)}',
-                    style: epText(
-                      size: 11,
-                      weight: FontWeight.w800,
+                    style: Theme.of(context).textTheme.epChipLabel.copyWith(
                       color: context.epColors.accent,
                     ),
                   ),
@@ -817,7 +820,10 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
             Text(
               error,
               key: const ValueKey('invite-management-error'),
-              style: epText(size: 11, color: context.epColors.warning),
+              style: Theme.of(context).textTheme.epCaption.copyWith(
+                fontSize: 11,
+                color: context.epColors.warning,
+              ),
             ),
           ],
         ],

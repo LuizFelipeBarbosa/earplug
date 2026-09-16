@@ -89,6 +89,65 @@ void main() {
     });
   });
 
+  group('reverse geocoding', () {
+    test('builds the reverse endpoint query', () {
+      final uri = StadiaGeocodingService.buildReverseUri(
+        point: const LatLng(37.7599, -122.4148),
+        apiKey: 'secret-key',
+      );
+
+      expect(uri.path, '/geocoding/v1/reverse');
+      expect(uri.queryParameters['point.lat'], '37.7599');
+      expect(uri.queryParameters['point.lon'], '-122.4148');
+      expect(uri.queryParameters['size'], '1');
+      expect(uri.queryParameters['layers'], 'neighbourhood,locality');
+      expect(uri.queryParameters['api_key'], 'secret-key');
+    });
+
+    test('parses neighbourhood and locality', () {
+      final place = StadiaGeocodingService.parseReverse({
+        'features': [
+          {
+            'properties': {
+              'layer': 'neighbourhood',
+              'name': 'Mission',
+              'locality': 'San Francisco',
+            },
+          },
+        ],
+      });
+
+      expect(place?.label, 'Mission, San Francisco');
+    });
+
+    test('parses locality-only responses and empty features', () {
+      final place = StadiaGeocodingService.parseReverse({
+        'features': [
+          {
+            'properties': {'layer': 'locality', 'name': 'San Francisco'},
+          },
+        ],
+      });
+
+      expect(place?.label, 'San Francisco');
+      expect(
+        StadiaGeocodingService.parseReverse({'features': <Object?>[]}),
+        isNull,
+      );
+    });
+
+    test('swallows reverse HTTP failures', () async {
+      final service = StadiaGeocodingService(
+        httpClient: _GeocodingClient(statusCode: 500),
+      );
+
+      expect(
+        await service.reverseGeocode(const LatLng(37.7599, -122.4148)),
+        isNull,
+      );
+    });
+  });
+
   group('autocomplete failures', () {
     test('maps HTTP 401 to GeocodingUnauthorized', () async {
       final service = StadiaGeocodingService(

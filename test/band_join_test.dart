@@ -92,7 +92,7 @@ void main() {
     expect(find.text('SWITCH'), findsOne);
     await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
-    expect(find.text('PIGEON COURT'), findsOne);
+    expect(find.text('Pigeon Court'), findsOne);
   });
 
   testWidgets('signed-out recipient keeps the invite through authentication', (

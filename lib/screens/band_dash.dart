@@ -6,7 +6,8 @@ import '../band_media_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
-import '../widgets/readiness_segments.dart';
+import '../widgets/ep_rows.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/sheets.dart';
 import 'door_mode.dart';
 
@@ -19,665 +20,587 @@ class BandDashScreen extends StatelessWidget {
     final band = app.myBand;
     if (band == null) return const SizedBox.shrink();
 
-    final mine = app.myBandGigs;
-    final next = mine.isEmpty ? null : mine.first;
-    final media = context.watch<BandMediaController>();
-    final clips = media.videosFor(band.id);
+    final gigs = app.myBandGigs;
+    final next = gigs.isEmpty ? null : gigs.first;
+    final clips = context.watch<BandMediaController>().videosFor(band.id);
     final isAdmin = app.isAdminOf(band.id);
-    final doorLaunch = next == null || !isAdmin
-        ? null
-        : _doorLaunchFor(context, app, next);
+    final desktop = EpLayout.isDesktop(context);
+    final stats = [
+      EpStat(band.followersLabel, 'Fans'),
+      EpStat(next == null ? '0' : '${app.rsvpCount(next)}', 'Next RSVPs'),
+      EpStat('${clips.length}', 'Clips'),
+    ];
 
-    return ListView(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        headerTopPad(context),
-        16,
-        tabBarClearance,
-      ),
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: TextButton(
-                onPressed: () => showSwitcherSheet(context),
-                style: TextButton.styleFrom(
-                  alignment: Alignment.centerLeft,
-                  padding: EdgeInsets.zero,
-                ),
-                child: Row(
+    if (desktop) {
+      // The rail carries the identity, the switcher and "back to discover",
+      // so the content column starts at the hero.
+      return ListView(
+        padding: const EdgeInsets.only(bottom: 40),
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 12,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    BandAvatar(band, size: 38, radius: 9, fontSize: 13),
-                    const SizedBox(width: 9),
-                    Flexible(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  band.name.toUpperCase(),
-                                  style: epDisplay(size: 16, height: 1),
-                                ),
-                              ),
-                              const Icon(Icons.arrow_drop_down, size: 18),
-                            ],
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'MANAGING · ${app.roleFor(band.id).toUpperCase()}',
-                            style: epText(
-                              size: 11,
-                              weight: FontWeight.w800,
-                              letterSpacing: 1,
-                              color: context.epColors.accent,
-                            ),
-                          ),
-                          if (band.profileComplete) ...[
-                            const SizedBox(height: 5),
-                            const Align(
-                              alignment: Alignment.centerLeft,
-                              child: ProfileCompleteBadge(),
-                            ),
-                          ],
-                        ],
-                      ),
+                    _NextUp(
+                      app: app,
+                      gig: next,
+                      isAdmin: isAdmin,
+                      displaySize: 72,
+                      showPublishAnother: true,
                     ),
+                    const SizedBox(height: 40),
+                    EpStatGrid(stats: stats, valueSize: 48),
+                    _UpcomingGigs(app: app, gigs: gigs),
+                    _MenuRows(app: app, isAdmin: isAdmin),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton(onPressed: app.toFanView, child: Text('DISCOVER')),
-          ],
-        ),
-        if (next != null) ...[
-          const SizedBox(height: 14),
-          VoltStrip(
-            kicker: 'NEXT UP · ${next.dateShort}',
-            title: next.title,
-            meta:
-                '${app.venue(next.venueId).name} · ${next.time} · ${app.rsvpCount(next)} RSVPs · counting live',
-            actionLabel: doorLaunch == null ? null : 'DOOR MODE',
-            onAction: doorLaunch == null
-                ? null
-                : () => showDoorMode(context, doorLaunch),
+              if (isAdmin) ...[
+                const SizedBox(width: 40),
+                Expanded(
+                  flex: 10,
+                  child: Container(
+                    padding: const EdgeInsets.only(left: 40),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        left: BorderSide(color: context.epColors.line),
+                      ),
+                    ),
+                    child: _Readiness(
+                      app: app,
+                      bandId: band.id,
+                      expanded: true,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              key: const Key('band-next-public-gig'),
-              onPressed: () => app.openGig(next.id),
-              child: Text('VIEW PUBLIC GIG →'),
-            ),
-          ),
-        ],
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            EpStatCard(
-              label: 'FANS',
-              value: band.followersLabel,
-              caption: band.followers == 0
-                  ? 'just the band so far'
-                  : 'and counting',
-            ),
-            const SizedBox(width: 8),
-            EpStatCard(
-              label: 'NEXT GIG RSVPS',
-              value: next != null ? '${app.rsvpCount(next)}' : '0',
-              caption: next != null
-                  ? (next.title.length > 16
-                        ? next.title.substring(0, 16)
-                        : next.title)
-                  : 'no gig listed',
-            ),
-            const SizedBox(width: 8),
-            EpStatCard(
-              label: 'MUSIC CLIPS',
-              value: '${clips.length}',
-              caption: clips.isEmpty
-                  ? 'post your first sample'
-                  : 'on your profile',
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        const SectionBar(label: 'CONSOLE'),
-        const SizedBox(height: 10),
-        _CommandGrid(
-          openMedia: app.openBandMedia,
-          publishGig: isAdmin ? app.startGigCreate : null,
-          gigCommandLabel: 'PUBLISH GIG',
-          gigCommandIcon: Icons.add,
-          editProfile: isAdmin ? app.openBandEditor : null,
-          openAnalytics: () => app.resetTo(Screen.analytics),
-          openPayouts: isAdmin ? () => app.resetTo(Screen.bandPayouts) : null,
-          payoutsCaption: switch (app.bandPayoutStatus?.state) {
-            StripeAccountState.enabled =>
-              (app.bandPayoutStatus?.canSellTickets ?? false)
-                  ? 'Enabled'
-                  : 'Enable ticket sales',
-            StripeAccountState.onboarding ||
-            StripeAccountState.restricted => 'Finish setup',
-            _ => 'Set up payouts',
-          },
-        ),
-        const SizedBox(height: 10),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton(
-            key: const Key('band-public-profile'),
-            onPressed: app.previewPublicProfile,
-            child: Text(
-              isAdmin ? 'PREVIEW PUBLIC PROFILE →' : 'VIEW PUBLIC PROFILE →',
-            ),
-          ),
-        ),
-        if (isAdmin) ...[
-          const SizedBox(height: 14),
-          _DiscoveryReadinessCard(app: app, bandId: band.id),
-          const SizedBox(height: 20),
-          _SetupChecklist(app: app, bandId: band.id),
-        ],
-      ],
-    );
-  }
-}
-
-DoorModeLaunch _doorLaunchFor(BuildContext context, AppState app, Gig next) {
-  final doorsTime = next.doorsAt == null
-      ? next.time.split('/').first.trim()
-      : TimeOfDay.fromDateTime(next.doorsAt!.toLocal()).format(context);
-  return DoorModeLaunch.organizer(
-    gigId: next.id,
-    gigTitle: next.title,
-    venueName: app.venue(next.venueId).name,
-    doorsTime: doorsTime,
-  );
-}
-
-class _DiscoveryReadinessCard extends StatelessWidget {
-  const _DiscoveryReadinessCard({required this.app, required this.bandId});
-
-  final AppState app;
-  final String bandId;
-
-  @override
-  Widget build(BuildContext context) {
-    final readiness = app.discoveryReadinessFor(bandId);
-    if (readiness == null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SectionBar(label: 'DISCOVERY READINESS'),
-          const SizedBox(height: 8),
-          if (app.discoveryReadinessLoadingFor(bandId))
-            const Center(child: CircularProgressIndicator())
-          else
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: () => app.refreshBandDiscoveryReadiness(bandId),
-                child: Text('Retry discovery readiness'),
-              ),
-            ),
         ],
       );
     }
 
-    final showAction = readiness.relevantShow == null
-        ? app.startGigCreate
-        : app.openGigManager;
-    final tasks = [
-      _DiscoveryTask(
-        id: 'profile',
-        label: 'Complete profile',
-        action: 'EDIT PROFILE',
-        complete: readiness.profileComplete,
-        onTap: () => app.openBandEditor(section: 'required'),
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        EpLayout.gutter,
+        headerTopPad(context),
+        EpLayout.gutter,
+        tabBarClearance,
       ),
-      _DiscoveryTask(
-        id: 'image',
-        label: 'Assign a valid profile image',
-        action: 'ADD PHOTO',
-        complete: readiness.profileImageReady,
-        onTap: app.openBandMedia,
-      ),
-      _DiscoveryTask(
-        id: 'clip',
-        label: 'Upload a video clip',
-        action: 'ADD CLIP',
-        complete: readiness.clipReady,
-        onTap: app.openBandMedia,
-      ),
-      _DiscoveryTask(
-        id: 'show',
-        label: 'Publish a resolved lineup',
-        action: readiness.relevantShow == null ? 'CREATE SHOW' : 'MANAGE SHOW',
-        complete: readiness.publishedShowReady,
-        onTap: showAction,
-      ),
-      _DiscoveryTask(
-        id: 'listing',
-        label: 'Use a venue and readable poster',
-        action: readiness.relevantShow == null ? 'CREATE SHOW' : 'EDIT LISTING',
-        complete: readiness.venuePosterReady,
-        onTap: showAction,
-      ),
-      _DiscoveryTask(
-        id: 'revision',
-        label: 'Publish the latest revision',
-        action: readiness.relevantShow == null ? 'CREATE SHOW' : 'REPUBLISH',
-        complete: readiness.publishedRevisionCurrent,
-        onTap: showAction,
-      ),
-    ];
-    final show = readiness.nextEligibleShow;
-    final window = readiness.boostWindow;
-
-    return EpCard(
-      key: const Key('discovery-readiness-card'),
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const Expanded(child: SectionBar(label: 'DISCOVERY READINESS')),
-              Text(
-                '${readiness.completedCount} of 6 complete',
-                style: Theme.of(context).textTheme.epCaption,
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Complete listings can move ahead within nearby same-day results.',
-            style: Theme.of(context).textTheme.epCaption,
-          ),
-          const SizedBox(height: 10),
-          ReadinessSegments(steps: readiness.steps),
-          const SizedBox(height: 6),
-          for (final task in tasks) _DiscoveryTaskRow(task: task),
-          if (show != null && window != null) ...[
-            const SizedBox(height: 10),
-            Text(
-              'NEXT ELIGIBLE · ${show.title.toUpperCase()}',
-              style: Theme.of(context).textTheme.epLabel,
-            ),
-            const SizedBox(height: 3),
-            Text(
-              'BOOST WINDOW · ${Gig.dateShortFor(window.opensAt.millisecondsSinceEpoch)} '
-              '– ${Gig.dateShortFor(window.closesAt.millisecondsSinceEpoch)}'
-              '${window.active ? ' · ACTIVE NOW' : ''}',
-              style: Theme.of(context).textTheme.epCaption.copyWith(
-                color: window.active
-                    ? context.epColors.success
-                    : context.epColors.contentSecondary,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _DiscoveryTask {
-  const _DiscoveryTask({
-    required this.id,
-    required this.label,
-    required this.action,
-    required this.complete,
-    required this.onTap,
-  });
-
-  final String id;
-  final String label;
-  final String action;
-  final bool complete;
-  final VoidCallback onTap;
-}
-
-class _DiscoveryTaskRow extends StatelessWidget {
-  const _DiscoveryTaskRow({required this.task});
-
-  final _DiscoveryTask task;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      key: ValueKey('band-discovery-${task.id}'),
-      onTap: task.onTap,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 9),
-          child: Row(
-            children: [
-              Icon(
-                task.complete
-                    ? Icons.check_circle
-                    : Icons.radio_button_unchecked,
-                size: 16,
-                color: task.complete
-                    ? context.epColors.success
-                    : context.epColors.accent,
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  task.label,
-                  style: Theme.of(context).textTheme.epBody,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(task.action, style: Theme.of(context).textTheme.epCaption),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SetupChecklist extends StatelessWidget {
-  const _SetupChecklist({required this.app, required this.bandId});
-
-  final AppState app;
-  final String bandId;
-
-  @override
-  Widget build(BuildContext context) {
-    final status = app.setupStatusFor(bandId);
-    final tasks = status == null
-        ? const <_BandTask>[]
-        : [
-            _BandTask(
-              id: 'profile',
-              label: 'Complete profile',
-              complete: status.profileComplete,
-              onTap: () => app.openBandEditor(section: 'required'),
-            ),
-            _BandTask(
-              id: 'image',
-              label: 'Add a profile image',
-              complete: status.profileImageAdded,
-              onTap: app.openBandMedia,
-            ),
-            _BandTask(
-              id: 'music',
-              label: 'Add music or a clip',
-              complete: status.musicAdded,
-              onTap: app.openBandMedia,
-            ),
-            _BandTask(
-              id: 'social',
-              label: 'Add social links',
-              complete: status.socialLinksAdded,
-              onTap: () => app.openBandEditor(section: 'links'),
-            ),
-            _BandTask(
-              id: 'gig',
-              label: 'Create first gig',
-              complete: status.firstGigCreated,
-              onTap: app.startGigCreate,
-            ),
-            _BandTask(
-              id: 'members',
-              label: 'Invite band members',
-              complete: status.membersInvited,
-              onTap: app.openInvitationPanel,
-            ),
-            _BandTask(
-              id: 'preview',
-              label: 'Preview public profile',
-              complete: status.publicProfilePreviewed,
-              onTap: app.previewPublicProfile,
-            ),
-          ];
-
-    return Column(
-      key: const Key('band-setup-checklist'),
       children: [
-        Row(
-          children: [
-            const Expanded(child: SectionBar(label: 'SETUP CHECKLIST')),
-            const SizedBox(width: 8),
-            if (status != null)
-              Text(
-                '${status.completedCount} of 7 complete',
-                style: Theme.of(context).textTheme.epCaption,
-              ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        if (status == null)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: app.setupStatusLoadingFor(bandId)
-                ? const Center(child: CircularProgressIndicator())
-                : Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton(
-                      onPressed: () => app.refreshBandSetupStatus(bandId),
-                      child: Text('Retry setup checklist'),
-                    ),
-                  ),
-          )
-        else
-          for (final task in tasks) _BandTaskRow(task: task),
+        _Header(app: app, band: band),
+        const SizedBox(height: 28),
+        _NextUp(app: app, gig: next, isAdmin: isAdmin, displaySize: 44),
+        const SizedBox(height: 28),
+        EpStatGrid(stats: stats),
+        _MenuRows(app: app, isAdmin: isAdmin),
+        if (isAdmin) _Readiness(app: app, bandId: band.id, expanded: false),
       ],
     );
   }
 }
 
-class _BandTask {
-  final String id;
-  final String label;
-  final bool complete;
-  final VoidCallback onTap;
+class _Header extends StatelessWidget {
+  const _Header({required this.app, required this.band});
 
-  const _BandTask({
-    required this.id,
-    required this.label,
-    required this.complete,
-    required this.onTap,
-  });
-}
-
-class _BandTaskRow extends StatelessWidget {
-  final _BandTask task;
-
-  const _BandTaskRow({required this.task});
+  final AppState app;
+  final Band band;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        key: ValueKey('band-setup-${task.id}'),
-        onTap: task.onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 48),
-          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
-          decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: context.epColors.border)),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                task.complete
-                    ? Icons.check_circle
-                    : Icons.radio_button_unchecked,
-                size: 16,
-                color: task.complete
-                    ? context.epColors.success
-                    : context.epColors.accent,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  task.label,
-                  style: Theme.of(context).textTheme.epBody,
-                ),
-              ),
-              Icon(
-                Icons.chevron_right,
-                color: context.epColors.contentSecondary,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CommandGrid extends StatelessWidget {
-  final VoidCallback openMedia;
-  final VoidCallback? publishGig;
-  final String gigCommandLabel;
-  final IconData gigCommandIcon;
-  final VoidCallback? editProfile;
-  final VoidCallback openAnalytics;
-  final VoidCallback? openPayouts;
-  final String payoutsCaption;
-
-  const _CommandGrid({
-    required this.openMedia,
-    required this.publishGig,
-    this.gigCommandLabel = 'PUBLISH GIG',
-    this.gigCommandIcon = Icons.add,
-    required this.editProfile,
-    required this.openAnalytics,
-    required this.openPayouts,
-    required this.payoutsCaption,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final actions = [
-      if (publishGig != null)
-        _Command(
-          label: gigCommandLabel,
-          icon: gigCommandIcon,
-          onTap: publishGig!,
-          primary: true,
-        ),
-      _Command(label: 'ADD MEDIA', icon: Icons.play_arrow, onTap: openMedia),
-      _Command(label: 'ANALYTICS', icon: Icons.bar_chart, onTap: openAnalytics),
-      if (editProfile != null)
-        _Command(label: 'EDIT PROFILE', icon: Icons.edit, onTap: editProfile!),
-      if (openPayouts != null)
-        _Command(
-          label: 'PAYOUTS',
-          icon: Icons.account_balance_wallet,
-          key: const Key('band-dash-payouts'),
-          caption: payoutsCaption,
-          onTap: openPayouts!,
-        ),
-    ];
-
-    final singleColumn =
-        MediaQuery.sizeOf(context).width < 340 ||
-        MediaQuery.textScalerOf(context).scale(1) > 1.35;
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: singleColumn ? 1 : 2,
-        childAspectRatio: singleColumn ? 4.5 : 2.35,
-        mainAxisExtent: openPayouts == null
-            ? null
-            : 64 + MediaQuery.textScalerOf(context).scale(36),
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-      ),
-      itemCount: actions.length,
-      itemBuilder: (_, index) => _CommandTile(command: actions[index]),
-    );
-  }
-}
-
-class _Command {
-  const _Command({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-    this.primary = false,
-    this.key,
-    this.caption,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool primary;
-  final Key? key;
-  final String? caption;
-}
-
-class _CommandTile extends StatelessWidget {
-  const _CommandTile({required this.command});
-
-  final _Command command;
-
-  @override
-  Widget build(BuildContext context) {
-    final foreground = command.primary ? Colors.white : context.epColors.ink;
-    return Semantics(
-      button: true,
-      label: command.label,
-      excludeSemantics: true,
-      child: Material(
-        color: command.primary ? Ep.brand : context.epColors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: command.primary ? Ep.brand : context.epColors.border,
-          ),
-        ),
-        child: InkWell(
-          key:
-              command.key ??
-              ValueKey(
-                'band-command-${command.label.toLowerCase().replaceAll(' ', '-')}',
-              ),
-          onTap: command.onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      children: [
+        Expanded(
+          child: InkWell(
+            onTap: () => showSwitcherSheet(context),
+            child: Row(
               children: [
-                Icon(command.icon, color: foreground, size: 22),
-                const SizedBox(height: 7),
-                Text(
-                  command.label,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.epLabel.copyWith(color: foreground),
-                ),
-                if (command.caption case final caption?)
-                  Text(
-                    caption,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.epCaption.copyWith(color: foreground),
+                if (band.profileImageUrl == null)
+                  EpAvatarTile(initials: _initials(band.name), accent: true)
+                else
+                  BandAvatar(band),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: EpDisplay(band.name, size: 20, maxLines: 2),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.expand_more,
+                            size: 16,
+                            color: context.epColors.muted,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        children: [
+                          EpEyebrow('Managing · ${app.roleFor(band.id)}'),
+                          if (band.profileComplete)
+                            const EpEyebrow(
+                              ' · Profile complete',
+                              key: Key('profile-complete-badge'),
+                            ),
+                        ],
+                      ),
+                    ],
                   ),
+                ),
               ],
             ),
           ),
         ),
-      ),
+        const SizedBox(width: 12),
+        EpPill(label: 'Discover', onPressed: app.toFanView),
+      ],
     );
   }
+}
+
+class _NextUp extends StatelessWidget {
+  const _NextUp({
+    required this.app,
+    required this.gig,
+    required this.isAdmin,
+    required this.displaySize,
+    this.showPublishAnother = false,
+  });
+
+  final AppState app;
+  final Gig? gig;
+  final bool isAdmin;
+  final double displaySize;
+  final bool showPublishAnother;
+
+  @override
+  Widget build(BuildContext context) {
+    final gig = this.gig;
+    if (gig == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const EpEyebrow.accent('Nothing scheduled'),
+          const SizedBox(height: 12),
+          EpDisplay('Publish\nyour next show', size: displaySize, maxLines: 3),
+          if (isAdmin) ...[
+            const SizedBox(height: 20),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: EpPill(
+                label: 'Publish a gig',
+                variant: EpPillVariant.primary,
+                size: EpPillSize.regular,
+                onPressed: app.startGigCreate,
+              ),
+            ),
+          ],
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        EpEyebrow.accent(
+          'Next up · ${gig.dateShort} · Doors ${_doorsLabel(context, gig)}',
+        ),
+        const SizedBox(height: 12),
+        EpDisplay(gig.title, size: displaySize, maxLines: 3),
+        const SizedBox(height: 12),
+        Text(
+          '${app.venue(gig.venueId).name} · ${app.rsvpCount(gig)} RSVPs · '
+          'counting live',
+          style: Theme.of(
+            context,
+          ).textTheme.epBody.copyWith(color: context.epColors.muted),
+        ),
+        const SizedBox(height: 20),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (isAdmin)
+              EpPill(
+                label: 'Door mode',
+                variant: EpPillVariant.primary,
+                size: EpPillSize.regular,
+                onPressed: () =>
+                    showDoorMode(context, _doorLaunchFor(context, app, gig)),
+              ),
+            EpPill(
+              key: const Key('band-next-public-gig'),
+              label: 'Public gig ↗',
+              size: EpPillSize.regular,
+              onPressed: () => app.openGig(gig.id),
+            ),
+            if (isAdmin && showPublishAnother)
+              EpPill(
+                label: 'Publish another',
+                size: EpPillSize.regular,
+                onPressed: app.startGigCreate,
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Desktop-only list of the band's gigs; the rail has no gig manager shortcut.
+class _UpcomingGigs extends StatelessWidget {
+  const _UpcomingGigs({required this.app, required this.gigs});
+
+  final AppState app;
+  final List<Gig> gigs;
+
+  @override
+  Widget build(BuildContext context) {
+    if (gigs.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 32, bottom: 4),
+          child: EpEyebrow('Upcoming · ${gigs.length}'),
+        ),
+        for (final gig in gigs)
+          EpGigRow(
+            key: ValueKey('band-gig-${gig.id}'),
+            date: gig.startsAt.toLocal(),
+            title: gig.title,
+            sub: '${app.venue(gig.venueId).name} · ${app.rsvpCount(gig)} RSVPs',
+            onTap: app.openGigManager,
+            trailing: EpMonoText('Manage', color: context.epColors.muted),
+          ),
+      ],
+    );
+  }
+}
+
+class _MenuRows extends StatelessWidget {
+  const _MenuRows({required this.app, required this.isAdmin});
+
+  final AppState app;
+  final bool isAdmin;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (isAdmin)
+          EpMenuRow(
+            key: const Key('band-command-publish-gig'),
+            icon: Icons.add,
+            label: 'Publish a gig',
+            onTap: app.startGigCreate,
+          ),
+        EpMenuRow(
+          key: const Key('band-command-add-media'),
+          icon: Icons.play_arrow,
+          label: 'Add media',
+          onTap: app.openBandMedia,
+        ),
+        EpMenuRow(
+          key: const Key('band-command-analytics'),
+          icon: Icons.bar_chart,
+          label: 'Insights',
+          onTap: () => app.resetTo(Screen.analytics),
+        ),
+        if (isAdmin)
+          EpMenuRow(
+            key: const Key('band-dash-payouts'),
+            icon: Icons.confirmation_number_outlined,
+            label: 'Payouts',
+            trailingText: switch (app.bandPayoutStatus?.state) {
+              StripeAccountState.enabled =>
+                (app.bandPayoutStatus?.canSellTickets ?? false)
+                    ? 'Enabled'
+                    : 'Enable ticket sales',
+              StripeAccountState.onboarding ||
+              StripeAccountState.restricted => 'Finish setup',
+              _ => 'Set up',
+            },
+            onTap: () => app.resetTo(Screen.bandPayouts),
+          ),
+        if (isAdmin)
+          EpMenuRow(
+            key: const Key('band-command-edit-profile'),
+            icon: Icons.edit_outlined,
+            label: 'Edit profile',
+            onTap: app.openBandEditor,
+          ),
+        EpMenuRow(
+          key: const Key('band-public-profile'),
+          icon: Icons.mic_none,
+          label: isAdmin ? 'Preview public profile' : 'View public profile',
+          onTap: app.previewPublicProfile,
+        ),
+      ],
+    );
+  }
+}
+
+/// Discovery readiness and the setup checklist as one list: the six discovery
+/// steps plus the three setup tasks discovery does not already cover.
+class _Readiness extends StatefulWidget {
+  const _Readiness({
+    required this.app,
+    required this.bandId,
+    required this.expanded,
+  });
+
+  final AppState app;
+  final String bandId;
+
+  /// Desktop shows every item; the phone hides completed ones behind a toggle.
+  final bool expanded;
+
+  @override
+  State<_Readiness> createState() => _ReadinessState();
+}
+
+class _ReadinessState extends State<_Readiness> {
+  bool _showAll = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    final readiness = app.discoveryReadinessFor(widget.bandId);
+    final status = app.setupStatusFor(widget.bandId);
+    final items = _readinessItems(app, readiness, status);
+    final done = items.where((item) => item.done).length;
+    final showAll = widget.expanded || _showAll;
+    final visible = showAll
+        ? items
+        : items.where((item) => !item.done).toList(growable: false);
+
+    return Column(
+      key: const Key('band-readiness'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(top: widget.expanded ? 0 : 24, bottom: 8),
+          child: Row(
+            children: [
+              const Expanded(child: EpEyebrow('Readiness')),
+              const SizedBox(width: 12),
+              EpEyebrow('$done of ${items.length}'),
+            ],
+          ),
+        ),
+        if (items.isNotEmpty) ...[
+          EpReadinessBar(done: done, total: items.length),
+          const SizedBox(height: 12),
+        ],
+        if (widget.expanded)
+          Text(
+            'Complete listings move ahead within nearby same-day results.',
+            style: Theme.of(
+              context,
+            ).textTheme.epBody.copyWith(color: context.epColors.muted),
+          ),
+        for (final item in visible)
+          EpChecklistRow(
+            key: item.key,
+            done: item.done,
+            label: item.label,
+            actionLabel: item.done ? null : item.actionLabel,
+            onAction: item.done ? null : item.onAction,
+          ),
+        if (!widget.expanded && done > 0)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const Key('band-readiness-toggle'),
+              onPressed: () => setState(() => _showAll = !_showAll),
+              child: EpMonoText(_showAll ? 'Show remaining' : 'Show all'),
+            ),
+          ),
+        if (readiness == null)
+          _ReadinessRetry(
+            label: 'Retry discovery readiness',
+            loading: app.discoveryReadinessLoadingFor(widget.bandId),
+            onRetry: () => app.refreshBandDiscoveryReadiness(widget.bandId),
+          ),
+        if (status == null)
+          _ReadinessRetry(
+            label: 'Retry setup checklist',
+            loading: app.setupStatusLoadingFor(widget.bandId),
+            onRetry: () => app.refreshBandSetupStatus(widget.bandId),
+          ),
+        if (readiness?.nextEligibleShow case final show?)
+          if (readiness?.boostWindow case final window?) ...[
+            const SizedBox(height: 20),
+            EpEyebrow('Next eligible · ${show.title}'),
+            const SizedBox(height: 4),
+            _BoostWindow(window: window),
+          ],
+      ],
+    );
+  }
+}
+
+class _BoostWindow extends StatelessWidget {
+  const _BoostWindow({required this.window});
+
+  final DiscoveryBoostWindow window;
+
+  @override
+  Widget build(BuildContext context) {
+    final label =
+        'Boost window · '
+        '${Gig.dateShortFor(window.opensAt.millisecondsSinceEpoch)} – '
+        '${Gig.dateShortFor(window.closesAt.millisecondsSinceEpoch)}'
+        '${window.active ? ' · Active now' : ''}';
+    return window.active ? EpEyebrow.accent(label) : EpEyebrow(label);
+  }
+}
+
+class _ReadinessRetry extends StatelessWidget {
+  const _ReadinessRetry({
+    required this.label,
+    required this.loading,
+    required this.onRetry,
+  });
+
+  final String label;
+  final bool loading;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: loading
+        ? const Center(child: CircularProgressIndicator())
+        : Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(onPressed: onRetry, child: EpMonoText(label)),
+          ),
+  );
+}
+
+class _ReadinessItem {
+  const _ReadinessItem({
+    required this.key,
+    required this.label,
+    required this.done,
+    required this.actionLabel,
+    required this.onAction,
+  });
+
+  final Key key;
+  final String label;
+  final bool done;
+  final String actionLabel;
+  final VoidCallback onAction;
+}
+
+List<_ReadinessItem> _readinessItems(
+  AppState app,
+  BandDiscoveryReadiness? readiness,
+  BandSetupStatus? status,
+) {
+  final hasShow = readiness?.relevantShow != null;
+  final showAction = hasShow ? app.openGigManager : app.startGigCreate;
+  return [
+    if (readiness != null) ...[
+      _ReadinessItem(
+        key: const ValueKey('band-discovery-profile'),
+        label: 'Complete profile',
+        done: readiness.profileComplete,
+        actionLabel: 'Edit',
+        onAction: () => app.openBandEditor(section: 'required'),
+      ),
+      _ReadinessItem(
+        key: const ValueKey('band-discovery-image'),
+        label: 'Profile image',
+        done: readiness.profileImageReady,
+        actionLabel: 'Add',
+        onAction: app.openBandMedia,
+      ),
+      _ReadinessItem(
+        key: const ValueKey('band-discovery-clip'),
+        label: 'Video clip',
+        done: readiness.clipReady,
+        actionLabel: 'Add',
+        onAction: app.openBandMedia,
+      ),
+      _ReadinessItem(
+        key: const ValueKey('band-discovery-show'),
+        label: 'Published lineup',
+        done: readiness.publishedShowReady,
+        actionLabel: hasShow ? 'Manage' : 'Create',
+        onAction: showAction,
+      ),
+      _ReadinessItem(
+        key: const ValueKey('band-discovery-listing'),
+        label: 'Venue and readable poster',
+        done: readiness.venuePosterReady,
+        actionLabel: hasShow ? 'Edit' : 'Create',
+        onAction: showAction,
+      ),
+      _ReadinessItem(
+        key: const ValueKey('band-discovery-revision'),
+        label: 'Latest revision published',
+        done: readiness.publishedRevisionCurrent,
+        actionLabel: hasShow ? 'Republish' : 'Create',
+        onAction: showAction,
+      ),
+    ],
+    if (status != null) ...[
+      _ReadinessItem(
+        key: const ValueKey('band-setup-preview'),
+        label: 'Public profile previewed',
+        done: status.publicProfilePreviewed,
+        actionLabel: 'Preview',
+        onAction: app.previewPublicProfile,
+      ),
+      _ReadinessItem(
+        key: const ValueKey('band-setup-social'),
+        label: 'Add social links',
+        done: status.socialLinksAdded,
+        actionLabel: 'Edit',
+        onAction: () => app.openBandEditor(section: 'links'),
+      ),
+      _ReadinessItem(
+        key: const ValueKey('band-setup-members'),
+        label: 'Invite band members',
+        done: status.membersInvited,
+        actionLabel: 'Invite',
+        onAction: app.openInvitationPanel,
+      ),
+    ],
+  ];
+}
+
+String _doorsLabel(BuildContext context, Gig gig) => gig.doorsAt == null
+    ? gig.time.split('/').first.trim()
+    : TimeOfDay.fromDateTime(gig.doorsAt!.toLocal()).format(context);
+
+DoorModeLaunch _doorLaunchFor(BuildContext context, AppState app, Gig next) =>
+    DoorModeLaunch.organizer(
+      gigId: next.id,
+      gigTitle: next.title,
+      venueName: app.venue(next.venueId).name,
+      doorsTime: _doorsLabel(context, next),
+    );
+
+String _initials(String name) {
+  final words = name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((word) => word.isNotEmpty)
+      .take(2);
+  return words.isEmpty ? '??' : words.map((word) => word[0]).join();
 }

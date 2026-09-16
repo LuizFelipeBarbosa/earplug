@@ -7,6 +7,8 @@ enum ExploreResultType { all, events, bands, venues }
 mixin _DiscoveryState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
   set _appliedHomePersonalization(FanCity? value);
+  UserProfile? get profile;
+  FanOnboarding? get fanOnboarding;
   Map<String, Band> get _bands;
   set _bands(Map<String, Band> value);
   List<Gig> get _allGigs;
@@ -20,6 +22,7 @@ mixin _DiscoveryState on _AppStateCore {
   FanCity? _discoveryHomeCity;
   FanCity? get discoveryHomeCity => _discoveryHomeCity;
   LatLng? currentPosition;
+  String? currentPlaceName;
   bool locating = false;
   LocationFailure? locationFailure;
   DiscoveryFilters filters = const DiscoveryFilters();
@@ -35,6 +38,8 @@ mixin _DiscoveryState on _AppStateCore {
       (discoveryLocation == DiscoveryLocation.current &&
           currentPosition != null) ||
       discoveryLocation == DiscoveryLocation.home;
+  bool get usingCurrentLocation =>
+      discoveryLocation == DiscoveryLocation.current;
   int get activeFilterCount => filters.activeCount;
 
   // ---- explore
@@ -133,6 +138,36 @@ mixin _DiscoveryState on _AppStateCore {
     );
   }
 
+  /// The Home eyebrow toggle. On asks for one foreground fix (may prompt);
+  /// off returns to the saved scene: profile home city, else onboarding city,
+  /// else Mission SF.
+  Future<bool> setUseCurrentLocation(bool on) async {
+    if (on) return selectCurrentLocation();
+    if (!usingCurrentLocation && !locating && locationFailure == null) {
+      return true;
+    }
+    _restoreSceneLocation();
+    notifyListeners();
+    return true;
+  }
+
+  void _restoreSceneLocation() {
+    currentPlaceName = null;
+    final home = profile?.homeLocation;
+    if (home != null) {
+      _applyFanCity(home);
+      if (profile?.locationPersonalizationEnabled == true) {
+        _appliedHomePersonalization = home;
+      }
+    } else if (fanOnboarding?.preferredCity case final city?) {
+      _applyFanCity(city);
+    } else {
+      _applyDiscoveryCity('sf');
+    }
+  }
+
+  void dismissLocationFailure() => _set(() => locationFailure = null);
+
   void _applyDiscoveryCity(String c) {
     _appliedHomePersonalization = null;
     _locationRequestGeneration++;
@@ -141,6 +176,7 @@ mixin _DiscoveryState on _AppStateCore {
         : DiscoveryLocation.sf;
     _discoveryHomeCity = null;
     currentPosition = null;
+    currentPlaceName = null;
     locating = false;
     locationFailure = null;
     filters = filters.copyWith(maxDistanceMiles: null);
@@ -155,6 +191,7 @@ mixin _DiscoveryState on _AppStateCore {
         ? selectedCity
         : null;
     currentPosition = null;
+    currentPlaceName = null;
     locating = false;
     locationFailure = null;
     filters = filters.copyWith(maxDistanceMiles: null);
@@ -164,6 +201,7 @@ mixin _DiscoveryState on _AppStateCore {
     _appliedHomePersonalization = null;
     _locationRequestGeneration++;
     currentPosition = position;
+    currentPlaceName = null;
     discoveryLocation = DiscoveryLocation.current;
     _discoveryHomeCity = null;
     locating = false;
@@ -189,8 +227,10 @@ mixin _DiscoveryState on _AppStateCore {
           _appliedHomePersonalization = null;
           currentPosition = LatLng(location.latitude, location.longitude);
           discoveryLocation = DiscoveryLocation.current;
+          currentPlaceName = null;
           _discoveryHomeCity = null;
           locationFailure = null;
+          unawaited(_resolvePlaceName(requestGeneration, currentPosition!));
           say('Showing gigs near your current location.');
           return true;
         case final LocationFailure failure:
@@ -202,7 +242,7 @@ mixin _DiscoveryState on _AppStateCore {
       if (!_disposed && requestGeneration == _locationRequestGeneration) {
         locationFailure = const LocationFailure(
           LocationFailureReason.unavailable,
-          message: 'Location request timed out. Retry or choose a city.',
+          message: 'Location request timed out. Retry or switch it off.',
         );
         notifyListeners();
       }
@@ -226,7 +266,8 @@ mixin _DiscoveryState on _AppStateCore {
   }
 
   String get locationLabel => switch (discoveryLocation) {
-    DiscoveryLocation.current => 'CURRENT LOCATION',
+    DiscoveryLocation.current =>
+      (currentPlaceName ?? 'Current location').toUpperCase(),
     DiscoveryLocation.home =>
       '${(_discoveryHomeCity ?? FanCity.sf).label.toUpperCase()} SCENE',
     DiscoveryLocation.oak => 'TEMESCAL, OAK',
@@ -240,6 +281,27 @@ mixin _DiscoveryState on _AppStateCore {
     DiscoveryLocation.oak => const LatLng(37.8378, -122.2628),
     DiscoveryLocation.sf => const LatLng(37.7599, -122.4148),
   };
+
+  Future<void> _resolvePlaceName(int generation, LatLng point) async {
+    final service = reverseGeocoding;
+    if (service == null) return;
+
+    PlaceName? place;
+    try {
+      place = await service
+          .reverseGeocode(point)
+          .timeout(const Duration(seconds: 6));
+    } catch (_) {
+      place = null;
+    }
+    if (_disposed ||
+        generation != _locationRequestGeneration ||
+        discoveryLocation != DiscoveryLocation.current) {
+      return;
+    }
+    currentPlaceName = place?.label;
+    notifyListeners();
+  }
 
   void toggleDateFilter(DateFilter value) => _set(() {
     filters = filters.copyWith(
@@ -411,6 +473,7 @@ mixin _DiscoveryState on _AppStateCore {
     return '${calculated.toStringAsFixed(1)} mi';
   }
 
+  @override
   double _distanceMilesFromDiscoveryCenter(Venue venue) => distanceInMiles(
     startLatitude: discoveryCenter.latitude,
     startLongitude: discoveryCenter.longitude,
@@ -421,7 +484,7 @@ mixin _DiscoveryState on _AppStateCore {
   final Memo<
     ({
       List<Gig> gigs,
-      DiscoveryFilters filters,
+      DiscoveryFilters effectiveFilters,
       DateTime startOfToday,
       DiscoveryLocation location,
       LatLng? position,
@@ -434,15 +497,45 @@ mixin _DiscoveryState on _AppStateCore {
   >
   _feedMemo = Memo();
 
-  /// The filtered, distance-ordered discovery feed. Recomputed only when one
-  /// of its inputs changes: the collections compare by identity (they are
-  /// replaced, never mutated), the filters by value.
-  List<Gig> get feed {
+  final Memo<
+    ({
+      List<Gig> gigs,
+      DiscoveryFilters effectiveFilters,
+      DateTime startOfToday,
+      DiscoveryLocation location,
+      LatLng? position,
+      FanCity? homeCity,
+      Map<String, Venue> feedVenues,
+      Map<String, Venue> venueDirectory,
+      Set<String> boostedGigIds,
+    }),
+    List<Gig>
+  >
+  _homeFeedMemo = Memo();
+
+  List<Gig> _buildFeed(
+    DiscoveryFilters effectiveFilters,
+    Memo<
+      ({
+        List<Gig> gigs,
+        DiscoveryFilters effectiveFilters,
+        DateTime startOfToday,
+        DiscoveryLocation location,
+        LatLng? position,
+        FanCity? homeCity,
+        Map<String, Venue> feedVenues,
+        Map<String, Venue> venueDirectory,
+        Set<String> boostedGigIds,
+      }),
+      List<Gig>
+    >
+    memo,
+  ) {
     final today = _now();
     final startOfToday = DateTime(today.year, today.month, today.day);
     final inputs = (
       gigs: allGigs,
-      filters: filters,
+      effectiveFilters: effectiveFilters,
       startOfToday: startOfToday,
       location: discoveryLocation,
       position: currentPosition,
@@ -451,12 +544,12 @@ mixin _DiscoveryState on _AppStateCore {
       venueDirectory: _venueDirectory,
       boostedGigIds: _discoveryBoostedGigIds,
     );
-    return _feedMemo(inputs, () {
+    return memo(inputs, () {
       final endOfTonight = DateTime(today.year, today.month, today.day + 1);
       final endOfWeek = DateTime(today.year, today.month, today.day + 8);
       final filtered = allGigs.where((gig) {
         final startsAt = gig.startsAt;
-        switch (filters.date) {
+        switch (effectiveFilters.date) {
           case DateFilter.all:
             break;
           case DateFilter.tonight:
@@ -470,7 +563,7 @@ mixin _DiscoveryState on _AppStateCore {
               return false;
             }
           case DateFilter.custom:
-            final range = filters.dateRange;
+            final range = effectiveFilters.dateRange;
             if (range == null) return false;
             final endExclusive = DateTime(
               range.end.year,
@@ -483,13 +576,17 @@ mixin _DiscoveryState on _AppStateCore {
             }
         }
 
-        if (filters.price == PriceFilter.free && !gig.free) return false;
-        if (filters.price == PriceFilter.paid && gig.free) return false;
-        if (filters.genres.isNotEmpty &&
-            !gig.genres.any(filters.genres.contains)) {
+        if (effectiveFilters.price == PriceFilter.free && !gig.free) {
           return false;
         }
-        if (filters.maxDistanceMiles case final double maxMiles) {
+        if (effectiveFilters.price == PriceFilter.paid && gig.free) {
+          return false;
+        }
+        if (effectiveFilters.genres.isNotEmpty &&
+            !gig.genres.any(effectiveFilters.genres.contains)) {
+          return false;
+        }
+        if (effectiveFilters.maxDistanceMiles case final double maxMiles) {
           final distance = discoveryLocation == DiscoveryLocation.home
               ? _distanceMilesFromDiscoveryCenter(venue(gig.venueId))
               : distanceMilesFromCurrent(venue(gig.venueId));
@@ -515,6 +612,13 @@ mixin _DiscoveryState on _AppStateCore {
       );
     });
   }
+
+  /// The Explore feed, every filter applied.
+  List<Gig> get feed => _buildFeed(filters, _feedMemo);
+
+  /// The Home feed: same as [feed] but genre-blind — Home is for finding a show fast.
+  List<Gig> get homeFeed =>
+      _buildFeed(filters.copyWith(genres: const {}), _homeFeedMemo);
 
   final Memo<
     ({List<Gig> gigs, Map<String, Band> bands, int second, int tick}),

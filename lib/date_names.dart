@@ -36,6 +36,22 @@ final List<String> weekdayNamesUpper = [
 ];
 
 /// The shouted form the flyer typography uses.
+/// Full month names for prose such as "Member since March 2026".
+const List<String> monthNamesFull = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
 final List<String> monthNamesUpper = [
   for (final name in monthNames) name.toUpperCase(),
 ];
@@ -55,3 +71,13 @@ String dateLabel(DateTime d) =>
 
 /// "Aug 2026".
 String monthLabel(DateTime d) => '${monthNames[d.month - 1]} ${d.year}';
+
+({DateTime start, DateTime end}) weekendWindow(DateTime now) {
+  final localMidnight = DateTime(now.year, now.month, now.day);
+  final daysUntilFriday = (DateTime.friday - now.weekday + 7) % 7;
+  final offset = now.weekday >= DateTime.friday
+      ? -(now.weekday - DateTime.friday)
+      : daysUntilFriday;
+  final start = localMidnight.add(Duration(days: offset));
+  return (start: start, end: start.add(const Duration(days: 3)));
+}

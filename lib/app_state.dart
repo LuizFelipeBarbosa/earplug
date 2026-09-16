@@ -15,16 +15,20 @@ import 'date_names.dart';
 import 'discovery_filters.dart';
 import 'discovery_policy.dart';
 import 'errors.dart';
+import 'explore_ranking.dart';
 import 'flyer_styles.dart';
 import 'memo.dart';
 import 'models.dart';
 import 'navigation.dart';
+import 'search_query.dart';
 import 'services/auth_service.dart';
 import 'services/browser_history.dart';
 import 'services/flyer_text_extractor.dart';
+import 'services/geocoding_service.dart';
 import 'services/location_service.dart';
 import 'services/media_picker.dart';
 import 'services/media_upload_service.dart';
+import 'services/recent_searches.dart' as recent_searches;
 import 'services/statement_pdf.dart' deferred as statement_pdf;
 import 'services/web_shell.dart';
 
@@ -38,6 +42,7 @@ part 'app_state/band_create.dart';
 part 'app_state/bookings.dart';
 part 'app_state/catalog.dart';
 part 'app_state/discovery.dart';
+part 'app_state/explore.dart';
 part 'app_state/fan.dart';
 part 'app_state/finance.dart';
 part 'app_state/gig_editor.dart';
@@ -46,6 +51,7 @@ part 'app_state/opportunities.dart';
 part 'app_state/organizer.dart';
 part 'app_state/payments.dart';
 part 'app_state/session.dart';
+part 'app_state/social.dart';
 part 'app_state/tickets.dart';
 part 'app_state/venues.dart';
 
@@ -63,6 +69,8 @@ mixin _AppStateCore on ChangeNotifier {
   EarplugRepository get repository;
   AuthService get auth;
   LocationService get locationService;
+  recent_searches.RecentSearchesStore get recentSearchesStore;
+  ReverseGeocodingService? get reverseGeocoding;
   MediaUploadService get mediaUploader;
   DateTime Function() get _now;
 
@@ -74,6 +82,7 @@ mixin _AppStateCore on ChangeNotifier {
   // only from siblings, fields the owner writes but only siblings read).
   DateTime? get _nextFeedStartsAt;
   Map<String, Venue> get _venues;
+  double _distanceMilesFromDiscoveryCenter(Venue venue);
   void _applyFanCity(FanCity selectedCity);
   void _invalidateVenueDetails(Set<String> ids);
   void _refreshExploreBands();
@@ -97,6 +106,8 @@ mixin _AppStateCore on ChangeNotifier {
   // AppState resolves the concrete implementation rather than this declaration.
   // ignore: unused_element
   void _clearOpportunityState();
+  // ignore: unused_element
+  void _clearSocialState();
   void _clearSessionSensitiveState();
   void _syncPublicGigSubscriptionForCurrentScreen();
   Future<void> _loadPublicGig(String id);
@@ -138,6 +149,7 @@ class AppState extends ChangeNotifier
         _BandCreateState,
         _VenueState,
         _DiscoveryState,
+        _ExploreState,
         _FanState,
         _BandConsoleState,
         _OpportunityState,
@@ -148,12 +160,15 @@ class AppState extends ChangeNotifier
         _OrganizerState,
         _CatalogState,
         _SessionState,
+        _SocialState,
         _NavigationState {
   AppState({
     required EarplugRepository repository,
     required AuthService auth,
     LocationService? locationService,
+    ReverseGeocodingService? reverseGeocoding,
     MediaUploadService? mediaUploadService,
+    recent_searches.RecentSearchesStore? recentSearchesStore,
     String? initialJoinToken,
     String? initialPerformerInviteToken,
     String? initialGigId,
@@ -176,7 +191,9 @@ class AppState extends ChangeNotifier
          auth,
          repository,
          locationService ?? GeolocatorLocationService(),
+         reverseGeocoding,
          mediaUploadService,
+         recentSearchesStore,
          initialJoinToken,
          initialPerformerInviteToken,
          initialGigId,
@@ -204,7 +221,9 @@ class AppState extends ChangeNotifier
     EarplugRepository? repository,
     AuthService? auth,
     LocationService? locationService,
+    ReverseGeocodingService? reverseGeocoding,
     MediaUploadService? mediaUploadService,
+    recent_searches.RecentSearchesStore? recentSearchesStore,
     String? initialJoinToken,
     String? initialPerformerInviteToken,
     String? initialGigId,
@@ -229,7 +248,9 @@ class AppState extends ChangeNotifier
       repository: repository ?? DemoRepository(auth: resolvedAuth),
       auth: resolvedAuth,
       locationService: locationService,
+      reverseGeocoding: reverseGeocoding,
       mediaUploadService: mediaUploadService,
+      recentSearchesStore: recentSearchesStore,
       initialJoinToken: initialJoinToken,
       initialPerformerInviteToken: initialPerformerInviteToken,
       initialGigId: initialGigId,
@@ -255,7 +276,9 @@ class AppState extends ChangeNotifier
     this.auth,
     this.repository,
     this.locationService,
+    this.reverseGeocoding,
     MediaUploadService? providedMediaUploader,
+    recent_searches.RecentSearchesStore? providedRecentSearchesStore,
     String? initialJoinToken,
     String? initialPerformerInviteToken,
     String? initialGigId,
@@ -281,6 +304,10 @@ class AppState extends ChangeNotifier
           : DataStatus.ready {
     mediaUploader =
         providedMediaUploader ?? MediaUploadService(repository: repository);
+    recentSearchesStore =
+        providedRecentSearchesStore ??
+        recent_searches.PrefsRecentSearchesStore();
+    unawaited(loadRecentSearches());
     _stopBrowserHistory = listenForBrowserBack(_popAppStack);
     authed = auth.signedIn;
     if (authed) {
@@ -408,9 +435,13 @@ class AppState extends ChangeNotifier
   @override
   final LocationService locationService;
   @override
+  final ReverseGeocodingService? reverseGeocoding;
+  @override
   final DateTime Function() _now;
   @override
   late final MediaUploadService mediaUploader;
+  @override
+  late final recent_searches.RecentSearchesStore recentSearchesStore;
 
   StreamSubscription<bool>? _authSubscription;
   StreamSubscription<Interactions>? _interactionsSubscription;
@@ -438,6 +469,7 @@ class AppState extends ChangeNotifier
     unawaited(_feedSubscription?.cancel());
     unawaited(_goingCountsSubscription?.cancel());
     unawaited(_venueDirectorySubscription?.cancel());
+    unawaited(_myApplicationsSubscription?.cancel());
     unawaited(_interactionsSubscription?.cancel());
     unawaited(_bandsSubscription?.cancel());
     unawaited(_organizationsSubscription?.cancel());
@@ -468,9 +500,6 @@ class AppState extends ChangeNotifier
     _authConfirmationKind = null;
     _postAuthScreen = null;
     authStep = 1;
-    _fanGenreWrite = Future.value();
-    _profileTutorialWrite = Future.value();
-    _profileTutorialReplay = false;
     _fanAvatarSaveOwner = null;
     _appliedHomePersonalization = null;
     _loadingFollowBands.clear();
@@ -499,6 +528,7 @@ class AppState extends ChangeNotifier
     _clearBookingState();
     _clearPaymentState();
     _clearFinanceState();
+    _clearSocialState();
     _clearTicketState();
     _resetGigForm();
   }

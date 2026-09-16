@@ -632,12 +632,12 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
                 ? 'SUBMITTING…'
                 : venueStep
                 ? 'CONTINUE'
-                : 'SUBMIT APPLICATION',
+                : 'SUBMIT',
             onPrimary: venueStep
                 ? (_venueComplete && !_busy ? _continue : null)
                 : (_canSubmit ? _submit : null),
             secondaryKey: const ValueKey('org-apply-save'),
-            secondaryLabel: 'SAVE FOR LATER',
+            secondaryLabel: 'SAVE DRAFT',
             onSecondary: _busy ? null : _saveForLater,
           ),
         ],
@@ -1060,8 +1060,7 @@ class _DocumentTile extends StatelessWidget {
       child: Stack(
         children: [
           Positioned.fill(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+            child: ClipRect(
               child: _isImage
                   ? EpNetworkImage(
                       url: document.url,
@@ -1111,7 +1110,6 @@ class _AddDocumentTile extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: enabled ? onTap : null,
-          borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Row(

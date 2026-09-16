@@ -96,7 +96,7 @@ export const create = mutation({
         ) ?? null;
     }
     if (existing) {
-      return { venue: toVenuePayload(existing), created: false };
+      return { venue: await toVenuePayload(ctx, existing), created: false };
     }
 
     const point = { lat: args.lat, lng: args.lng };
@@ -134,7 +134,7 @@ export const create = mutation({
     });
     const venue = await ctx.db.get(venueId);
     if (!venue) throw new Error("Created venue not found");
-    return { venue: toVenuePayload(venue), created: true };
+    return { venue: await toVenuePayload(ctx, venue), created: true };
   },
 });
 
@@ -154,9 +154,10 @@ export const list = query({
       .withIndex("by_name")
       .order("asc")
       .take(MAX_VENUES);
-    return venues
-      .filter((venue) => venue.status !== "suspended")
-      .map(toVenuePayload);
+    const filtered = venues.filter((venue) => venue.status !== "suspended");
+    return await Promise.all(
+      filtered.map((venue) => toVenuePayload(ctx, venue)),
+    );
   },
 });
 
@@ -175,7 +176,7 @@ export const resolvePublic = query({
       venue = normalized ? await ctx.db.get(normalized) : null;
     }
     if (!venue || venue.status === "suspended") return null;
-    return toVenuePayload(venue);
+    return await toVenuePayload(ctx, venue);
   },
 });
 
@@ -252,7 +253,7 @@ export const detail = query({
     }
 
     return {
-      venue: toVenuePayload(venue),
+      venue: await toVenuePayload(ctx, venue, cache),
       gigs,
       bands,
       truncated: visible.length > MAX_VENUE_GIGS,

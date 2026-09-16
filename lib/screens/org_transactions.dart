@@ -113,10 +113,9 @@ class _OrgTransactionsScreenState extends State<OrgTransactionsScreen> {
         }
         if (index <= app.transactions.length) {
           final transaction = app.transactions[index - 1];
-          return EpCard(
+          return _TransactionRow(
             key: Key('org-tx-${transaction.id}'),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: _TransactionRow(transaction: transaction),
+            transaction: transaction,
           );
         }
         if (app.transactionsLoading) {
@@ -142,7 +141,7 @@ class _OrgTransactionsScreenState extends State<OrgTransactionsScreen> {
 }
 
 class _TransactionRow extends StatelessWidget {
-  const _TransactionRow({required this.transaction});
+  const _TransactionRow({super.key, required this.transaction});
 
   final FinanceTransaction transaction;
 
@@ -165,8 +164,9 @@ class _TransactionRow extends StatelessWidget {
     return LedgerRow(
       title: transaction.label,
       details: [dateLabel(transaction.occurredAt.toLocal())],
-      trailing: Row(
+      trailing: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Text(
             '${credit ? '+' : '-'}$amount',
@@ -174,7 +174,7 @@ class _TransactionRow extends StatelessWidget {
               color: credit ? context.epColors.success : null,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(height: 4),
           StatusPill(
             label: switch (transaction.fundsState) {
               FundsState.pending => 'PENDING',

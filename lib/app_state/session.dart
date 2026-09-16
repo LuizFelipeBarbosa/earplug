@@ -4,6 +4,7 @@ enum PendingKind {
   rsvp,
   tickets,
   follow,
+  followUser,
   save,
   myGigs,
   band,
@@ -27,6 +28,7 @@ class PendingAuth {
 mixin _SessionState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
   abstract FanCity? _appliedHomePersonalization;
+  bool get usingCurrentLocation;
   abstract UserProfile? profile;
   set history(List<FanHistoryItem> value);
   Set<String> get rsvps;
@@ -36,6 +38,9 @@ mixin _SessionState on _AppStateCore {
   Set<String> get saved;
   set saved(Set<String> value);
   Band? band(String id);
+  void toggleFollowUser(String userId);
+  Future<void> loadSocial({bool refresh = false});
+  Future<void> loadFriendsGoing({bool refresh = false});
   void go(Screen s, [String? param]);
   void back();
   void resetTo(Screen s);
@@ -89,6 +94,8 @@ mixin _SessionState on _AppStateCore {
       await _refreshProfile(sessionGeneration: sessionGeneration);
       if (!_isCurrentSession(sessionGeneration)) return false;
       unawaited(_refreshHistory(sessionGeneration: sessionGeneration));
+      unawaited(loadSocial());
+      unawaited(loadFriendsGoing());
       return true;
     } catch (error) {
       logError('ensureUser', error);
@@ -131,9 +138,11 @@ mixin _SessionState on _AppStateCore {
         preferredCity = loadedProfile?.fanOnboarding?.preferredCity;
       }
       if (preferredCity != null) {
-        _applyFanCity(preferredCity);
-        if (loadedProfile?.locationPersonalizationEnabled == true) {
-          _appliedHomePersonalization = preferredCity;
+        if (!usingCurrentLocation) {
+          _applyFanCity(preferredCity);
+          if (loadedProfile?.locationPersonalizationEnabled == true) {
+            _appliedHomePersonalization = preferredCity;
+          }
         }
       } else if (_appliedHomePersonalization != null) {
         _applyFanCity(FanCity.sf);
@@ -264,6 +273,9 @@ mixin _SessionState on _AppStateCore {
         _syncFollowedBandGigSubscriptions();
         final name = band(p.id!)?.name;
         say(name == null ? 'Band followed.' : 'Following $name.');
+        _postAuthScreen = null;
+      case PendingKind.followUser:
+        toggleFollowUser(p!.id!);
         _postAuthScreen = null;
       case PendingKind.save:
         await repository.ensureSave(p!.id!);

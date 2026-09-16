@@ -4,12 +4,12 @@ import 'package:flutter/foundation.dart';
 /// user in their own terms. One string so every surface says it the same way.
 const String genericErrorMessage = 'Something broke. Try again.';
 
-/// Profile setup writes deserve a useful recovery message even when the
+/// Profile changes deserve a useful recovery message even when the
 /// backend's detailed error is intentionally kept out of the UI.
 const String profileSetupSaveErrorMessage =
     "Couldn't save your profile setup. Try again.";
 
-/// The new-fan card writes several fields through one backend mutation.
+/// Saving a fan's preferred city can fail independently of discovery updates.
 const String fanSetupSaveErrorMessage =
     "Couldn't save your setup choices. Try again.";
 

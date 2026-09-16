@@ -83,7 +83,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     backgroundColor: WidgetStatePropertyAll(
                       context.epColors.destructive,
                     ),
-                    foregroundColor: WidgetStatePropertyAll(Colors.white),
+                    foregroundColor: WidgetStatePropertyAll(
+                      context.epColors.onAccent,
+                    ),
                   ),
                   child: Text('DELETE ACCOUNT'),
                 ),
@@ -154,11 +156,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final app = context.watch<AppState>();
     final appearance = context.watch<AppearanceController>();
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 32),
+      padding: EdgeInsets.fromLTRB(
+        EpLayout.gutter,
+        EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
+        EpLayout.gutter,
+        32,
+      ),
       children: [
         Row(
           children: [
             CircleIconButton(
+              key: const ValueKey('settings-back-control'),
               onTap: _deleting ? null : app.back,
               tooltip: 'Back to profile',
             ),
@@ -249,17 +257,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           url: legalOrganizerAgreementUrl,
           caption: 'Organizer, artist and host agreements',
         ),
-        if (app.profileTutorialAvailable) ...[
-          const SizedBox(height: 18),
-          const SectionLabel('PROFILE HELP'),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            key: const Key('replay-profile-tutorial'),
-            onPressed: _deleting ? null : app.replayProfileTutorial,
-            icon: Icon(Icons.replay),
-            label: Text('REPLAY PROFILE TUTORIAL'),
-          ),
-        ],
         const SizedBox(height: 18),
         const SectionLabel('SESSION'),
         const SizedBox(height: 8),
@@ -289,7 +286,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           decoration: BoxDecoration(
             color: context.epColors.destructive.withValues(alpha: .08),
             border: Border.all(color: context.epColors.destructive),
-            borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -313,7 +309,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   backgroundColor: WidgetStatePropertyAll(
                     context.epColors.destructive,
                   ),
-                  foregroundColor: WidgetStatePropertyAll(Colors.white),
+                  foregroundColor: WidgetStatePropertyAll(
+                    context.epColors.onAccent,
+                  ),
                 ),
                 child: Text(_deleting ? 'DELETING…' : 'DELETE ACCOUNT'),
               ),

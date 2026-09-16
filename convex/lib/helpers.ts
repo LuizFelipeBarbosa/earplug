@@ -210,12 +210,16 @@ export const bandPayloadValidator = v.object({
   reviewSummary: v.union(reviewSummaryValidator, v.null()),
 });
 
-/** The six presses offered by the client's gig-create picker. "custom" means
+/** The presses offered by the client's gig-create picker (ink, panel and
+ * accent since the 2026-09 redesign; the older six stay valid). "custom" means
  * band-supplied art backed by gigs.flyStorageId; clients render a placeholder
  * plate when flyerUrl resolves null. The gigs.flyKey schema column stays
  * v.string() because legacy rows/seeds use older keys: paper, blue, black,
  * yellow, and bluetype. */
 const flyKeyValidator = v.union(
+  v.literal("ink"),
+  v.literal("panel"),
+  v.literal("accent"),
   v.literal("xerox"),
   v.literal("riso"),
   v.literal("marquee"),
@@ -226,6 +230,9 @@ const flyKeyValidator = v.union(
 
 /** Every flyer key the client can render, including legacy styles. */
 export const knownFlyKeyValidator = v.union(
+  v.literal("ink"),
+  v.literal("panel"),
+  v.literal("accent"),
   v.literal("xerox"),
   v.literal("riso"),
   v.literal("marquee"),
@@ -496,6 +503,7 @@ export const venuePayloadValidator = v.object({
   verified: v.boolean(),
   managedByOrganizationId: v.union(v.id("organizations"), v.null()),
   exactAddr: v.union(v.string(), v.null()),
+  photoUrls: v.array(v.string()),
 });
 
 export const mediaKindValidator = v.union(
@@ -538,6 +546,7 @@ export const userPayloadValidator = v.object({
   homeLocation: v.union(fanCityValidator, v.null()),
   locationPersonalizationEnabled: v.boolean(),
   followedBandUpdatesEnabled: v.boolean(),
+  shareRsvpsWithFriends: v.boolean(),
   profileTutorialCompleted: v.boolean(),
   fanOnboarding: v.union(
     v.object({
@@ -752,7 +761,11 @@ export function effectiveAddressDisclosure(
     : "onTicket";
 }
 
-export function toVenuePayload(venue: Doc<"venues">) {
+export async function toVenuePayload(
+  ctx: QueryCtx,
+  venue: Doc<"venues">,
+  cache?: DocCache,
+) {
   const disclosure = effectiveAddressDisclosure(venue);
   const approx =
     venue.approxLat !== undefined && venue.approxLng !== undefined
@@ -783,6 +796,16 @@ export function toVenuePayload(venue: Doc<"venues">) {
           exactAddr: null,
         };
 
+  const photoUrls = (
+    await Promise.all(
+      (venue.photoStorageIds ?? [])
+        .slice(0, MAX_VENUE_PHOTOS)
+        .map((storageId) =>
+          cache ? cache.getUrl(storageId) : ctx.storage.getUrl(storageId),
+        ),
+    )
+  ).filter((url): url is string => url !== null);
+
   return {
     _id: venue._id,
     name: venue.name,
@@ -802,6 +825,7 @@ export function toVenuePayload(venue: Doc<"venues">) {
     addressDisclosure: disclosure,
     verified: venue.status === "verified",
     managedByOrganizationId: venue.managedByOrganizationId ?? null,
+    photoUrls,
   };
 }
 
@@ -866,6 +890,7 @@ export async function toUserPayload(ctx: QueryCtx, user: Doc<"users">) {
     locationPersonalizationEnabled:
       user.locationPersonalizationEnabled ?? false,
     followedBandUpdatesEnabled: user.followedBandUpdatesEnabled ?? true,
+    shareRsvpsWithFriends: user.shareRsvpsWithFriends ?? true,
     profileTutorialCompleted: user.profileTutorialCompleted ?? false,
     fanOnboarding:
       user.fanOnboarding === undefined
@@ -906,12 +931,22 @@ export const MAX_RECAP_GIGS = 40;
 /** Maximum RSVP rows measured for one gig in a fan recap. */
 export const MAX_RSVPS_PER_GIG = 300;
 
+/** Ceiling on gigRsvps rows read across all friends in one social:friendsGoing
+ * call, before the 4096-queries-per-function transaction limit is hit — see
+ * the comment in convex/social.ts for the arithmetic. */
+export const MAX_FRIEND_RSVP_ROWS = 2500;
+
 /** Minimum distinct fans required in every row of a private partition. */
 export const K_ANON_FANS = 5;
 
 /** The venue list is now user- and organization-generated; `venues:list`
  * truncates at 500 pending real pagination. */
 export const MAX_VENUES = 500;
+
+/** Up to 4 ctx.storage.getUrl calls per venue; venues:list ships up to
+ * MAX_VENUES (500) venues, but most currently have zero photos so the
+ * amortized cost is low. */
+export const MAX_VENUE_PHOTOS = 4;
 
 // ─── Fan profile limits ────────────────────────────────────────────────────
 

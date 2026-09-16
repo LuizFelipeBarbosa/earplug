@@ -7,6 +7,7 @@ import {
   type MutationCtx,
 } from "./_generated/server";
 import { bookingEmail, type BookingEmailKind } from "./emails";
+import { applicationStatusPatch } from "./lib/applicationStamps";
 import {
   isPlatformAdmin,
   organizationMembershipFor,
@@ -73,7 +74,10 @@ export async function shortlistApplication(
   const application = await ctx.db.get(applicationId);
   if (!application) throw new Error("Application not found");
   assertApplicationTransition(application.status, "shortlisted");
-  await ctx.db.patch(applicationId, { status: "shortlisted", updatedAt: now });
+  await ctx.db.patch(
+    applicationId,
+    applicationStatusPatch(application, "shortlisted", now),
+  );
 }
 
 async function resolveEmailRecipients(
@@ -420,7 +424,10 @@ export const sendOffer = mutation({
     });
     await ctx.db.patch(bookingId, { currentOfferId: offerId });
     assertApplicationTransition(application.status, "offered");
-    await ctx.db.patch(application._id, { status: "offered", updatedAt: now });
+    await ctx.db.patch(
+      application._id,
+      applicationStatusPatch(application, "offered", now),
+    );
     await ctx.scheduler.runAt(expiresAt, internal.bookings.expireOffer, {
       bookingId,
       revision: 1,
@@ -696,10 +703,10 @@ export const cancel = mutation({
         const applicationStatus =
           side === "organizer" ? "declined" : "withdrawn";
         assertApplicationTransition(application.status, applicationStatus);
-        await ctx.db.patch(application._id, {
-          status: applicationStatus,
-          updatedAt: now,
-        });
+        await ctx.db.patch(
+          application._id,
+          applicationStatusPatch(application, applicationStatus, now),
+        );
       }
       await recomputeReviewSummary(
         ctx,
@@ -911,10 +918,10 @@ export const adminForceState = internalMutation({
       if (!application) throw new Error("Application not found");
       if (application.status === "booked") {
         assertApplicationTransition(application.status, "declined");
-        await ctx.db.patch(application._id, {
-          status: "declined",
-          updatedAt: now,
-        });
+        await ctx.db.patch(
+          application._id,
+          applicationStatusPatch(application, "declined", now),
+        );
       }
     }
     await completeOpportunityIfReady(ctx, booking.opportunityId);

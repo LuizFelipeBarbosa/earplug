@@ -6,12 +6,29 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_dash.dart';
 import 'package:earplug/screens/door_mode.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_rows.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+
+const _readiness = Key('band-readiness');
+
+Future<void> _tapAfterScroll(WidgetTester tester, Finder finder) async {
+  await tester.scrollUntilVisible(
+    finder,
+    140,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.ensureVisible(finder);
+  await tester.pump();
+  await tester.tap(finder);
+  await tester.pump();
+}
+
+Finder _rowAction(Key row) =>
+    find.descendant(of: find.byKey(row), matching: find.byType(TextButton));
 
 void main() {
   testWidgets('dashboard derives remaining tasks from current band data', (
@@ -20,51 +37,51 @@ void main() {
     await pumpApp(tester, home: const Scaffold(body: BandDashScreen()));
 
     expect(find.text('MANAGING · ADMIN'), findsOne);
+    expect(find.byKey(const Key('profile-complete-badge')), findsOne);
     expect(find.text('DISCOVER'), findsOne);
     expect(find.text('FANS'), findsOne);
-    expect(find.byType(VoltStrip), findsOne);
+    expect(find.textContaining('NEXT UP · '), findsOne);
     expect(find.text('DOOR MODE'), findsOne);
     expect(find.byKey(const Key('band-next-public-gig')), findsOne);
-    expect(find.text('PUBLISH GIG'), findsOne);
+    expect(find.text('PUBLISH A GIG'), findsOne);
     expect(find.text('ADD MEDIA'), findsOne);
-    expect(find.text('ANALYTICS'), findsOne);
+    expect(find.text('INSIGHTS'), findsOne);
     expect(find.byKey(const Key('band-command-edit-profile')), findsOne);
+
     await tester.scrollUntilVisible(
-      find.text('PREVIEW PUBLIC PROFILE →'),
+      find.byKey(_readiness),
       180,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('PREVIEW PUBLIC PROFILE →'), findsOne);
-    await tester.scrollUntilVisible(
-      find.text('SETUP CHECKLIST'),
-      250,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('SETUP CHECKLIST'), findsOne);
-    expect(find.text('3 of 7 complete'), findsOne);
-    final setup = find.byKey(const Key('band-setup-checklist'));
-    for (final label in [
-      'Complete profile',
-      'Add a profile image',
-      'Add music or a clip',
-      'Add social links',
-      'Create first gig',
-      'Invite band members',
-      'Preview public profile',
-    ]) {
-      expect(find.descendant(of: setup, matching: find.text(label)), findsOne);
+    expect(find.text('PREVIEW PUBLIC PROFILE'), findsOne);
+    expect(find.text('READINESS'), findsOne);
+    expect(find.text('5 OF 9'), findsOne);
+    for (var index = 0; index < 9; index++) {
+      expect(find.byKey(ValueKey('readiness-segment-$index')), findsOne);
     }
-    expect(
-      find.descendant(of: setup, matching: find.byIcon(Icons.check_circle)),
-      findsNWidgets(3),
+
+    // The phone list hides the completed items until "show all" is tapped.
+    expect(find.byKey(const ValueKey('band-discovery-profile')), findsNothing);
+    await _tapAfterScroll(
+      tester,
+      find.byKey(const Key('band-readiness-toggle')),
     );
-    expect(
-      find.descendant(
-        of: setup,
-        matching: find.byIcon(Icons.radio_button_unchecked),
-      ),
-      findsNWidgets(4),
-    );
+    for (final row in [
+      'band-discovery-profile',
+      'band-discovery-image',
+      'band-discovery-clip',
+      'band-discovery-show',
+      'band-discovery-listing',
+      'band-discovery-revision',
+      'band-setup-preview',
+      'band-setup-social',
+      'band-setup-members',
+    ]) {
+      expect(find.byKey(ValueKey(row)), findsOne);
+    }
+    expect(find.text('Complete profile'), findsOne);
+    expect(find.text('Add social links'), findsOne);
+    expect(find.text('Invite band members'), findsOne);
   });
 
   testWidgets('role copy and interactive checklist rows meet size floors', (
@@ -76,13 +93,22 @@ void main() {
     expect(roleText.style?.fontSize, greaterThanOrEqualTo(11));
 
     final scrollable = find.byType(Scrollable).first;
-    final discoveryRow = find.byKey(const ValueKey('band-discovery-profile'));
-    await tester.scrollUntilVisible(discoveryRow, 120, scrollable: scrollable);
-    expect(tester.getSize(discoveryRow).height, greaterThanOrEqualTo(48));
+    await _tapAfterScroll(
+      tester,
+      find.byKey(const Key('band-readiness-toggle')),
+    );
 
-    final setupRow = find.byKey(const ValueKey('band-setup-profile'));
-    await tester.scrollUntilVisible(setupRow, 120, scrollable: scrollable);
-    expect(tester.getSize(setupRow).height, greaterThanOrEqualTo(48));
+    for (final row in [
+      const ValueKey('band-discovery-profile'),
+      const ValueKey('band-setup-members'),
+    ]) {
+      await tester.scrollUntilVisible(
+        find.byKey(row),
+        120,
+        scrollable: scrollable,
+      );
+      expect(tester.getSize(find.byKey(row)).height, greaterThanOrEqualTo(44));
+    }
   });
 
   testWidgets('dashboard profile controls use explicit admin navigation', (
@@ -105,12 +131,13 @@ void main() {
 
     harness.app.returnToBandDashboard();
     await tester.pump();
+    final preview = find.byKey(const Key('band-public-profile'));
     await tester.scrollUntilVisible(
-      find.text('PREVIEW PUBLIC PROFILE →'),
+      preview,
       180,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('PREVIEW PUBLIC PROFILE →'));
+    await tester.tap(preview);
     await tester.pump();
     expect(harness.app.current.screen, Screen.bandPreview);
     expect(harness.app.current.param, 'b1');
@@ -159,8 +186,8 @@ void main() {
   }
 
   for (final (cardPaymentsStatus, caption) in [
-    (null, 'Enable ticket sales'),
-    ('active', 'Enabled'),
+    (null, 'ENABLE TICKET SALES'),
+    ('active', 'ENABLED'),
   ]) {
     testWidgets(
       'enabled payouts with card payments $cardPaymentsStatus show $caption',
@@ -200,34 +227,34 @@ void main() {
     );
   }
 
-  testWidgets('discovery readiness is separate from the setup checklist', (
+  testWidgets('readiness merges discovery steps and the setup checklist', (
     tester,
   ) async {
     await pumpApp(tester, home: const Scaffold(body: BandDashScreen()));
 
-    final card = find.byKey(const Key('discovery-readiness-card'));
     await tester.scrollUntilVisible(
-      card,
+      find.byKey(_readiness),
       250,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(card, findsOne);
-    expect(find.text('5 of 6 complete'), findsOne);
-    for (var index = 0; index < 6; index++) {
-      expect(find.byKey(ValueKey('discovery-segment-$index')), findsOne);
-    }
-    expect(find.text('Assign a valid profile image'), findsOne);
-    expect(find.text('Upload a video clip'), findsOne);
+    expect(find.byKey(_readiness), findsOne);
+    expect(find.text('READINESS'), findsOne);
+    expect(find.text('5 OF 9'), findsOne);
     expect(
       find.textContaining('NEXT ELIGIBLE · RIPTIDE RELEASE SHOW'),
       findsOne,
     );
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('band-setup-checklist')),
-      180,
-      scrollable: find.byType(Scrollable).first,
+
+    await _tapAfterScroll(
+      tester,
+      find.byKey(const Key('band-readiness-toggle')),
     );
-    expect(find.text('SETUP CHECKLIST'), findsOne);
+    expect(find.text('Profile image'), findsOne);
+    expect(find.text('Video clip'), findsOne);
+    expect(find.text('Public profile previewed'), findsOne);
+    // One merged list: the old separate checklist section is gone.
+    expect(find.text('SETUP CHECKLIST'), findsNothing);
+    expect(find.byType(EpReadinessBar), findsOne);
   });
 
   testWidgets('discovery readiness requeries at boost window boundaries', (
@@ -243,9 +270,8 @@ void main() {
       home: const Scaffold(body: BandDashScreen()),
       now: () => now,
     );
-    final card = find.byKey(const Key('discovery-readiness-card'));
     await tester.scrollUntilVisible(
-      card,
+      find.byKey(_readiness),
       250,
       scrollable: find.byType(Scrollable).first,
     );
@@ -264,7 +290,7 @@ void main() {
     expect(repository.readinessCalls, greaterThanOrEqualTo(3));
   });
 
-  testWidgets('profile-complete badge disappears after the bio is cleared', (
+  testWidgets('profile-complete note disappears after the bio is cleared', (
     tester,
   ) async {
     final harness = await pumpApp(
@@ -292,7 +318,7 @@ void main() {
     expect(find.byKey(const Key('profile-complete-badge')), findsNothing);
   });
 
-  testWidgets('all seven setup actions route to the intended task', (
+  testWidgets('every readiness action routes to the intended task', (
     tester,
   ) async {
     final auth = FakeAuthService();
@@ -303,13 +329,24 @@ void main() {
         ..returns(
           'bandSetupStatus',
           const BandSetupStatus(
-            profileComplete: true,
+            profileComplete: false,
             profileImageAdded: false,
-            musicAdded: true,
+            musicAdded: false,
             socialLinksAdded: false,
-            firstGigCreated: true,
+            firstGigCreated: false,
             membersInvited: false,
-            publicProfilePreviewed: true,
+            publicProfilePreviewed: false,
+          ),
+        )
+        ..returns(
+          'bandDiscoveryReadiness',
+          const BandDiscoveryReadiness(
+            profileComplete: false,
+            profileImageReady: false,
+            clipReady: false,
+            publishedShowReady: false,
+            venuePosterReady: false,
+            publishedRevisionCurrent: false,
           ),
         ),
       home: const Scaffold(body: BandDashScreen()),
@@ -320,29 +357,21 @@ void main() {
       Screen screen, {
       String? param,
     }) async {
-      final action = find.byKey(ValueKey('band-setup-$key'));
-      await tester.scrollUntilVisible(
-        action,
-        140,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.ensureVisible(action);
-      await tester.pump();
-      await tester.tap(action);
-      await tester.pump();
+      await _tapAfterScroll(tester, _rowAction(ValueKey('band-$key')));
       expect(harness.app.current.screen, screen);
       expect(harness.app.current.param, param);
       harness.app.returnToBandDashboard();
       await tester.pump();
     }
 
-    await expectAction('profile', Screen.bandEdit, param: 'required');
-    await expectAction('image', Screen.bandMedia, param: 'b1');
-    await expectAction('music', Screen.bandMedia, param: 'b1');
-    await expectAction('social', Screen.bandEdit, param: 'links');
-    await expectAction('gig', Screen.gigCreate);
-    await expectAction('members', Screen.bandEdit, param: 'members');
-    await expectAction('preview', Screen.bandPreview, param: 'b1');
+    await expectAction('discovery-profile', Screen.bandEdit, param: 'required');
+    await expectAction('discovery-image', Screen.bandMedia, param: 'b1');
+    await expectAction('discovery-clip', Screen.bandMedia, param: 'b1');
+    // No published show yet, so the listing steps start a new gig.
+    await expectAction('discovery-show', Screen.gigCreate);
+    await expectAction('setup-preview', Screen.bandPreview, param: 'b1');
+    await expectAction('setup-social', Screen.bandEdit, param: 'links');
+    await expectAction('setup-members', Screen.bandEdit, param: 'members');
   });
 
   testWidgets('members can use the dashboard without admin setup controls', (
@@ -358,12 +387,12 @@ void main() {
     );
 
     expect(find.text('MANAGING · MEMBER'), findsOne);
-    expect(find.text('VIEW PUBLIC PROFILE →'), findsOne);
+    expect(find.text('VIEW PUBLIC PROFILE'), findsOne);
     expect(find.byKey(const Key('band-public-profile')), findsOne);
     expect(find.byKey(const Key('band-command-edit-profile')), findsNothing);
     expect(find.text('DOOR MODE'), findsNothing);
-    expect(find.text('SETUP CHECKLIST'), findsNothing);
-    expect(find.text('PUBLISH GIG'), findsNothing);
+    expect(find.byKey(_readiness), findsNothing);
+    expect(find.text('PUBLISH A GIG'), findsNothing);
     expect(repository.setupStatusCalls, 0);
 
     await tester.tap(find.byKey(const Key('band-public-profile')));
@@ -387,7 +416,7 @@ void main() {
     await tester.tap(find.text('FOGHORN DIET'));
     await tester.pumpAndSettle();
 
-    expect(find.text('YOUR ACCOUNTS'), findsOne);
+    expect(find.text('SWITCH IDENTITY'), findsOne);
     expect(find.text('Personal account'), findsOne);
     expect(find.text('Manage band · admin'), findsOne);
     expect(find.text('START ANOTHER BAND'), findsOne);
@@ -413,9 +442,9 @@ void main() {
     await tester.tap(find.text('FOGHORN DIET'));
     await tester.pumpAndSettle();
 
-    expect(find.text('YOUR ACCOUNTS'), findsOne);
-    expect(find.text('PIGEON COURT'), findsOne);
-    await tester.tap(find.text('PIGEON COURT'));
+    expect(find.text('SWITCH IDENTITY'), findsOne);
+    expect(find.text('Pigeon Court'), findsOne);
+    await tester.tap(find.text('Pigeon Court'));
     await tester.pumpAndSettle();
 
     expect(harness.app.bandId, 'b2');

@@ -10,6 +10,7 @@ import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/geocoding_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:earplug/services/media_upload_service.dart';
+import 'package:earplug/services/recent_searches.dart';
 import 'package:earplug/services/stadia_map_style_repository.dart';
 import 'package:earplug/theme.dart';
 import 'package:flutter/material.dart';
@@ -57,8 +58,10 @@ Future<AppHarness> pumpApp(
   FakeAuthService? auth,
   EarplugRepository? repository,
   MediaUploadService? uploader,
+  RecentSearchesStore? recentSearchesStore,
   LocationService? locationService,
   GeocodingService? geocoding,
+  ReverseGeocodingService? reverseGeocoding,
   DateTime Function()? now,
   String? initialOpportunityRef,
   FutureOr<void> Function(AppState app)? beforePump,
@@ -72,6 +75,8 @@ Future<AppHarness> pumpApp(
   final resolvedAuth = auth ?? FakeAuthService();
   final resolvedRepository = repository ?? DemoRepository(auth: resolvedAuth);
   final resolvedGeocoding = geocoding ?? FakeGeocodingService();
+  final resolvedRecentSearchesStore =
+      recentSearchesStore ?? MemoryRecentSearchesStore();
   final resolvedUploader =
       uploader ??
       MediaUploadService(
@@ -82,7 +87,9 @@ Future<AppHarness> pumpApp(
     repository: resolvedRepository,
     auth: resolvedAuth,
     locationService: locationService,
+    reverseGeocoding: reverseGeocoding,
     mediaUploadService: resolvedUploader,
+    recentSearchesStore: resolvedRecentSearchesStore,
     now: now,
     initialOpportunityRef: initialOpportunityRef,
   );

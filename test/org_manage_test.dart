@@ -32,42 +32,15 @@ void main() {
     await enterOrganizer(tester, harness, 'org1');
 
     expect(find.byKey(const Key('org-dash-verification')), findsOneWidget);
-    final stats = tester
-        .widgetList<EpStatCard>(find.byType(EpStatCard))
-        .toList();
-    expect(
-      stats,
-      contains(
-        isA<EpStatCard>()
-            .having(
-              (card) => card.key,
-              'key',
-              const Key('org-dash-venue-requests'),
-            )
-            .having((card) => card.label, 'label', 'VENUES')
-            .having((card) => card.value, 'value', '1')
-            .having((card) => card.caption, 'caption', '1 venue request'),
-      ),
+    _expectStat(
+      tester,
+      'org-dash-venue-requests',
+      '1',
+      'VENUES · 1 VENUE REQUEST',
     );
-    expect(find.text('1 venue request'), findsOneWidget);
-    expect(find.text('1 venue requests'), findsNothing);
-    expect(
-      stats,
-      contains(
-        isA<EpStatCard>()
-            .having((card) => card.label, 'label', 'MEMBERS')
-            .having((card) => card.value, 'value', '2'),
-      ),
-    );
-    expect(
-      stats,
-      contains(
-        isA<EpStatCard>()
-            .having((card) => card.label, 'label', 'OPPORTUNITIES')
-            .having((card) => card.value, 'value', '2')
-            .having((card) => card.caption, 'caption', 'open right now'),
-      ),
-    );
+    expect(find.textContaining('1 VENUE REQUESTS'), findsNothing);
+    _expectStat(tester, 'org-dash-stat-members', '2', 'MEMBERS');
+    _expectStat(tester, 'org-dash-stat-opportunities', '2', 'OPEN SLOTS');
 
     await tester.tap(find.byKey(const Key('org-dash-stat-opportunities')));
     await tester.pumpAndSettle();
@@ -90,9 +63,8 @@ void main() {
     );
     await enterOrganizer(tester, harness, 'org3');
 
-    final stats = tester.widgetList<EpStatCard>(find.byType(EpStatCard));
-    expect(stats.where((card) => card.label == 'VENUES'), isEmpty);
-    expect(stats.where((card) => card.label == 'MEMBERS'), hasLength(1));
+    expect(find.textContaining('VENUES'), findsNothing);
+    _expectStat(tester, 'org-dash-stat-members', '1', 'MEMBERS');
     expect(find.byKey(const Key('org-dash-venue-requests')), findsNothing);
     expect(find.byKey(const Key('org-dash-command-venues')), findsNothing);
     expect(find.byKey(const Key('org-dash-locations')), findsNothing);
@@ -117,10 +89,12 @@ void main() {
       );
       await enterOrganizer(tester, harness, 'org1');
 
-      final card = tester.widget<EpStatCard>(
-        find.byKey(const Key('org-dash-venue-requests')),
+      _expectStat(
+        tester,
+        'org-dash-venue-requests',
+        '1',
+        'VENUES · MANAGED PROFILES',
       );
-      expect(card.caption, 'managed profiles');
       expect(find.byKey(const Key('org-dash-command-venues')), findsOneWidget);
     },
   );
@@ -171,41 +145,42 @@ void main() {
     });
   }
 
-  testWidgets('finance command opens for owners and is hidden for door members', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    final repository = DemoRepository(auth: auth);
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      beforePump: (app) => app.switchToOrganization('org1'),
-      home: const Scaffold(body: OrgDashScreen()),
-    );
-    await enterOrganizer(tester, harness, 'org1');
+  testWidgets(
+    'finance command opens for owners and is hidden for door members',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = DemoRepository(auth: auth);
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        beforePump: (app) => app.switchToOrganization('org1'),
+        home: const Scaffold(body: OrgDashScreen()),
+      );
+      await enterOrganizer(tester, harness, 'org1');
 
-    final command = find.byKey(const Key('org-dash-command-finance'));
-    await tester.scrollUntilVisible(command, 250);
-    expect(command, findsOneWidget);
-    expect(
-      find.descendant(of: command, matching: find.text('FINANCE')),
-      findsOneWidget,
-    );
-    await tester.tap(command);
-    await tester.pumpAndSettle();
-    expect(harness.app.current.screen, Screen.orgFinance);
+      final command = find.byKey(const Key('org-dash-command-finance'));
+      await tester.scrollUntilVisible(command, 250);
+      expect(command, findsOneWidget);
+      expect(
+        find.descendant(of: command, matching: find.text('FINANCE')),
+        findsOneWidget,
+      );
+      await tester.tap(command);
+      await tester.pumpAndSettle();
+      expect(harness.app.current.screen, Screen.orgFinance);
 
-    harness.app.myOrganizations = [
-      OrganizationMembership(
-        organization: DemoData.organizations['org1']!,
-        role: OrganizationRole.door,
-      ),
-    ];
-    await enterOrganizer(tester, harness, 'org1');
-    expect(command, findsNothing);
-  });
+      harness.app.myOrganizations = [
+        OrganizationMembership(
+          organization: DemoData.organizations['org1']!,
+          role: OrganizationRole.door,
+        ),
+      ];
+      await enterOrganizer(tester, harness, 'org1');
+      expect(command, findsNothing);
+    },
+  );
 
   testWidgets('venue edit page saves the public profile', (tester) async {
     final auth = FakeAuthService();
@@ -233,8 +208,7 @@ void main() {
       findsWidgets,
     );
 
-    await tester.tap(venueCard);
-    await tester.pumpAndSettle();
+    await _openVenue(tester, venueCard);
     final demoVenue = DemoData.venues['v1']!;
     expect(find.text('The Foghorn Club'), findsWidgets);
     expect(
@@ -313,8 +287,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('org-dash-command-venues')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('org-venue-v1')));
-    await tester.pumpAndSettle();
+    await _openVenue(tester, find.byKey(const ValueKey('org-venue-v1')));
     final pageScrollable = find
         .descendant(
           of: find.byType(ListView).first,
@@ -505,6 +478,24 @@ void main() {
     expect(harness.app.organizationId, 'org1');
     expect(harness.app.currentOrganization, isNotNull);
   });
+}
+
+/// The stat cells render their value as display type and their label as a mono
+/// eyebrow, so both read back uppercased.
+void _expectStat(WidgetTester tester, String key, String value, String label) {
+  final stat = find.byKey(Key(key));
+  expect(stat, findsOneWidget);
+  expect(find.descendant(of: stat, matching: find.text(value)), findsOneWidget);
+  expect(find.descendant(of: stat, matching: find.text(label)), findsOneWidget);
+}
+
+/// The venue card centre sits on its area map, which swallows taps; open the
+/// editor from the venue name instead.
+Future<void> _openVenue(WidgetTester tester, Finder venueCard) async {
+  await tester.tap(
+    find.descendant(of: venueCard, matching: find.byType(Text)).first,
+  );
+  await tester.pumpAndSettle();
 }
 
 class _LastOwnerGuardRepository extends DemoRepository {

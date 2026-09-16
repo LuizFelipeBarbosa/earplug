@@ -6,6 +6,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/venue_location_editor.dart';
 
@@ -309,9 +310,8 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
               ),
             ],
           ),
-          Text(
-            '${venue.approx.label}${venue.verified ? ' · VERIFIED' : ''}',
-            style: Theme.of(context).textTheme.epCaption,
+          EpEyebrow(
+            '${venue.approx.label}${venue.verified ? ' · Verified' : ''}',
           ),
           FormSection(
             title: 'Public',

@@ -246,10 +246,14 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    ApproxAreaMap(
-                      centroid: venue.approx.centroid,
-                      label: venue.approx.label,
-                      height: 130,
+                    // The preview map is decorative here; the card itself
+                    // is the tap target.
+                    IgnorePointer(
+                      child: ApproxAreaMap(
+                        centroid: venue.approx.centroid,
+                        label: venue.approx.label,
+                        height: 130,
+                      ),
                     ),
                   ],
                 ),

@@ -64,7 +64,7 @@ class BandIdentityHeader extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(EpLayout.cardRadius),
           border: Border.all(color: context.epColors.border),
         ),
         child: Stack(
@@ -76,13 +76,16 @@ class BandIdentityHeader extends StatelessWidget {
               fit: BoxFit.cover,
               fallback: ColoredBox(color: color),
             ),
-            const DecoratedBox(
-              key: ValueKey('band-profile-banner-scrim'),
+            DecoratedBox(
+              key: const ValueKey('band-profile-banner-scrim'),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Color(0xA8000000), Color(0xBD000000)],
+                  colors: [
+                    Colors.black.withValues(alpha: .66),
+                    Colors.black.withValues(alpha: .74),
+                  ],
                 ),
               ),
             ),
@@ -147,7 +150,7 @@ class BandIdentityHeader extends StatelessWidget {
                 excludeSemantics: true,
                 child: Material(
                   color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(13),
+                  borderRadius: BorderRadius.circular(EpLayout.cardRadius),
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
                     key: const ValueKey('band-profile-image-control'),
@@ -168,10 +171,14 @@ class BandIdentityHeader extends StatelessWidget {
                                 color: Colors.white.withValues(alpha: .86),
                                 width: 2,
                               ),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(
+                                EpLayout.cardRadius,
+                              ),
                             ),
                             child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(
+                                EpLayout.cardRadius,
+                              ),
                               child: Stack(
                                 fit: StackFit.expand,
                                 children: [
@@ -350,8 +357,8 @@ class _EditLabel extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: .78),
-        border: Border.all(color: Colors.white24),
-        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: .24)),
+        borderRadius: BorderRadius.circular(EpLayout.pillRadius),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

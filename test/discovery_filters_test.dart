@@ -6,9 +6,11 @@ import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/services/geocoding_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'support/stub_repository.dart';
 
@@ -28,6 +30,49 @@ void main() {
         expect(app.feed.map((gig) => gig.id), ['g1']);
       },
     );
+
+    test('homeFeed ignores genres while feed applies them', () async {
+      final app = await _app();
+
+      app.toggleGenre('hardcore');
+      app.toggleGenre('surf');
+
+      expect(app.feed.map((gig) => gig.id), ['g2', 'g1', 'g4']);
+      expect(app.homeFeed.length, app.allGigs.length);
+    });
+
+    test('homeFeed keeps its instance across genre changes only', () async {
+      final app = await _app();
+
+      final before = app.homeFeed;
+      app.toggleGenre('hardcore');
+      expect(app.homeFeed, same(before));
+
+      app.toggleFree();
+      expect(app.homeFeed, isNot(same(before)));
+    });
+
+    test('homeFeed applies date, price and distance filters', () async {
+      final app = await _app();
+      final selected = DemoData.gigs[1].startsAt;
+
+      app.setDateRange(DateTimeRange(start: selected, end: selected));
+      expect(app.homeFeed.map((gig) => gig.id), ['g2']);
+
+      app.clearDateFilter();
+      app.setPriceFilter(PriceFilter.free);
+      expect(app.homeFeed.every((gig) => gig.free), isTrue);
+
+      app.setPriceFilter(PriceFilter.any);
+      app.useCurrentPosition(DemoData.venues['v1']!.point);
+      app.setDistanceFilter(1);
+      expect(
+        app.homeFeed.every(
+          (gig) => app.distanceMilesFromCurrent(app.venue(gig.venueId))! <= 1,
+        ),
+        isTrue,
+      );
+    });
 
     test('custom date ranges include the whole selected end date', () async {
       final app = await _app();
@@ -134,6 +179,194 @@ void main() {
         app.setCity('oak');
         expect(app.discoveryLocation, DiscoveryLocation.oak);
         expect(app.fMaxDistanceMiles, isNull);
+      },
+    );
+
+    test('Use my location turns on with a successful foreground fix', () async {
+      final venue = DemoData.venues['v1']!;
+      final app = await _app(
+        locationService: _FakeLocationService(
+          LocationSuccess(
+            UserLocation(
+              latitude: venue.point.latitude,
+              longitude: venue.point.longitude,
+              accuracyMeters: 5,
+            ),
+          ),
+        ),
+      );
+
+      expect(await app.setUseCurrentLocation(true), isTrue);
+      expect(app.discoveryLocation, DiscoveryLocation.current);
+      expect(app.usingCurrentLocation, isTrue);
+    });
+
+    test('reverse geocoding updates the current location label', () async {
+      final venue = DemoData.venues['v1']!;
+      final app = await _app(
+        locationService: _FakeLocationService(
+          LocationSuccess(
+            UserLocation(
+              latitude: venue.point.latitude,
+              longitude: venue.point.longitude,
+              accuracyMeters: 5,
+            ),
+          ),
+        ),
+        reverseGeocoding: const _FakeReverseGeocoding(
+          PlaceName(neighbourhood: 'Temescal', locality: 'Oakland'),
+        ),
+      );
+
+      await app.setUseCurrentLocation(true);
+      await pumpEventQueue();
+
+      expect(app.locationLabel, 'TEMESCAL, OAKLAND');
+    });
+
+    test('stale reverse geocoding does not change the scene label', () async {
+      final venue = DemoData.venues['v1']!;
+      final reverse = _DeferredReverseGeocoding();
+      final app = await _app(
+        locationService: _FakeLocationService(
+          LocationSuccess(
+            UserLocation(
+              latitude: venue.point.latitude,
+              longitude: venue.point.longitude,
+              accuracyMeters: 5,
+            ),
+          ),
+        ),
+        reverseGeocoding: reverse,
+      );
+
+      await app.setUseCurrentLocation(true);
+      await app.setUseCurrentLocation(false);
+      reverse.complete(
+        const PlaceName(neighbourhood: 'Mission', locality: 'SF'),
+      );
+      await pumpEventQueue();
+
+      expect(app.locationLabel, 'MISSION, SF');
+    });
+
+    test('current location falls back without reverse geocoding', () async {
+      final venue = DemoData.venues['v1']!;
+      final app = await _app(
+        locationService: _FakeLocationService(
+          LocationSuccess(
+            UserLocation(
+              latitude: venue.point.latitude,
+              longitude: venue.point.longitude,
+              accuracyMeters: 5,
+            ),
+          ),
+        ),
+      );
+
+      await app.setUseCurrentLocation(true);
+
+      expect(app.locationLabel, 'CURRENT LOCATION');
+    });
+
+    test('Use my location turns off to the saved home scene', () async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final app = AppState.demo(
+        repository: DemoRepository(auth: auth),
+        auth: auth,
+        locationService: _FakeLocationService(
+          const LocationSuccess(
+            UserLocation(
+              latitude: 37.7524,
+              longitude: -122.4180,
+              accuracyMeters: 5,
+            ),
+          ),
+        ),
+      );
+      addTearDown(app.dispose);
+      await pumpEventQueue();
+
+      expect(
+        await app.saveFanProfile(
+          name: 'Fan',
+          bio: null,
+          homeLocation: FanCity.berkeley,
+          genres: const [],
+          locationPersonalizationEnabled: true,
+          followedBandUpdatesEnabled: true,
+        ),
+        isTrue,
+      );
+
+      await app.setUseCurrentLocation(true);
+      await app.setUseCurrentLocation(false);
+
+      expect(app.discoveryLocation, DiscoveryLocation.home);
+      expect(app.locationLabel, 'BERKELEY SCENE');
+    });
+
+    test('Use my location turns off to Mission without a profile', () async {
+      final app = await _app(
+        locationService: _FakeLocationService(
+          const LocationSuccess(
+            UserLocation(
+              latitude: 37.7524,
+              longitude: -122.4180,
+              accuracyMeters: 5,
+            ),
+          ),
+        ),
+      );
+
+      await app.setUseCurrentLocation(true);
+      await app.setUseCurrentLocation(false);
+
+      expect(app.discoveryLocation, DiscoveryLocation.sf);
+    });
+
+    test(
+      'turning Use my location off cancels a pending GPS response',
+      () async {
+        final location = _DeferredLocationService();
+        final app = await _app(locationService: location);
+
+        final pendingSelection = app.setUseCurrentLocation(true);
+        expect(app.locating, isTrue);
+        expect(await app.setUseCurrentLocation(false), isTrue);
+        expect(app.discoveryLocation, DiscoveryLocation.sf);
+        expect(app.locating, isFalse);
+
+        location.complete(
+          const UserLocation(
+            latitude: 37.7524,
+            longitude: -122.4180,
+            accuracyMeters: 5,
+          ),
+        );
+
+        expect(await pendingSelection, isFalse);
+        expect(app.discoveryLocation, DiscoveryLocation.sf);
+        expect(app.currentPosition, isNull);
+      },
+    );
+
+    test(
+      'dismissLocationFailure clears the current location failure',
+      () async {
+        final app = await _app(
+          locationService: _FakeLocationService(
+            const LocationFailure(LocationFailureReason.permissionDenied),
+          ),
+        );
+
+        expect(await app.setUseCurrentLocation(true), isFalse);
+        expect(app.locationFailure, isNotNull);
+
+        app.dismissLocationFailure();
+
+        expect(app.locationFailure, isNull);
       },
     );
 
@@ -365,6 +598,7 @@ void _expectLabelsFollowDistanceOrder(AppState app) {
 
 Future<AppState> _app({
   LocationService? locationService,
+  ReverseGeocodingService? reverseGeocoding,
   DateTime? nextFeedStartsAt,
   List<Gig>? feedGigs,
 }) async {
@@ -385,6 +619,7 @@ Future<AppState> _app({
           )),
     auth: auth,
     locationService: locationService,
+    reverseGeocoding: reverseGeocoding,
   );
   addTearDown(app.dispose);
   await pumpEventQueue();
@@ -421,4 +656,22 @@ class _DeferredLocationService implements LocationService {
 
   @override
   Future<bool> openLocationSettings() async => true;
+}
+
+class _FakeReverseGeocoding implements ReverseGeocodingService {
+  const _FakeReverseGeocoding(this.place);
+
+  final PlaceName place;
+
+  @override
+  Future<PlaceName?> reverseGeocode(LatLng point) async => place;
+}
+
+class _DeferredReverseGeocoding implements ReverseGeocodingService {
+  final _result = Completer<PlaceName?>();
+
+  void complete(PlaceName place) => _result.complete(place);
+
+  @override
+  Future<PlaceName?> reverseGeocode(LatLng point) => _result.future;
 }

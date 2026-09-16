@@ -23,8 +23,9 @@ must always be selected together; never mix values between the two pairs.
 | Production | `decisive-iguana-759` | production (`pk_live_…`) | `config/prod.json` |
 
 Both clients expose Email Code and Google sign-in. Apple is disabled.
-Development clients show a `DEV` ribbon. The canonical environment rules and
-credential locations are documented in `docs/environments.md`.
+Development clients are distinguished only by their config (`config/dev.json`),
+with no visual environment indicator in the UI. The canonical environment rules
+and credential locations are documented in `docs/environments.md`.
 
 ### Feature branches and pull requests
 
@@ -33,7 +34,9 @@ credential locations are documented in `docs/environments.md`.
   the client from `config/dev.json` and connects it to the shared development
   Convex and Clerk instances.
 - Opening or updating a pull request creates or refreshes its Netlify deploy
-  preview. Verify the `DEV` ribbon and affected behavior there before merging.
+  preview. Before merging, verify that the preview points at the development
+  Convex deployment by checking browser network requests for a URL containing
+  `brilliant-cardinal-773`, and verify the affected behavior there.
 - Preview builds do not deploy Convex development code. If a branch changes
   `convex/`, deploy it during development with `npx convex dev`, then run
   `npm run check:release-contract -- dev`.

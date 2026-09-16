@@ -193,7 +193,9 @@ export const dashboard = query({
           (access.organization.photoStorageIds?.length ?? 0) >= 1,
         teamInvited: members.length >= 2,
       },
-      venues: venues.map(toVenuePayload),
+      venues: await Promise.all(
+        venues.map((venue) => toVenuePayload(ctx, venue)),
+      ),
       pendingVenueConsents: pendingConsents.length,
       memberCount: Math.min(members.length, 100),
       privateDetails:

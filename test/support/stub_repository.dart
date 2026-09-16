@@ -7,7 +7,8 @@ import 'package:earplug/models.dart';
 import 'package:flutter/foundation.dart' show protected;
 
 /// A configurable [DemoRepository] using the test harness's shared authentication.
-/// Unconfigured methods use the real demo behavior.
+/// Unconfigured methods use the real demo behavior, except [suggestedPeople],
+/// which defaults to an empty result.
 ///
 /// Method keys are plain strings checked against [futureMethods] and
 /// [streamMethods]. Typos such as `stub.fail('myBnds')` throw [ArgumentError].
@@ -83,6 +84,7 @@ class StubRepository extends DemoRepository {
     'listBands',
     'manageGigs',
     'manageOpportunities',
+    'markApplicationViewed',
     'me',
     'mediaFor',
     'moveMediaWithinKind',
@@ -120,15 +122,16 @@ class StubRepository extends DemoRepository {
     'saveOrganizationApplicationDraft',
     'searchBands',
     'sendOffer',
+    'setApplicationHostNote',
     'setBandAvatar',
     'setBandBanner',
-    'setProfileTutorialCompleted',
     'setVenueAddressDisclosure',
     'startBandOnboarding',
     'startDisputeReview',
     'startInstallmentCheckout',
     'startOrganizationOnboarding',
     'startTicketCheckout',
+    'suggestedPeople',
     'ticket',
     'ticketOrderStatus',
     'ticketSalesForGig',
@@ -155,6 +158,7 @@ class StubRepository extends DemoRepository {
     'myOrganizations',
     'publicGig',
     'upcomingGigsForBand',
+    'watchMyApplications',
     'watchVenues',
   };
 
@@ -491,6 +495,9 @@ class StubRepository extends DemoRepository {
   Future<List<Opportunity>> manageOpportunities(String organizationId) =>
       intercept('manageOpportunities', () => super.manageOpportunities(organizationId));
   @override
+  Future<DateTime?> markApplicationViewed(String applicationId) =>
+      intercept('markApplicationViewed', () => super.markApplicationViewed(applicationId));
+  @override
   Future<UserProfile?> me() => intercept('me', super.me);
   @override
   Future<List<BandMedia>> mediaFor(String bandId) =>
@@ -754,14 +761,17 @@ class StubRepository extends DemoRepository {
     ),
   );
   @override
+  Future<void> setApplicationHostNote({required String applicationId, required String note}) =>
+      intercept(
+        'setApplicationHostNote',
+        () => super.setApplicationHostNote(applicationId: applicationId, note: note),
+      );
+  @override
   Future<void> setBandAvatar({required String bandId, required String mediaId}) =>
       intercept('setBandAvatar', () => super.setBandAvatar(bandId: bandId, mediaId: mediaId));
   @override
   Future<void> setBandBanner({required String bandId, required String mediaId}) =>
       intercept('setBandBanner', () => super.setBandBanner(bandId: bandId, mediaId: mediaId));
-  @override
-  Future<void> setProfileTutorialCompleted(bool completed) =>
-      intercept('setProfileTutorialCompleted', () => super.setProfileTutorialCompleted(completed));
   @override
   Future<void> setVenueAddressDisclosure({
     required String venueId,
@@ -787,6 +797,11 @@ class StubRepository extends DemoRepository {
   @override
   Future<({String url, String sessionId})> startTicketCheckout(String orderId) =>
       intercept('startTicketCheckout', () => super.startTicketCheckout(orderId));
+  @override
+  Future<({List<SuggestedPerson> people, bool truncated})> suggestedPeople() => intercept(
+    'suggestedPeople',
+    () async => (people: const <SuggestedPerson>[], truncated: false),
+  );
   @override
   Future<TicketSummary?> ticket(String ticketId) =>
       intercept('ticket', () => super.ticket(ticketId));
@@ -833,6 +848,7 @@ class StubRepository extends DemoRepository {
     required List<String> genres,
     required bool locationPersonalizationEnabled,
     required bool followedBandUpdatesEnabled,
+    bool? shareRsvpsWithFriends,
   }) => intercept(
     'updateFanProfile',
     () => super.updateFanProfile(
@@ -842,6 +858,7 @@ class StubRepository extends DemoRepository {
       genres: genres,
       locationPersonalizationEnabled: locationPersonalizationEnabled,
       followedBandUpdatesEnabled: followedBandUpdatesEnabled,
+      shareRsvpsWithFriends: shareRsvpsWithFriends,
     ),
   );
   @override
@@ -950,6 +967,9 @@ class StubRepository extends DemoRepository {
       intercept('venueDetail', () => super.venueDetail(venueId));
   @override
   Future<List<Venue>> venues() => intercept('venues', super.venues);
+  @override
+  Stream<List<BandApplication>> watchMyApplications(String bandId) =>
+      _interceptStream('watchMyApplications', () => super.watchMyApplications(bandId));
   @override
   Stream<List<Venue>> watchVenues() => _interceptStream('watchVenues', super.watchVenues);
 }

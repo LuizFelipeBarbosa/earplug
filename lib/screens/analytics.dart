@@ -10,6 +10,8 @@ import '../date_names.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/sheets.dart';
 import 'analytics_sheets.dart';
 
@@ -27,43 +29,43 @@ class AnalyticsScreen extends StatelessWidget {
 
     return ListView(
       padding: EdgeInsets.fromLTRB(
-        16,
+        EpLayout.gutter,
         headerTopPad(context),
-        16,
-        tabBarClearance,
+        EpLayout.gutter,
+        0,
       ),
       children: [
-        _bandSelector(context, band),
-        const SizedBox(height: 4),
-        Text('FAN ANALYTICS', style: Theme.of(context).textTheme.epPageHeading),
+        EpEyebrow.accent(
+          recap != null && recap.shows.isNotEmpty
+              ? '${band.name} · ${recapWindowLabel(recap)}'
+              : band.name,
+        ),
+        const SizedBox(height: 12),
+        const EpDisplay('Fan\ninsights'),
         if (recap != null && recap.shows.isNotEmpty) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: 12),
           Text(
-            recapWindowLabel(recap),
-            style: Theme.of(context).textTheme.epSection.copyWith(
-              color: context.epColors.contentSecondary,
-            ),
+            'Aggregate only. Breakdowns under 5 fans are withheld; '
+            'no individual fan is identifiable.',
+            key: const Key('analytics-privacy-note'),
+            style: Theme.of(
+              context,
+            ).textTheme.epBody.copyWith(color: context.epColors.muted),
           ),
         ],
-        const SizedBox(height: 14),
-        ..._bodyFor(context, app, band, recap, error),
-      ],
-    );
-  }
-
-  Widget _bandSelector(BuildContext context, Band band) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: TextButton(
-        onPressed: () => showSwitcherSheet(context),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(band.name.toUpperCase()),
-            const Icon(Icons.arrow_drop_down, size: 18),
-          ],
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: EpPill(
+            label: band.name,
+            icon: Icons.arrow_drop_down,
+            onPressed: () => showSwitcherSheet(context),
+          ),
         ),
-      ),
+        const SizedBox(height: 24),
+        ..._bodyFor(context, app, band, recap, error),
+        const SizedBox(height: tabBarClearance),
+      ],
     );
   }
 
@@ -75,157 +77,100 @@ class AnalyticsScreen extends StatelessWidget {
     String? error,
   ) {
     if (recap == null) {
-      if (error == null) return [_loadingState()];
-      return [_errorState(app, band.id, error)];
+      if (error == null) {
+        return [
+          EpMonoText('Loading fan analytics…', color: context.epColors.muted),
+        ];
+      }
+      return [
+        Text(
+          "Couldn't load fan analytics. $error",
+          style: Theme.of(
+            context,
+          ).textTheme.epBody.copyWith(color: context.epColors.muted),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: EpPill(
+            label: 'Retry',
+            onPressed: () => app.refreshBandRecap(band.id),
+          ),
+        ),
+      ];
     }
     if (recap.shows.isEmpty) {
-      return [_emptyState(band.name, hasOtherBands: app.myBands.length > 1)];
+      final hint = app.myBands.length > 1
+          ? '\nTap the band name above to switch to another of your bands.'
+          : '';
+      return [
+        const EpHairline(),
+        const SizedBox(height: 16),
+        Text(
+          'No past gigs yet for ${band.name}. This recap fills '
+          'in after its first show.$hint',
+          style: Theme.of(
+            context,
+          ).textTheme.epBody.copyWith(color: context.epColors.muted),
+        ),
+      ];
     }
 
     return [
-      _privacyNote(),
-      const SizedBox(height: 14),
+      EpStatGrid(
+        stats: [
+          EpStat('${recap.totals.shows}', 'Shows'),
+          EpStat('${recap.totals.measuredRsvps}', 'RSVPs'),
+          EpStat(recapFormatNumber(recap.totals.avgPerShow), 'Avg / show'),
+        ],
+      ),
+      const SizedBox(height: 24),
       _bestShowTakeaway(recap),
-      const SizedBox(height: 14),
-      _headline(recap),
-      const SizedBox(height: 14),
-      _TicketsAndCheckInsSection(bandId: band.id),
-      const SizedBox(height: 14),
+      const SizedBox(height: 28),
       _turnoutByShow(context, recap),
-      const SizedBox(height: 14),
+      const SizedBox(height: 24),
+      const EpHairline(),
       _contextGrid(recap),
-      const SizedBox(height: 14),
+      const SizedBox(height: 24),
+      _TicketsAndCheckInsSection(bandId: band.id),
+      const SizedBox(height: 24),
       _newVsReturning(context, recap),
-      const SizedBox(height: 14),
-      _whenFansCommit(context, recap),
-      const SizedBox(height: 14),
+      const SizedBox(height: 24),
+      _whenFansCommit(recap),
+      const SizedBox(height: 24),
       _roomsThatDraw(context, recap),
-      const SizedBox(height: 14),
+      const SizedBox(height: 24),
       _bestNights(context, recap),
-      const SizedBox(height: 14),
+      const SizedBox(height: 24),
       _repeatFans(recap),
       ..._footnotes(context, recap),
     ];
   }
 
-  Widget _loadingState() {
-    return Builder(
-      builder: (context) => Text(
-        'Loading fan analytics…',
-        style: Theme.of(
-          context,
-        ).textTheme.epCaption.copyWith(color: context.epColors.contentDisabled),
-      ),
-    );
-  }
-
-  Widget _errorState(AppState app, String bandId, String error) {
-    return Builder(
-      builder: (context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Couldn't load fan analytics. $error",
-            style: Theme.of(context).textTheme.epCaption.copyWith(
-              color: context.epColors.contentDisabled,
-            ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: 140,
-            child: EpButton(
-              'RETRY',
-              kind: EpButtonKind.outline,
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              onTap: () => app.refreshBandRecap(bandId),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _emptyState(String bandName, {required bool hasOtherBands}) {
-    final hint = hasOtherBands
-        ? '\nTap the band name above to switch to another of your bands.'
-        : '';
-    return Builder(
-      builder: (context) => DashedBox(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-        child: Text(
-          'No past gigs yet for ${bandName.toUpperCase()}. This recap fills '
-          'in after its first show.$hint',
-          textAlign: TextAlign.center,
-          style: Theme.of(
-            context,
-          ).textTheme.epBody.copyWith(color: context.epColors.contentSecondary),
-        ),
-      ),
-    );
-  }
-
-  Widget _privacyNote() {
-    return Builder(
-      builder: (context) => EpCard(
-        key: const Key('analytics-privacy-note'),
-        variant: EpCardVariant.selected,
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.shield_outlined, color: context.epColors.volt, size: 20),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'AGGREGATE ONLY · BREAKDOWNS UNDER 5 FANS WITHHELD\n'
-                'No individual fan is ever identifiable.',
-                style: Theme.of(context).textTheme.epCaption,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _bestShowTakeaway(BandRecap recap) {
     final bestShows = _bestShows(recap);
     final best = bestShows.first;
-    final kicker = bestShows.length == 1
-        ? 'BEST SHOW THIS WINDOW'
-        : 'BEST SHOW THIS WINDOW · ${bestShows.length}-WAY TIE';
-    return VoltStrip(
+    return Column(
       key: const Key('analytics-best-show'),
-      kicker: kicker,
-      title: best.title,
-      meta: [
-        if (best.venueName.trim().isNotEmpty) best.venueName,
-        '${best.measuredRsvps} RSVPs',
-        _performanceLabel(best.measuredRsvps, recap.totals.avgPerShow),
-      ].join(' · '),
-    );
-  }
-
-  Widget _headline(BandRecap recap) {
-    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        EpStatCard(
-          label: 'SHOWS PLAYED',
-          value: '${recap.totals.shows}',
-          caption: 'this window',
+        EpEyebrow(
+          'Best show · '
+          '${_performanceLabel(best.measuredRsvps, recap.totals.avgPerShow)}',
         ),
-        const SizedBox(width: 8),
-        EpStatCard(
-          label: 'TOTAL RSVPS',
-          value: '${recap.totals.measuredRsvps}',
-          caption: 'measured',
+        const SizedBox(height: 4),
+        EpDisplay(
+          [
+            best.title,
+            if (best.venueName.trim().isNotEmpty) best.venueName,
+            '${best.measuredRsvps} RSVPs',
+          ].join(' · '),
+          size: 24,
         ),
-        const SizedBox(width: 8),
-        EpStatCard(
-          label: 'AVG / SHOW',
-          value: recap.totals.avgPerShow.toStringAsFixed(1),
-          caption: 'per night',
-        ),
+        if (bestShows.length > 1) ...[
+          const SizedBox(height: 8),
+          EpEyebrow('${bestShows.length}-way tie'),
+        ],
       ],
     );
   }
@@ -234,7 +179,7 @@ class AnalyticsScreen extends StatelessWidget {
     final shows = recapSortedShows(recap);
     return _analyticsSection(
       key: const Key('analytics-turnout'),
-      title: 'CHECK-INS BY SHOW',
+      title: 'Check-ins by show',
       trailing: shows.length > kRecapPreviewCount
           ? SectionActionButton(
               key: const Key('analytics-turnout-see-all'),
@@ -245,6 +190,7 @@ class AnalyticsScreen extends StatelessWidget {
       child: _TurnoutChart(
         shows: shows.take(kRecapPreviewCount).toList(),
         average: recap.totals.avgPerShow,
+        bestShowId: _bestShows(recap).first.gigId,
       ),
     );
   }
@@ -261,80 +207,43 @@ class AnalyticsScreen extends StatelessWidget {
         .where((tier) => tier.key != 'one')
         .fold<int>(0, (total, tier) => total + tier.count);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SectionBar(
-          label: 'AT A GLANCE',
-          padding: EdgeInsets.only(bottom: 10),
+    return EpFactGrid(
+      bottomLine: false,
+      cells: [
+        _RecapFact(
+          label: 'Top room',
+          value: room?.venueName ?? 'No room data',
+          sub: room == null
+              ? null
+              : '${recapFormatNumber(room.avgRsvps)} avg · '
+                    '${room.shows} ${room.shows == 1 ? 'show' : 'shows'}',
+          suppressed: recap.venues.suppressed,
         ),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _ContextTile(
-                label: 'TOP ROOM',
-                value: recap.venues.suppressed
-                    ? null
-                    : room?.venueName ?? 'NO ROOM DATA',
-                caption: room == null || recap.venues.suppressed
-                    ? null
-                    : '${recapFormatNumber(room.avgRsvps)} avg · '
-                          '${room.shows} ${room.shows == 1 ? 'show' : 'shows'}',
-                suppressed: recap.venues.suppressed,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _ContextTile(
-                label: 'COMMIT WINDOW',
-                value: recap.leadTime.suppressed
-                    ? null
-                    : lead == null
-                    ? 'NO LEAD DATA'
-                    : _leadTimeLabel(lead.key).toUpperCase(),
-                caption: lead == null || recap.leadTime.suppressed
-                    ? null
-                    : '${lead.count} measured RSVPs',
-                suppressed: recap.leadTime.suppressed,
-              ),
-            ),
-          ],
+        _RecapFact(
+          label: 'Commit window',
+          value: lead == null ? 'No lead data' : _leadTimeLabel(lead.key),
+          sub: lead == null ? null : '${lead.count} measured RSVPs',
+          suppressed: recap.leadTime.suppressed,
         ),
-        const SizedBox(height: 8),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _ContextTile(
-                label: 'REPEAT FANS',
-                value: recap.repeatFans.suppressed
-                    ? null
-                    : repeatTotal == 0
-                    ? 'NO REPEAT DATA'
-                    : '${(repeatCount / repeatTotal * 100).round()}%',
-                caption: repeatTotal == 0 || recap.repeatFans.suppressed
-                    ? null
-                    : '$repeatCount of $repeatTotal returned',
-                suppressed: recap.repeatFans.suppressed,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _ContextTile(
-                label: 'TOP NIGHT',
-                value: recap.weekdays.suppressed
-                    ? null
-                    : night == null
-                    ? 'NO NIGHT DATA'
-                    : weekdayNamesUpper[night.weekday - 1],
-                caption: night == null || recap.weekdays.suppressed
-                    ? null
-                    : '${recapFormatNumber(night.avgRsvps)} avg',
-                suppressed: recap.weekdays.suppressed,
-              ),
-            ),
-          ],
+        _RecapFact(
+          label: 'Repeat fans',
+          value: repeatTotal == 0
+              ? 'No repeat data'
+              : '${(repeatCount / repeatTotal * 100).round()}%',
+          sub: repeatTotal == 0
+              ? null
+              : '$repeatCount of $repeatTotal returned',
+          suppressed: recap.repeatFans.suppressed,
+        ),
+        _RecapFact(
+          label: 'Top night',
+          value: night == null
+              ? 'No night data'
+              : weekdayNames[night.weekday - 1],
+          sub: night == null
+              ? null
+              : '${recapFormatNumber(night.avgRsvps)} avg',
+          suppressed: recap.weekdays.suppressed,
         ),
       ],
     );
@@ -346,7 +255,7 @@ class AnalyticsScreen extends StatelessWidget {
         .toList();
     return _analyticsSection(
       key: const Key('analytics-new-returning'),
-      title: 'NEW VS RETURNING',
+      title: 'New vs returning',
       trailing:
           !recap.newReturningSuppressed &&
               recap.shows.length > kRecapPreviewCount
@@ -362,39 +271,27 @@ class AnalyticsScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 for (final show in shows.take(kRecapPreviewCount)) ...[
-                  Text(
-                    show.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: epText(
-                      size: 11,
-                      weight: FontWeight.w800,
-                      color: context.epColors.contentSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
+                  LedgerRow(title: show.title),
+                  const SizedBox(height: 8),
                   AnalyticsStackedBar(
                     newFans: show.newFans!,
                     returningFans: show.returningFans!,
                   ),
-                  const SizedBox(height: 13),
+                  const SizedBox(height: 16),
                 ],
                 if (recap.window.truncated)
-                  Text(
+                  EpMonoText(
                     '“New” means new within this analyzed window, not new-ever. '
                     'The oldest analyzed show reads as entirely new because '
                     'earlier shows were outside the measurement window.',
-                    style: epText(
-                      size: 11,
-                      color: context.epColors.contentDisabled,
-                    ),
+                    color: context.epColors.muted,
                   ),
               ],
             ),
     );
   }
 
-  Widget _whenFansCommit(BuildContext context, BandRecap recap) {
+  Widget _whenFansCommit(BandRecap recap) {
     final leadTime = recap.leadTime;
     final maxCount = leadTime.buckets.fold<int>(
       0,
@@ -403,40 +300,29 @@ class AnalyticsScreen extends StatelessWidget {
 
     return _analyticsSection(
       key: const Key('analytics-lead-time'),
-      title: 'WHEN FANS COMMIT',
+      title: 'When fans commit',
       child: leadTime.suppressed
           ? const _SuppressedBreakdown()
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final bucket in leadTime.buckets) ...[
+                for (final bucket in leadTime.buckets)
                   EpBar(
                     label: _leadTimeLabel(bucket.key),
                     value: bucket.count,
                     max: maxCount,
                     valueText: '${bucket.count}',
                   ),
-                  const SizedBox(height: 12),
-                ],
                 if (leadTime.medianDays != null)
-                  Text(
-                    'Median RSVP: ${recapFormatNumber(leadTime.medianDays!)} days '
-                    'before the show.',
-                    style: epText(
-                      size: 11,
-                      color: context.epColors.contentSecondary,
-                    ),
+                  LedgerRow(
+                    title:
+                        'Median RSVP: ${recapFormatNumber(leadTime.medianDays!)} '
+                        'days before the show.',
                   ),
-                if (leadTime.unmeasurable > 0) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _unmeasurableLeadTimeNote(leadTime.unmeasurable),
-                    style: epText(
-                      size: 11,
-                      color: context.epColors.contentDisabled,
-                    ),
+                if (leadTime.unmeasurable > 0)
+                  LedgerRow(
+                    title: _unmeasurableLeadTimeNote(leadTime.unmeasurable),
                   ),
-                ],
               ],
             ),
     );
@@ -451,7 +337,7 @@ class AnalyticsScreen extends StatelessWidget {
 
     return _analyticsSection(
       key: const Key('analytics-rooms'),
-      title: 'ROOMS THAT DRAW',
+      title: 'Rooms that draw',
       trailing: !recap.venues.suppressed && rows.length > kRecapPreviewCount
           ? SectionActionButton(
               key: const Key('analytics-rooms-see-all'),
@@ -478,15 +364,13 @@ class AnalyticsScreen extends StatelessWidget {
           ? const _SuppressedBreakdown()
           : Column(
               children: [
-                for (final row in rows.take(kRecapPreviewCount)) ...[
+                for (final row in rows.take(kRecapPreviewCount))
                   EpBar(
                     label: row.venueName,
                     value: row.avgRsvps,
                     max: maxAverage,
                     valueText: recapFormatNumber(row.avgRsvps),
                   ),
-                  const SizedBox(height: 12),
-                ],
               ],
             ),
     );
@@ -501,7 +385,7 @@ class AnalyticsScreen extends StatelessWidget {
 
     return _analyticsSection(
       key: const Key('analytics-best-nights'),
-      title: 'BEST NIGHTS',
+      title: 'Best nights',
       trailing: !recap.weekdays.suppressed && rows.length > kRecapPreviewCount
           ? SectionActionButton(
               key: const Key('analytics-best-nights-see-all'),
@@ -526,15 +410,13 @@ class AnalyticsScreen extends StatelessWidget {
           ? const _SuppressedBreakdown()
           : Column(
               children: [
-                for (final row in rows.take(kRecapPreviewCount)) ...[
+                for (final row in rows.take(kRecapPreviewCount))
                   EpBar(
-                    label: weekdayNamesUpper[row.weekday - 1],
+                    label: weekdayNames[row.weekday - 1],
                     value: row.avgRsvps,
                     max: maxAverage,
                     valueText: recapFormatNumber(row.avgRsvps),
                   ),
-                  const SizedBox(height: 12),
-                ],
               ],
             ),
     );
@@ -548,20 +430,18 @@ class AnalyticsScreen extends StatelessWidget {
 
     return _analyticsSection(
       key: const Key('analytics-repeat-fans'),
-      title: 'REPEAT FANS',
+      title: 'Repeat fans',
       child: recap.repeatFans.suppressed
           ? const _SuppressedBreakdown()
           : Column(
               children: [
-                for (final tier in recap.repeatFans.tiers) ...[
+                for (final tier in recap.repeatFans.tiers)
                   EpBar(
                     label: _repeatFanLabel(tier.key),
                     value: tier.count,
                     max: maxCount,
                     valueText: '${tier.count}',
                   ),
-                  const SizedBox(height: 12),
-                ],
               ],
             ),
     );
@@ -579,15 +459,8 @@ class AnalyticsScreen extends StatelessWidget {
     if (notes.isEmpty) return const <Widget>[];
 
     return [
-      const SizedBox(height: 14),
-      Text(
-        notes.join('\n'),
-        style: epText(
-          size: 11,
-          color: context.epColors.contentDisabled,
-          height: 1.5,
-        ),
-      ),
+      const SizedBox(height: 24),
+      EpMonoText(notes.join('\n'), color: context.epColors.muted),
     ];
   }
 
@@ -626,7 +499,7 @@ class AnalyticsScreen extends StatelessWidget {
     }
     final percent = ((best - average) / average * 100).round();
     if (percent <= 0) return 'at window average';
-    return '$percent% above avg';
+    return '$percent% above average';
   }
 
   static String _leadTimeLabel(String key) => switch (key) {
@@ -660,22 +533,17 @@ Widget _analyticsSection({
   required Widget child,
   Widget? trailing,
 }) {
-  return EpCard(
+  return Column(
     key: key,
-    variant: EpCardVariant.raised,
-    padding: const EdgeInsets.all(14),
-    radius: 13,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SectionBar(
-          label: title,
-          trailing: trailing,
-          padding: const EdgeInsets.only(bottom: 12),
-        ),
-        child,
-      ],
-    ),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      SectionBar(
+        label: title,
+        trailing: trailing,
+        padding: const EdgeInsets.only(bottom: 16),
+      ),
+      child,
+    ],
   );
 }
 
@@ -728,33 +596,33 @@ class _TicketsAndCheckInsSectionState
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _insightStat(
-                        context,
-                        'TICKETS SOLD',
-                        insights.ticketsSold,
-                      ),
+                EpFactGrid(
+                  cells: [
+                    EpFactCell(
+                      label: 'Tickets sold',
+                      value: '${insights.ticketsSold}',
                     ),
-                    Expanded(
-                      child: _insightStat(
-                        context,
-                        'CHECK-INS',
-                        insights.checkIns,
-                      ),
+                    EpFactCell(
+                      label: 'Check-ins',
+                      value: '${insights.checkIns}',
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  insights.returningSuppressed
-                      ? 'Returning attendees: not enough data'
-                      : 'Returning attendees: ${insights.returningAttendees}',
-                ),
-                const SizedBox(height: 10),
-                Text(_estimatedDrawLabel(insights.estimatedDraw)),
-                const SizedBox(height: 10),
+                if (insights.returningSuppressed)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: EpMonoText(
+                      'Returning attendees: not enough data',
+                      color: context.epColors.muted,
+                    ),
+                  )
+                else
+                  LedgerRow(
+                    title:
+                        'Returning attendees: ${insights.returningAttendees}',
+                  ),
+                LedgerRow(title: _estimatedDrawLabel(insights.estimatedDraw)),
+                const SizedBox(height: 12),
                 if (insights.byPriceBand.suppressed)
                   const _SuppressedBreakdown()
                 else
@@ -775,10 +643,11 @@ class _TicketsAndCheckInsSectionState
                   ),
                 if (!insights.attribution.suppressed) ...[
                   const SizedBox(height: 10),
-                  Text(
-                    'Ticket buyers: referral ${insights.attribution.referral} · '
-                    'followers ${insights.attribution.follow} · '
-                    'other ${insights.attribution.unattributed}',
+                  LedgerRow(
+                    title:
+                        'Ticket buyers: referral ${insights.attribution.referral} · '
+                        'followers ${insights.attribution.follow} · '
+                        'other ${insights.attribution.unattributed}',
                   ),
                 ],
               ],
@@ -786,14 +655,6 @@ class _TicketsAndCheckInsSectionState
     );
   }
 }
-
-Widget _insightStat(BuildContext context, String label, int count) => Column(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  children: [
-    Text(label, style: Theme.of(context).textTheme.epMeta),
-    Text('$count', style: Theme.of(context).textTheme.epSectionHeading),
-  ],
-);
 
 String _estimatedDrawLabel(EstimatedDraw? draw) {
   if (draw == null) return 'Estimated draw: No history yet';
@@ -806,14 +667,19 @@ String _priceBandLabel(String key) => switch (key) {
   'free' => 'FREE',
   'under20' => r'UNDER $20',
   '20Plus' => r'$20+',
-  _ => key.toUpperCase(),
+  _ => key,
 };
 
 class _TurnoutChart extends StatelessWidget {
-  const _TurnoutChart({required this.shows, required this.average});
+  const _TurnoutChart({
+    required this.shows,
+    required this.average,
+    required this.bestShowId,
+  });
 
   final List<RecapShow> shows;
   final num average;
+  final String bestShowId;
 
   @override
   Widget build(BuildContext context) {
@@ -822,99 +688,92 @@ class _TurnoutChart extends StatelessWidget {
       (highest, show) => math.max(highest, show.measuredRsvps),
     );
     final scale = math.max<num>(1, math.max(maxValue, average));
-    const plotHeight = 142.0;
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+    // Keep the value labels above the tallest bar, including at large text.
+    final plotHeight = 100 + 40 * textScale;
     double barHeightFor(num value) =>
-        ((value / scale).clamp(0, 1) * (plotHeight - 40)).toDouble();
+        ((value / scale).clamp(0, 1) * 100).toDouble();
     final averageTop = plotHeight - barHeightFor(average);
 
-    return SizedBox(
-      height: 210,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 190),
       child: Stack(
         children: [
           Positioned(
             top: averageTop,
             left: 0,
             right: 0,
-            child: Row(
-              children: [
-                Expanded(child: Divider(color: context.epColors.accent)),
-                const SizedBox(width: 6),
-                Text(
-                  'AVG ${recapFormatNumber(average)}',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.epMeta.copyWith(color: context.epColors.accent),
-                ),
-              ],
+            child: CustomPaint(
+              key: const Key('analytics-average-line'),
+              size: const Size(double.infinity, 1),
+              painter: _AverageLinePainter(context.epColors.outline),
             ),
           ),
-          Positioned.fill(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final show in shows)
-                  Expanded(
-                    child: Semantics(
-                      label:
-                          '${show.title}, ${show.measuredRsvps} measured '
-                          'RSVPs, ${Gig.dateShortFor(show.startsAt)}, '
-                          '${show.venueName}',
-                      child: ExcludeSemantics(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 3),
-                          child: Column(
-                            children: [
-                              SizedBox(
-                                height: plotHeight,
-                                child: Align(
-                                  alignment: Alignment.bottomCenter,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        '${show.measuredRsvps}',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .epMeta
-                                            .copyWith(
-                                              color: context
-                                                  .epColors
-                                                  .contentPrimary,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Container(
-                                        width: 24,
-                                        height: barHeightFor(
-                                          show.measuredRsvps,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Ep.brand,
-                                          borderRadius: BorderRadius.vertical(
-                                            top: Radius.circular(4),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final show in shows)
+                Expanded(
+                  child: Semantics(
+                    label:
+                        '${show.title}, ${show.measuredRsvps} measured '
+                        'RSVPs, ${Gig.dateShortFor(show.startsAt)}, '
+                        '${show.venueName}',
+                    excludeSemantics: true,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            height: plotHeight,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                EpMonoText('${show.measuredRsvps}'),
+                                const SizedBox(height: 4),
+                                Container(
+                                  width: double.infinity,
+                                  height: barHeightFor(show.measuredRsvps),
+                                  color: show.gigId == bestShowId
+                                      ? context.epColors.accent
+                                      : context.epColors.panel,
                                 ),
-                              ),
-                              const SizedBox(height: 7),
-                              Text(
-                                show.title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.epMeta,
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                          DefaultTextStyle.merge(
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            child: EpMonoText(
+                              show.title,
+                              size: 9,
+                              color: context.epColors.muted,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-              ],
+                ),
+              // The average caption has its own lane so it never covers a bar.
+              SizedBox(width: 60 * textScale),
+            ],
+          ),
+          Positioned(
+            top: averageTop,
+            right: 0,
+            child: FractionalTranslation(
+              translation: const Offset(0, -.5),
+              child: ColoredBox(
+                color: context.epColors.background,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: EpEyebrow('Avg ${recapFormatNumber(average)}'),
+                ),
+              ),
             ),
           ),
         ],
@@ -923,66 +782,53 @@ class _TurnoutChart extends StatelessWidget {
   }
 }
 
-class _ContextTile extends StatelessWidget {
-  const _ContextTile({
+class _AverageLinePainter extends CustomPainter {
+  const _AverageLinePainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1;
+    for (double x = 0; x < size.width; x += 8) {
+      canvas.drawLine(
+        Offset(x, .5),
+        Offset(math.min(x + 4, size.width), .5),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_AverageLinePainter oldDelegate) =>
+      color != oldDelegate.color;
+}
+
+class _RecapFact extends StatelessWidget {
+  const _RecapFact({
     required this.label,
     required this.value,
-    required this.caption,
+    required this.sub,
     required this.suppressed,
   });
 
   final String label;
-  final String? value;
-  final String? caption;
+  final String value;
+  final String? sub;
   final bool suppressed;
 
   @override
   Widget build(BuildContext context) {
-    return EpCard(
-      variant: suppressed ? EpCardVariant.disabled : EpCardVariant.raised,
-      padding: const EdgeInsets.all(12),
-      radius: 12,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 92),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: Theme.of(context).textTheme.epChipLabel.copyWith(
-                color: context.epColors.contentSecondary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (suppressed) ...[
-              Text(
-                'SUPPRESSED',
-                style: Theme.of(context).textTheme.epSectionHeading.copyWith(
-                  color: context.epColors.contentDisabled,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Withheld · under five fans',
-                style: Theme.of(context).textTheme.epCaption,
-              ),
-            ] else ...[
-              Text(
-                value!,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.epSectionHeading.copyWith(fontSize: 16),
-              ),
-              if (caption != null) ...[
-                const SizedBox(height: 4),
-                Text(caption!, style: Theme.of(context).textTheme.epCaption),
-              ],
-            ],
-          ],
-        ),
-      ),
+    if (!suppressed) return EpFactCell(label: label, value: value, sub: sub);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        EpEyebrow(label),
+        const SizedBox(height: 8),
+        EpMonoText('Withheld · under five fans', color: context.epColors.muted),
+      ],
     );
   }
 }
@@ -991,37 +837,18 @@ class _SuppressedBreakdown extends StatelessWidget {
   const _SuppressedBreakdown();
 
   @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: 'Suppressed. Not enough data to show this breakdown.',
-      excludeSemantics: true,
-      child: DashedBox(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'SUPPRESSED',
-              style: Theme.of(context).textTheme.epChipLabel.copyWith(
-                color: context.epColors.contentDisabled,
-              ),
-            ),
-            const SizedBox(height: 4),
-            const _EpSuppressedNote(),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Semantics(
+    label: 'Suppressed. Not enough data to show this breakdown.',
+    excludeSemantics: true,
+    child: EpMonoText(
+      'Withheld · Not enough data yet',
+      color: context.epColors.muted,
+    ),
+  );
 }
 
 /// Labeled horizontal value bar scaled against a caller-supplied maximum.
 class EpBar extends StatelessWidget {
-  final String label;
-  final num value;
-  final num max;
-  final String valueText;
-
   const EpBar({
     super.key,
     required this.label,
@@ -1029,6 +856,11 @@ class EpBar extends StatelessWidget {
     required this.max,
     required this.valueText,
   });
+
+  final String label;
+  final num value;
+  final num max;
+  final String valueText;
 
   @override
   Widget build(BuildContext context) {
@@ -1039,70 +871,18 @@ class EpBar extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.epCaption.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: context.epColors.contentSecondary,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              valueText,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.epCaption.copyWith(
-                fontWeight: FontWeight.w800,
-                color: context.epColors.accent,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
+        LedgerRow(title: label, details: [valueText]),
         Container(
-          height: 8,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: context.epColors.surfaceDisabled,
-            border: Border.all(color: context.epColors.border),
-            borderRadius: BorderRadius.circular(99),
-          ),
+          height: 3,
+          color: context.epColors.panel,
           alignment: Alignment.centerLeft,
           child: FractionallySizedBox(
             widthFactor: fraction,
             heightFactor: 1,
-            child: const DecoratedBox(
-              decoration: BoxDecoration(color: Ep.brand),
-            ),
+            child: ColoredBox(color: context.epColors.ink),
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Inline explanation for a server-suppressed analytics partition.
-class _EpSuppressedNote extends StatelessWidget {
-  final String message;
-
-  // Preserve the constructor API when making this widget private.
-  // ignore: unused_element_parameter
-  const _EpSuppressedNote({super.key, this.message = 'Not enough data yet'});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      message,
-      style: Theme.of(context).textTheme.epCaption.copyWith(
-        fontSize: 11.5,
-        color: context.epColors.contentDisabled,
-      ),
     );
   }
 }

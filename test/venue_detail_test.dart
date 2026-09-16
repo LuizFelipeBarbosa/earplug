@@ -1,7 +1,7 @@
 import 'package:earplug/screens/gig_create.dart';
 import 'package:earplug/screens/gig_detail.dart';
 import 'package:earplug/screens/venue_detail.dart';
-import 'package:earplug/widgets/map_view.dart';
+import 'package:earplug/widgets/venue_mini_map.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -19,7 +19,7 @@ void main() {
     expect(find.byKey(const Key('venue-detail-approx-note')), findsOne);
     expect(
       tester
-          .widget<VenueMiniMap>(find.byKey(const Key('venue-detail-map')))
+          .widget<VenueMapPreview>(find.byKey(const Key('venue-map')))
           .approximate,
       isTrue,
     );
@@ -38,6 +38,17 @@ void main() {
     expect(find.text('486 40th St, Oakland'), findsOne);
     expect(find.byKey(const Key('venue-detail-approx-note')), findsNothing);
     expect(find.byKey(const Key('venue-detail-verified')), findsNothing);
+    final mapRect = tester.getRect(find.byKey(const Key('venue-map')));
+    final addressRect = tester.getRect(
+      find.byKey(const Key('venue-address-line')),
+    );
+    expect(mapRect.height, closeTo(mapRect.width / 2.5, 0.01));
+    expect(addressRect.left, mapRect.left);
+    expect(addressRect.top - mapRect.bottom, closeTo(20, 0.01));
+    expect(
+      tester.getTopLeft(find.byKey(const Key('venue-area-line'))).dx,
+      mapRect.left,
+    );
   });
 
   testWidgets('approximate venue gig does not offer directions', (

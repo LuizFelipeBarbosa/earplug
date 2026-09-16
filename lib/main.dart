@@ -30,12 +30,14 @@ import 'screens/booking_detail.dart';
 import 'screens/checkout_return.dart';
 import 'screens/edit_profile.dart';
 import 'screens/explore.dart';
+import 'screens/explore_collection.dart';
 import 'screens/gig_create.dart';
 import 'screens/gig_detail.dart';
 import 'screens/gig_invite.dart';
 import 'screens/gig_manager.dart';
 import 'screens/home.dart';
 import 'screens/host_apply.dart';
+import 'screens/hosted_gig.dart';
 import 'screens/my_gigs.dart';
 import 'screens/opportunity_applicants.dart';
 import 'screens/opportunity_detail.dart';
@@ -51,6 +53,7 @@ import 'screens/org_team.dart';
 import 'screens/org_transactions.dart';
 import 'screens/org_venue_edit.dart';
 import 'screens/org_venues.dart';
+import 'screens/people.dart';
 import 'screens/private_locations.dart';
 import 'screens/review_compose.dart';
 import 'screens/settings.dart';
@@ -322,6 +325,9 @@ String? bandSlugFromUri(Uri uri) {
         'check-in',
         't',
         'tickets',
+        'explore',
+        'people',
+        'manage',
       }.contains(slug)) {
     return null;
   }
@@ -428,6 +434,9 @@ class EarplugApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final geocodingService = StadiaGeocodingService(
+      apiKey: Env.stadiaMapsApiKey,
+    );
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<AppearanceController>.value(value: appearance),
@@ -436,7 +445,7 @@ class EarplugApp extends StatelessWidget {
           dispose: (_, repository) => repository.dispose(),
         ),
         Provider<GeocodingService>(
-          create: (_) => StadiaGeocodingService(apiKey: Env.stadiaMapsApiKey),
+          create: (_) => geocodingService,
           dispose: (_, service) =>
               (service as StadiaGeocodingService).dispose(),
         ),
@@ -446,6 +455,7 @@ class EarplugApp extends StatelessWidget {
               AppState(
                 repository: repository,
                 auth: auth,
+                reverseGeocoding: geocodingService,
                 initialJoinToken: initialJoinToken,
                 initialPerformerInviteToken: initialPerformerInviteToken,
                 initialGigId: initialGigId,
@@ -488,28 +498,12 @@ class EarplugApp extends StatelessWidget {
           themeAnimationDuration: kIsWeb
               ? Duration.zero
               : const Duration(milliseconds: 180),
-          // A corner ribbon on everything that is not production, so which
-          // dataset you are looking at is never a guess.
           builder: (context, child) {
             final app = child ?? const SizedBox.shrink();
-            final label = _environmentRibbon();
-            final wrappedApp = label == null
-                ? app
-                : Banner(
-                    message: label,
-                    location: BannerLocation.topEnd,
-                    color: context.epColors.contentPrimary,
-                    textStyle: epText(
-                      size: 10,
-                      weight: FontWeight.w800,
-                      color: context.epColors.background,
-                    ),
-                    child: app,
-                  );
-            if (!PerfOverlay.enabled) return wrappedApp;
+            if (!PerfOverlay.enabled) return app;
             return Stack(
               children: [
-                wrappedApp,
+                app,
                 PerfOverlay(
                   marks: webShell.marks,
                   extraStats: ConvexService.debugStats,
@@ -568,12 +562,6 @@ class _FeedReadyMarkerState extends State<_FeedReadyMarker> {
   Widget build(BuildContext context) => widget.child;
 }
 
-/// Null in production, so the live app carries no ribbon.
-String? _environmentRibbon() {
-  if (Env.demo) return 'DEMO';
-  return Env.convexTier == DeploymentTier.development ? 'DEV' : null;
-}
-
 class RootShell extends StatelessWidget {
   const RootShell({super.key});
 
@@ -617,7 +605,7 @@ class RootShell extends StatelessWidget {
     final body = switch (dataStatus) {
       DataStatus.connecting => ColoredBox(
         color: context.epColors.background,
-        child: const Center(child: EpLogo.full(width: 190)),
+        child: const Center(child: EpLogo.compact(height: 40)),
       ),
       DataStatus.error => ColoredBox(
         color: context.epColors.background,
@@ -681,10 +669,7 @@ class RootShell extends StatelessWidget {
             screen == Screen.gigCreate) &&
         !showOpportunityAsFanTab &&
         !organizerNavigation;
-    final page = ClipRRect(
-      borderRadius: BorderRadius.circular(desktop ? 20 : 0),
-      child: Scaffold(body: body),
-    );
+    final page = Scaffold(body: body);
 
     return PopScope(
       canPop: !canGoBack,
@@ -696,50 +681,49 @@ class RootShell extends StatelessWidget {
         child: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth: desktop ? EpLayout.workspaceWidth : 600,
+              maxWidth: desktop ? double.infinity : 600,
             ),
             // Keep the content in the same keyed subtree across breakpoints
             // so a resize preserves form controllers, focus, and unsaved edits.
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                vertical: desktop ? 20 : 0,
-                horizontal: desktop ? 16 : 0,
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (desktop) ...[
-                    EpDesktopSidebar(
-                      label: organizerNavigation
-                          ? 'ORGANIZER'
-                          : bandNavigation
-                          ? 'BAND WORKSPACE'
-                          : 'DISCOVER',
-                      navigation: organizerNavigation
-                          ? const OrganizerTabBar(vertical: true)
-                          : bandNavigation
-                          ? const BandTabBar(vertical: true)
-                          : const FanTabBar(vertical: true),
-                    ),
-                    const SizedBox(width: 32),
-                  ],
-                  Expanded(
-                    key: const ValueKey('workspace-content'),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(desktop ? 21 : 0),
-                        border: desktop
-                            ? Border.all(color: context.epColors.border)
-                            : null,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (desktop)
+                  EpDesktopSidebar(
+                    label: organizerNavigation
+                        ? 'ORGANIZER'
+                        : bandNavigation
+                        ? 'BAND WORKSPACE'
+                        : 'DISCOVER',
+                    navigation: organizerNavigation
+                        ? const OrganizerTabBar(vertical: true)
+                        : bandNavigation
+                        ? const BandTabBar(vertical: true)
+                        : const FanTabBar(vertical: true),
+                  ),
+                Expanded(
+                  key: const ValueKey('workspace-content'),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: desktop
+                            ? EpLayout.workspaceWidth
+                            : double.infinity,
                       ),
                       child: Padding(
-                        padding: EdgeInsets.all(desktop ? 1 : 0),
+                        padding: desktop
+                            ? const EdgeInsets.only(
+                                top: 28,
+                                left: 40,
+                                right: 40,
+                              )
+                            : EdgeInsets.zero,
                         child: page,
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -758,6 +742,11 @@ class RootShell extends StatelessWidget {
       Screen.gigInvite => GigInviteScreen(key: key),
       Screen.venue => VenueDetailScreen(key: key, venueId: entry.param!),
       Screen.explore => ExploreScreen(key: key),
+      Screen.exploreCollection => ExploreCollectionScreen(
+        key: key,
+        collectionKey: entry.param,
+      ),
+      Screen.people => PeopleScreen(key: key),
       Screen.myGigs => MyGigsScreen(key: key),
       Screen.editProfile => EditProfileScreen(key: key),
       Screen.settings => SettingsScreen(key: key),
@@ -767,6 +756,7 @@ class RootShell extends StatelessWidget {
       Screen.bandEdit => BandEditScreen(key: key),
       Screen.bandMedia => BandMediaScreen(key: key, bandId: entry.param!),
       Screen.gigMgr => GigManagerScreen(key: key),
+      Screen.hostedGig => HostedGigScreen(key: key, projectId: entry.param!),
       Screen.gigCreate => GigCreateScreen(key: key),
       Screen.analytics => AnalyticsScreen(key: key),
       Screen.orgApply => OrgApplyScreen(key: key),
@@ -850,7 +840,9 @@ class _ToastLayer extends StatelessWidget {
     return Positioned(
       left: 20,
       right: 20,
-      bottom: 104,
+      bottom: EpLayout.isDesktop(context)
+          ? 24
+          : EpLayout.tabBarHeight + MediaQuery.paddingOf(context).bottom + 12,
       child: toast.isEmpty ? const SizedBox.shrink() : _Toast(message: toast),
     );
   }
@@ -879,26 +871,21 @@ class _Toast extends StatelessWidget {
             ),
           );
         },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: DecoratedBox(
+          key: const ValueKey('toast'),
           decoration: BoxDecoration(
-            color: context.epColors.contentPrimary,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: .6),
-                blurRadius: 30,
-                offset: const Offset(0, 10),
-              ),
-            ],
+            color: context.epColors.surface,
+            border: Border.all(color: context.epColors.border),
+            borderRadius: BorderRadius.circular(EpLayout.cardRadius),
           ),
-          child: Text(
-            message,
-            textAlign: TextAlign.center,
-            style: epText(
-              size: 12.5,
-              weight: FontWeight.w800,
-              color: context.epColors.background,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.epBody.copyWith(color: context.epColors.ink),
             ),
           ),
         ),

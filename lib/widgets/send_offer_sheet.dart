@@ -144,15 +144,29 @@ class _SendOfferSheetState extends State<_SendOfferSheet> {
       child: EpSheetShell(
         heightFactor: .88,
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+        // Same chrome as EpFormSheet: uppercase title, mono CLOSE control.
         header: Row(
           children: [
             Expanded(
-              child: Text('SEND OFFER', style: textTheme.epSectionHeading),
+              child: Text(
+                'Send offer'.toUpperCase(),
+                semanticsLabel: 'Send offer',
+                style: textTheme.epSheetTitle,
+              ),
             ),
-            IconButton(
-              tooltip: 'Close',
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.close),
+            Tooltip(
+              message: 'Close',
+              excludeFromSemantics: true,
+              child: TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  'Close'.toUpperCase(),
+                  semanticsLabel: 'Close',
+                  style: textTheme.epLabel.copyWith(
+                    color: context.epColors.ink,
+                  ),
+                ),
+              ),
             ),
           ],
         ),

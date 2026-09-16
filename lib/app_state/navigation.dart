@@ -16,12 +16,14 @@ mixin _NavigationState on _AppStateCore {
   Booking? bookingById(String id);
   ActiveIdentity identityForBooking(Booking booking);
   void ensureExploreBands();
+  void ensureSocial();
   void needAuth(PendingAuth p);
   Future<void> loadBandProfileDetails(String id, {bool refresh = false});
   Future<void> refreshBandSetupStatus(String id);
   Future<void> refreshBandDiscoveryReadiness(String id);
   Future<void> refreshBandInvite(String id);
   Future<void> refreshManagedGigs();
+  void ensureManagedGigs();
 
   VoidCallback? _stopBrowserHistory;
 
@@ -79,7 +81,8 @@ mixin _NavigationState on _AppStateCore {
       _syncPublicGigSubscriptionForCurrentScreen();
     });
     pushBrowserPath(_browserPathFor(s, param));
-    if (current.screen == Screen.explore) ensureExploreBands();
+    if (_showsBandDirectory(current)) ensureExploreBands();
+    if (current.screen == Screen.explore) ensureSocial();
   }
 
   void back() {
@@ -100,7 +103,8 @@ mixin _NavigationState on _AppStateCore {
       _syncPublicGigSubscriptionForCurrentScreen();
     });
     _refreshVisibleBandDashboard();
-    if (current.screen == Screen.explore) ensureExploreBands();
+    if (_showsBandDirectory(current)) ensureExploreBands();
+    if (current.screen == Screen.explore) ensureSocial();
   }
 
   void resetTo(Screen s) {
@@ -112,13 +116,23 @@ mixin _NavigationState on _AppStateCore {
     _refreshVisibleBandDashboard();
     _onBandChanged();
     _onOrganizationChanged();
-    if (current.screen == Screen.explore) ensureExploreBands();
+    if (_showsBandDirectory(current)) ensureExploreBands();
+    if (current.screen == Screen.explore) ensureSocial();
   }
+
+  /// Explore and its bands collection both page the band directory.
+  static bool _showsBandDirectory(ScreenEntry entry) =>
+      entry.screen == Screen.explore ||
+      (entry.screen == Screen.exploreCollection && entry.param == 'bands');
 
   String _browserPathFor(Screen screen, String? param) => switch (screen) {
     Screen.gig => '/g/${gig(param ?? '')?.publicRef ?? param ?? ''}',
+    Screen.hostedGig => '/manage/gigs/${param ?? ''}',
     Screen.band => '/${_bands[param]?.publicRef ?? param ?? ''}',
     Screen.venue => _venueBrowserPath(param),
+    Screen.exploreCollection =>
+      param == null || param.isEmpty ? '/explore' : '/explore/$param',
+    Screen.people => '/people',
     Screen.orgJoin => '/apply/${param ?? ''}',
     Screen.opportunityDetail => '/opportunities/${param ?? ''}',
     Screen.bookingDetail => '/bookings/${param ?? ''}',
@@ -157,6 +171,11 @@ mixin _NavigationState on _AppStateCore {
     if (current.screen == Screen.gig && current.param == id) return;
     go(Screen.gig, id);
     unawaited(_loadPublicGig(id));
+  }
+
+  void openHostedGig(String projectId) {
+    go(Screen.hostedGig, projectId);
+    ensureManagedGigs();
   }
 
   void openBand(String id) {

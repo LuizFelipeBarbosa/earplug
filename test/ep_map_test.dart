@@ -62,6 +62,63 @@ void main() {
     );
   });
 
+  testWidgets('attribution keeps its default bottom-right padding', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildEpTheme(Brightness.light),
+        home: const Scaffold(
+          body: EpMap(
+            tiles: EpMapTiles.raster,
+            options: MapOptions(
+              initialCenter: LatLng(34.05, -118.24),
+              initialZoom: 12,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final attribution = tester.widget<Positioned>(
+      find.ancestor(
+        of: find.text('© Stadia Maps'),
+        matching: find.byType(Positioned),
+      ),
+    );
+    expect(attribution.bottom, 6);
+    expect(attribution.left, 4);
+    expect(attribution.right, 6);
+  });
+
+  testWidgets('attribution applies custom padding', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildEpTheme(Brightness.light),
+        home: const Scaffold(
+          body: EpMap(
+            tiles: EpMapTiles.raster,
+            attributionPadding: EdgeInsets.only(bottom: 40, right: 10, left: 4),
+            options: MapOptions(
+              initialCenter: LatLng(34.05, -118.24),
+              initialZoom: 12,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final attribution = tester.widget<Positioned>(
+      find.ancestor(
+        of: find.text('© Stadia Maps'),
+        matching: find.byType(Positioned),
+      ),
+    );
+    expect(attribution.bottom, 40);
+    expect(attribution.left, 4);
+    expect(attribution.right, 10);
+  });
+
   testWidgets('blocks taps while loading and renders linked attribution', (
     tester,
   ) async {

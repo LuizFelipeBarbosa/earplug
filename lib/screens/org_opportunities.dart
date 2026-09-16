@@ -8,6 +8,7 @@ import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/form_bits.dart';
 import '../widgets/opportunity_labels.dart';
 import '../widgets/sheets.dart';
 import 'door_mode.dart';
@@ -122,12 +123,9 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
               ],
             )
           else if (opportunities.isEmpty)
-            DashedBox(
-              child: Text(
-                'No opportunities yet. Post one to start booking artists.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.epCaption,
-              ),
+            const EmptyNote(
+              message:
+                  'No opportunities yet. Post one to start booking artists.',
             )
           else
             for (final section in sections.entries)

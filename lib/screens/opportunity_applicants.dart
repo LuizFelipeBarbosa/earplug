@@ -8,6 +8,7 @@ import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/form_bits.dart';
 import '../widgets/opportunity_labels.dart';
 import '../widgets/send_offer_sheet.dart';
 
@@ -73,6 +74,15 @@ class _OpportunityApplicantsScreenState
           _selectedSlotId = null;
         }
       });
+      final unreviewedIds = [
+        for (final row in applicants)
+          if (row.application.status == ArtistApplicationStatus.submitted ||
+              row.application.status == ArtistApplicationStatus.underReview)
+            row.application.id,
+      ];
+      if (unreviewedIds.isNotEmpty) {
+        unawaited(app.markApplicationsViewed(unreviewedIds));
+      }
     } catch (error) {
       if (!mounted || !identical(_loadToken, token)) return;
       setState(() {
@@ -213,14 +223,10 @@ class _OpportunityApplicantsScreenState
             ],
           )
         else if (applicants.isEmpty)
-          DashedBox(
-            child: Text(
-              _selectedSlotId == null
-                  ? 'No applicants yet.'
-                  : 'No applicants for this slot yet.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.epCaption,
-            ),
+          EmptyNote(
+            message: _selectedSlotId == null
+                ? 'No applicants yet.'
+                : 'No applicants for this slot yet.',
           )
         else if (opportunity != null)
           for (final row in applicants) ...[

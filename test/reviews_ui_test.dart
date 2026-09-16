@@ -195,7 +195,7 @@ void main() {
       findsOneWidget,
     );
     final card = find.byKey(ValueKey('band-review-${review.reviewId}'));
-    expect(tester.widget(card), isA<EpCard>());
+    expect(card, findsOneWidget);
     expect(
       find.descendant(of: card, matching: find.text('The Foghorn Club')),
       findsOneWidget,
@@ -215,7 +215,7 @@ void main() {
     final category = tester.widget<EpChip>(
       find.descendant(of: card, matching: find.byType(EpChip)),
     );
-    expect(category.label, 'PROFESSIONALISM');
+    expect(category.label, 'professionalism');
     expect(category.active, isTrue);
     expect(category.onTap, isNull);
     expect(category.readOnly, isTrue);
@@ -251,10 +251,7 @@ void main() {
       await enterOrganizer(tester, harness, 'org1');
       final rating = find.byKey(const ValueKey('org-dash-stat-rating'));
       await _scrollTo(tester, rating);
-      final stat = tester.widget<EpStatCard>(rating);
-      expect(stat.label, 'RATING');
-      expect(stat.value, '4.0');
-      expect(stat.caption, '1 reviews');
+      _expectRating(tester, '4.0', '1 review · ');
 
       final section = find.byKey(const ValueKey('org-dash-reviews'));
       await _scrollTo(tester, section);
@@ -303,9 +300,7 @@ void main() {
       await enterOrganizer(tester, harness, 'org1');
       final rating = find.byKey(const ValueKey('org-dash-stat-rating'));
       await _scrollTo(tester, rating);
-      final stat = tester.widget<EpStatCard>(rating);
-      expect(stat.value, '3.5');
-      expect(stat.caption, '2 reviews');
+      _expectRating(tester, '3.5', '2 reviews · ');
 
       await _scrollTo(tester, find.byKey(const ValueKey('org-dash-reviews')));
       final first = find.byKey(
@@ -348,6 +343,24 @@ Finder _submitButton() => find.descendant(
   of: find.byKey(const ValueKey('review-submit')),
   matching: find.byType(FilledButton),
 );
+
+/// The dashboard rating reads as an eyebrow, a display mean and a summary line.
+void _expectRating(WidgetTester tester, String mean, String summary) {
+  final rating = find.byKey(const ValueKey('org-dash-stat-rating'));
+  expect(rating, findsOneWidget);
+  expect(
+    find.descendant(of: rating, matching: find.text('RATING')),
+    findsOneWidget,
+  );
+  expect(
+    find.descendant(of: rating, matching: find.text(mean)),
+    findsOneWidget,
+  );
+  expect(
+    find.descendant(of: rating, matching: find.textContaining(summary)),
+    findsOneWidget,
+  );
+}
 
 Future<void> _scrollTo(WidgetTester tester, Finder finder) async {
   await tester.scrollUntilVisible(

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +11,7 @@ import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
 
@@ -30,153 +32,35 @@ class _AgeBody extends StatelessWidget {
     final app = context.watch<AppState>();
     return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final requirement in AgeRequirement.values) ...[
-          EpOptionCard(
-            title: requirement.label,
-            subtitle: switch (requirement) {
-              AgeRequirement.allAges => 'Everyone is welcome',
-              AgeRequirement.eighteenPlus => 'Guests must be 18 or older',
-              AgeRequirement.twentyOnePlus => 'Guests must be 21 or older',
-            },
-            selected: app.gfAgeRequirement == requirement,
-            onTap: () {
-              app.setGfAgeRequirement(requirement);
-              Navigator.pop(context);
-            },
-          ),
-          if (requirement != AgeRequirement.twentyOnePlus)
-            const SizedBox(height: 8),
-        ],
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final requirement in AgeRequirement.values)
+              EpChip(
+                label: requirement.label,
+                active: app.gfAgeRequirement == requirement,
+                onTap: () {
+                  app.setGfAgeRequirement(requirement);
+                  Navigator.pop(context);
+                },
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(switch (app.gfAgeRequirement) {
+          AgeRequirement.allAges => 'Everyone is welcome',
+          AgeRequirement.eighteenPlus => 'Guests must be 18 or older',
+          AgeRequirement.twentyOnePlus => 'Guests must be 21 or older',
+        }, style: Theme.of(context).textTheme.epCaption),
       ],
     );
   }
 }
 
 // ---------------------------- when ----------------------------
-
-void showWhenSheet(BuildContext context) {
-  showEpSheet(context, (ctx) {
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(ctx).height * .82,
-      ),
-      child: const EpFormSheet(
-        title: 'When is it',
-        padBody: false,
-        child: _WhenBody(),
-      ),
-    );
-  });
-}
-
-class _WhenBody extends StatelessWidget {
-  const _WhenBody();
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Flexible(
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: 4,
-            separatorBuilder: (_, _) => const SizedBox(height: 14),
-            itemBuilder: (_, index) => _Month(
-              first: DateTime(today.year, today.month + index, 1),
-              today: today,
-            ),
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 13, 16, 34),
-          decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: context.epColors.border)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'DOORS',
-                    style: epText(
-                      size: 11,
-                      weight: FontWeight.w800,
-                      letterSpacing: 1.3,
-                      color: context.epColors.contentSecondary,
-                    ),
-                  ),
-                  OutlinedButton(
-                    onPressed: () async {
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: app.gfDoors,
-                      );
-                      if (picked != null) app.setGfDoors(picked);
-                    },
-                    child: Text(app.gfDoorsLabel),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'START',
-                    style: epText(
-                      size: 11,
-                      weight: FontWeight.w800,
-                      letterSpacing: 1.3,
-                      color: context.epColors.contentSecondary,
-                    ),
-                  ),
-                  OutlinedButton(
-                    onPressed: () async {
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: app.gfStart,
-                      );
-                      if (picked != null) app.setGfStart(picked);
-                    },
-                    child: Text(app.gfStartLabel),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 9),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (final hour in const [18, 19, 20, 21, 22]) ...[
-                      EpChip(
-                        label:
-                            'DOORS ${timeLabel(TimeOfDay(hour: hour, minute: 0))}',
-                        active: app.gfDoors == TimeOfDay(hour: hour, minute: 0),
-                        onTap: () =>
-                            app.setGfDoors(TimeOfDay(hour: hour, minute: 0)),
-                      ),
-                      const SizedBox(width: 7),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 11),
-              const DoneButton(),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 class _Month extends StatelessWidget {
   final DateTime first;
@@ -215,7 +99,7 @@ class _Month extends StatelessWidget {
               ? context.epColors.surfaceSelected
               : context.epColors.surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.zero,
             side: BorderSide(
               color: past
                   ? context.epColors.surfaceDisabled
@@ -227,7 +111,7 @@ class _Month extends StatelessWidget {
           child: InkWell(
             key: ValueKey('day-${date.year}-${date.month}-${date.day}'),
             onTap: past ? null : () => context.read<AppState>().setGfDate(date),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.zero,
             child: SizedBox(
               height: 48,
               child: Center(
@@ -260,26 +144,15 @@ class _Month extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          monthLabel(first).toUpperCase(),
-          style: epText(
-            size: 11,
-            weight: FontWeight.w900,
-            letterSpacing: 1.3,
-            color: context.epColors.contentDisabled,
-          ),
-        ),
+        EpEyebrow(monthLabel(first)),
         const SizedBox(height: 8),
         grid(
           0,
-          (slot) => Text(
-            const ['S', 'M', 'T', 'W', 'T', 'F', 'S'][slot],
-            textAlign: TextAlign.center,
-            style: epText(
+          (slot) => Center(
+            child: EpMonoText(
+              const ['S', 'M', 'T', 'W', 'T', 'F', 'S'][slot],
               size: 11,
-              weight: FontWeight.w900,
-              letterSpacing: .5,
-              color: context.epColors.contentDisabled,
+              color: context.epColors.muted,
             ),
           ),
         ),
@@ -288,6 +161,161 @@ class _Month extends StatelessWidget {
           if (row > 0) const SizedBox(height: 4),
           grid(row, cell),
         ],
+      ],
+    );
+  }
+}
+
+Future<void> showGigWhenSheet(BuildContext context) {
+  return showEpSheet(context, (ctx) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(ctx).height * .82,
+      ),
+      child: const EpFormSheet(
+        title: 'WHEN',
+        padBody: false,
+        child: _GigWhenBody(),
+      ),
+    );
+  });
+}
+
+DateTime _roundDownToMinuteInterval(DateTime dt, int interval) => DateTime(
+  dt.year,
+  dt.month,
+  dt.day,
+  dt.hour,
+  dt.minute ~/ interval * interval,
+);
+
+class _GigWhenBody extends StatelessWidget {
+  const _GigWhenBody();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final date = app.gfDate ?? today;
+    final theme = Theme.of(context);
+
+    Widget selectionOverlay(
+      BuildContext context, {
+      required int columnCount,
+      required int selectedIndex,
+    }) => Container(
+      decoration: BoxDecoration(
+        border: Border.symmetric(
+          horizontal: BorderSide(color: context.epColors.border, width: 1),
+        ),
+      ),
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: 4,
+            separatorBuilder: (_, _) => const SizedBox(height: 14),
+            itemBuilder: (_, index) => _Month(
+              first: DateTime(today.year, today.month + index, 1),
+              today: today,
+            ),
+          ),
+        ),
+        const EpHairline(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 13, 16, 13),
+          child: CupertinoTheme(
+            data: CupertinoThemeData(
+              brightness: theme.brightness,
+              primaryColor: context.epColors.accent,
+              textTheme: CupertinoTextThemeData(
+                dateTimePickerTextStyle: theme.textTheme.epBody.copyWith(
+                  color: context.epColors.contentPrimary,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const EpEyebrow('DOORS'),
+                      SizedBox(
+                        height: 140,
+                        child: CupertinoDatePicker(
+                          key: const Key('gig-doors-wheel'),
+                          mode: CupertinoDatePickerMode.time,
+                          minuteInterval: 5,
+                          use24hFormat: false,
+                          initialDateTime: _roundDownToMinuteInterval(
+                            DateTime(
+                              date.year,
+                              date.month,
+                              date.day,
+                              app.gfDoors.hour,
+                              app.gfDoors.minute,
+                            ),
+                            5,
+                          ),
+                          onDateTimeChanged: (dt) => app.setGfDoors(
+                            TimeOfDay(hour: dt.hour, minute: dt.minute),
+                          ),
+                          selectionOverlayBuilder: selectionOverlay,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const EpEyebrow('START'),
+                      SizedBox(
+                        height: 140,
+                        child: CupertinoDatePicker(
+                          key: const Key('gig-start-wheel'),
+                          mode: CupertinoDatePickerMode.time,
+                          minuteInterval: 5,
+                          use24hFormat: false,
+                          initialDateTime: _roundDownToMinuteInterval(
+                            DateTime(
+                              date.year,
+                              date.month,
+                              date.day,
+                              app.gfStart.hour,
+                              app.gfStart.minute,
+                            ),
+                            5,
+                          ),
+                          onDateTimeChanged: (dt) => app.setGfStart(
+                            TimeOfDay(hour: dt.hour, minute: dt.minute),
+                          ),
+                          selectionOverlayBuilder: selectionOverlay,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const EpHairline(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 13, 16, 34),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: const [DoneButton()],
+          ),
+        ),
       ],
     );
   }
@@ -317,11 +345,7 @@ void showVenueSheet(BuildContext context) {
                   return Text(
                     'Venues are shared records, so the address stays consistent across '
                     "every band's listings.",
-                    style: epText(
-                      size: 11,
-                      color: context.epColors.contentDisabled,
-                      height: 1.45,
-                    ),
+                    style: Theme.of(context).textTheme.epCaption,
                   );
                 }
 
@@ -412,11 +436,7 @@ class _PriceBodyState extends State<_PriceBody> {
         Text(
           'Free gigs get roughly twice the RSVPs. Sliding scale? Put the range '
           'in the gig name.',
-          style: epText(
-            size: 11,
-            color: context.epColors.contentDisabled,
-            height: 1.45,
-          ),
+          style: Theme.of(context).textTheme.epCaption,
         ),
       ],
     );
@@ -586,17 +606,16 @@ class _TicketsBodyState extends State<_TicketsBody> {
             children: [
               Text(
                 'Paid tickets',
-                style: epText(size: 12.5, weight: FontWeight.w800),
+                style: Theme.of(
+                  context,
+                ).textTheme.epBody.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 2),
               Text(
                 app.canSellTickets
                     ? 'Fans pay you directly through Stripe; EarPlug adds its fee at checkout.'
                     : 'Enable ticket sales in PAYOUTS',
-                style: epText(
-                  size: 11,
-                  color: context.epColors.contentSecondary,
-                ),
+                style: Theme.of(context).textTheme.epCaption,
               ),
             ],
           ),

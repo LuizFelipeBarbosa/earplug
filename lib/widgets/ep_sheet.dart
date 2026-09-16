@@ -7,8 +7,8 @@ import '../theme.dart';
 Future<void> showEpSheet(BuildContext context, WidgetBuilder builder) {
   return showModalBottomSheet(
     context: context,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: .6),
+    backgroundColor: context.epColors.background.withValues(alpha: 0),
+    barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: .6),
     isScrollControlled: true,
     constraints: BoxConstraints(
       maxWidth: EpLayout.isDesktop(context) ? 560 : 600,

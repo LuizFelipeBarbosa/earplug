@@ -21,6 +21,7 @@ enum Screen {
   editProfile,
   settings,
   gigMgr,
+  hostedGig,
   gigCreate,
   analytics,
   orgApply,
@@ -55,6 +56,8 @@ enum Screen {
   adminSafety,
   adminDisputes,
   adminBookings,
+  exploreCollection,
+  people,
 }
 
 sealed class ActiveIdentity {
@@ -83,9 +86,12 @@ class AdminIdentity extends ActiveIdentity {
 }
 
 const fanTabScreens = {
+  Screen.band,
   Screen.hostApply,
   Screen.home,
   Screen.explore,
+  Screen.exploreCollection,
+  Screen.people,
   Screen.myGigs,
   Screen.myTickets,
   Screen.ticket,
@@ -96,6 +102,7 @@ const bandTabScreens = {
   Screen.bandDash,
   Screen.bandEdit,
   Screen.gigMgr,
+  Screen.hostedGig,
   Screen.analytics,
   Screen.opportunityDetail,
   Screen.bookingDetail,

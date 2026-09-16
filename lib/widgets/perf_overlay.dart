@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../theme.dart';
+
 typedef _FrameSample = ({int buildMicros, int rasterMicros, int totalMicros});
 
 /// A compact performance readout that must be placed directly inside a [Stack].
@@ -191,14 +193,14 @@ class _PerfOverlayState extends State<PerfOverlay> {
                 constraints: const BoxConstraints(maxWidth: 300),
                 padding: const EdgeInsets.fromLTRB(8, 6, 8, 30),
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.78),
-                  borderRadius: BorderRadius.circular(4),
+                  color: Ep.background.withValues(alpha: 0.86),
+                  border: Border.all(color: Ep.outline),
                 ),
                 child: Text(
                   _displayedSummary,
                   style: const TextStyle(
-                    color: Colors.white,
-                    fontFamily: 'monospace',
+                    color: Ep.contentPrimary,
+                    fontFamily: 'Azeret Mono',
                     fontSize: 10,
                     height: 1.25,
                   ),
@@ -216,10 +218,10 @@ class _PerfOverlayState extends State<PerfOverlay> {
                   child: Text(
                     'RESET',
                     style: TextStyle(
-                      color: Colors.amber,
-                      fontFamily: 'monospace',
+                      color: Ep.accent,
+                      fontFamily: 'Azeret Mono',
                       fontSize: 9,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),

@@ -27,9 +27,11 @@ function completeFunction(identifier, functionType) {
       entry.returns.value.value[fieldName] = field;
     } else if (
       identifier === "bands.js:bySlug" ||
+      identifier === "artistApplications.js:mine" ||
       identifier === "bookingsRead.js:get" ||
       identifier === "tickets.js:orderStatus" ||
-      identifier === "gigs.js:resolvePublic"
+      identifier === "gigs.js:resolvePublic" ||
+      identifier === "users.js:me"
     ) {
       entry.returns ??= {
         type: "union",
@@ -222,6 +224,8 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing artistApplications.js:apply",
     "missing artistApplications.js:withdraw",
     "missing artistApplications.js:review",
+    "missing artistApplications.js:markViewed",
+    "missing artistApplications.js:setHostNote",
     "missing artistApplications.js:forOpportunity",
     "missing artistApplications.js:forBand",
     "missing artistApplications.js:mine",
@@ -293,6 +297,15 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing payouts.js:statementForBand",
     "missing features.js:fees",
     "missing stripeActions.js:enableBandTicketSales",
+    "missing users.js:me",
+    "missing interactions.js:history",
+    "missing social.js:searchUsers",
+    "missing social.js:toggleFollowUser",
+    "missing social.js:mySocial",
+    "missing social.js:friendsGoing",
+    "missing social.js:userCard",
+    "missing social.js:knownAttendees",
+    "missing social.js:suggestedPeople",
   ]);
 });
 
@@ -323,6 +336,32 @@ test("reports missing client fields on nullable union returns", () => {
 
   assert.deepEqual(contractProblems(url, { url, functions }), [
     "bands.js:bySlug is missing return.avatarUrl",
+  ]);
+});
+
+test("reports missing and wrongly optional application tracker fields on nullable union returns", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions).map(
+    ([identifier, functionType]) => completeFunction(identifier, functionType),
+  );
+  const application = functions.find(
+    (entry) => entry.identifier === "artistApplications.js:mine",
+  );
+  const fields = application.returns.value[0].value;
+  delete fields.viewedAt;
+  fields.shortlistedAt.optional = true;
+  delete fields.declineReason;
+  fields.declineNote.optional = true;
+  delete fields.hostNote;
+  fields.hostNoteAt.optional = true;
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "artistApplications.js:mine is missing return.viewedAt",
+    "artistApplications.js:mine return.shortlistedAt optional=true, expected false",
+    "artistApplications.js:mine is missing return.declineReason",
+    "artistApplications.js:mine return.declineNote optional=true, expected false",
+    "artistApplications.js:mine is missing return.hostNote",
+    "artistApplications.js:mine return.hostNoteAt optional=true, expected false",
   ]);
 });
 

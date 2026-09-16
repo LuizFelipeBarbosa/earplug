@@ -111,6 +111,26 @@ describe("venues:list", () => {
     const t = convexTest(schema);
     expect(await t.query(api.venues.list, {})).toEqual([]);
   });
+
+  test("resolves stored venue photos and returns no photos when unset", async () => {
+    const t = convexTest(schema);
+    await t.run(async (ctx) => {
+      const firstId = await ctx.storage.store(new Blob(["first"]));
+      const secondId = await ctx.storage.store(new Blob(["second"]));
+      await ctx.db.insert("venues", {
+        ...venueFields("Photo Room"),
+        photoStorageIds: [firstId, secondId],
+      });
+      await ctx.db.insert("venues", venueFields("Plain Room"));
+    });
+
+    const venues = await t.query(api.venues.list, {});
+    const photoVenue = venues.find((venue) => venue.name === "Photo Room");
+    const plainVenue = venues.find((venue) => venue.name === "Plain Room");
+    expect(photoVenue?.photoUrls).toHaveLength(2);
+    expect(photoVenue?.photoUrls.every((url) => url.length > 0)).toBe(true);
+    expect(plainVenue?.photoUrls).toEqual([]);
+  });
 });
 
 describe("venues:create", () => {
@@ -634,6 +654,7 @@ describe("venues:detail", () => {
         verified: false,
         managedByOrganizationId: null,
         exactAddr: "1 Test Way",
+        photoUrls: [],
       },
       gigs: [
         {

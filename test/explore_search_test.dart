@@ -1,578 +1,514 @@
-import 'dart:async';
-import 'dart:ui' show Tristate;
-
-import 'package:earplug/data/demo_repository.dart';
-import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
-import 'package:earplug/models.dart';
 import 'package:earplug/screens/explore.dart';
-import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/search_query.dart';
+import 'package:earplug/services/recent_searches.dart';
+import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/ep_text.dart';
+import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:latlong2/latlong.dart';
 
-import 'support/fixtures.dart';
+import 'support/accessibility.dart';
 import 'support/harness.dart';
-import 'support/stub_repository.dart';
-
-const _directoryOnlyVenue = Venue(
-  id: 'v-derby',
-  name: 'Derby Street House',
-  area: 'South Berkeley',
-  addr: '2863 Derby St, Berkeley',
-  point: LatLng(37.8614, -122.2508),
-);
 
 void main() {
-  testWidgets('typing keeps a local draft until the search button is tapped', (
+  testWidgets('default view adds recent searches above suggestions', (
     tester,
   ) async {
     final harness = await pumpApp(
       tester,
       home: const Scaffold(body: ExploreScreen()),
-      beforePump: (app) => app.loadMoreExploreBands(),
     );
 
-    expect(harness.app.exploreResultType.name, 'all');
-    for (final scope in const ['all', 'events', 'bands', 'venues']) {
-      expect(find.byKey(ValueKey('explore-tab-$scope')), findsOne);
+    expect(find.byKey(const ValueKey('explore-default')), findsOne);
+    expect(find.text('RECENT SEARCHES'), findsNothing);
+    expect(find.text('SUGGESTIONS'), findsOne);
+    expect(find.byType(ExploreMenuRow), findsNWidgets(3));
+    for (final suffix in ['near-me', 'tonight', 'free']) {
+      expect(find.byKey(Key('explore-suggest-$suffix')), findsOne);
     }
-    expect(find.byKey(const Key('explore-filter-button')), findsOne);
+    expect(find.byType(FanEventCard), findsNothing);
 
-    await tester.enterText(
-      find.byKey(const Key('explore-search-field')),
-      '  Mission Creep  ',
-    );
-    await tester.pump();
-
-    expect(harness.app.query, isEmpty);
-    expect(find.text('GENRES'), findsNothing);
-    expect(find.text('PUNK'), findsNothing);
-
-    await tester.tap(find.byKey(const Key('explore-search-submit')));
+    await tester.tap(find.byKey(const Key('explore-suggest-free')));
+    await tester.pumpAndSettle();
+    harness.app.setQuery('');
     await tester.pumpAndSettle();
 
-    expect(harness.app.query, 'Mission Creep');
-    await tester.scrollUntilVisible(
-      find.text('MISSION CREEP'),
-      200,
-      scrollable: _allResultsScrollable(),
+    expect(_recentLabel(tester, 0), 'free');
+    expect(
+      tester.getTopLeft(find.text('RECENT SEARCHES')).dy,
+      lessThan(tester.getTopLeft(find.text('SUGGESTIONS')).dy),
     );
-    expect(find.text('MISSION CREEP'), findsOne);
-    expect(find.text('GENRES'), findsNothing);
   });
 
-  testWidgets('keyboard search submits and clear restores browsing', (
+  testWidgets('recent and suggestion rows stay compact with accessible targets', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      home: const Scaffold(body: ExploreScreen()),
+      recentSearchesStore: MemoryRecentSearchesStore(['free']),
+    );
+
+    for (final key in [
+      'explore-recent-0',
+      'explore-suggest-near-me',
+      'explore-suggest-tonight',
+      'explore-suggest-free',
+    ]) {
+      final row = find.byKey(Key(key));
+      expect(tester.getSize(row).height, inInclusiveRange(44, 52));
+    }
+    expect(
+      tester.getRect(find.byKey(const Key('explore-suggest-near-me'))).top -
+          tester.getRect(find.text('SUGGESTIONS')).bottom,
+      lessThanOrEqualTo(8),
+    );
+  });
+
+  testWidgets('recent searches keep the three newest entries in order', (
     tester,
   ) async {
     final harness = await pumpApp(
       tester,
       home: const Scaffold(body: ExploreScreen()),
-      beforePump: (app) => app.loadMoreExploreBands(),
     );
+    for (final query in ['Foghorn', 'noise', 'near me', 'free']) {
+      await harness.app.recordSearch(query);
+    }
+    await tester.pumpAndSettle();
 
-    await tester.enterText(
-      find.byKey(const Key('explore-search-field')),
-      'Foghorn',
+    expect(harness.app.recentSearches, ['free', 'near me', 'noise']);
+    expect(
+      [for (var i = 0; i < 3; i++) _recentLabel(tester, i)],
+      ['free', 'near me', 'noise'],
     );
-    await tester.testTextInput.receiveAction(TextInputAction.search);
+    expect(find.byKey(const Key('explore-recent-3')), findsNothing);
+  });
+
+  testWidgets('removing a recent search preserves the other entries', (
+    tester,
+  ) async {
+    final store = MemoryRecentSearchesStore(['free', 'tonight', 'near me']);
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: ExploreScreen()),
+      recentSearchesStore: store,
+    );
+    final remove = find.byKey(const Key('explore-recent-clear-1'));
+    await tester.scrollUntilVisible(
+      remove,
+      160,
+      scrollable: _scrollable('default'),
+    );
+    await tester.tap(remove);
+    await tester.pumpAndSettle();
+
+    expect(harness.app.query, isEmpty);
+    expect(harness.app.recentSearches, ['free', 'near me']);
+    expect(await store.load(), ['free', 'near me']);
+    expect(_recentLabel(tester, 0), 'free');
+    expect(_recentLabel(tester, 1), 'near me');
+    expect(find.byKey(const Key('explore-recent-2')), findsNothing);
+  });
+
+  testWidgets('replaying a recent search moves it to the front', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: ExploreScreen()),
+      recentSearchesStore: MemoryRecentSearchesStore(['free', 'Foghorn']),
+    );
+    final recent = find.byKey(const Key('explore-recent-1'));
+    await tester.scrollUntilVisible(
+      recent,
+      160,
+      scrollable: _scrollable('default'),
+    );
+    await tester.tap(recent);
     await tester.pumpAndSettle();
 
     expect(harness.app.query, 'Foghorn');
-    await tester.scrollUntilVisible(
-      find.text('FOGHORN DIET'),
-      200,
-      scrollable: _allResultsScrollable(),
-    );
-    expect(find.text('FOGHORN DIET'), findsOne);
+    expect(harness.app.recentSearches, ['Foghorn', 'free']);
+    expect(tester.widget<TextField>(_searchField).controller!.text, 'Foghorn');
+    expect(find.byKey(const ValueKey('explore-results')), findsOne);
+  });
 
+  for (final suggestion in [
+    (key: 'near-me', query: 'near me'),
+    (key: 'tonight', query: 'tonight'),
+    (key: 'free', query: 'free'),
+  ]) {
+    testWidgets(
+      '${suggestion.query} suggestion searches and records its query',
+      (tester) async {
+        final harness = await pumpApp(
+          tester,
+          home: const Scaffold(body: ExploreScreen()),
+        );
+        final row = find.byKey(Key('explore-suggest-${suggestion.key}'));
+        await tester.scrollUntilVisible(
+          row,
+          160,
+          scrollable: _scrollable('default'),
+        );
+        await tester.tap(row);
+        await tester.pumpAndSettle();
+
+        expect(harness.app.query, suggestion.query);
+        expect(harness.app.recentSearches, [suggestion.query]);
+        expect(
+          tester.widget<TextField>(_searchField).controller!.text,
+          suggestion.query,
+        );
+        expect(find.byKey(const ValueKey('explore-results')), findsOne);
+      },
+    );
+  }
+
+  testWidgets(
+    'typing filters on every keystroke and submitting records the query',
+    (tester) async {
+      final store = MemoryRecentSearchesStore();
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: ExploreScreen()),
+        recentSearchesStore: store,
+      );
+      for (final query in ['F', 'Fo', 'Fog', 'Foghorn']) {
+        await tester.enterText(_searchField, query);
+        await tester.pumpAndSettle();
+        expect(harness.app.query, query);
+        expect(find.byKey(const ValueKey('explore-results')), findsOne);
+        expect(find.text('RIPTIDE RELEASE SHOW'), findsWidgets);
+      }
+      expect(harness.app.recentSearches, isEmpty);
+      expect(await store.load(), isEmpty);
+
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(harness.app.recentSearches, ['Foghorn']);
+      expect(await store.load(), ['Foghorn']);
+
+      await tester.enterText(_searchField, 'Foghorn zzz');
+      await tester.pumpAndSettle();
+      expect(harness.app.query, 'Foghorn zzz');
+      expect(find.byKey(const Key('explore-no-results')), findsOne);
+      expect(find.text('RIPTIDE RELEASE SHOW'), findsNothing);
+    },
+  );
+
+  testWidgets('meta line describes a matching genre, time, and free query', (
+    tester,
+  ) async {
+    final tonightGig = DemoData.gigs.firstWhere((gig) => gig.id == 'g1');
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: ExploreScreen()),
+      now: () => tonightGig.startsAt.subtract(const Duration(hours: 3)),
+    );
+    await tester.enterText(_searchField, 'hardcore tonight free');
+    await tester.pumpAndSettle();
+
+    expect(harness.app.searchResults.map((hit) => hit.gig.id), ['g1']);
+    final meta = tester.widget<Text>(
+      find.byKey(const Key('explore-results-meta')),
+    );
+    expect(meta.data, '1 RESULT · TONIGHT · FREE · HARDCORE');
+    expect(
+      meta.data,
+      searchMetaLine(
+        harness.app.parsedSearch,
+        harness.app.searchResults.length,
+      ),
+    );
+  });
+
+  testWidgets(
+    'ranked hits appear as a featured hero followed by compact rows',
+    (tester) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: ExploreScreen()),
+      );
+      harness.app.setQuery('Foghorn');
+      await tester.pumpAndSettle();
+      final hits = harness.app.searchResults;
+      expect(hits.length, greaterThan(1));
+      expect(hits.map((hit) => hit.gig.id), containsAll(['g2', 'g7', 'g8']));
+
+      final renderedIds = <String>[];
+      var previousOffset = double.negativeInfinity;
+      for (var i = 0; i < hits.length; i++) {
+        final key = i == 0
+            ? 'explore-hero'
+            : 'explore-result-${hits[i].gig.id}';
+        final row = _eventCard(key);
+        await tester.scrollUntilVisible(
+          row,
+          160,
+          scrollable: _scrollable('results'),
+        );
+        await tester.pumpAndSettle();
+        final card = tester.widget<FanEventCard>(row);
+        expect(card.rowKey, Key(key));
+        expect(card.showDistance, isTrue);
+        expect(
+          card.presentation,
+          i == 0
+              ? FanEventCardPresentation.featured
+              : FanEventCardPresentation.compact,
+        );
+        renderedIds.add(card.gig.id);
+        final offset =
+            tester
+                .state<ScrollableState>(_scrollable('results'))
+                .position
+                .pixels +
+            tester.getTopLeft(row).dy;
+        expect(offset, greaterThan(previousOffset));
+        previousOffset = offset;
+      }
+      expect(renderedIds, hits.map((hit) => hit.gig.id));
+    },
+  );
+
+  testWidgets(
+    'hero appears only with hits and unmatched queries show the empty state',
+    (tester) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: ExploreScreen()),
+      );
+      for (final query in ['', 'zzzz-no-such-show', 'Foghorn', 'events']) {
+        harness.app.setQuery(query);
+        await tester.pumpAndSettle();
+        final hasHits = harness.app.searchResults.isNotEmpty;
+        expect(_eventCard('explore-hero'), hasHits ? findsOne : findsNothing);
+        if (query.isNotEmpty && !hasHits) {
+          expect(find.byKey(const Key('explore-no-results')), findsOne);
+          expect(
+            find.text(
+              'Nothing matches. Try a band, a venue, a place, or tonight / free.',
+            ),
+            findsOne,
+          );
+          expect(find.byType(FanEventCard), findsNothing);
+        }
+      }
+    },
+  );
+
+  testWidgets('clear resets the field and query to the default view', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: ExploreScreen()),
+    );
+    expect(find.byKey(const Key('explore-search-clear')), findsNothing);
+    await tester.enterText(_searchField, 'Foghorn');
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('explore-search-clear')));
     await tester.pumpAndSettle();
 
     expect(harness.app.query, isEmpty);
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('explore-search-field')))
-          .controller!
-          .text,
-      isEmpty,
-    );
-    expect(find.byKey(const Key('explore-filter-button')), findsOne);
-    expect(find.text('GENRES'), findsNothing);
+    expect(tester.widget<TextField>(_searchField).controller!.text, isEmpty);
+    expect(find.byKey(const ValueKey('explore-default')), findsOne);
+    expect(find.byKey(const ValueKey('explore-results')), findsNothing);
+    expect(find.byKey(const Key('explore-search-clear')), findsNothing);
   });
 
-  testWidgets('scope changes keep results visible and announce progress', (
+  testWidgets('recent searches persist across fresh AppState instances', (
     tester,
   ) async {
-    await pumpApp(tester, home: const Scaffold(body: ExploreScreen()));
-
-    await tester.enterText(find.byKey(const Key('explore-search-field')), 'a');
-    await tester.tap(find.byKey(const Key('explore-search-submit')));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('explore-tab-events')));
-    await tester.pump();
-
-    expect(find.byKey(const Key('explore-results-events')), findsOne);
-    expect(find.byKey(const Key('explore-scope-progress')), findsOne);
-
-    await tester.pump(const Duration(milliseconds: 250));
-    expect(find.byKey(const Key('explore-scope-progress')), findsNothing);
-  });
-
-  testWidgets('band rows use singular fan copy for a single follower', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await pumpApp(
+    final store = MemoryRecentSearchesStore();
+    final first = await pumpApp(
       tester,
-      auth: auth,
-      repository: StubRepository(auth: auth)
-        ..returns(
-          'listBands',
-          BandPage(
-            items: [
-              bandFixture(
-                id: 'one-fan-band',
-                slug: 'one-fan-band',
-                name: 'One Fan Band',
-                area: 'Berkeley',
-                color: const Color(0xFF2233EE),
-                initials: 'OF',
-              ),
-            ],
-            continueCursor: null,
-            isDone: true,
-          ),
+      home: const Scaffold(body: ExploreScreen()),
+      recentSearchesStore: store,
+    );
+    await tester.tap(find.byKey(const Key('explore-suggest-free')));
+    await tester.pumpAndSettle();
+    expect(first.app.recentSearches, ['free']);
+
+    final second = await pumpApp(
+      tester,
+      home: const Scaffold(body: ExploreScreen()),
+      recentSearchesStore: store,
+    );
+    expect(identical(first.app, second.app), isFalse);
+    expect(second.app.query, isEmpty);
+    expect(second.app.recentSearches, ['free']);
+    expect(find.text('RECENT SEARCHES'), findsOne);
+    expect(_recentLabel(tester, 0), 'free');
+  });
+
+  testWidgets(
+    'external queries resync the field while local edits preserve selection',
+    (tester) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: ExploreScreen()),
+        beforePump: (app) => app.setQuery('free'),
+      );
+      final controller = tester.widget<TextField>(_searchField).controller!;
+      expect(controller.text, 'free');
+      harness.app.setQuery('Foghorn');
+      await tester.pumpAndSettle();
+      expect(controller.text, 'Foghorn');
+      expect(controller.selection, const TextSelection.collapsed(offset: 7));
+
+      await tester.showKeyboard(_searchField);
+      tester.testTextInput.updateEditingValue(
+        const TextEditingValue(
+          text: 'Fog horn',
+          selection: TextSelection.collapsed(offset: 4),
         ),
-      home: const Scaffold(body: ExploreScreen()),
-      beforePump: (app) => app.loadMoreExploreBands(),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
+      expect(harness.app.query, 'Fog horn');
+      expect(controller.selection, const TextSelection.collapsed(offset: 4));
+    },
+  );
 
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('explore-toggle-bands')),
-      250,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.textContaining('1 fan'), findsOne);
-    expect(find.textContaining('1 fans'), findsNothing);
-  });
-
-  testWidgets('one accessible filter control applies and resets filters', (
-    tester,
-  ) async {
-    final semantics = tester.ensureSemantics();
-    final harness = await pumpApp(
-      tester,
-      home: const Scaffold(body: ExploreScreen()),
-    );
-    final button = find.byKey(const Key('explore-filter-button'));
-
-    expect(tester.getSize(button), const Size(48, 48));
-    var data = tester.getSemantics(button).getSemanticsData();
-    expect(data.label, 'Filters, none applied');
-    expect(data.flagsCollection.isButton, isTrue);
-    expect(data.flagsCollection.isSelected, Tristate.isFalse);
-
-    tester
-        .getSemantics(button)
-        .owner!
-        .performAction(tester.getSemantics(button).id, SemanticsAction.tap);
-    await tester.pumpAndSettle();
-
-    for (final label in const [
-      'DATE',
-      'GENRES · CHOOSE ANY',
-      'DISTANCE',
-      'PRICE',
-      'PUNK',
-      'GARAGE',
-      'NOISE',
-    ]) {
-      expect(find.text(label), findsOne);
-    }
-    expect(find.textContaining('APPLY FILTERS ·'), findsOne);
-
-    await tester.tap(find.text('PUNK'));
-    await tester.pump();
-    expect(harness.app.fGenres, {'punk'});
-    expect(harness.app.query, isEmpty);
-    expect(find.text('VENUE'), findsNothing);
-    expect(find.text('Any venue'), findsNothing);
-    expect(
-      find.byKey(const Key('clear-discovery-filters')).hitTestable(),
-      findsOne,
-    );
-    await tester.tap(find.byKey(const Key('show-filter-results')));
-    await tester.pumpAndSettle();
-
-    data = tester.getSemantics(button).getSemanticsData();
-    expect(data.label, 'Filters, 1 active');
-    expect(data.flagsCollection.isSelected, Tristate.isTrue);
-    expect(find.text('PUNK'), findsNothing);
-
-    await tester.tap(button);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('clear-discovery-filters')));
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('show-filter-results')));
-    await tester.pumpAndSettle();
-
-    expect(harness.app.activeFilterCount, 0);
-    data = tester.getSemantics(button).getSemanticsData();
-    expect(data.label, 'Filters, none applied');
-    expect(data.flagsCollection.isSelected, Tristate.isFalse);
-    semantics.dispose();
-  });
-
-  testWidgets('genre filters keep Explore events on existing feed logic', (
-    tester,
-  ) async {
-    final harness = await pumpApp(
-      tester,
-      home: const Scaffold(body: ExploreScreen()),
-    );
-
-    expect(find.byKey(const ValueKey('explore-event-g1')), findsOne);
-    expect(find.byKey(const ValueKey('explore-event-g5')), findsOne);
-
-    harness.app.toggleGenre('noise');
-    await tester.pump();
-
-    expect(harness.app.feed.map((gig) => gig.id), containsAll(['g1', 'g3']));
-    expect(find.byKey(const ValueKey('explore-event-g1')), findsOne);
-    expect(find.byKey(const ValueKey('explore-event-g5')), findsNothing);
-  });
-
-  testWidgets('later published gigs appear and stay live in Explore', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    final repository = _LiveExploreRepository(auth: auth);
-    addTearDown(repository.close);
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const Scaffold(body: ExploreScreen()),
-    );
-
-    expect(find.text('TESS'), findsNothing);
-    repository.publishTess();
-    await tester.pumpAndSettle();
-
-    expect(
-      harness.app.feed.map((gig) => gig.id),
-      contains('tess-september-23'),
-    );
-    await tester.tap(find.byKey(const ValueKey('explore-tab-events')));
-    await tester.pump();
-    final events = find.byKey(const ValueKey('explore-browse-events'));
-    for (
-      var attempt = 0;
-      attempt < 6 && find.textContaining('UPCOMING').evaluate().isEmpty;
-      attempt++
-    ) {
-      await tester.drag(events, const Offset(0, -300));
-      await tester.pump();
-    }
-    expect(find.textContaining('UPCOMING'), findsOne);
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('explore-event-tess-september-23')),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('TESS'), findsOne);
-
-    harness.app.toggleGenre('noise');
-    await tester.pump();
-    expect(find.text('TESS'), findsNothing);
-    harness.app.toggleGenre('noise');
-    await tester.pump();
-    expect(
-      harness.app.feed.map((gig) => gig.id),
-      contains('tess-september-23'),
-    );
-  });
-
-  testWidgets('browse scopes share one bounded directory and keep filters', (
-    tester,
-  ) async {
-    final harness = await pumpApp(
-      tester,
-      home: const Scaffold(body: ExploreScreen()),
-    );
-
-    expect(find.byKey(const Key('explore-event-g1')), findsOne);
-    expect(find.byKey(const Key('explore-toggle-bands')), findsOne);
-    expect(find.byKey(const Key('explore-toggle-venues')), findsOne);
-
-    await tester.tap(find.byKey(const Key('explore-tab-bands')));
-    await tester.pump();
-    expect(harness.app.exploreResultType.name, 'bands');
-    expect(find.byKey(const Key('explore-event-g1')), findsNothing);
-    expect(find.byKey(const Key('explore-toggle-bands')), findsOne);
-    expect(find.byKey(const Key('explore-toggle-venues')), findsNothing);
-
-    await tester.tap(find.byKey(const Key('explore-tab-all')));
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('explore-filter-button')));
-    await tester.pumpAndSettle();
-    expect(find.text('Filters'), findsOne);
-  });
-
-  testWidgets('search results construct off-screen rows lazily', (
+  testWidgets('search border responds to focus with square grammar styling', (
     tester,
   ) async {
     await pumpApp(tester, home: const Scaffold(body: ExploreScreen()));
+    final context = tester.element(_searchField);
+    BoxDecoration decoration() =>
+        tester
+                .widget<Container>(
+                  find
+                      .ancestor(
+                        of: _searchField,
+                        matching: find.byWidgetPredicate(
+                          (widget) =>
+                              widget is Container &&
+                              widget.decoration is BoxDecoration,
+                        ),
+                      )
+                      .first,
+                )
+                .decoration!
+            as BoxDecoration;
 
-    await tester.enterText(find.byKey(const Key('explore-search-field')), 'a');
-    await tester.tap(find.byKey(const Key('explore-search-submit')));
-    await tester.pumpAndSettle();
-
-    final results = find.byKey(const Key('explore-results-all'));
-    final list = tester.widget<ListView>(results);
-    expect(list.childrenDelegate, isA<SliverChildBuilderDelegate>());
-    expect(find.text('SUNSET BUNKER'), findsNothing);
-
-    await tester.scrollUntilVisible(
-      find.text('SUNSET BUNKER'),
-      400,
-      scrollable: _allResultsScrollable(),
+    expect(
+      decoration().border,
+      Border.all(color: context.epColors.line, width: 1),
     );
-
-    expect(find.text('SUNSET BUNKER'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    expect(decoration().borderRadius, isNull);
+    await tester.tap(_searchField);
+    await tester.pumpAndSettle();
+    expect(
+      decoration().border,
+      Border.all(color: context.epColors.accent, width: 1.5),
+    );
+    FocusManager.instance.primaryFocus!.unfocus();
+    await tester.pumpAndSettle();
+    expect(
+      decoration().border,
+      Border.all(color: context.epColors.line, width: 1),
+    );
   });
 
-  testWidgets('band and venue previews expand and collapse in place', (
+  for (final size in [const Size(402, 900), const Size(1280, 900)]) {
+    testWidgets('title and search remain fixed while results scroll at $size', (
+      tester,
+    ) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: ExploreScreen()),
+        size: size,
+      );
+      harness.app.setQuery('near me');
+      await tester.pumpAndSettle();
+      final titleRect = tester.getRect(find.byType(EpDisplay).first);
+      final fieldRect = tester.getRect(_searchField);
+      await tester.drag(_scrollable('results'), const Offset(0, -600));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.state<ScrollableState>(_scrollable('results')).position.pixels,
+        greaterThan(0),
+      );
+      expect(tester.getRect(find.byType(EpDisplay).first), titleRect);
+      expect(tester.getRect(_searchField), fieldRect);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('search content is vertically centered at 1.0x text scale', (
     tester,
   ) async {
-    final harness = await pumpApp(
-      tester,
-      home: const Scaffold(body: ExploreScreen()),
-      beforePump: (app) => app.loadMoreExploreBands(),
-    );
+    await pumpApp(tester, home: const Scaffold(body: ExploreScreen()));
+    _expectSearchContentCentered(tester, hasText: false);
 
-    final bandsToggle = find.byKey(const Key('explore-toggle-bands'));
-    await tester.scrollUntilVisible(
-      bandsToggle,
-      250,
-      scrollable: find.byType(Scrollable).first,
-    );
-    final sectionRight =
-        tester.view.physicalSize.width / tester.view.devicePixelRatio - 16;
-    expect(tester.getTopRight(bandsToggle).dx, closeTo(sectionRight, .01));
-    expect(find.text(DemoData.bands['b6']!.name.toUpperCase()), findsNothing);
-
-    final previewBandIds = harness.app.exploreBandIds.take(2).toList();
-    final firstBand = find.byKey(
-      ValueKey('explore-band-card-${previewBandIds.first}'),
-    );
-    final secondBand = find.byKey(
-      ValueKey('explore-band-card-${previewBandIds.last}'),
-    );
-    expect(
-      tester.getTopLeft(secondBand).dy - tester.getBottomLeft(firstBand).dy,
-      7,
-    );
-    expect(
-      find.byKey(ValueKey('explore-follow-${previewBandIds.first}')),
-      findsOne,
-    );
-
-    await tester.tap(bandsToggle);
+    await tester.enterText(_searchField, 'Foghorn');
     await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('explore-all-bands')), findsOne);
-    expect(find.text(DemoData.bands['b6']!.name.toUpperCase()), findsOne);
-    expect(find.text('SEE LESS BANDS'), findsOne);
-
-    await tester.tap(bandsToggle);
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('explore-band-preview')), findsOne);
-    expect(find.text('SEE ALL BANDS'), findsOne);
-
-    final venuesToggle = find.byKey(const Key('explore-toggle-venues'));
-    await tester.scrollUntilVisible(
-      venuesToggle,
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(tester.getTopRight(venuesToggle).dx, closeTo(sectionRight, .01));
-    expect(find.text(DemoData.venues['v6']!.name.toUpperCase()), findsNothing);
-
-    await tester.tap(venuesToggle);
-    await tester.pumpAndSettle();
-
-    expect(find.text(DemoData.venues['v6']!.name.toUpperCase()), findsOne);
-    expect(find.text('SEE LESS VENUES'), findsOne);
+    _expectSearchContentCentered(tester, hasText: true);
   });
 
-  testWidgets('browse lists a venue absent from the feed', (tester) async {
-    final auth = FakeAuthService();
-    await pumpApp(
-      tester,
-      auth: auth,
-      repository: _directoryRepository(auth),
-      home: const Scaffold(body: ExploreScreen()),
-    );
+  testWidgets('search content is vertically centered at 1.5x text scale', (
+    tester,
+  ) async {
+    await pumpApp(tester, home: scaledScreen(const ExploreScreen()));
+    _expectSearchContentCentered(tester, hasText: false);
 
-    expect(find.text('VENUES', skipOffstage: false), findsOne);
-    expect(
-      find.text(_directoryOnlyVenue.name.toUpperCase(), skipOffstage: false),
-      findsOne,
-    );
-  });
-
-  testWidgets('search finds a venue that has no gigs', (tester) async {
-    final auth = FakeAuthService();
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: _directoryRepository(auth),
-      home: const Scaffold(body: ExploreScreen()),
-    );
-
-    harness.app.setQuery(_directoryOnlyVenue.name);
+    await tester.enterText(_searchField, 'Foghorn');
     await tester.pumpAndSettle();
-
-    expect(find.text('VENUES'), findsOne);
-    expect(find.text(_directoryOnlyVenue.name.toUpperCase()), findsOne);
-    expect(find.text('No gigs found.'), findsOne);
-  });
-
-  testWidgets('an empty failed directory can be retried', (tester) async {
-    final auth = FakeAuthService();
-    final repository = _RetryDirectoryRepository(auth: auth);
-    await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository.stub,
-      home: const Scaffold(body: ExploreScreen()),
-    );
-
-    expect(find.text("Couldn't load venues.", skipOffstage: false), findsOne);
-    final retry = find.text('RETRY', skipOffstage: false);
-    await tester.ensureVisible(retry);
-    await tester.pumpAndSettle();
-    await tester.tap(retry);
-    await tester.pumpAndSettle();
-
-    expect(repository.calls, 2);
-    await tester.scrollUntilVisible(
-      find.text(_directoryOnlyVenue.name.toUpperCase()),
-      250,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(
-      find.text(_directoryOnlyVenue.name.toUpperCase(), skipOffstage: false),
-      findsOne,
-    );
-    expect(
-      find.text("Couldn't load venues.", skipOffstage: false),
-      findsNothing,
-    );
-  });
-
-  testWidgets('a failed directory never blanks feed venues', (tester) async {
-    final auth = FakeAuthService();
-    await pumpApp(
-      tester,
-      auth: auth,
-      repository: StubRepository(auth: auth)
-        ..returnsStream(
-          'feed',
-          () => Stream.value(
-            FeedSnapshot(
-              gigs: const [],
-              venues: {'v1': DemoData.venues['v1']!},
-              bands: const {},
-            ),
-          ),
-        )
-        ..fail('venues', Exception('venue directory failed')),
-      home: const Scaffold(body: ExploreScreen()),
-    );
-
-    expect(
-      find.text(DemoData.venues['v1']!.name.toUpperCase(), skipOffstage: false),
-      findsOne,
-    );
-    expect(
-      find.text("Couldn't load venues.", skipOffstage: false),
-      findsNothing,
-    );
+    _expectSearchContentCentered(tester, hasText: true);
   });
 }
 
-Finder _allResultsScrollable() => find.descendant(
-  of: find.byKey(const Key('explore-results-all')),
+Finder get _searchField => find.byKey(const Key('explore-search-field'));
+
+String _recentLabel(WidgetTester tester, int index) =>
+    tester.widget<ExploreMenuRow>(find.byKey(Key('explore-recent-$index'))).label;
+
+Finder _eventCard(String key) => find.byWidgetPredicate(
+  (widget) => widget is FanEventCard && widget.key == Key(key),
+);
+
+Finder _scrollable(String mode) => find.descendant(
+  of: find.byKey(ValueKey('explore-$mode')),
   matching: find.byType(Scrollable),
 );
 
-class _LiveExploreRepository extends DemoRepository {
-  _LiveExploreRepository({required super.auth});
-
-  final StreamController<FeedSnapshot> _controller =
-      StreamController<FeedSnapshot>.broadcast();
-  List<Gig> _gigs = List<Gig>.of(DemoData.gigs);
-
-  FeedSnapshot get _snapshot => FeedSnapshot(
-    gigs: List.unmodifiable(_gigs),
-    venues: DemoData.venues,
-    bands: DemoData.bands,
+void _expectSearchContentCentered(
+  WidgetTester tester, {
+  required bool hasText,
+}) {
+  final container = find
+      .ancestor(
+        of: _searchField,
+        matching: find.byWidgetPredicate(
+          (widget) => widget is Container && widget.decoration is BoxDecoration,
+        ),
+      )
+      .first;
+  final centerY = tester.getRect(container).center.dy;
+  final editable = find.descendant(
+    of: _searchField,
+    matching: find.byType(EditableText),
   );
-
-  @override
-  Stream<FeedSnapshot> feed() async* {
-    yield _snapshot;
-    yield* _controller.stream;
+  expect(tester.getRect(editable).center.dy, closeTo(centerY, 1));
+  expect(
+    tester.getRect(find.byIcon(Icons.search)).center.dy,
+    closeTo(centerY, 1),
+  );
+  if (hasText) {
+    expect(
+      tester.getRect(find.byKey(const Key('explore-search-clear'))).center.dy,
+      closeTo(centerY, 1),
+    );
+  } else {
+    final hint = find.descendant(
+      of: _searchField,
+      matching: find.text('Events, bands, venues, places, tonight, free…'),
+    );
+    expect(tester.getRect(hint).center.dy, closeTo(centerY, 1));
   }
-
-  void publishTess() {
-    final startsAt = DateTime.now().add(const Duration(days: 22));
-    _gigs = [
-      ..._gigs,
-      gigFixture(
-        id: 'tess-september-23',
-        title: 'Tess',
-        price: 12,
-        startsAt: startsAt,
-        when: GigWhen.later,
-        lineup: const ['b1'],
-        genres: const ['punk'],
-        desc: 'A later published show.',
-        createdByBand: 'b1',
-        discoveryListingReady: true,
-      ),
-    ];
-    _controller.add(_snapshot);
-  }
-
-  Future<void> close() => _controller.close();
-}
-
-EarplugRepository _directoryRepository(FakeAuthService auth) =>
-    StubRepository(auth: auth)
-      ..returns('venues', [...DemoData.venues.values, _directoryOnlyVenue]);
-
-// Wrap the stub to preserve the integer calls getter; StubRepository.calls is a map.
-class _RetryDirectoryRepository {
-  _RetryDirectoryRepository({required FakeAuthService auth})
-    : stub = StubRepository(auth: auth)
-        ..returnsStream(
-          'feed',
-          () =>
-              Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
-        )
-        ..failOnce('venues', Exception('venue directory failed'))
-        ..returns('venues', const [_directoryOnlyVenue]);
-
-  final StubRepository stub;
-
-  int get calls => stub.callsTo('venues');
 }
