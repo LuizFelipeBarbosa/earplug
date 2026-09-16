@@ -160,6 +160,16 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
     }
   }
 
+  /// Mirrors the dash badge: amber SET UP until the account is enabled.
+  Widget _stripeBadge(StripeAccountState? state) {
+    final connected = state == StripeAccountState.enabled;
+    return StatusPill(
+      key: const Key('org-settings-stripe-badge'),
+      label: connected ? 'CONNECTED' : 'SET UP',
+      tone: connected ? EpStatusPillTone.success : EpStatusPillTone.attention,
+    );
+  }
+
   Widget _buildTaxDetails(AppState app) {
     final status = app.organizationStripeStatus;
     final needsTaxInformation =
@@ -521,72 +531,82 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                 ],
               ),
             ),
-          if (isOwner)
-            FormSection(
-              title: 'Stripe',
-              description:
-                  'Needed to sell tickets later; bookings are paid to EarPlug.',
-              child: Column(
-                key: const Key('org-settings-stripe'),
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(switch (app.organizationStripeStatus?.state) {
-                    StripeAccountState.enabled => 'Connected',
-                    StripeAccountState.onboarding => 'Setup in progress',
-                    StripeAccountState.restricted => 'Needs information',
-                    _ => 'Not connected',
-                  }, style: Theme.of(context).textTheme.epBody),
-                  if (app.organizationStripeStatus?.state ==
-                      StripeAccountState.restricted)
-                    for (final requirement
-                        in app.organizationStripeStatus!.requirementsDue)
-                      Text(
-                        requirement,
-                        style: Theme.of(context).textTheme.epCaption,
-                      ),
-                  const SizedBox(height: 12),
-                  if (app.organizationStripeStatus?.state ==
-                      StripeAccountState.enabled)
-                    EpButton(
-                      'OPEN STRIPE DASHBOARD',
-                      key: const Key('org-settings-stripe-dashboard'),
-                      onTap: () => _runStripeAction(
-                        app.openOrganizationExpressDashboard,
-                      ),
-                    )
-                  else
-                    EpButton(
-                      switch (app.organizationStripeStatus?.state) {
-                        StripeAccountState.onboarding ||
-                        StripeAccountState.restricted => 'CONTINUE SETUP',
-                        _ => 'SET UP STRIPE',
-                      },
-                      key: const Key('org-settings-stripe-setup'),
-                      onTap: () => _runStripeAction(() async {
-                        await app.startOrganizationOnboarding();
-                        await app.refreshOrganizationStripeStatus();
-                      }),
-                    ),
-                  const SizedBox(height: 8),
-                  EpButton(
-                    'REFRESH',
-                    key: const Key('org-settings-stripe-refresh'),
-                    kind: EpButtonKind.outline,
-                    onTap: () =>
-                        _runStripeAction(app.refreshOrganizationStripeStatus),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildTaxDetails(app),
-                  if (_stripeError != null) ...[
-                    const SizedBox(height: 8),
-                    InlineFormFeedback(
-                      error: _stripeError,
-                      errorKey: const Key('org-settings-stripe-error'),
-                    ),
-                  ],
-                ],
-              ),
+          if (isOwner) ...[
+            // FormSection has no trailing slot, so the header is composed
+            // here to carry the same SET UP / CONNECTED badge as the dash.
+            SectionBar.form(
+              label: 'Stripe',
+              trailing: _stripeBadge(app.organizationStripeStatus?.state),
             ),
+            Text(
+              'Needed to sell tickets later; bookings are paid to EarPlug.',
+              style: Theme.of(
+                context,
+              ).textTheme.epBody.copyWith(color: context.epColors.muted),
+            ),
+            const SizedBox(height: 16),
+            Column(
+              key: const Key('org-settings-stripe'),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(switch (app.organizationStripeStatus?.state) {
+                  StripeAccountState.enabled => 'Connected',
+                  StripeAccountState.onboarding =>
+                    'Setup in progress · finish in Stripe',
+                  StripeAccountState.restricted =>
+                    'Needs information · continue in Stripe',
+                  _ => 'Not connected',
+                }, style: Theme.of(context).textTheme.epBody),
+                if (app.organizationStripeStatus?.state ==
+                    StripeAccountState.restricted)
+                  for (final requirement
+                      in app.organizationStripeStatus!.requirementsDue)
+                    Text(
+                      requirement,
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                const SizedBox(height: 12),
+                if (app.organizationStripeStatus?.state ==
+                    StripeAccountState.enabled)
+                  EpButton(
+                    'OPEN STRIPE DASHBOARD',
+                    key: const Key('org-settings-stripe-dashboard'),
+                    onTap: () =>
+                        _runStripeAction(app.openOrganizationExpressDashboard),
+                  )
+                else
+                  EpButton(
+                    switch (app.organizationStripeStatus?.state) {
+                      StripeAccountState.onboarding ||
+                      StripeAccountState.restricted => 'CONTINUE SETUP',
+                      _ => 'SET UP STRIPE',
+                    },
+                    key: const Key('org-settings-stripe-setup'),
+                    onTap: () => _runStripeAction(() async {
+                      await app.startOrganizationOnboarding();
+                      await app.refreshOrganizationStripeStatus();
+                    }),
+                  ),
+                const SizedBox(height: 8),
+                EpButton(
+                  'REFRESH',
+                  key: const Key('org-settings-stripe-refresh'),
+                  kind: EpButtonKind.outline,
+                  onTap: () =>
+                      _runStripeAction(app.refreshOrganizationStripeStatus),
+                ),
+                const SizedBox(height: 12),
+                _buildTaxDetails(app),
+                if (_stripeError != null) ...[
+                  const SizedBox(height: 8),
+                  InlineFormFeedback(
+                    error: _stripeError,
+                    errorKey: const Key('org-settings-stripe-error'),
+                  ),
+                ],
+              ],
+            ),
+          ],
           if (canManage) ...[
             const SectionBar.form(label: 'DANGER ZONE'),
             EpCard(
