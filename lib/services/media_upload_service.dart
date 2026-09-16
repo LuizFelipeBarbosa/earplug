@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../data/repository.dart';
 import '../models.dart';
 import 'media_picker.dart';
+import 'video_duration_probe.dart';
 import 'video_thumbnail_generator.dart';
 
 enum MediaUploadPhase { preparing, uploading, saving, done, failed }
@@ -52,6 +53,18 @@ class MediaUploadService {
     var phase = MediaUploadPhase.preparing;
     try {
       onPhase?.call(phase);
+      // Probe alongside thumbnail generation and storage uploads, with a
+      // bounded fallback so metadata failure cannot fail the upload.
+      final duration = () async {
+        if (kind != MediaKind.video) return null;
+        try {
+          return await probeVideoDurationSec(
+            media,
+          ).timeout(const Duration(seconds: 5), onTimeout: () => null);
+        } catch (_) {
+          return null;
+        }
+      }();
       PickedMedia? thumbnail;
       if (kind == MediaKind.video) {
         final bytes = await _thumbnailGenerator.generate(media);
@@ -83,6 +96,7 @@ class MediaUploadService {
               },
             );
 
+      final lengthSec = await duration;
       phase = MediaUploadPhase.saving;
       onPhase?.call(phase);
       final mediaId = await repository.addBandMedia(
@@ -91,7 +105,7 @@ class MediaUploadService {
         storageId: storageId,
         thumbnailStorageId: thumbnailStorageId,
         title: media.titleFromFilename,
-        lengthSec: null,
+        lengthSec: lengthSec,
       );
 
       phase = MediaUploadPhase.done;

@@ -544,6 +544,32 @@ class DemoRepository implements EarplugRepository {
   Future<void> moveMediaWithinKind(String mediaId, String direction) =>
       moveBandMedia(mediaId, direction == 'earlier' ? 'up' : 'down');
 
+  @override
+  Future<void> reorderMedia({
+    required String bandId,
+    required String mediaId,
+    required int toIndex,
+  }) async {
+    final media = _mediaListContaining(mediaId);
+    if (media == null) return;
+
+    final ordered = List<BandMedia>.of(media)
+      ..sort((a, b) => a.order.compareTo(b.order));
+    final fromIndex = ordered.indexWhere((item) => item.id == mediaId);
+    if (fromIndex == -1) return;
+
+    final moved = ordered.removeAt(fromIndex);
+    final destination = toIndex.clamp(0, ordered.length);
+    ordered.insert(destination, moved);
+
+    for (var order = 0; order < ordered.length; order++) {
+      final item = ordered[order];
+      if (item.order == order) continue;
+      final rawIndex = media.indexWhere((candidate) => candidate.id == item.id);
+      media[rawIndex] = media[rawIndex].copyWith(order: order);
+    }
+  }
+
   void _requireOwnedPhoto(String bandId, String mediaId) {
     final media = _mediaListContaining(mediaId);
     final targetIndex = media?.indexWhere((item) => item.id == mediaId) ?? -1;

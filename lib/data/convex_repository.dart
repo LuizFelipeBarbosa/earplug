@@ -167,6 +167,19 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<void> reorderMedia({
+    required String bandId,
+    required String mediaId,
+    required int toIndex,
+  }) async {
+    await _convexService.mutation('media:reorderMedia', {
+      'bandId': bandId,
+      'mediaId': mediaId,
+      'toIndex': toIndex,
+    });
+  }
+
+  @override
   Future<void> setBandAvatar({
     required String bandId,
     required String mediaId,

@@ -111,6 +111,7 @@ class StubRepository extends DemoRepository {
     'refreshOrganizationAccountStatus',
     'refundsForBooking',
     'removeOrganizationMember',
+    'reorderMedia',
     'reserveTickets',
     'resolveDispute',
     'resolveOpportunity',
@@ -611,6 +612,15 @@ class StubRepository extends DemoRepository {
         'removeOrganizationMember',
         () => super.removeOrganizationMember(organizationId: organizationId, userId: userId),
       );
+  @override
+  Future<void> reorderMedia({
+    required String bandId,
+    required String mediaId,
+    required int toIndex,
+  }) => intercept(
+    'reorderMedia',
+    () => super.reorderMedia(bandId: bandId, mediaId: mediaId, toIndex: toIndex),
+  );
   @override
   Future<TicketReservation> reserveTickets({
     required String gigId,

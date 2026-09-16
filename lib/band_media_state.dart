@@ -148,6 +148,7 @@ class BandMediaController extends ChangeNotifier {
       final loaded = await repository.mediaFor(bandId);
       if (!identical(_loadTokens[bandId], token)) return;
       _mediaCache[bandId] = List<BandMedia>.unmodifiable(loaded);
+      _splitCache.remove(bandId);
       _loadErrors.remove(bandId);
     } catch (error) {
       if (!identical(_loadTokens[bandId], token)) return;
@@ -359,6 +360,75 @@ class BandMediaController extends ChangeNotifier {
 
   Future<void> remove(String bandId, String mediaId) async {
     await _mutate(bandId, () => repository.deleteBandMedia(mediaId));
+  }
+
+  Future<void> reorder(String bandId, String mediaId, int toIndex) async {
+    final previous = _mediaCache[bandId];
+    if (previous == null) return;
+    final index = previous.indexWhere((item) => item.id == mediaId);
+    if (index == -1) return;
+
+    final destination = toIndex.clamp(0, previous.length - 1);
+    final optimistic = List<BandMedia>.of(previous)..removeAt(index);
+    optimistic.insert(destination, previous[index]);
+    _mediaCache[bandId] = List<BandMedia>.unmodifiable(optimistic);
+    _splitCache.remove(bandId);
+    notifyListeners();
+
+    try {
+      await repository.reorderMedia(
+        bandId: bandId,
+        mediaId: mediaId,
+        toIndex: toIndex,
+      );
+    } catch (error) {
+      _mediaCache[bandId] = previous;
+      _splitCache.remove(bandId);
+      notifyListeners();
+      logError('band media mutation', error);
+      say(genericErrorMessage);
+    }
+    await refresh(bandId);
+  }
+
+  Future<void> moveToFront(String bandId, String mediaId) =>
+      reorder(bandId, mediaId, 0);
+
+  Future<void> replace(String bandId, String mediaId) async {
+    final current = mediaFor(bandId);
+    final index = current.indexWhere((item) => item.id == mediaId);
+    if (index == -1) return;
+    final old = current[index];
+
+    final PickedMedia? picked;
+    try {
+      picked = old.kind == MediaKind.video
+          ? await _picker.pickVideo()
+          : await _picker.pickPhoto();
+    } on MediaPickException catch (error) {
+      say(error.message);
+      return;
+    }
+    if (picked == null) return;
+
+    final newId = await _beginUpload(bandId, old.kind, picked);
+    if (newId == null) return;
+
+    try {
+      await repository.reorderMedia(
+        bandId: bandId,
+        mediaId: newId,
+        toIndex: index,
+      );
+      if (old.pinned && old.kind == MediaKind.video) {
+        await repository.pinBandMedia(newId);
+      }
+      await repository.deleteBandMedia(mediaId);
+    } catch (error) {
+      logError('band media mutation', error);
+      say(genericErrorMessage);
+    }
+    await refresh(bandId);
   }
 
   Future<bool> setAvatar(String bandId, String mediaId) => _mutateResult(

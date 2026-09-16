@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
+import 'package:earplug/errors.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/media_picker.dart';
@@ -11,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fakes.dart';
 import 'support/fixtures.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   group('BandMediaController', () {
@@ -223,6 +225,287 @@ void main() {
       expect(harness.controller.photosFor(bandId).single.id, 'photo-1');
     });
 
+    test(
+      'reorder updates the global cache before the mutation completes',
+      () async {
+        final repository = StubRepository(auth: FakeAuthService());
+        final harness = _makeController(repository: repository);
+        const bandId = 'b1';
+        await harness.controller.refresh(bandId);
+        final previous = harness.controller.mediaFor(bandId);
+        final expected = previous.map((item) => item.id).toList();
+        final movedId = expected.removeLast();
+        expected.insert(1, movedId);
+        // Populate both derived caches before changing the global order.
+        harness.controller.videosFor(bandId);
+        harness.controller.photosFor(bandId);
+        final gate = repository.gate('reorderMedia');
+
+        final pending = harness.controller.reorder(bandId, movedId, 1);
+
+        expect(repository.callsTo('reorderMedia'), 1);
+        expect(repository.callsTo('mediaFor'), 1);
+        expect(
+          harness.controller.mediaFor(bandId).map((item) => item.id),
+          expected,
+        );
+        expect(
+          (await repository.mediaFor(bandId)).map((item) => item.id),
+          previous.map((item) => item.id),
+        );
+
+        gate.complete();
+        await pending;
+
+        final actual = harness.controller.mediaFor(bandId);
+        expect(actual.map((item) => item.id), expected);
+        expect(
+          harness.controller.videosFor(bandId).map((item) => item.id),
+          actual.where((item) => item.isVideo).map((item) => item.id),
+        );
+        expect(
+          harness.controller.photosFor(bandId).map((item) => item.id),
+          actual.where((item) => !item.isVideo).map((item) => item.id),
+        );
+        expect(harness.said, isEmpty);
+      },
+    );
+
+    test('reorder rolls back on failure before refreshing the cache', () async {
+      final repository = StubRepository(auth: FakeAuthService());
+      final harness = _makeController(repository: repository);
+      const bandId = 'b1';
+      await harness.controller.refresh(bandId);
+      final previous = harness.controller.mediaFor(bandId);
+      final reorderGate = repository.gate('reorderMedia');
+      final refreshGate = repository.gate('mediaFor');
+      repository.fail('reorderMedia');
+
+      final pending = harness.controller.reorder(bandId, previous.last.id, 0);
+      expect(harness.controller.mediaFor(bandId).first.id, previous.last.id);
+      reorderGate.complete();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(harness.controller.mediaFor(bandId), same(previous));
+      expect(harness.said, [genericErrorMessage]);
+      expect(repository.callsTo('mediaFor'), 2);
+      refreshGate.complete();
+      await pending;
+
+      expect(
+        harness.controller.mediaFor(bandId).map((item) => item.id),
+        previous.map((item) => item.id),
+      );
+      expect(harness.said, [genericErrorMessage]);
+    });
+
+    test('reorder ignores an unloaded band or an unknown media id', () async {
+      final repository = StubRepository(auth: FakeAuthService());
+      final harness = _makeController(repository: repository);
+      const bandId = 'b1';
+
+      await harness.controller.reorder(bandId, 'bm1', 1);
+      expect(repository.callsTo('mediaFor'), 0);
+      await harness.controller.refresh(bandId);
+      final previous = harness.controller.mediaFor(bandId);
+      await harness.controller.reorder(bandId, 'missing', 1);
+
+      expect(repository.callsTo('reorderMedia'), 0);
+      expect(repository.callsTo('mediaFor'), 1);
+      expect(harness.controller.mediaFor(bandId), same(previous));
+      expect(harness.said, isEmpty);
+    });
+
+    for (final toIndex in [-100, 100]) {
+      test(
+        'reorder clamps destination $toIndex optimistically and finally',
+        () async {
+          final repository = StubRepository(auth: FakeAuthService());
+          final harness = _makeController(repository: repository);
+          const bandId = 'b1';
+          await harness.controller.refresh(bandId);
+          final previous = harness.controller.mediaFor(bandId);
+          final moved = previous[previous.length ~/ 2];
+          final destination = toIndex < 0 ? 0 : previous.length - 1;
+          final gate = repository.gate('reorderMedia');
+
+          final pending = harness.controller.reorder(bandId, moved.id, toIndex);
+          expect(harness.controller.mediaFor(bandId)[destination].id, moved.id);
+          gate.complete();
+          await pending;
+
+          expect(harness.controller.mediaFor(bandId)[destination].id, moved.id);
+          expect(harness.said, isEmpty);
+        },
+      );
+    }
+
+    test('moveToFront moves an item to the front of the global list', () async {
+      final harness = _makeController();
+      const bandId = 'b1';
+      await harness.controller.refresh(bandId);
+      final moved = harness.controller.mediaFor(bandId).last;
+
+      await harness.controller.moveToFront(bandId, moved.id);
+
+      expect(harness.controller.mediaFor(bandId).first.id, moved.id);
+      expect(harness.said, isEmpty);
+    });
+
+    test('replace keeps the global position and pin of a video', () async {
+      final repository = StubRepository(auth: FakeAuthService());
+      final harness = _makeController(repository: repository);
+      const bandId = 'b1';
+      await repository.pinBandMedia('bm2');
+      await harness.controller.refresh(bandId);
+      final previous = harness.controller.mediaFor(bandId);
+      final old = harness.controller.pinnedVideoFor(bandId)!;
+      final index = previous.indexWhere((item) => item.id == old.id);
+      expect(index, greaterThan(0));
+      expect(previous.take(index).any((item) => !item.isVideo), isTrue);
+      harness.picker.nextVideo = videoFixture(filename: 'replacement.mp4');
+      final phases = <MediaUploadPhase>[];
+      harness.controller.addListener(() {
+        final uploads = harness.controller.uploadsFor(bandId);
+        if (uploads.isNotEmpty) phases.add(uploads.single.phase);
+      });
+
+      await harness.controller.replace(bandId, old.id);
+
+      final current = harness.controller.mediaFor(bandId);
+      final replacement = current[index];
+      expect(current, hasLength(previous.length));
+      expect(current.any((item) => item.id == old.id), isFalse);
+      expect(previous.any((item) => item.id == replacement.id), isFalse);
+      expect(replacement.title, 'REPLACEMENT');
+      expect(replacement.kind, MediaKind.video);
+      expect(replacement.pinned, isTrue);
+      expect(current.where((item) => item.pinned), hasLength(1));
+      expect(harness.controller.pinnedVideoFor(bandId)?.id, replacement.id);
+      expect(
+        phases,
+        containsAllInOrder([
+          MediaUploadPhase.preparing,
+          MediaUploadPhase.saving,
+          MediaUploadPhase.done,
+        ]),
+      );
+      expect(harness.controller.uploadsFor(bandId), isEmpty);
+      expect(repository.callsTo('addBandMedia'), 1);
+      expect(repository.callsTo('reorderMedia'), 1);
+      expect(repository.callsTo('mediaFor'), 3);
+      expect(harness.picker.videoCalls, 1);
+      expect(harness.picker.photoCalls, 0);
+      expect(harness.said, isEmpty);
+    });
+
+    test(
+      'replace uses the single-photo picker and keeps its global position',
+      () async {
+        final harness = _makeController();
+        const bandId = 'b1';
+        await harness.controller.refresh(bandId);
+        final previous = harness.controller.mediaFor(bandId);
+        final old = harness.controller.photosFor(bandId).first;
+        final index = previous.indexWhere((item) => item.id == old.id);
+        harness.picker.nextPhoto = stubPhotoFixture(
+          filename: 'replacement.jpg',
+        );
+
+        await harness.controller.replace(bandId, old.id);
+
+        final current = harness.controller.mediaFor(bandId);
+        expect(current, hasLength(previous.length));
+        expect(current.any((item) => item.id == old.id), isFalse);
+        expect(current[index].title, 'REPLACEMENT');
+        expect(current[index].kind, MediaKind.photo);
+        expect(harness.picker.photoCalls, 1);
+        expect(harness.picker.photoListCalls, 0);
+        expect(harness.picker.videoCalls, 0);
+        expect(harness.said, isEmpty);
+      },
+    );
+
+    for (final kind in MediaKind.values) {
+      test(
+        'cancelled ${kind.name} replacement leaves media and uploads unchanged',
+        () async {
+          final repository = StubRepository(auth: FakeAuthService());
+          final harness = _makeController(repository: repository);
+          const bandId = 'b1';
+          await harness.controller.refresh(bandId);
+          final previous = harness.controller.mediaFor(bandId);
+          final old = previous.firstWhere((item) => item.kind == kind);
+          var notifications = 0;
+          harness.controller.addListener(() => notifications++);
+
+          await harness.controller.replace(bandId, old.id);
+
+          expect(harness.controller.mediaFor(bandId), same(previous));
+          expect(harness.controller.uploadsFor(bandId), isEmpty);
+          expect(repository.callsTo('addBandMedia'), 0);
+          expect(repository.callsTo('reorderMedia'), 0);
+          expect(repository.callsTo('mediaFor'), 1);
+          expect(harness.picker.videoCalls, kind == MediaKind.video ? 1 : 0);
+          expect(harness.picker.photoCalls, kind == MediaKind.photo ? 1 : 0);
+          expect(notifications, 0);
+          expect(harness.said, isEmpty);
+        },
+      );
+    }
+
+    test(
+      'replacement upload failure retains the original media and pin',
+      () async {
+        final repository = StubRepository(auth: FakeAuthService())
+          ..fail('addBandMedia');
+        final harness = _makeController(repository: repository);
+        const bandId = 'b1';
+        await harness.controller.refresh(bandId);
+        final previous = harness.controller.mediaFor(bandId);
+        final old = harness.controller.pinnedVideoFor(bandId)!;
+        harness.picker.nextVideo = videoFixture();
+
+        await harness.controller.replace(bandId, old.id);
+
+        expect(harness.controller.mediaFor(bandId), same(previous));
+        expect(harness.controller.pinnedVideoFor(bandId)?.id, old.id);
+        expect(
+          harness.controller.uploadsFor(bandId).single.phase,
+          MediaUploadPhase.failed,
+        );
+        expect(
+          harness.controller.uploadsFor(bandId).single.error,
+          contains('addBandMedia failed'),
+        );
+        expect(repository.callsTo('reorderMedia'), 0);
+        expect(harness.said, isEmpty);
+      },
+    );
+
+    test(
+      'replacement reorder failure retains the original and reports the error',
+      () async {
+        final repository = StubRepository(auth: FakeAuthService())
+          ..fail('reorderMedia');
+        final harness = _makeController(repository: repository);
+        const bandId = 'b1';
+        await harness.controller.refresh(bandId);
+        final old = harness.controller.pinnedVideoFor(bandId)!;
+        harness.picker.nextVideo = videoFixture();
+
+        await harness.controller.replace(bandId, old.id);
+
+        expect(
+          harness.controller.mediaFor(bandId).any((item) => item.id == old.id),
+          isTrue,
+        );
+        expect(harness.controller.pinnedVideoFor(bandId)?.id, old.id);
+        expect(repository.callsTo('mediaFor'), 3);
+        expect(harness.said, [genericErrorMessage]);
+      },
+    );
+
     test('clearForSignOut clears caches and uploads and notifies', () async {
       final repository = HttpUploadDemoRepository();
       final harness = _makeController(
@@ -257,6 +540,46 @@ void main() {
       expect(harness.controller.mediaFor(bandId), isNotEmpty);
     });
   });
+
+  test(
+    'DemoRepository reorder densely ranks both kinds in one global order',
+    () async {
+      final repository = DemoRepository(auth: FakeAuthService());
+      const bandId = 'b1';
+      await repository.setBandAvatar(bandId: bandId, mediaId: 'bm6');
+      await repository.setBandBanner(bandId: bandId, mediaId: 'bm7');
+      final previous = await repository.mediaFor(bandId);
+      final expected = previous.map((item) => item.id).toList();
+      final movedId = expected.removeLast();
+      expected.insert(2, movedId);
+
+      await repository.reorderMedia(
+        bandId: bandId,
+        mediaId: movedId,
+        toIndex: 2,
+      );
+
+      final current = await repository.mediaFor(bandId);
+      expect(
+        current.map((item) => item.kind).toSet(),
+        MediaKind.values.toSet(),
+      );
+      expect(current.map((item) => item.id), expected);
+      expect(
+        current.map((item) => item.order),
+        List<int>.generate(current.length, (index) => index),
+      );
+      for (final item in current) {
+        final old = previous.singleWhere(
+          (candidate) => candidate.id == item.id,
+        );
+        expect(
+          (item.pinned, item.isHero, item.isAvatar, item.isBanner),
+          (old.pinned, old.isHero, old.isAvatar, old.isBanner),
+        );
+      }
+    },
+  );
 }
 
 Future<void> _waitForLoad(BandMediaController controller, String bandId) async {

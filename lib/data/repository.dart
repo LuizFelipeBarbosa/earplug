@@ -513,6 +513,11 @@ abstract class EarplugRepository {
   Future<void> pinBandMedia(String mediaId);
   Future<void> moveBandMedia(String mediaId, String direction);
   Future<void> moveMediaWithinKind(String mediaId, String direction);
+  Future<void> reorderMedia({
+    required String bandId,
+    required String mediaId,
+    required int toIndex,
+  });
   Future<void> setBandAvatar({required String bandId, required String mediaId});
   Future<void> clearBandAvatar(String bandId);
   Future<void> setBandBanner({required String bandId, required String mediaId});
