@@ -48,7 +48,6 @@ class _BandMyGigsTabState extends State<BandMyGigsTab> {
     final loadingEmpty =
         (app.bandBookingsStatus == DataStatus.connecting ||
             app.managedGigsLoading) &&
-        buckets.nextUp == null &&
         buckets.upcoming.isEmpty &&
         buckets.hosting.isEmpty &&
         buckets.drafts.isEmpty &&
@@ -72,13 +71,10 @@ class _BandMyGigsTabState extends State<BandMyGigsTab> {
         ),
         children: [
           BandNextUpCard(bandId: app.bandId),
-          const SizedBox(height: 28),
-          const EpSectionHeader(label: 'NEXT BOOKING'),
-          if (buckets.nextUp case final booking?)
-            _NextBookingCard(booking: booking)
-          else if (loadingEmpty)
+          const SizedBox(height: 16),
+          if (loadingEmpty)
             const EpMonoText('LOADING…')
-          else
+          else if (buckets.upcoming.isEmpty && buckets.hosting.isEmpty)
             Column(
               key: const Key('my-gigs-empty-next'),
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,12 +91,18 @@ class _BandMyGigsTabState extends State<BandMyGigsTab> {
               ],
             ),
           if (buckets.upcoming.isNotEmpty) ...[
-            EpSectionHeader(label: 'UPCOMING · ${buckets.upcoming.length}'),
+            _sectionHeader(
+              'UPCOMING · ${buckets.upcoming.length}',
+              first: true,
+            ),
             for (final booking in buckets.upcoming)
               _bookingRow(context, app, booking, label: 'BOOKED'),
           ],
           if (buckets.hosting.isNotEmpty) ...[
-            EpSectionHeader(label: 'HOSTING · ${buckets.hosting.length}'),
+            _sectionHeader(
+              'HOSTING · ${buckets.hosting.length}',
+              first: buckets.upcoming.isEmpty,
+            ),
             for (final project in buckets.hosting)
               _projectRow(context, app, project),
           ],
@@ -187,82 +189,17 @@ class _BandMyGigsTabState extends State<BandMyGigsTab> {
   }
 }
 
+/// The first section sits directly under the UP NEXT card, so it drops the
+/// header's default top padding; later sections keep it.
+Widget _sectionHeader(String label, {bool first = false}) => first
+    ? EpSectionHeader(label: label, padding: const EdgeInsets.only(bottom: 4))
+    : EpSectionHeader(label: label);
+
 /// Stripe onboarding is not finished until the account is enabled.
 bool _payoutsNeedSetup(StripeAccountStatus? status) => switch (status?.state) {
   StripeAccountState.enabled => false,
   _ => true,
 };
-
-class _NextBookingCard extends StatelessWidget {
-  const _NextBookingCard({required this.booking});
-
-  final Booking booking;
-
-  @override
-  Widget build(BuildContext context) {
-    final location = [
-      if (booking.privateEvent) 'Private event' else booking.venue?.name,
-      booking.privateEvent
-          ? booking.privateLocation?.area
-          : booking.venue?.approxLabel,
-    ].whereType<String>().where((part) => part.trim().isNotEmpty).join(' · ');
-    final details = [
-      _slotRoleLabel(booking.slotRole),
-      TimeOfDay.fromDateTime(booking.startsAt.toLocal()).format(context),
-      booking.fee.artistNet.label,
-    ].where((part) => part.trim().isNotEmpty).join(' · ');
-
-    return EpCard(
-      key: const Key('my-gigs-next-up'),
-      radius: 0,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          EpDateBlock(date: booking.startsAt),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                EpDisplay(
-                  booking.opportunityTitle,
-                  size: 24,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (location.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  EpMonoText(
-                    location,
-                    color: context.epColors.contentSecondary,
-                  ),
-                ],
-                const SizedBox(height: 8),
-                EpMonoText(details, color: context.epColors.contentSecondary),
-                const SizedBox(height: 12),
-                const StatusPill(
-                  label: 'CONFIRMED',
-                  tone: EpStatusPillTone.success,
-                ),
-                const SizedBox(height: 12),
-                EpPill(
-                  key: const Key('my-gigs-next-up-view'),
-                  label: 'View booking',
-                  variant: EpPillVariant.outline,
-                  size: EpPillSize.chip,
-                  onPressed: () => context.read<AppState>().openBooking(
-                    booking.id,
-                    viewAs: BookingSide.artist,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 Widget _bookingRow(
   BuildContext context,
@@ -341,12 +278,6 @@ Widget _statusTrailing(
     ],
   ),
 );
-
-String _slotRoleLabel(SlotRole role) => switch (role) {
-  SlotRole.headliner => 'Headliner',
-  SlotRole.support => 'Support',
-  SlotRole.opener => 'Opener',
-};
 
 String _projectTitle(GigProject project, {String fallback = 'Untitled gig'}) {
   final title = project.title?.trim();

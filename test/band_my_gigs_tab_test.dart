@@ -18,50 +18,39 @@ import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
 void main() {
-  testWidgets('hero confirms the earliest booking and opens artist detail', (
+  testWidgets('upcoming lists every booking in order and opens artist detail', (
     tester,
   ) async {
-    final first = _booking('first', days: 2);
     final harness = await _pumpTab(
       tester,
-      bookings: [_booking('later', days: 6), first],
+      bookings: [_booking('later', days: 6), _booking('first', days: 2)],
     );
-    final hero = find.byKey(const Key('my-gigs-next-up'));
+    final first = find.byKey(const Key('band-booking-first'));
+    final later = find.byKey(const Key('band-booking-later'));
 
+    expect(find.text('UPCOMING · 2'), findsOneWidget);
+    expect(find.byKey(const Key('my-gigs-empty-next')), findsNothing);
     expect(
-      find.descendant(of: hero, matching: find.text('FIRST SHOW')),
+      find.descendant(of: first, matching: find.text('FIRST SHOW')),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: hero, matching: find.text('CONFIRMED')),
+      find.descendant(of: first, matching: find.text('THE FOGHORN CLUB')),
       findsOneWidget,
     );
     expect(
-      find.descendant(
-        of: hero,
-        matching: find.text('THE FOGHORN CLUB · OAKLAND'),
-      ),
+      find.descendant(of: first, matching: find.text('BOOKED')),
       findsOneWidget,
     );
-    final details = tester.widgetList<EpMonoText>(
-      find.descendant(of: hero, matching: find.byType(EpMonoText)),
-    );
     expect(
-      details.any(
-        (text) =>
-            text.text.startsWith('Headliner · ') &&
-            text.text.endsWith(' · ${first.fee.artistNet.label}'),
-      ),
-      isTrue,
-    );
-    expect(
-      find.descendant(of: hero, matching: find.byType(EpPill)),
+      find.descendant(of: later, matching: find.text('BOOKED')),
       findsOneWidget,
     );
-    expect(tester.widget<EpCard>(hero).onTap, isNull);
-
-    await tester.tap(find.byKey(const Key('my-gigs-next-up-view')));
-    await tester.pumpAndSettle();
+    expect(
+      tester.getRect(first).bottom,
+      lessThanOrEqualTo(tester.getRect(later).top),
+    );
+    await _tapRow(tester, 'band-booking-first');
 
     expect(harness.app.current.screen, Screen.bookingDetail);
     expect(harness.app.current.param, 'first');
@@ -70,31 +59,6 @@ void main() {
       BookingSide.artist,
     );
     expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('upcoming rows exclude the hero and open booking detail', (
-    tester,
-  ) async {
-    final harness = await _pumpTab(
-      tester,
-      bookings: [_booking('later', days: 5), _booking('first', days: 1)],
-    );
-
-    expect(find.text('UPCOMING · 1'), findsOneWidget);
-    expect(find.byKey(const Key('band-booking-first')), findsNothing);
-    final row = find.byKey(const Key('band-booking-later'));
-    expect(
-      find.descendant(of: row, matching: find.text('BOOKED')),
-      findsOneWidget,
-    );
-    await _tapRow(tester, 'band-booking-later');
-
-    expect(harness.app.current.screen, Screen.bookingDetail);
-    expect(harness.app.current.param, 'later');
-    expect(
-      (harness.app.repository as _MyGigsRepository).lastBookingSide,
-      BookingSide.artist,
-    );
   });
 
   testWidgets('hosting rows show published state and open hosted details', (
@@ -254,7 +218,7 @@ void main() {
     expect(find.byKey(const Key('my-gigs-past-body')), findsNothing);
   });
 
-  testWidgets('empty next-up panel discovers and still shows zero past', (
+  testWidgets('empty panel discovers when nothing is booked or hosted', (
     tester,
   ) async {
     var discoveries = 0;
@@ -265,10 +229,29 @@ void main() {
       find.text('No gigs coming up — find your next stage'),
       findsOneWidget,
     );
+    expect(find.textContaining('UPCOMING'), findsNothing);
     expect(find.text('PAST · 0'), findsOneWidget);
     expect(find.textContaining('Incl.'), findsNothing);
     await tester.tap(find.byKey(const Key('my-gigs-empty-discover')));
     expect(discoveries, 1);
+  });
+
+  testWidgets('a hosted gig without bookings hides the empty panel', (
+    tester,
+  ) async {
+    await _pumpTab(tester, projects: [_project('published-rsvp')]);
+
+    expect(find.byKey(const Key('my-gigs-empty-next')), findsNothing);
+    expect(find.byKey(const Key('my-gigs-empty-discover')), findsNothing);
+    expect(find.textContaining('UPCOMING'), findsNothing);
+    expect(find.text('HOSTING · 1'), findsOneWidget);
+    expect(
+      tester.getRect(find.text('HOSTING · 1')).top,
+      closeTo(
+        tester.getRect(find.byKey(const Key('band-next-up'))).bottom + 16,
+        0.01,
+      ),
+    );
   });
 
   testWidgets('up-next hero leads the list and is visible at 390x844', (
@@ -281,7 +264,7 @@ void main() {
       projects: [_project('published-paid', unpublishedChanges: true)],
     );
     final hero = tester.getRect(find.byKey(const Key('band-next-up')));
-    final booking = tester.getRect(find.byKey(const Key('my-gigs-next-up')));
+    final upcoming = find.text('UPCOMING · 2');
 
     expect(
       tester.widget<ListView>(find.byType(ListView)).childrenDelegate,
@@ -298,8 +281,9 @@ void main() {
     );
     expect(hero.top, greaterThanOrEqualTo(0));
     expect(hero.bottom, lessThan(844));
-    expect(booking.top, greaterThanOrEqualTo(hero.bottom + 28));
-    expect(find.text('NEXT BOOKING').hitTestable(), findsOneWidget);
+    expect(tester.getRect(upcoming).top, closeTo(hero.bottom + 16, 0.01));
+    expect(upcoming.hitTestable(), findsOneWidget);
+    expect(find.byKey(const Key('my-gigs-empty-next')), findsNothing);
     expect(
       tester
           .state<ScrollableState>(find.byType(Scrollable).first)
@@ -493,7 +477,7 @@ void main() {
 
     expect(repository.callsTo('bandBookings'), greaterThan(bookingCalls));
     expect(repository.callsTo('manageGigs'), greaterThan(projectCalls));
-    expect(find.byKey(const Key('my-gigs-next-up')), findsOneWidget);
+    expect(find.byKey(const Key('band-booking-refreshed')), findsOneWidget);
     expect(
       find.byKey(const Key('my-gigs-hosted-refreshed-project')),
       findsOneWidget,
