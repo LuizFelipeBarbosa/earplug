@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../date_names.dart';
-import '../genres.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -204,10 +203,6 @@ class _MyGigsScreenState extends State<MyGigsScreen> {
                 ],
               },
               _ProfileDetails(app: app),
-              if (app.showFanOnboarding) ...[
-                const EpSectionHeader(label: 'Profile setup'),
-                _FanSetup(app: app),
-              ],
               const SizedBox(height: 24),
               EpMenuRow(
                 key: const Key('settings-entry'),
@@ -927,150 +922,6 @@ class _HistoryRow extends StatelessWidget {
         flyKey: item.flyKey,
         rowKey: ValueKey('history-venue-${item.gigId}'),
       ),
-    );
-  }
-}
-
-class _FanSetup extends StatelessWidget {
-  const _FanSetup({required this.app});
-
-  final AppState app;
-
-  @override
-  Widget build(BuildContext context) {
-    final onboarding = app.fanOnboarding;
-    if (onboarding == null) return const SizedBox.shrink();
-    if (onboarding.collapsed) {
-      return EpMenuRow(
-        key: const Key('fan-setup-collapsed'),
-        icon: Icons.tune,
-        label: 'Finish setup',
-        sub: 'Pick your city and sound, then save a show.',
-        onTap: () => app.setFanOnboardingCollapsed(false),
-      );
-    }
-
-    return EpCard(
-      key: const Key('fan-setup-expanded'),
-      variant: EpCardVariant.raised,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const EpDisplay('Make EarPlug yours', size: 20),
-          const SizedBox(height: 4),
-          Text(
-            'Three quick steps to tune what you see.',
-            style: Theme.of(context).textTheme.epCaption,
-          ),
-          const SizedBox(height: 16),
-          _SetupStep(
-            number: 1,
-            complete: onboarding.preferredCity != null,
-            title: 'Choose where you browse',
-            child: Wrap(
-              spacing: 7,
-              runSpacing: 7,
-              children: [
-                EpChip(
-                  key: const Key('fan-city-sf'),
-                  label: 'SAN FRANCISCO',
-                  active: onboarding.preferredCity == FanCity.sf,
-                  onTap: () => app.selectFanCity(FanCity.sf),
-                ),
-                EpChip(
-                  key: const Key('fan-city-oak'),
-                  label: 'OAKLAND',
-                  active: onboarding.preferredCity == FanCity.oak,
-                  onTap: () => app.selectFanCity(FanCity.oak),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 15),
-          _SetupStep(
-            number: 2,
-            complete: onboarding.genreChoice != FanGenreChoice.pending,
-            title: 'Choose genres, or stay open',
-            child: Wrap(
-              spacing: 7,
-              runSpacing: 7,
-              children: [
-                for (final genre in kGenres)
-                  EpChip(
-                    key: ValueKey('fan-genre-$genre'),
-                    label: genre,
-                    active:
-                        onboarding.genreChoice == FanGenreChoice.selected &&
-                        app.userGenres.contains(genre),
-                    onTap: () => app.toggleFanGenre(genre),
-                  ),
-                EpChip(
-                  key: const Key('fan-genres-open'),
-                  label: "I'M OPEN",
-                  active: onboarding.genreChoice == FanGenreChoice.open,
-                  onTap: app.chooseOpenGenres,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 15),
-          _SetupStep(
-            number: 3,
-            complete: app.saved.isNotEmpty,
-            title: 'Find and save a show',
-            child: app.saved.isEmpty
-                ? EpPill(
-                    key: const Key('fan-setup-find-show'),
-                    variant: EpPillVariant.ghost,
-                    onPressed: () => app.resetTo(Screen.home),
-                    label: 'Find a show',
-                  )
-                : Text(
-                    'A show is saved in your Profile.',
-                    style: Theme.of(context).textTheme.epCaption.copyWith(
-                      color: context.epColors.accent,
-                    ),
-                  ),
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: EpPill(
-              key: const Key('fan-setup-not-now'),
-              variant: EpPillVariant.ghost,
-              onPressed: () => app.setFanOnboardingCollapsed(true),
-              label: 'Not now',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SetupStep extends StatelessWidget {
-  const _SetupStep({
-    required this.number,
-    required this.complete,
-    required this.title,
-    required this.child,
-  });
-
-  final int number;
-  final bool complete;
-  final String title;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        EpChecklistRow(done: complete, label: '$number · $title'),
-        const SizedBox(height: 8),
-        child,
-      ],
     );
   }
 }

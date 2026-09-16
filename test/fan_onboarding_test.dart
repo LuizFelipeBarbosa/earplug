@@ -15,84 +15,6 @@ import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
 void main() {
-  testWidgets('new-fan setup collapses, resumes, syncs, and completes', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    final repository = _ProfileRepository(
-      auth: auth,
-      onboarding: const FanOnboarding(
-        preferredCity: null,
-        genreChoice: FanGenreChoice.pending,
-        collapsed: false,
-      ),
-    );
-    final first = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const Scaffold(body: MyGigsScreen()),
-    );
-    tester.view.physicalSize = const Size(402, 1600);
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('fan-setup-expanded')), findsOne);
-    await _tapVisible(tester, find.byKey(const Key('fan-city-oak')));
-    await tester.pump();
-    expect(first.app.discoveryLocation, DiscoveryLocation.oak);
-    expect(repository.onboarding?.preferredCity, FanCity.oak);
-
-    await _tapVisible(tester, find.byKey(const Key('fan-genres-open')));
-    await tester.pump();
-    expect(repository.onboarding?.genreChoice, FanGenreChoice.open);
-    expect(repository.genres, isEmpty);
-
-    await _tapVisible(tester, find.byKey(const Key('fan-setup-not-now')));
-    await tester.pump();
-    expect(first.app.fanOnboarding?.collapsed, isTrue);
-    expect(repository.onboarding?.collapsed, isTrue);
-
-    // A fresh AppState reads the same persisted profile and applies its city.
-    final second = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const Scaffold(body: MyGigsScreen()),
-    );
-    expect(second.app.discoveryLocation, DiscoveryLocation.oak);
-    tester.view.physicalSize = const Size(402, 1500);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('fan-setup-collapsed')), findsOne);
-
-    await _tapVisible(tester, find.byKey(const Key('fan-setup-collapsed')));
-    await tester.pump();
-    expect(find.byKey(const Key('fan-setup-expanded')), findsOne);
-    expect(repository.onboarding?.collapsed, isFalse);
-
-    second.app.requestSave('g1');
-    await tester.pump();
-    expect(second.app.saved, contains('g1'));
-    expect(second.app.fanOnboardingComplete, isTrue);
-    expect(find.byKey(const Key('fan-setup-expanded')), findsNothing);
-    expect(find.byKey(const Key('fan-setup-collapsed')), findsNothing);
-    await tester.pump(const Duration(seconds: 3));
-  });
-
-  testWidgets('existing fans are not enrolled in setup', (tester) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    await pumpApp(
-      tester,
-      auth: auth,
-      repository: _ProfileRepository(auth: auth, onboarding: null),
-      home: const Scaffold(body: MyGigsScreen()),
-    );
-
-    expect(find.byKey(const Key('fan-setup-expanded')), findsNothing);
-    expect(find.byKey(const Key('fan-setup-collapsed')), findsNothing);
-  });
-
   testWidgets('zero-band navigation offers creation without profile entries', (
     tester,
   ) async {
@@ -193,42 +115,6 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
   });
 
-  testWidgets('failed city onboarding restores current-location discovery', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    final repository = _ProfileRepository(
-      auth: auth,
-      onboarding: const FanOnboarding(
-        preferredCity: FanCity.sf,
-        genreChoice: FanGenreChoice.pending,
-        collapsed: false,
-      ),
-      failCityUpdates: true,
-    );
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const Scaffold(body: MyGigsScreen()),
-    );
-    final position = DemoData.venues['v1']!.point;
-    harness.app.useCurrentPosition(position);
-    harness.app.setDistanceFilter(5);
-
-    harness.app.selectFanCity(FanCity.oak);
-    await tester.pump();
-
-    expect(harness.app.discoveryLocation, DiscoveryLocation.current);
-    expect(harness.app.currentPosition, position);
-    expect(harness.app.fMaxDistanceMiles, 5);
-    expect(harness.app.fanOnboarding?.preferredCity, FanCity.sf);
-    expect(harness.app.toast, "Couldn't save your setup choices. Try again.");
-
-    await tester.pump(const Duration(seconds: 3));
-  });
-
   testWidgets('one-band navigation opens the existing selector', (
     tester,
   ) async {
@@ -274,57 +160,6 @@ void main() {
     expect(find.text('SWITCH IDENTITY'), findsOne);
     expect(find.text('Pigeon Court'), findsWidgets);
   });
-}
-
-Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
-  await tester.ensureVisible(finder);
-  await tester.pumpAndSettle();
-  await tester.tap(finder);
-}
-
-class _ProfileRepository extends DemoRepository {
-  _ProfileRepository({
-    required super.auth,
-    required this.onboarding,
-    this.failCityUpdates = false,
-  });
-
-  FanOnboarding? onboarding;
-  List<String> genres = const [];
-  final bool failCityUpdates;
-
-  @override
-  Stream<Interactions> myInteractions() => Stream.value(Interactions.empty);
-
-  @override
-  Future<UserProfile?> me() async => UserProfile(
-    name: 'Avery Fan',
-    email: 'avery@example.com',
-    genres: genres,
-    attendedCount: 0,
-    createdAt: DateTime(2026, 8, 23),
-    fanOnboarding: onboarding,
-  );
-
-  @override
-  Future<void> updateFanOnboarding({
-    FanCity? preferredCity,
-    FanGenreChoice? genreChoice,
-    bool? collapsed,
-    List<String>? genres,
-  }) async {
-    if (failCityUpdates && preferredCity != null) {
-      throw StateError('city update failed');
-    }
-    final current = onboarding;
-    if (current == null) return;
-    if (genres != null) this.genres = List.of(genres);
-    onboarding = FanOnboarding(
-      preferredCity: preferredCity ?? current.preferredCity,
-      genreChoice: genreChoice ?? current.genreChoice,
-      collapsed: collapsed ?? current.collapsed,
-    );
-  }
 }
 
 class _DeferredMembershipRepository extends DemoRepository {

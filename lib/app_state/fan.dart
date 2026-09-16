@@ -49,19 +49,8 @@ mixin _FanState on _AppStateCore {
   bool get fanAvatarSaving => _fanAvatarSaveOwner != null;
   FanCity? _appliedHomePersonalization;
   final Set<String> _loadingFollowBands = {};
-  Future<void> _fanGenreWrite = Future.value();
 
   FanOnboarding? get fanOnboarding => profile?.fanOnboarding;
-
-  bool get fanOnboardingComplete {
-    final onboarding = fanOnboarding;
-    return onboarding != null &&
-        onboarding.preferredCity != null &&
-        onboarding.genreChoice != FanGenreChoice.pending &&
-        saved.isNotEmpty;
-  }
-
-  bool get showFanOnboarding => fanOnboarding != null && !fanOnboardingComplete;
 
   void _cacheInteractions(Interactions interactions) {
     _confirmedRsvps = Set<String>.of(interactions.rsvpGigIds);
@@ -455,86 +444,6 @@ mixin _FanState on _AppStateCore {
               preferredCity: previous.preferredCity,
               genreChoice: current!.genreChoice,
               collapsed: current.collapsed,
-            ),
-          );
-        }
-        say(fanSetupSaveErrorMessage);
-      }),
-    );
-  }
-
-  void toggleFanGenre(String genre) {
-    final selected = Set<String>.of(userGenres);
-    selected.contains(genre) ? selected.remove(genre) : selected.add(genre);
-    _saveFanGenreChoice(
-      selected.toList(),
-      selected.isEmpty ? FanGenreChoice.pending : FanGenreChoice.selected,
-    );
-  }
-
-  void chooseOpenGenres() => _saveFanGenreChoice(const [], FanGenreChoice.open);
-
-  void _saveFanGenreChoice(List<String> genres, FanGenreChoice genreChoice) {
-    final previous = fanOnboarding;
-    if (previous == null) return;
-    final previousGenres = List<String>.of(userGenres);
-    _setLocalFanOnboarding(
-      FanOnboarding(
-        preferredCity: previous.preferredCity,
-        genreChoice: genreChoice,
-        collapsed: previous.collapsed,
-      ),
-      genres: genres,
-    );
-
-    _fanGenreWrite = _fanGenreWrite.then((_) async {
-      try {
-        await repository.updateFanOnboarding(
-          genreChoice: genreChoice,
-          genres: genres,
-        );
-      } catch (error) {
-        logError('updateFanOnboarding genres', error);
-        final current = fanOnboarding;
-        if (current?.genreChoice == genreChoice &&
-            setEquals(userGenres, genres.toSet())) {
-          _setLocalFanOnboarding(
-            FanOnboarding(
-              preferredCity: current!.preferredCity,
-              genreChoice: previous.genreChoice,
-              collapsed: current.collapsed,
-            ),
-            genres: previousGenres,
-          );
-        }
-        say(fanSetupSaveErrorMessage);
-      }
-    });
-    unawaited(_fanGenreWrite);
-  }
-
-  void setFanOnboardingCollapsed(bool collapsed) {
-    final previous = fanOnboarding;
-    if (previous == null || previous.collapsed == collapsed) return;
-    _setLocalFanOnboarding(
-      FanOnboarding(
-        preferredCity: previous.preferredCity,
-        genreChoice: previous.genreChoice,
-        collapsed: collapsed,
-      ),
-    );
-    unawaited(
-      repository.updateFanOnboarding(collapsed: collapsed).catchError((
-        Object error,
-      ) {
-        logError('updateFanOnboarding collapsed', error);
-        final current = fanOnboarding;
-        if (current?.collapsed == collapsed) {
-          _setLocalFanOnboarding(
-            FanOnboarding(
-              preferredCity: current!.preferredCity,
-              genreChoice: current.genreChoice,
-              collapsed: previous.collapsed,
             ),
           );
         }
