@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
-import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/opportunity_detail.dart';
 import 'package:earplug/screens/opportunity_edit.dart';
@@ -12,7 +11,6 @@ import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/form_bits.dart';
-import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -22,32 +20,65 @@ import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
 void main() {
-  testWidgets('the pinned action zone stays above the organizer tab bar', (
+  for (final inset in [34.0, 0.0]) {
+    testWidgets(
+      'the pinned action zone sits on the bottom safe inset ($inset)',
+      (tester) async {
+        final auth = FakeAuthService();
+        final repository = DemoRepository(auth: auth);
+        final harness = await _pumpEditor(
+          tester,
+          auth,
+          repository,
+          'opp2',
+          bottomInset: inset,
+        );
+
+        final zone = find.byType(EpBottomCta);
+        expect(zone, findsOneWidget);
+        final viewport = tester.getSize(find.byType(OpportunityEditScreen));
+        expect(tester.getRect(zone).bottom, viewport.height);
+        // The pills are lifted above the safe inset (EpBottomCta pads 32
+        // below them), so the zone itself ends at the viewport's bottom.
+        expect(
+          tester.getRect(find.byKey(const ValueKey('opp-edit-publish'))).bottom,
+          viewport.height - inset - 32,
+        );
+        expect(find.byKey(const ValueKey('opp-edit-preview')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('opp-edit-autosave-note')),
+          findsNothing,
+        );
+        expect(
+          find.textContaining('Saves as a draft automatically'),
+          findsNothing,
+        );
+        expect(find.byKey(const ValueKey('opp-edit-save')), findsNothing);
+        expect(find.byKey(const ValueKey('opp-edit-missing')), findsNothing);
+        await _disposeApp(tester, harness.app);
+      },
+    );
+  }
+
+  testWidgets('the last form action scrolls clear of the pinned zone', (
     tester,
   ) async {
-    final harness = await pumpApp(tester, home: const RootShell());
-    await enterOrganizer(tester, harness, 'org1');
-    harness.app.openOpportunityEditor('opp2');
-    await tester.pumpAndSettle();
+    final auth = FakeAuthService();
+    final repository = DemoRepository(auth: auth);
+    final harness = await _pumpEditor(
+      tester,
+      auth,
+      repository,
+      'opp2',
+      bottomInset: 34,
+    );
 
-    expect(find.byType(OpportunityEditScreen), findsOneWidget);
-    expect(find.byType(OrganizerTabBar), findsOneWidget);
-    expect(
-      tester.getRect(find.byKey(const ValueKey('opp-edit-publish'))).bottom,
-      lessThanOrEqualTo(tester.getRect(find.byType(OrganizerTabBar)).top),
-    );
-    expect(find.byKey(const ValueKey('opp-edit-preview')), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('opp-edit-autosave-note')),
-        matching: find.text(
-          'Saves as a draft automatically — no separate save step.',
-        ),
-      ),
-      findsOneWidget,
-    );
-    expect(find.byKey(const ValueKey('opp-edit-save')), findsNothing);
-    expect(find.byKey(const ValueKey('opp-edit-missing')), findsNothing);
+    final delete = find.byKey(const ValueKey('opp-edit-delete'));
+    await _reveal(tester, delete);
+    final zoneTop = tester.getRect(find.byType(EpBottomCta)).top;
+    expect(tester.getRect(delete).bottom, lessThanOrEqualTo(zoneTop));
+    expect(delete.hitTestable(), findsOneWidget);
+    await _disposeApp(tester, harness.app);
   });
 
   testWidgets(
@@ -1804,12 +1835,13 @@ Future<AppHarness> _pumpEditor(
   DemoRepository repository,
   String id, {
   String organizationId = 'org1',
+  double bottomInset = 0,
 }) async {
   final harness = await pumpApp(
     tester,
     auth: auth,
     repository: repository,
-    home: _EditorHost(opportunityId: id),
+    home: _EditorHost(opportunityId: id, bottomInset: bottomInset),
   );
   await enterOrganizer(tester, harness, organizationId);
   harness.app.openOpportunityEditor(id);
@@ -1820,18 +1852,27 @@ Future<AppHarness> _pumpEditor(
 // Mount the screen only after enterOrganizer, and observe app.back() without
 // relying on the navigation placeholders in main.dart.
 class _EditorHost extends StatelessWidget {
-  const _EditorHost({required this.opportunityId});
+  const _EditorHost({required this.opportunityId, this.bottomInset = 0});
 
   final String opportunityId;
+
+  /// A simulated home-indicator safe inset below the screen.
+  final double bottomInset;
 
   @override
   Widget build(BuildContext context) {
     final screen = context.select<AppState, Screen>(
       (app) => app.current.screen,
     );
-    return screen == Screen.opportunityEdit
-        ? OpportunityEditScreen(opportunityId: opportunityId)
-        : const Material(child: SizedBox());
+    if (screen != Screen.opportunityEdit) {
+      return const Material(child: SizedBox());
+    }
+    return MediaQuery(
+      data: MediaQuery.of(
+        context,
+      ).copyWith(padding: EdgeInsets.only(bottom: bottomInset)),
+      child: OpportunityEditScreen(opportunityId: opportunityId),
+    );
   }
 }
 

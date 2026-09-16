@@ -19,9 +19,14 @@ import '../widgets/sheets.dart';
 import 'opportunity_detail.dart';
 import 'opportunity_verify_sheet.dart';
 
-/// Room the pinned action zone (two large pills plus the autosave note) takes
-/// at the bottom of the list so the last controls can scroll clear of it.
-const double _actionZoneClearance = 148;
+/// The pinned action zone's height above the safe area: EpBottomCta's
+/// 20/32 vertical padding around one row of large pills.
+const double _actionZoneHeight = 20 + 52 + 32;
+
+/// Room the list keeps below its last control so it can scroll clear of the
+/// pinned action zone (the zone plus a 16pt gap; the safe inset is added
+/// separately).
+const double _footerClearance = _actionZoneHeight + 16;
 
 /// How long the composer waits after the last edit before saving it.
 const _autosaveDelay = Duration(milliseconds: 600);
@@ -1223,9 +1228,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                 16,
                 headerTopPad(context),
                 16,
-                tabBarClearance +
-                    _actionZoneClearance +
-                    MediaQuery.paddingOf(context).bottom,
+                _footerClearance + MediaQuery.paddingOf(context).bottom,
               ),
               children: [
                 Row(
@@ -1505,41 +1508,26 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: EpLayout.isDesktop(context) ? 0 : 67,
+              bottom: 0,
               child: EpBottomCta(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                child: Row(
                   children: [
-                    Row(
-                      children: [
-                        EpPill(
-                          key: const ValueKey('opp-edit-preview'),
-                          label: 'Preview',
-                          variant: EpPillVariant.outline,
-                          size: EpPillSize.large,
-                          onPressed: _busy ? null : _preview,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: EpPill(
-                            key: const ValueKey('opp-edit-publish'),
-                            label: draft ? 'Review & publish' : 'Review & save',
-                            variant: EpPillVariant.primary,
-                            size: EpPillSize.large,
-                            expand: true,
-                            onPressed: _busy ? null : _review,
-                          ),
-                        ),
-                      ],
+                    EpPill(
+                      key: const ValueKey('opp-edit-preview'),
+                      label: 'Preview',
+                      variant: EpPillVariant.outline,
+                      size: EpPillSize.large,
+                      onPressed: _busy ? null : _preview,
                     ),
-                    const SizedBox(height: 10),
-                    Center(
-                      child: EpMonoText(
-                        'Saves as a draft automatically — no separate save step.',
-                        key: const ValueKey('opp-edit-autosave-note'),
-                        keepCase: true,
-                        color: palette.muted,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: EpPill(
+                        key: const ValueKey('opp-edit-publish'),
+                        label: draft ? 'Review & publish' : 'Review & save',
+                        variant: EpPillVariant.primary,
+                        size: EpPillSize.large,
+                        expand: true,
+                        onPressed: _busy ? null : _review,
                       ),
                     ),
                   ],
