@@ -74,6 +74,15 @@ class _OpportunityApplicantsScreenState
           _selectedSlotId = null;
         }
       });
+      final unreviewedIds = [
+        for (final row in applicants)
+          if (row.application.status == ArtistApplicationStatus.submitted ||
+              row.application.status == ArtistApplicationStatus.underReview)
+            row.application.id,
+      ];
+      if (unreviewedIds.isNotEmpty) {
+        unawaited(app.markApplicationsViewed(unreviewedIds));
+      }
     } catch (error) {
       if (!mounted || !identical(_loadToken, token)) return;
       setState(() {

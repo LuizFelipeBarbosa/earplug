@@ -227,24 +227,43 @@ mixin _OpportunityState on _AppStateCore {
   }
 
   List<BandApplication> myApplications = const [];
-  Object? _myApplicationsLoadToken;
+  StreamSubscription<List<BandApplication>>? _myApplicationsSubscription;
 
   Future<void> refreshMyApplications() async {
     if (_disposed) return;
-    final token = Object();
-    _myApplicationsLoadToken = token;
+    unawaited(_myApplicationsSubscription?.cancel());
+    _myApplicationsSubscription = null;
     if (bandId.isEmpty) {
       myApplications = const [];
       notifyListeners();
       return;
     }
-    try {
-      final applications = await repository.myApplications(bandId);
-      if (_disposed || !identical(_myApplicationsLoadToken, token)) return;
-      myApplications = applications;
-      notifyListeners();
-    } catch (error) {
-      logError('myApplications', error);
+    final firstEvent = Completer<void>();
+    _myApplicationsSubscription = repository
+        .watchMyApplications(bandId)
+        .listen(
+          (applications) {
+            if (_disposed) return;
+            myApplications = applications;
+            notifyListeners();
+            if (!firstEvent.isCompleted) firstEvent.complete();
+          },
+          onError: (Object error) {
+            if (_disposed) return;
+            logError('myApplications', error);
+            if (!firstEvent.isCompleted) firstEvent.complete();
+          },
+        );
+    await firstEvent.future;
+  }
+
+  Future<void> markApplicationsViewed(Iterable<String> applicationIds) async {
+    for (final id in applicationIds) {
+      try {
+        await repository.markApplicationViewed(id);
+      } catch (error) {
+        logError('markApplicationViewed', error);
+      }
     }
   }
 
@@ -278,7 +297,8 @@ mixin _OpportunityState on _AppStateCore {
     _opportunitiesLoadTokens.clear();
     _opportunityByIdTokens.clear();
     _browseLoadToken = null;
-    _myApplicationsLoadToken = null;
+    unawaited(_myApplicationsSubscription?.cancel());
+    _myApplicationsSubscription = null;
     _opportunitiesByOrg.clear();
     _opportunitiesStatusByOrg.clear();
     _opportunityById.clear();

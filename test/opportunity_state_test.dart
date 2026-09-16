@@ -544,6 +544,16 @@ class _ControlledOpportunityRepository extends DemoRepository {
   }
 
   @override
+  Stream<List<BandApplication>> watchMyApplications(String bandId) {
+    if (failLoads) {
+      return Stream<List<BandApplication>>.error(
+        UnimplementedError('myApplications'),
+      );
+    }
+    return super.watchMyApplications(bandId);
+  }
+
+  @override
   Future<BrowseItem?> resolveOpportunity(String ref, {String? bandId}) {
     if (failLoads) throw UnimplementedError('resolveOpportunity');
     return super.resolveOpportunity(ref, bandId: bandId);

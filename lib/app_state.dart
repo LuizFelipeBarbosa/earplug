@@ -469,6 +469,7 @@ class AppState extends ChangeNotifier
     unawaited(_feedSubscription?.cancel());
     unawaited(_goingCountsSubscription?.cancel());
     unawaited(_venueDirectorySubscription?.cancel());
+    unawaited(_myApplicationsSubscription?.cancel());
     unawaited(_interactionsSubscription?.cancel());
     unawaited(_bandsSubscription?.cancel());
     unawaited(_organizationsSubscription?.cancel());
