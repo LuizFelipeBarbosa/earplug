@@ -8,6 +8,7 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
 
@@ -20,6 +21,7 @@ class OrgFinanceScreen extends StatefulWidget {
 
 class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
   String? _loadedOrganizationId;
+  String? _stripeError;
 
   @override
   void didChangeDependencies() {
@@ -32,6 +34,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
     }
     if (_loadedOrganizationId == organizationId) return;
     _loadedOrganizationId = organizationId;
+    _stripeError = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted ||
           app.organizationId != organizationId ||
@@ -39,8 +42,28 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
         return;
       }
       unawaited(app.loadFinance());
+      unawaited(app.refreshOrganizationStripeStatus());
     });
   }
+
+  /// Stripe failures stay inline next to the controls rather than in the
+  /// finance snackbar, so they read as account state, not a passing notice.
+  Future<void> _runStripeAction(Future<void> Function() action) async {
+    final app = context.read<AppState>();
+    final organizationId = app.organizationId;
+    setState(() => _stripeError = null);
+    try {
+      await action();
+    } catch (error) {
+      if (!mounted || app.organizationId != organizationId) return;
+      setState(() => _stripeError = _errorMessage(error));
+    }
+  }
+
+  Future<void> _continueInStripe(AppState app) => _runStripeAction(() async {
+    await app.startOrganizationOnboarding();
+    await app.refreshOrganizationStripeStatus();
+  });
 
   Future<void> _runAction(Future<void> Function() action) async {
     try {
@@ -157,6 +180,8 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
           ),
           Text('FINANCE', style: textTheme.epPageHeading),
           const SizedBox(height: 16),
+          _buildStripeSection(app),
+          const SizedBox(height: 24),
           if (app.financeLoading && overview == null)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 80),
@@ -169,18 +194,12 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
               key: const Key('org-finance-funds'),
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (!overview.stripeReady) ...[
+                if (!overview.stripeReady)
                   Text(
                     'Connect Stripe to see your balance.',
                     style: textTheme.epBody,
-                  ),
-                  const SizedBox(height: 12),
-                  EpButton(
-                    'CONNECT STRIPE',
-                    key: const Key('org-finance-connect-stripe'),
-                    onTap: () => _runAction(app.startOrganizationOnboarding),
-                  ),
-                ] else if (overview.snapshot case final snapshot?) ...[
+                  )
+                else if (overview.snapshot case final snapshot?) ...[
                   EpStatCard(
                     expand: false,
                     label: 'IN STRIPE',
@@ -272,18 +291,160 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
               key: const Key('org-finance-export'),
               onTap: _showExportSheet,
             ),
-            if (overview.stripeReady) ...[
-              const SizedBox(height: 10),
-              EpButton(
-                'MANAGE PAYOUTS IN STRIPE',
-                key: const Key('org-finance-stripe'),
-                kind: EpButtonKind.light,
-                onTap: () => _runAction(app.openOrganizationExpressDashboard),
-              ),
-            ],
           ],
         ],
       ),
+    );
+  }
+
+  /// The organization's Stripe account: state badge, the one action that
+  /// moves it forward, what Stripe still needs, and the tax-details row.
+  Widget _buildStripeSection(AppState app) {
+    final textTheme = Theme.of(context).textTheme;
+    final status = app.organizationStripeStatusFor(app.organizationId);
+    final state = status?.state ?? StripeAccountState.unknown;
+    final (badgeLabel, badgeTone, sentence) = switch (state) {
+      StripeAccountState.enabled => (
+        'Connected',
+        EpStatusPillTone.success,
+        'Connected. Payouts go to your Stripe account.',
+      ),
+      StripeAccountState.onboarding => (
+        'Setup in progress — finish in Stripe',
+        EpStatusPillTone.attention,
+        'Setup in progress. Finish onboarding in Stripe to receive payouts.',
+      ),
+      StripeAccountState.restricted => (
+        'Setup in progress — finish in Stripe',
+        EpStatusPillTone.attention,
+        'Stripe needs more information before payouts can continue.',
+      ),
+      _ => (
+        'Set up',
+        EpStatusPillTone.attention,
+        'Not connected. Connect Stripe to sell tickets and receive payouts.',
+      ),
+    };
+    final requirementsDue = status?.requirementsDue ?? const <String>[];
+    final needsTaxInformation = requirementsDue.any(
+      RegExp(r'tax|ssn|id_number|verification\.document').hasMatch,
+    );
+    final detailsSubmitted = status?.detailsSubmitted == true;
+    final taxCollected = detailsSubmitted && !needsTaxInformation;
+
+    return Column(
+      key: const Key('org-finance-stripe-section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const EpEyebrow('Stripe'),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: StatusPill(
+                  key: const Key('org-finance-stripe-badge'),
+                  label: badgeLabel,
+                  tone: badgeTone,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const EpHairline(),
+        const SizedBox(height: 12),
+        Text(sentence, style: textTheme.epBody),
+        if (requirementsDue.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const EpEyebrow('Needs information'),
+          const SizedBox(height: 4),
+          for (final requirement in requirementsDue)
+            EpMonoText(requirement, keepCase: true),
+        ],
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (state == StripeAccountState.enabled)
+              EpPill(
+                key: const Key('org-finance-stripe'),
+                label: 'Manage payouts in Stripe',
+                variant: EpPillVariant.primary,
+                size: EpPillSize.regular,
+                onPressed: () =>
+                    _runStripeAction(app.openOrganizationExpressDashboard),
+              )
+            else
+              EpPill(
+                key: const Key('org-finance-connect-stripe'),
+                label: switch (state) {
+                  StripeAccountState.onboarding ||
+                  StripeAccountState.restricted => 'Continue setup',
+                  _ => 'Connect Stripe',
+                },
+                variant: EpPillVariant.primary,
+                size: EpPillSize.regular,
+                onPressed: () => _continueInStripe(app),
+              ),
+            EpPill(
+              key: const Key('org-finance-stripe-refresh'),
+              label: 'Refresh status',
+              variant: EpPillVariant.ghost,
+              size: EpPillSize.regular,
+              onPressed: () =>
+                  _runStripeAction(app.refreshOrganizationStripeStatus),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            const EpMonoText('Tax details', size: 12, weight: FontWeight.w500),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: StatusPill(
+                  label: taxCollected
+                      ? '✓ Collected via Stripe'
+                      : 'Action needed',
+                  tone: taxCollected
+                      ? EpStatusPillTone.success
+                      : EpStatusPillTone.attention,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Stripe collects tax details (W-9 / 1099) during onboarding and '
+          'keeps them in your Stripe dashboard.',
+          style: textTheme.epCaption,
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          // Until details are submitted the fix is finishing onboarding.
+          child: EpPill(
+            key: const Key('org-finance-tax-dashboard'),
+            label: detailsSubmitted ? 'Manage in Stripe' : 'Add in Stripe',
+            onPressed: detailsSubmitted
+                ? () => _runStripeAction(app.openOrganizationExpressDashboard)
+                : () => _continueInStripe(app),
+          ),
+        ),
+        if (_stripeError != null) ...[
+          const SizedBox(height: 8),
+          InlineFormFeedback(
+            error: _stripeError,
+            errorKey: const Key('org-finance-stripe-error'),
+          ),
+        ],
+      ],
     );
   }
 }
