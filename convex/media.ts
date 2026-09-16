@@ -260,6 +260,45 @@ export const moveMedia = mutation({
   },
 });
 
+export const reorderMedia = mutation({
+  args: {
+    bandId: v.id("bands"),
+    mediaId: v.id("bandMedia"),
+    toIndex: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireBandRole(ctx, args.bandId, { role: "admin" });
+    const media = await ctx.db.get("bandMedia", args.mediaId);
+    if (!media || media.bandId !== args.bandId) {
+      throw new Error("Media not found among band's ordered media");
+    }
+
+    const siblings = await ctx.db
+      .query("bandMedia")
+      .withIndex("by_band_order", (q) => q.eq("bandId", args.bandId))
+      .order("asc")
+      .take(MAX_MEDIA_PER_BAND);
+    const index = siblings.findIndex((sibling) => sibling._id === args.mediaId);
+    if (index === -1) {
+      throw new Error("Media not found among band's ordered media");
+    }
+    const targetIndex = Number.isNaN(args.toIndex)
+      ? 0
+      : Math.min(siblings.length - 1, Math.max(0, Math.trunc(args.toIndex)));
+    if (index === targetIndex) return null;
+
+    const [moved] = siblings.splice(index, 1);
+    siblings.splice(targetIndex, 0, moved);
+    for (let order = 0; order < siblings.length; order++) {
+      if (siblings[order].order !== order) {
+        await ctx.db.patch("bandMedia", siblings[order]._id, { order });
+      }
+    }
+    return null;
+  },
+});
+
 export const moveWithinKind = mutation({
   args: {
     mediaId: v.id("bandMedia"),

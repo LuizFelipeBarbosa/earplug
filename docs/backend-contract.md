@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.34)
+# EarPlug Convex function contract (FROZEN — v1.35)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -1150,6 +1150,12 @@ optional free-text `declineNote` trimmed and limited to 500 characters;
 Host notes are trimmed and limited to 280 characters, may be cleared while
 active, and are included in the authorized application payloads above.
 
+**v1.35 — media reorder.** Added
+`media:reorderMedia({ bandId, mediaId, toIndex }) -> null`, an admin-only
+mutation that moves one item in the band's single global order to an arbitrary
+clamped index in one call instead of repeated `media:moveMedia` adjacent
+swaps. No existing function's shape changed.
+
 ## Reconciliation
 
 Verified against the current source as of v1.17; these deployed, client-required contract surfaces were previously undocumented:
@@ -1420,6 +1426,7 @@ Verified against the current source as of v1.17; these deployed, client-required
 | `media:deleteMedia`                     | `{ mediaId }`                                                                                                                                                                                                        | `null`                          | requireBandAdmin of the media's band; deletes the row only — the blob stays and is reclaimed later by `media:sweepOrphanBlobs`, so a shared or missing blob can never wedge row deletion. Repacks the band's whole order to 0..n-1, clears the hero reference when applicable, promotes the next video when the pinned one is deleted, and transactionally recomputes `bands.hasClip` after a video deletion.                                                                                                                    |
 | `media:pinMedia`                        | `{ mediaId }`                                                                                                                                                                                                        | `null`                          | requireBandAdmin of the media's band; video only; unpins siblings.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `media:moveMedia`                       | `{ mediaId, direction: "up"\|"down" }`                                                                                                                                                                               | `null`                          | requireBandAdmin of the media's band; swaps `order` with the adjacent row in the band's single global list, which may be of the other kind; no-op at ends.                                                                                                                                                                                                                                                                                                                                                                       |
+| `media:reorderMedia`                    | `{ bandId, mediaId, toIndex }`                                                                                                                                                                                       | `null`                          | requireBandAdmin(bandId); moves the row to the clamped index (0..n-1) in the band's single global order in one call, reordering only the rows between the old and new position; no-op if already at the target index. |
 
 The gig-project mutation family is admin-only: `gigs:createDraft`,
 `gigs:saveDraft`, `gigs:addPerformer`, `gigs:updatePerformer`,

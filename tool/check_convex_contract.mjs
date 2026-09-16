@@ -31,6 +31,7 @@ export const requiredClientFunctions = Object.freeze({
   "media.js:addMedia": "Mutation",
   "media.js:forBand": "Query",
   "media.js:moveWithinKind": "Mutation",
+  "media.js:reorderMedia": "Mutation",
   "interactions.js:ticketForGig": "Mutation",
   "organizationApplications.js:mine": "Query",
   "organizationApplications.js:saveDraft": "Mutation",

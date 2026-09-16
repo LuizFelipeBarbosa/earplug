@@ -189,6 +189,7 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing media.js:addMedia",
     "missing media.js:forBand",
     "missing media.js:moveWithinKind",
+    "missing media.js:reorderMedia",
     "missing interactions.js:ticketForGig",
     "missing organizationApplications.js:mine",
     "missing organizationApplications.js:saveDraft",

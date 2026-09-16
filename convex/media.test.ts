@@ -592,6 +592,208 @@ describe("media mutations", () => {
     expect(media.map((row) => row.order)).toEqual([0, 1, 2]);
   });
 
+  describe("reorderMedia", () => {
+    async function setupOrderedMedia() {
+      const setup = await setupBand();
+      const { t, asAdmin, bandId } = setup;
+      const kinds = ["photo", "video", "photo", "video", "photo"] as const;
+      for (const [index, kind] of kinds.entries()) {
+        const storageId = await t.run(async (ctx) =>
+          ctx.storage.store(new Blob([new Uint8Array([index])])),
+        );
+        await asAdmin.mutation(api.media.addMedia, {
+          bandId,
+          kind,
+          storageId,
+          title: `Media ${index}`,
+        });
+      }
+      const media = await t.run(async (ctx) =>
+        ctx.db
+          .query("bandMedia")
+          .withIndex("by_band_order", (q) => q.eq("bandId", bandId))
+          .order("asc")
+          .take(MAX_MEDIA_PER_BAND),
+      );
+      return { ...setup, media };
+    }
+
+    test.each([
+      { name: "middle to front", from: 2, toIndex: 0, expected: [2, 0, 1, 3, 4] },
+      { name: "end to front", from: 4, toIndex: 0, expected: [4, 0, 1, 2, 3] },
+      { name: "front to back", from: 0, toIndex: 4, expected: [1, 2, 3, 4, 0] },
+      { name: "middle forward", from: 1, toIndex: 3, expected: [0, 2, 3, 1, 4] },
+      { name: "middle backward", from: 3, toIndex: 1, expected: [0, 3, 1, 2, 4] },
+      { name: "above last index", from: 1, toIndex: 99, expected: [0, 2, 3, 4, 1] },
+      { name: "negative index", from: 3, toIndex: -5, expected: [3, 0, 1, 2, 4] },
+      { name: "NaN index", from: 3, toIndex: NaN, expected: [3, 0, 1, 2, 4] },
+      { name: "positive infinity", from: 1, toIndex: Infinity, expected: [0, 2, 3, 4, 1] },
+      { name: "negative infinity", from: 3, toIndex: -Infinity, expected: [3, 0, 1, 2, 4] },
+      { name: "fractional index", from: 1, toIndex: 3.9, expected: [0, 2, 3, 1, 4] },
+    ])("moves $name and preserves all other fields", async ({ from, toIndex, expected }) => {
+      const { t, asAdmin, bandId, media } = await setupOrderedMedia();
+      const bandBefore = await t.run(async (ctx) => ctx.db.get(bandId));
+
+      await expect(
+        asAdmin.mutation(api.media.reorderMedia, {
+          bandId,
+          mediaId: media[from]._id,
+          toIndex,
+        }),
+      ).resolves.toBeNull();
+
+      const after = await t.run(async (ctx) =>
+        ctx.db
+          .query("bandMedia")
+          .withIndex("by_band_order", (q) => q.eq("bandId", bandId))
+          .order("asc")
+          .take(MAX_MEDIA_PER_BAND),
+      );
+      expect(after).toEqual(
+        expected.map((index, order) => ({ ...media[index], order })),
+      );
+      expect(await t.run(async (ctx) => ctx.db.get(bandId))).toEqual(bandBefore);
+    });
+
+    test.each([2, 2.9])("leaves every document unchanged at the current index %s", async (toIndex) => {
+      const { t, asAdmin, bandId, media } = await setupOrderedMedia();
+      await expect(
+        asAdmin.mutation(api.media.reorderMedia, {
+          bandId,
+          mediaId: media[2]._id,
+          toIndex,
+        }),
+      ).resolves.toBeNull();
+      const after = await t.run(async (ctx) =>
+        Promise.all(media.map((row) => ctx.db.get(row._id))),
+      );
+      expect(after).toEqual(media);
+    });
+
+    test("keeps global and per-kind ordering consistent across kinds", async () => {
+      const { t, asAdmin, bandId, media } = await setupOrderedMedia();
+      await asAdmin.mutation(api.media.reorderMedia, {
+        bandId,
+        mediaId: media[3]._id,
+        toIndex: 1,
+      });
+
+      const ordered = await t.query(api.media.forBand, { bandId });
+      expect(ordered.map((row) => row._id)).toEqual(
+        [0, 3, 1, 2, 4].map((index) => media[index]._id),
+      );
+      expect(ordered.map((row) => row.kind)).toEqual([
+        "photo", "video", "video", "photo", "photo",
+      ]);
+      expect(ordered.map((row) => row.order)).toEqual([0, 1, 2, 3, 4]);
+      for (const kind of ["photo", "video"] as const) {
+        const byKind = await t.run(async (ctx) =>
+          ctx.db
+            .query("bandMedia")
+            .withIndex("by_band_kind_order", (q) =>
+              q.eq("bandId", bandId).eq("kind", kind),
+            )
+            .order("asc")
+            .take(MAX_MEDIA_PER_BAND),
+        );
+        expect(byKind.map((row) => ({ id: row._id, order: row.order }))).toEqual(
+          ordered
+            .filter((row) => row.kind === kind)
+            .map((row) => ({ id: row._id, order: row.order })),
+        );
+      }
+    });
+
+    test("rejects members and unauthenticated callers", async () => {
+      const { t, bandId, media } = await setupOrderedMedia();
+      const asMember = t.withIdentity({
+        subject: "media_reorder_member",
+        email: "media-reorder-member@example.com",
+      });
+      const { userId } = await asMember.mutation(api.users.ensureUser, {});
+      await t.run(async (ctx) => {
+        await ctx.db.insert("bandMembers", { bandId, userId, role: "member" });
+      });
+      const args = { bandId, mediaId: media[2]._id, toIndex: 0 };
+      await expect(
+        asMember.mutation(api.media.reorderMedia, args),
+      ).rejects.toThrow("Not an admin");
+      await expect(t.mutation(api.media.reorderMedia, args)).rejects.toThrow(
+        "Not signed in",
+      );
+      expect(
+        await t.run(async (ctx) =>
+          Promise.all(media.map((row) => ctx.db.get(row._id))),
+        ),
+      ).toEqual(media);
+    });
+
+    test("rejects missing and other-band media with the same error", async () => {
+      const { t, asAdmin, bandId, media } = await setupOrderedMedia();
+      const asOtherAdmin = t.withIdentity({
+        subject: "media_reorder_other_admin",
+        email: "media-reorder-other-admin@example.com",
+      });
+      await asOtherAdmin.mutation(api.users.ensureUser, {});
+      const { bandId: otherBandId } = await asOtherAdmin.mutation(
+        api.bands.createBand,
+        {
+          name: "Other Reorder Band",
+          genres: ["noise"],
+          bio: "",
+          area: "Bay Area",
+          inviteHandles: [],
+        },
+      );
+      const storageId = await t.run(async (ctx) =>
+        ctx.storage.store(new Blob([new Uint8Array([9])])),
+      );
+      const { mediaId } = await asOtherAdmin.mutation(api.media.addMedia, {
+        bandId: otherBandId,
+        kind: "photo",
+        storageId,
+        title: "Other band's photo",
+      });
+      const otherBefore = await t.run(async (ctx) => ctx.db.get(mediaId));
+
+      await expect(
+        asAdmin.mutation(api.media.reorderMedia, { bandId, mediaId, toIndex: 0 }),
+      ).rejects.toThrow("Media not found among band's ordered media");
+      expect(await t.run(async (ctx) => ctx.db.get(mediaId))).toEqual(otherBefore);
+      expect(
+        await t.run(async (ctx) =>
+          Promise.all(media.map((row) => ctx.db.get(row._id))),
+        ),
+      ).toEqual(media);
+
+      await asOtherAdmin.mutation(api.media.deleteMedia, { mediaId });
+      await expect(
+        asAdmin.mutation(api.media.reorderMedia, { bandId, mediaId, toIndex: 0 }),
+      ).rejects.toThrow("Media not found among band's ordered media");
+    });
+
+    test("deleteMedia still recompacts after reordering", async () => {
+      const { t, asAdmin, bandId, media } = await setupOrderedMedia();
+      await asAdmin.mutation(api.media.reorderMedia, {
+        bandId,
+        mediaId: media[4]._id,
+        toIndex: 0,
+      });
+      await asAdmin.mutation(api.media.deleteMedia, { mediaId: media[1]._id });
+      const remaining = await t.run(async (ctx) =>
+        ctx.db
+          .query("bandMedia")
+          .withIndex("by_band_order", (q) => q.eq("bandId", bandId))
+          .order("asc")
+          .take(MAX_MEDIA_PER_BAND),
+      );
+      expect(remaining.map((row) => row._id)).toEqual(
+        [4, 0, 2, 3].map((index) => media[index]._id),
+      );
+      expect(remaining.map((row) => row.order)).toEqual([0, 1, 2, 3]);
+    });
+  });
+
   test("moveWithinKind swaps same-kind neighbors and no-ops at the edge", async () => {
     const { t, asAdmin, bandId } = await setupBand();
     const [photoStorage1, videoStorage1, photoStorage2, videoStorage2] =
