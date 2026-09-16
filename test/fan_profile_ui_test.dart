@@ -98,8 +98,12 @@ void main() {
       final memberSince = find.byKey(const Key('fan-preview-since'));
       expect(memberSince, findsOne);
       expect(
-        tester.widget<Text>(memberSince).data!.startsWith('Member since '),
-        isTrue,
+        tester.widget<Text>(memberSince).data,
+        matches(
+          RegExp(
+            r'^Since (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4}$',
+          ),
+        ),
       );
     }
     await tester.tap(find.text('SAVE CHANGES'));

@@ -823,7 +823,7 @@ class _FanIdentityPreview extends StatelessWidget {
                     ),
                     if (createdAt case final date?)
                       Text(
-                        'Member since ${monthNamesFull[date.month - 1]} ${date.year}',
+                        'Since ${monthNames[date.month - 1]} ${date.year}',
                         key: const Key('fan-preview-since'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

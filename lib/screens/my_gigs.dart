@@ -281,7 +281,7 @@ class _ProfileHeader extends StatelessWidget {
                         ),
                       ),
                     Text(
-                      'Member since ${monthNamesFull[profile.createdAt.month - 1]} ${profile.createdAt.year}',
+                      'Since ${monthNames[profile.createdAt.month - 1]} ${profile.createdAt.year}',
                       key: const Key('fan-profile-since'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
