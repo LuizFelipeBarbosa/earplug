@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
@@ -176,39 +177,324 @@ void main() {
     expect(find.byKey(const ValueKey('band-social-youtube')), findsNothing);
   });
 
-  testWidgets('admin preview has edit and return management controls', (
+  testWidgets(
+    'admin preview drops the preview block and keeps the back control',
+    (tester) async {
+      final harness = await _pumpOwnPreview(tester);
+
+      expect(find.text('PUBLIC PROFILE PREVIEW'), findsNothing);
+      expect(find.text('RETURN TO BAND DASHBOARD'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('edit-band-profile-banner')),
+        findsNothing,
+      );
+
+      final back = find.byKey(const ValueKey('band-profile-back-control'));
+      expect(
+        tester.widget<ExploreCardIconButton>(back).semanticLabel,
+        'Return to band dashboard',
+      );
+      await tester.tap(back);
+      await tester.pump();
+      expect(harness.app.current.screen, Screen.gigMgr);
+    },
+  );
+
+  testWidgets(
+    'own preview puts the avatar edit icon at the top-left of the image',
+    (tester) async {
+      final auth = FakeAuthService();
+      final repository = _profileRepository(
+        auth: auth,
+        profileBand: DemoData.bands['b1']!.copyWith(
+          avatarUrl: 'https://example.com/avatar.jpg',
+        ),
+      );
+      final harness = await _pumpOwnPreview(
+        tester,
+        auth: auth,
+        repository: repository,
+      );
+
+      final hero = find.byKey(const ValueKey('band-profile-hero-b1'));
+      final frame = find.byKey(const ValueKey('band-profile-avatar-frame'));
+      final miniHeader = find.byKey(const ValueKey('band-profile-mini-header'));
+      final edit = find.byKey(const ValueKey('band-profile-avatar-edit'));
+      expect(edit.hitTestable(), findsOneWidget);
+      expect(
+        tester.widget<EpIconPill>(edit).semanticLabel,
+        'Change profile image',
+      );
+      final editRect = tester.getRect(edit);
+      final frameRect = tester.getRect(frame);
+      expect(editRect.width, greaterThanOrEqualTo(44));
+      expect(editRect.height, greaterThanOrEqualTo(44));
+      expect(editRect.left, frameRect.left + EpLayout.gutter);
+      expect(
+        editRect.top,
+        greaterThanOrEqualTo(tester.getRect(miniHeader).bottom),
+      );
+      expect(editRect.bottom, lessThan(frameRect.top + frameRect.height / 3));
+      expect(tester.getRect(hero).contains(editRect.center), isTrue);
+      expect(harness.app.band('b1')!.profileImageUrl, isNotNull);
+
+      await tester.tap(edit);
+      await tester.pumpAndSettle();
+      expect(find.text('PROFILE IMAGE'), findsOne);
+      expect(find.text('Replace'), findsOne);
+      expect(find.text('Use initials instead'), findsOne);
+
+      await tester.tap(find.text('Use initials instead'));
+      await tester.pumpAndSettle();
+      expect(repository.callsTo('clearBandAvatar'), 1);
+      expect(find.byKey(const ValueKey('band-artwork-error')), findsNothing);
+      expect(find.text('Use initials instead'), findsNothing);
+    },
+  );
+
+  testWidgets('a failed profile image upload shows the artwork error line', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _profileRepository(auth: auth)
+      ..fail('setBandAvatar', StateError('avatar assignment failed'));
+    final harness = await _pumpOwnPreview(
+      tester,
+      auth: auth,
+      repository: repository,
+    );
+    harness.picker.nextPhoto = photoFixture(filename: 'failed_avatar.png');
+
+    await tester.tap(find.byKey(const ValueKey('band-profile-avatar-edit')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Replace'));
+    await tester.pumpAndSettle();
+
+    expect(harness.picker.photoCalls, 1);
+    final error = find.byKey(const ValueKey('band-artwork-error'));
+    expect(error, findsOne);
+    expect(find.textContaining('profile image could not be saved'), findsOne);
+    final hero = find.byKey(const ValueKey('band-profile-hero-b1'));
+    expect(
+      tester.getTopLeft(error).dy,
+      greaterThanOrEqualTo(tester.getBottomLeft(hero).dy),
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('band-follow'))).dy,
+      greaterThan(tester.getBottomLeft(error).dy),
+    );
+  });
+
+  testWidgets('own preview shows EDIT PROFILE at the header bar right edge', (
+    tester,
+  ) async {
+    final harness = await _pumpOwnPreview(tester);
+
+    final miniHeader = find.byKey(const ValueKey('band-profile-mini-header'));
+    final edit = find.byKey(const ValueKey('band-profile-edit'));
+    expect(find.descendant(of: miniHeader, matching: edit), findsOneWidget);
+    expect(edit.hitTestable(), findsOneWidget);
+    expect(find.byKey(const ValueKey('band-mini-follow')), findsNothing);
+    final pill = tester.widget<EpPill>(edit);
+    expect(pill.label, 'Edit profile');
+    expect(pill.variant, EpPillVariant.outline);
+    expect(pill.size, EpPillSize.chip);
+    final back = find.byKey(const ValueKey('band-profile-back-control'));
+    expect(
+      tester.getRect(edit).right,
+      tester.getRect(miniHeader).right - EpLayout.gutter,
+    );
+    expect(tester.getCenter(edit).dy, closeTo(tester.getCenter(back).dy, 1));
+    expect(
+      find.descendant(of: miniHeader, matching: find.byType(Opacity)),
+      findsOneWidget,
+    );
+
+    await tester.tap(edit);
+    await tester.pump();
+    expect(harness.app.current.screen, Screen.bandEdit);
+  });
+
+  testWidgets('own preview management row sits under FOLLOW / SHARE', (
+    tester,
+  ) async {
+    final harness = await _pumpOwnPreview(tester);
+
+    final share = find.byKey(const ValueKey('band-share'));
+    final members = find.byKey(const ValueKey('band-profile-members'));
+    final editMedia = find.byKey(const ValueKey('band-profile-edit-media'));
+    final editProfile = find.byKey(const ValueKey('band-profile-edit-profile'));
+    expect(find.byKey(const ValueKey('band-follow')), findsOneWidget);
+    expect(share, findsOneWidget);
+    for (final chip in [members, editMedia, editProfile]) {
+      expect(chip.hitTestable(), findsOneWidget);
+      expect(
+        tester.getTopLeft(chip).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(share).dy),
+      );
+    }
+    expect(
+      tester.getTopLeft(members).dy - tester.getBottomLeft(share).dy,
+      inInclusiveRange(0, 8),
+    );
+    // Chips sit 8px apart; at phone width the row wraps, so a chip either
+    // follows its predecessor on the same line or starts the next run.
+    for (final (previous, next) in [
+      (members, editMedia),
+      (editMedia, editProfile),
+    ]) {
+      final previousRect = tester.getRect(previous);
+      final nextRect = tester.getRect(next);
+      if (nextRect.top == previousRect.top) {
+        expect(nextRect.left - previousRect.right, 8);
+      } else {
+        expect(nextRect.left, previousRect.left);
+        expect(nextRect.top - previousRect.bottom, 8);
+      }
+    }
+    expect(tester.widget<EpPill>(members).icon, Icons.group_outlined);
+    expect(tester.widget<EpPill>(editMedia).icon, Icons.play_arrow);
+    expect(tester.widget<EpPill>(editProfile).icon, Icons.edit_outlined);
+
+    await tester.tap(members);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('band-members-sheet')), findsOneWidget);
+    Navigator.of(tester.element(find.byType(BandProfileScreen))).pop();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('band-members-sheet')), findsNothing);
+
+    await tester.tap(editMedia);
+    await tester.pump();
+    expect(harness.app.current.screen, Screen.bandMedia);
+
+    harness.app.go(Screen.bandPreview, 'b1');
+    await tester.pump();
+    await tester.tap(editProfile);
+    await tester.pump();
+    expect(harness.app.current.screen, Screen.bandEdit);
+  });
+
+  for (final withVideos in [true, false]) {
+    testWidgets('own preview media header carries an inline EDIT MEDIA action '
+        '(videos: $withVideos)', (tester) async {
+      final auth = FakeAuthService();
+      final repository = _profileRepository(auth: auth);
+      if (!withVideos) repository.returns('mediaFor', <BandMedia>[]);
+      final harness = await _pumpOwnPreview(
+        tester,
+        auth: auth,
+        repository: repository,
+      );
+
+      final header = find.textContaining('THIS IS WHAT WE SOUND LIKE');
+      await tester.scrollUntilVisible(
+        header,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(header, findsOneWidget);
+      if (!withVideos) {
+        expect(
+          find.text('THIS IS WHAT WE SOUND LIKE · 00 VIDEOS'),
+          findsOneWidget,
+        );
+      }
+      final inline = find.byKey(const Key('band-profile-edit-media-inline'));
+      expect(inline.hitTestable(), findsOneWidget);
+      expect(
+        find.descendant(of: inline, matching: find.text('EDIT MEDIA')),
+        findsOneWidget,
+      );
+      expect(
+        tester.getCenter(inline).dy,
+        closeTo(tester.getCenter(header).dy, 12),
+      );
+      expect(
+        tester.getTopLeft(inline).dx,
+        greaterThan(tester.getTopRight(header).dx),
+      );
+
+      await tester.tap(inline);
+      await tester.pump();
+      expect(harness.app.current.screen, Screen.bandMedia);
+    });
+  }
+
+  testWidgets('a fan sees none of the own-band edit affordances', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _profileRepository(auth: auth, managedBandIds: const []),
+      beforePump: (app) => app.go(Screen.band, 'b1'),
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+
+    for (final key in _ownBandKeys) {
+      expect(find.byKey(key), findsNothing);
+    }
+    expect(find.byKey(const ValueKey('band-mini-follow')), findsOneWidget);
+    expect(find.byKey(const ValueKey('band-follow')), findsOneWidget);
+    expect(find.byKey(const ValueKey('band-share')), findsOneWidget);
+  });
+
+  testWidgets('an admin viewing their band outside the preview sees no edits', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      beforePump: (app) => app.go(Screen.band, 'b1'),
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+
+    for (final key in _ownBandKeys) {
+      expect(find.byKey(key), findsNothing);
+    }
+    expect(find.byKey(const ValueKey('band-mini-follow')), findsOneWidget);
+  });
+
+  testWidgets('a requested members sheet opens once on arrival', (
     tester,
   ) async {
     final harness = await pumpApp(
       tester,
-      beforePump: (app) => app.go(Screen.bandPreview, 'b1'),
+      beforePump: (app) {
+        app.go(Screen.bandPreview, 'b1');
+        app.requestMembersSheet();
+      },
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
-    expect(find.text('PUBLIC PROFILE PREVIEW'), findsOne);
-    expect(find.text('EDIT PROFILE'), findsOne);
-    expect(find.text('RETURN TO BAND DASHBOARD'), findsOne);
+    expect(harness.app.current.screen, Screen.bandPreview);
+    expect(find.byKey(const Key('band-members-sheet')), findsOneWidget);
+    expect(harness.app.takeMembersSheetRequest(), isFalse);
 
-    await tester.tap(find.text('EDIT PROFILE'));
-    await tester.pump();
-    expect(harness.app.current.screen, Screen.bandEdit);
-
+    Navigator.of(tester.element(find.byType(BandProfileScreen))).pop();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('band-members-sheet')), findsNothing);
     harness.app.go(Screen.bandPreview, 'b1');
-    await tester.pump();
-    await tester.tap(find.text('RETURN TO BAND DASHBOARD'));
-    await tester.pump();
-    expect(harness.app.current.screen, Screen.bandDash);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('band-members-sheet')), findsNothing);
+  });
 
-    harness.app.go(Screen.bandPreview, 'b1');
-    await tester.pump();
-    final back = find.byKey(const ValueKey('band-profile-back-control'));
-    expect(
-      tester.widget<ExploreCardIconButton>(back).semanticLabel,
-      'Return to band dashboard',
-    );
-    await tester.tap(back);
-    await tester.pump();
-    expect(harness.app.current.screen, Screen.bandDash);
+  testWidgets('own preview lays out without overflow at 390x844', (
+    tester,
+  ) async {
+    await _pumpOwnPreview(tester, size: const Size(390, 844));
+    expect(tester.takeException(), isNull);
+
+    final scrollable = find.byType(Scrollable).first;
+    for (final label in ['THIS IS WHAT WE SOUND LIKE', 'ABOUT', 'PAST GIGS']) {
+      await tester.scrollUntilVisible(
+        find.textContaining(label),
+        250,
+        scrollable: scrollable,
+      );
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    }
   });
 
   testWidgets('ordinary visits retain the regular public header', (
@@ -291,10 +577,7 @@ void main() {
       findsNothing,
     );
     final back = find.byKey(const ValueKey('band-profile-back-control'));
-    expect(
-      tester.getCenter(name).dy,
-      closeTo(tester.getCenter(back).dy, 2),
-    );
+    expect(tester.getCenter(name).dy, closeTo(tester.getCenter(back).dy, 2));
   });
 
   for (final (band, followLabel, followingLabel) in [
@@ -825,10 +1108,10 @@ void main() {
     expect(find.text('No past shows yet.', skipOffstage: false), findsOne);
   });
 
-  testWidgets('profile banner is scrimmed, upright, and editable by admins', (
+  testWidgets('profile banner is scrimmed and upright with no header edit', (
     tester,
   ) async {
-    final harness = await _pumpProfile(tester);
+    await _pumpProfile(tester);
 
     final scrim = tester.widget<DecoratedBox>(
       find.byKey(const ValueKey('band-profile-banner-scrim')),
@@ -861,56 +1144,43 @@ void main() {
       'Follow · ${DemoData.bands['b1']!.followersLabel}',
     );
     expect(find.text('PROFILE COMPLETE'), findsNothing);
-    final edit = find.byKey(const ValueKey('edit-band-profile-banner'));
-    expect(edit.hitTestable(), findsOneWidget);
-
-    await tester.tap(edit);
-    await tester.pump();
-    expect(harness.app.current.screen, Screen.bandEdit);
+    expect(
+      find.byKey(const ValueKey('edit-band-profile-banner')),
+      findsNothing,
+    );
+    expect(find.bySemanticsLabel('Edit header image'), findsNothing);
   });
 
-  testWidgets('profile banner edit is hidden for a non-active managed band', (
+  testWidgets('member preview manages members and media but not the profile', (
     tester,
   ) async {
     final auth = FakeAuthService();
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: _profileRepository(
-        auth: auth,
-        managedBandIds: const ['b1', 'b2'],
-      ),
-      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
-    );
-    expect(harness.app.isAdminOf('b1'), isTrue);
-
-    harness.app.switchToBand('b2');
-    await tester.pumpAndSettle();
-
-    expect(harness.app.bandId, 'b2');
-    expect(
-      find.byKey(const ValueKey('edit-band-profile-banner')),
-      findsNothing,
-    );
-  });
-
-  testWidgets('member preview is public-profile read-only', (tester) async {
-    final auth = FakeAuthService();
-    final harness = await pumpApp(
+    final harness = await _pumpOwnPreview(
       tester,
       auth: auth,
       repository: _profileRepository(auth: auth, role: 'member'),
-      beforePump: (app) => app.go(Screen.bandPreview, 'b1'),
-      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
-    expect(find.text('PUBLIC PROFILE PREVIEW'), findsOne);
+    expect(find.text('PUBLIC PROFILE PREVIEW'), findsNothing);
     expect(find.text('EDIT PROFILE'), findsNothing);
+    expect(find.byKey(const ValueKey('band-profile-edit')), findsNothing);
     expect(
-      find.byKey(const ValueKey('edit-band-profile-banner')),
+      find.byKey(const ValueKey('band-profile-edit-profile')),
       findsNothing,
     );
-    expect(find.text('RETURN TO BAND DASHBOARD'), findsOne);
+    expect(
+      find.byKey(const ValueKey('band-profile-avatar-edit')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('band-mini-follow')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('band-profile-members')).hitTestable(),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('band-profile-edit-media')).hitTestable(),
+      findsOneWidget,
+    );
 
     harness.app.openBandEditor();
     expect(harness.app.current.screen, Screen.bandPreview);
@@ -1373,6 +1643,30 @@ Future<AppHarness> _pumpProfile(WidgetTester tester) => pumpApp(
   tester,
   home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
 );
+
+/// The band's own PROFILE tab: b1 previewed by one of its members.
+Future<AppHarness> _pumpOwnPreview(
+  WidgetTester tester, {
+  FakeAuthService? auth,
+  EarplugRepository? repository,
+  Size size = const Size(402, 900),
+}) => pumpApp(
+  tester,
+  auth: auth,
+  repository: repository,
+  size: size,
+  beforePump: (app) => app.go(Screen.bandPreview, 'b1'),
+  home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+);
+
+const _ownBandKeys = [
+  ValueKey('band-profile-avatar-edit'),
+  ValueKey('band-profile-edit'),
+  ValueKey('band-profile-members'),
+  ValueKey('band-profile-edit-media'),
+  ValueKey('band-profile-edit-profile'),
+  Key('band-profile-edit-media-inline'),
+];
 
 Future<void> _saveSocialLinks(AppHarness harness) async {
   final band = harness.app.band('b1')!;

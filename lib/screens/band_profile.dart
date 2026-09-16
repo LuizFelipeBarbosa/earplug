@@ -8,14 +8,18 @@ import '../app_state.dart';
 import '../band_media_state.dart';
 import '../data/repository.dart';
 import '../models.dart';
+import '../services/media_picker.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
+import '../widgets/band_members_panel.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
+import '../widgets/ep_sheet.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/explore_tiles.dart';
 import '../widgets/fan_event_card.dart';
 import '../widgets/photo_viewer.dart';
+import '../widgets/sheets.dart';
 import '../widgets/video_player_sheet.dart';
 import '../widgets/video_thumbnail.dart';
 
@@ -63,11 +67,21 @@ class _BandProfileView extends StatefulWidget {
 
 class _BandProfileViewState extends State<_BandProfileView> {
   final _scrollController = ScrollController();
+  bool _artworkBusy = false;
+  String? _artworkError;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    if (widget.isManagedPreview) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (context.read<AppState>().takeMembersSheetRequest()) {
+          _showMembersSheet();
+        }
+      });
+    }
   }
 
   void _onScroll() => setState(() {});
@@ -76,6 +90,85 @@ class _BandProfileViewState extends State<_BandProfileView> {
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _showMembersSheet() => _showBandMembersSheet(context, widget.bandId);
+
+  void _showArtworkSheet() {
+    final app = context.read<AppState>();
+    final band = app.band(widget.bandId);
+    if (band == null || !app.isAdminOf(band.id)) return;
+
+    showEpActionSheet(
+      context,
+      header: 'Profile image',
+      items: [
+        EpActionSheetItem(
+          label: 'Replace',
+          icon: Icons.photo_library_outlined,
+          onPressed: _changeArtwork,
+        ),
+        if (band.profileImageUrl != null)
+          EpActionSheetItem(
+            label: 'Use initials instead',
+            icon: Icons.delete_outline,
+            destructive: true,
+            onPressed: _clearArtwork,
+          ),
+      ],
+    );
+  }
+
+  Future<void> _changeArtwork() async {
+    final app = context.read<AppState>();
+    final media = context.read<BandMediaController>();
+    final bandId = widget.bandId;
+    if (!app.isAdminOf(bandId)) return;
+
+    final PickedMedia? picked;
+    try {
+      picked = await media.pickFlyerArt();
+    } on MediaPickException catch (error) {
+      app.say(error.message);
+      return;
+    }
+    if (!mounted || picked == null) return;
+
+    setState(() {
+      _artworkError = null;
+      _artworkBusy = true;
+    });
+    final mediaId = await media.uploadHeldPhoto(bandId, picked);
+    final assigned = mediaId != null && await media.setAvatar(bandId, mediaId);
+    if (!mounted) return;
+    setState(() {
+      _artworkBusy = false;
+      if (!assigned) {
+        _artworkError =
+            'The profile image could not be saved. Choose it again here; '
+            'the failed upload remains available in Media.';
+      }
+    });
+  }
+
+  Future<void> _clearArtwork() async {
+    final app = context.read<AppState>();
+    final media = context.read<BandMediaController>();
+    final bandId = widget.bandId;
+    if (!app.isAdminOf(bandId)) return;
+
+    setState(() {
+      _artworkError = null;
+      _artworkBusy = true;
+    });
+    final cleared = await media.clearAvatar(bandId);
+    if (!mounted) return;
+    setState(() {
+      _artworkBusy = false;
+      if (!cleared) {
+        _artworkError = 'The profile image could not be removed. Try again.';
+      }
+    });
   }
 
   @override
@@ -105,6 +198,10 @@ class _BandProfileViewState extends State<_BandProfileView> {
         ? _scrollController.offset
         : 0.0;
     final progress = (offset / 80).clamp(0.0, 1.0);
+    // Any member of the band sees the management row on their own preview;
+    // the artwork and profile editors are admin-only.
+    final own = widget.isManagedPreview;
+    final admin = own && app.isAdminOf(bandId);
 
     return Center(
       child: ConstrainedBox(
@@ -118,11 +215,33 @@ class _BandProfileViewState extends State<_BandProfileView> {
                   child: _BandHero(
                     band: band,
                     topInset: topInset,
-                    onEditBanner: app.bandId == bandId && app.isAdminOf(bandId)
-                        ? app.openBandEditor
+                    onEditAvatar: admin && !_artworkBusy
+                        ? _showArtworkSheet
                         : null,
                   ),
                 ),
+                if (_artworkError case final error?)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        EpLayout.gutter,
+                        8,
+                        EpLayout.gutter,
+                        0,
+                      ),
+                      child: Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          error,
+                          key: const ValueKey('band-artwork-error'),
+                          style: Theme.of(context).textTheme.epCaption.copyWith(
+                            fontSize: 11,
+                            color: context.epColors.warning,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(
@@ -134,11 +253,13 @@ class _BandProfileViewState extends State<_BandProfileView> {
                     child: _ProfileActions(
                       app: app,
                       band: band,
-                      isManagedPreview: widget.isManagedPreview,
+                      own: own,
+                      admin: admin,
+                      onMembers: _showMembersSheet,
                     ),
                   ),
                 ),
-                if (soundVideos.isNotEmpty) ...[
+                if (soundVideos.isNotEmpty || own) ...[
                   const SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.symmetric(
@@ -154,6 +275,7 @@ class _BandProfileViewState extends State<_BandProfileView> {
                       band: band,
                       app: app,
                       videos: soundVideos,
+                      onEditMedia: own ? app.openBandMedia : null,
                     ),
                   ),
                 ],
@@ -293,7 +415,16 @@ class _BandProfileViewState extends State<_BandProfileView> {
                 topInset: topInset,
                 progress: progress,
                 following: app.follows.contains(bandId),
-                onFollow: () => app.requestFollow(bandId),
+                onFollow: own ? null : () => app.requestFollow(bandId),
+                trailing: admin
+                    ? EpPill(
+                        key: const ValueKey('band-profile-edit'),
+                        label: 'Edit profile',
+                        variant: EpPillVariant.outline,
+                        size: EpPillSize.chip,
+                        onPressed: app.openBandEditor,
+                      )
+                    : null,
                 backLabel: widget.isManagedPreview
                     ? 'Return to band dashboard'
                     : 'Back',
@@ -313,12 +444,12 @@ class _BandHero extends StatelessWidget {
   const _BandHero({
     required this.band,
     required this.topInset,
-    required this.onEditBanner,
+    required this.onEditAvatar,
   });
 
   final Band band;
   final double topInset;
-  final VoidCallback? onEditBanner;
+  final VoidCallback? onEditAvatar;
 
   @override
   Widget build(BuildContext context) {
@@ -389,24 +520,30 @@ class _BandHero extends StatelessWidget {
                 ],
               ),
             ),
-            if (onEditBanner != null)
+            if (onEditAvatar != null)
+              // Top-left corner of the profile image, just under the floating
+              // header bar so it sits in line with the back control.
               Positioned(
-                top: topInset + 56 + 12,
-                right: 12,
-                child: Semantics(
-                  button: true,
-                  label: 'Edit header image',
-                  excludeSemantics: true,
-                  child: IconButton(
-                    key: const ValueKey('edit-band-profile-banner'),
-                    tooltip: 'Edit header image',
-                    onPressed: onEditBanner,
-                    style: IconButton.styleFrom(
-                      backgroundColor: colors.background,
-                      foregroundColor: colors.ink,
+                top: topInset + 56 + 4,
+                left: EpLayout.gutter,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: ShapeDecoration(
+                        color: colors.background,
+                        shape: const CircleBorder(),
+                      ),
                     ),
-                    icon: const Icon(Icons.photo_camera_outlined, size: 16),
-                  ),
+                    EpIconPill(
+                      key: const ValueKey('band-profile-avatar-edit'),
+                      icon: Icons.edit,
+                      semanticLabel: 'Change profile image',
+                      onPressed: onEditAvatar,
+                    ),
+                  ],
                 ),
               ),
           ],
@@ -420,12 +557,16 @@ class _ProfileActions extends StatelessWidget {
   const _ProfileActions({
     required this.app,
     required this.band,
-    required this.isManagedPreview,
+    required this.own,
+    required this.admin,
+    required this.onMembers,
   });
 
   final AppState app;
   final Band band;
-  final bool isManagedPreview;
+  final bool own;
+  final bool admin;
+  final VoidCallback onMembers;
 
   @override
   Widget build(BuildContext context) {
@@ -466,24 +607,31 @@ class _ProfileActions extends StatelessWidget {
             ),
           ],
         ),
-        if (isManagedPreview) ...[
-          const SizedBox(height: 16),
-          const EpEyebrow('Public profile preview'),
+        if (own) ...[
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (app.isAdminOf(bandId))
+              EpPill(
+                key: const ValueKey('band-profile-members'),
+                label: 'Band members',
+                icon: Icons.group_outlined,
+                onPressed: onMembers,
+              ),
+              EpPill(
+                key: const ValueKey('band-profile-edit-media'),
+                label: 'Edit media',
+                icon: Icons.play_arrow,
+                onPressed: app.openBandMedia,
+              ),
+              if (admin)
                 EpPill(
+                  key: const ValueKey('band-profile-edit-profile'),
                   label: 'Edit profile',
                   icon: Icons.edit_outlined,
                   onPressed: app.openBandEditor,
                 ),
-              EpPill(
-                label: 'Return to band dashboard',
-                onPressed: app.returnToBandDashboard,
-              ),
             ],
           ),
         ],
@@ -499,6 +647,7 @@ class _BandProfileHeaderBar extends StatelessWidget {
     required this.progress,
     required this.following,
     required this.onFollow,
+    required this.trailing,
     required this.backLabel,
     required this.onBack,
   });
@@ -507,7 +656,12 @@ class _BandProfileHeaderBar extends StatelessWidget {
   final double topInset;
   final double progress;
   final bool following;
-  final VoidCallback onFollow;
+
+  /// Null hides the mini follow pill (the band's own preview).
+  final VoidCallback? onFollow;
+
+  /// Sits at the right edge, outside the identity fade.
+  final Widget? trailing;
   final String backLabel;
   final VoidCallback onBack;
 
@@ -580,18 +734,21 @@ class _BandProfileHeaderBar extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    IgnorePointer(
-                      ignoring: progress == 0,
-                      child: _BandMiniFollowPill(
-                        following: following,
-                        onFollow: onFollow,
+                    if (onFollow case final onFollow?) ...[
+                      const SizedBox(width: 12),
+                      IgnorePointer(
+                        ignoring: progress == 0,
+                        child: _BandMiniFollowPill(
+                          following: following,
+                          onFollow: onFollow,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
             ),
+            if (trailing != null) ...[const SizedBox(width: 12), trailing!],
           ],
         ),
       ),
@@ -647,6 +804,27 @@ class _BandMiniFollowPill extends StatelessWidget {
       ),
     );
   }
+}
+
+Future<void> _showBandMembersSheet(BuildContext context, String bandId) {
+  return showEpSheet(
+    context,
+    (ctx) => KeyedSubtree(
+      key: const Key('band-members-sheet'),
+      child: EpSheetShell(
+        padding: const EdgeInsets.fromLTRB(
+          EpLayout.gutter,
+          20,
+          EpLayout.gutter,
+          24,
+        ),
+        maxHeightFactor: .88,
+        scrollable: true,
+        header: const SizedBox.shrink(),
+        children: [BandMembersPanel(bandId: bandId)],
+      ),
+    ),
+  );
 }
 
 class _BandAbout extends StatelessWidget {
@@ -759,11 +937,13 @@ class _BandSoundPanel extends StatelessWidget {
     required this.band,
     required this.app,
     required this.videos,
+    required this.onEditMedia,
   });
 
   final Band band;
   final AppState app;
   final List<BandMedia> videos;
+  final VoidCallback? onEditMedia;
 
   @override
   Widget build(BuildContext context) {
@@ -782,6 +962,9 @@ class _BandSoundPanel extends StatelessWidget {
         children: [
           EpSectionHeader(
             label: 'This is what we sound like · $count $unit',
+            action: onEditMedia == null ? null : 'Edit media',
+            actionKey: const Key('band-profile-edit-media-inline'),
+            onAction: onEditMedia,
             padding: const EdgeInsets.only(top: 24, bottom: 12),
           ),
           for (var index = 0; index < videos.length; index++) ...[
