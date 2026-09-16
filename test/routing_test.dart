@@ -671,6 +671,37 @@ void main() {
   );
 
   test(
+    'organizer opportunity and applicant routes keep the organizer',
+    () async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final app = AppState.demo(auth: auth);
+      addTearDown(app.dispose);
+      await flushAsyncWork();
+      app.switchToOrganization('org1');
+      await flushAsyncWork();
+      expect(app.current.screen, Screen.orgOpportunities);
+
+      app.openOrgOpportunity('opp1');
+      expect(app.current.screen, Screen.orgOpportunity);
+      expect(app.current.param, 'opp1');
+      expect(app.identity, isA<OrganizerIdentity>());
+      expect((app.identity as OrganizerIdentity).organizationId, 'org1');
+
+      app.openApplicantReview('app1');
+      expect(app.current.screen, Screen.applicantReview);
+      expect(app.current.param, 'app1');
+      expect(app.identity, isA<OrganizerIdentity>());
+
+      app.back();
+      expect(app.current.screen, Screen.orgOpportunity);
+      app.back();
+      expect(app.current.screen, Screen.orgOpportunities);
+      expect(app.canGoBack, isFalse);
+    },
+  );
+
+  test(
     'a root band slug resolves to its profile and unknown slugs stay missing',
     () async {
       final auth = FakeAuthService();

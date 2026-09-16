@@ -150,8 +150,12 @@ void main() {
               app.openGig('g1');
             case Screen.venue || Screen.orgVenueEdit:
               app.go(screen, 'v1');
-            case Screen.opportunityDetail || Screen.opportunityApplicants:
+            case Screen.opportunityDetail ||
+                Screen.opportunityApplicants ||
+                Screen.orgOpportunity:
               app.go(screen, 'opp1');
+            case Screen.applicantReview:
+              app.go(screen, 'app1');
             case Screen.opportunityEdit:
               app.go(screen, 'opp2');
             case Screen.bookingDetail || Screen.checkoutCancel:

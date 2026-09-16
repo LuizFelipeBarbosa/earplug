@@ -291,7 +291,9 @@ void main() {
       tester,
       auth: auth,
       repository: stub,
-      beforePump: (app) => app.switchToOrganization(_org1),
+      beforePump: (app) => app
+        ..switchToOrganization(_org1)
+        ..resetTo(Screen.orgDash),
       home: const RootShell(),
     );
     final app = harness.app;

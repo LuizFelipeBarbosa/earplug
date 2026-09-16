@@ -144,9 +144,11 @@ mixin _OrganizerState on _AppStateCore {
     );
   }
 
+  /// Hosts land on their dashboard; other organizers land on GIGS, which
+  /// is their home tab.
   void switchToOrganization(String id) {
     organizationId = id;
-    resetTo(Screen.orgDash);
+    resetTo(isHostOrganization(id) ? Screen.orgDash : Screen.orgOpportunities);
   }
 
   Future<bool> requestVenueApproval(

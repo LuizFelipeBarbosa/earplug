@@ -140,6 +140,9 @@ mixin _NavigationState on _AppStateCore {
     Screen.orgJoin => '/apply/${param ?? ''}',
     Screen.opportunityDetail => '/opportunities/${param ?? ''}',
     Screen.bookingDetail => '/bookings/${param ?? ''}',
+    Screen.orgOpportunity => '/organizer/opportunities/${param ?? ''}',
+    Screen.applicantReview => '/organizer/review/${param ?? ''}',
+    Screen.orgSettings => '/organization',
     Screen.orgApply => organizerApplyPath,
     Screen.hostApply => '/host/apply',
     Screen.privateLocations => '/org/locations',
@@ -178,6 +181,13 @@ mixin _NavigationState on _AppStateCore {
     go(Screen.gig, id);
     unawaited(_loadPublicGig(id));
   }
+
+  /// An organizer's own opportunity, from the GIGS tab.
+  void openOrgOpportunity(String id) => go(Screen.orgOpportunity, id);
+
+  /// One application to an organizer's opportunity.
+  void openApplicantReview(String applicationId) =>
+      go(Screen.applicantReview, applicationId);
 
   void openHostedGig(String projectId) {
     go(Screen.hostedGig, projectId);

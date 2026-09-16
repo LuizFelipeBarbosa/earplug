@@ -335,9 +335,7 @@ void main() {
     });
   }
 
-  testWidgets('switcher host entry opens the host application', (
-    tester,
-  ) async {
+  testWidgets('switcher host entry opens the host application', (tester) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = _HostTestRepository(
@@ -577,7 +575,7 @@ void main() {
 
   for (final role in [OrganizationRole.owner, OrganizationRole.door]) {
     testWidgets(
-      'host tabs show three items for $role and organizer retains TEAM',
+      'host tabs show three items for $role and organizers get four',
       (tester) async {
         final auth = FakeAuthService();
         await auth.signInDemo();
@@ -615,8 +613,14 @@ void main() {
         );
 
         await enterOrganizer(tester, harness, 'org1');
-        expect(find.byKey(const Key('organizer-tab-team')), findsOneWidget);
+        expect(harness.app.current.screen, Screen.orgOpportunities);
+        expect(find.byKey(const Key('organizer-tab-dash')), findsNothing);
+        expect(find.byKey(const Key('organizer-tab-team')), findsNothing);
+        expect(find.byType(EpNavigationItem), findsNWidgets(4));
         expect(find.text('GIGS'), findsOneWidget);
+        expect(find.text('VENUES'), findsOneWidget);
+        expect(find.text('ORGANIZATION'), findsOneWidget);
+        expect(find.text('SWITCH'), findsOneWidget);
         expect(find.text('REQUESTS'), findsNothing);
       },
     );

@@ -18,6 +18,7 @@ import 'screens/admin_disputes.dart';
 import 'screens/admin_queue.dart';
 import 'screens/admin_safety.dart';
 import 'screens/analytics.dart';
+import 'screens/applicant_review.dart';
 import 'screens/auth.dart';
 import 'screens/band_create.dart';
 import 'screens/band_edit.dart';
@@ -47,6 +48,7 @@ import 'screens/org_dash.dart';
 import 'screens/org_finance.dart';
 import 'screens/org_join.dart';
 import 'screens/org_opportunities.dart';
+import 'screens/org_opportunity_detail.dart';
 import 'screens/org_settings.dart';
 import 'screens/org_team.dart';
 import 'screens/org_transactions.dart';
@@ -776,6 +778,14 @@ class RootShell extends StatelessWidget {
       Screen.orgFinance => OrgFinanceScreen(key: key),
       Screen.orgTransactions => OrgTransactionsScreen(key: key),
       Screen.orgOpportunities => OrgOpportunitiesScreen(key: key),
+      Screen.orgOpportunity => OrgOpportunityDetailScreen(
+        key: key,
+        opportunityId: entry.param!,
+      ),
+      Screen.applicantReview => ApplicantReviewScreen(
+        key: key,
+        applicationId: entry.param!,
+      ),
       Screen.opportunityEdit => OpportunityEditScreen(
         key: key,
         opportunityId: entry.param!,

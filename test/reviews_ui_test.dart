@@ -69,7 +69,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ReviewComposeScreen), findsNothing);
-    expect(harness.app.current.screen, Screen.orgDash);
+    expect(harness.app.current.screen, Screen.orgOpportunities);
     expect(harness.app.canGoBack, isFalse);
     expect(harness.app.toast, 'Review published');
     final reviews = await repository.reviewsForBooking('bk4');

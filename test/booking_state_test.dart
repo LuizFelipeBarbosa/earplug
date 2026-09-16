@@ -202,7 +202,7 @@ void main() {
     expect(booking, same(repository.bookingResult));
     expect(harness.app.organizationId, 'org1');
     expect(harness.app.current, same(current));
-    expect(harness.app.current.screen, Screen.orgDash);
+    expect(harness.app.current.screen, Screen.orgOpportunities);
     harness.app.dispose();
   });
 

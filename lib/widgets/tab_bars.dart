@@ -280,50 +280,101 @@ class OrganizerTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final scr = app.current.screen;
-    final canManage = app.canManageOrganization(app.organizationId);
     return _TabBarShell(
       vertical: vertical,
       borderColor: context.epColors.line,
-      items: [
-        EpNavigationItem(
-          vertical: vertical,
-          key: const Key('organizer-tab-dash'),
-          icon: Icons.home_outlined,
-          label: 'DASH',
-          selected: scr == Screen.orgDash,
-          onPressed: () => app.resetTo(Screen.orgDash),
-        ),
-        if (app.currentIsHost || canManage)
-          EpNavigationItem(
-            vertical: vertical,
-            key: const Key('organizer-tab-opportunities'),
-            icon: Icons.sensors,
-            label: app.currentIsHost ? 'REQUESTS' : 'GIGS',
-            selected: scr == Screen.orgOpportunities,
-            onPressed: () => app.resetTo(Screen.orgOpportunities),
-          ),
-        if (!app.currentIsHost && canManage)
-          EpNavigationItem(
-            vertical: vertical,
-            key: const Key('organizer-tab-team'),
-            icon: Icons.people_outline,
-            label: 'TEAM',
-            selected: scr == Screen.orgTeam,
-            onPressed: () => app.resetTo(Screen.orgTeam),
-          ),
-        if (app.currentIsHost || canManage)
-          EpNavigationItem(
-            vertical: vertical,
-            key: const Key('organizer-tab-settings'),
-            icon: Icons.settings_outlined,
-            label: 'SETTINGS',
-            selected: scr == Screen.orgSettings,
-            onPressed: () => app.resetTo(Screen.orgSettings),
-          ),
-      ],
+      items: app.currentIsHost
+          ? _hostItems(app)
+          : _organizerItems(context, app),
     );
   }
+
+  /// Hosts keep DASH / REQUESTS / SETTINGS.
+  List<Widget> _hostItems(AppState app) {
+    final scr = app.current.screen;
+    return [
+      EpNavigationItem(
+        vertical: vertical,
+        key: const Key('organizer-tab-dash'),
+        icon: Icons.home_outlined,
+        label: 'DASH',
+        selected: scr == Screen.orgDash,
+        onPressed: () => app.resetTo(Screen.orgDash),
+      ),
+      EpNavigationItem(
+        vertical: vertical,
+        key: const Key('organizer-tab-opportunities'),
+        icon: Icons.sensors,
+        label: 'REQUESTS',
+        selected: scr == Screen.orgOpportunities,
+        onPressed: () => app.resetTo(Screen.orgOpportunities),
+      ),
+      EpNavigationItem(
+        vertical: vertical,
+        key: const Key('organizer-tab-settings'),
+        icon: Icons.settings_outlined,
+        label: 'SETTINGS',
+        selected: scr == Screen.orgSettings,
+        onPressed: () => app.resetTo(Screen.orgSettings),
+      ),
+    ];
+  }
+
+  /// Other organizers: GIGS is home, ORGANIZATION gathers settings, team
+  /// and finance, and SWITCH opens the identity switcher.
+  List<Widget> _organizerItems(BuildContext context, AppState app) {
+    final scr = app.current.screen;
+    return [
+      EpNavigationItem(
+        vertical: vertical,
+        key: const Key('organizer-tab-opportunities'),
+        icon: Icons.sensors,
+        label: 'GIGS',
+        selected: _organizerGigsScreens.contains(scr),
+        onPressed: () => app.resetTo(Screen.orgOpportunities),
+      ),
+      EpNavigationItem(
+        vertical: vertical,
+        key: const Key('organizer-tab-venues'),
+        icon: Icons.place_outlined,
+        label: 'VENUES',
+        selected: scr == Screen.orgVenues || scr == Screen.orgVenueEdit,
+        onPressed: () => app.resetTo(Screen.orgVenues),
+      ),
+      EpNavigationItem(
+        vertical: vertical,
+        key: const Key('organizer-tab-organization'),
+        icon: Icons.business_outlined,
+        label: 'ORGANIZATION',
+        selected: _organizationScreens.contains(scr),
+        onPressed: () => app.resetTo(Screen.orgSettings),
+      ),
+      EpNavigationItem(
+        vertical: vertical,
+        key: const Key('organizer-tab-switch'),
+        icon: Icons.swap_horiz,
+        label: 'SWITCH',
+        selected: false,
+        onPressed: () => showSwitcherSheet(context),
+      ),
+    ];
+  }
+
+  static const _organizerGigsScreens = {
+    Screen.orgOpportunities,
+    Screen.orgOpportunity,
+    Screen.applicantReview,
+    Screen.opportunityEdit,
+    Screen.opportunityApplicants,
+    Screen.bookingDetail,
+  };
+
+  static const _organizationScreens = {
+    Screen.orgSettings,
+    Screen.orgTeam,
+    Screen.orgFinance,
+    Screen.orgTransactions,
+  };
 }
 
 /// Persistent navigation for the wider web workspace.
