@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -15,31 +16,29 @@ import '../widgets/ep_sheet.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
+import 'opportunity_detail.dart';
+import 'opportunity_verify_sheet.dart';
 
-/// Room the pinned footer (hint line plus a large pill) takes at the bottom of
-/// the list so the last controls can scroll clear of it.
-const double _footerClearance = 168;
+/// Room the pinned action zone (two large pills plus the autosave note) takes
+/// at the bottom of the list so the last controls can scroll clear of it.
+const double _actionZoneClearance = 148;
 
-/// The four rows an organizer must fill before a draft can open. `slotFees`
-/// is the second half of the SLOTS row: a private request needs a fee on
-/// every slot, not just a slot.
+/// How long the composer waits after the last edit before saving it.
+const _autosaveDelay = Duration(milliseconds: 600);
+
+/// The four rows an organizer must fill before a draft can go live.
 enum _RequiredField {
   title,
   when,
   location,
-  slots,
-  slotFees;
+  slots;
 
-  static const rows = [title, when, location, slots];
-
-  String label(bool isPrivate) => switch (this) {
-    _RequiredField.title => 'a title',
-    _RequiredField.when => 'a date and time',
-    _RequiredField.location => isPrivate ? 'a location' : 'a venue',
-    _RequiredField.slots => 'a slot',
-    _RequiredField.slotFees => 'a fee for every slot',
-  };
+  static const rows = values;
 }
+
+/// Where the draft stands against the server, read next to the readiness
+/// line.
+enum _SaveState { idle, unsaved, saving, saved, failed }
 
 const _deadlineNeed = 'a deadline before start';
 const _ticketPriceNeed = 'a ticket price';
@@ -73,6 +72,9 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   // Required rows whose controls are unfolded under them; unfilled rows start
   // open so a new draft shows every control at once.
   final _expanded = <_RequiredField>{};
+  final _rowKeys = {for (final row in _RequiredField.rows) row: GlobalKey()};
+  final _ticketingKey = GlobalKey();
+  final _visibilityKey = GlobalKey();
   bool _detailsExpanded = false;
 
   ({String opportunityId, String slug})? _saved;
@@ -94,7 +96,6 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   AgeRequirement _age = AgeRequirement.allAges;
   OpportunityTicketing _ticketing = OpportunityTicketing.rsvp;
   FeeRates? _feeRates;
-  bool _stripeChargesEnabled = false;
   OpportunityVisibility _visibility = OpportunityVisibility.publicListing;
   String? _loadedKey;
   String? _loadError;
@@ -103,6 +104,18 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   bool _loading = true;
   bool _busy = false;
   bool _dirty = false;
+
+  // Autosave: every edit bumps `_edits`; a persist only clears `_dirty` when
+  // no edit landed while it was in flight.
+  int _edits = 0;
+  Timer? _autosaveTimer;
+  Future<void>? _inflightSave;
+  _SaveState _saveState = _SaveState.idle;
+
+  // The pending ring that REVIEW & PUBLISH last pointed at; the token bumps
+  // so the same row can pulse again.
+  _RequiredField? _pulsing;
+  int _pulseToken = 0;
 
   bool get _editable => switch (_status) {
     OpportunityStatus.draft ||
@@ -155,22 +168,25 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
         : null;
   }
 
-  List<_RequiredField> get _missingRequired => [
-    if (_title.text.trim().isEmpty) _RequiredField.title,
-    if (_date == null) _RequiredField.when,
-    if (_isPrivate ? _privateLocationId == null : _venueId == null)
-      _RequiredField.location,
-    if (_slots.isEmpty) _RequiredField.slots,
-    if (_isPrivate && _slots.any((slot) => slot.input.guaranteeMinor <= 0))
-      _RequiredField.slotFees,
-  ];
+  bool get _locationChosen =>
+      _isPrivate ? _privateLocationId != null : _venueId != null;
 
-  bool _rowDone(_RequiredField row) {
-    final missing = _missingRequired;
-    return !missing.contains(row) &&
-        (row != _RequiredField.slots ||
-            !missing.contains(_RequiredField.slotFees));
-  }
+  /// At least one slot, and a fee on every slot: artists apply to a number.
+  bool get _slotsComplete =>
+      _slots.isNotEmpty &&
+      _slots.every((slot) => slot.input.guaranteeMinor > 0);
+
+  bool _rowDone(_RequiredField row) => switch (row) {
+    _RequiredField.title => _title.text.trim().isNotEmpty,
+    _RequiredField.when => _date != null && _validDeadline,
+    _RequiredField.location => _locationChosen,
+    _RequiredField.slots => _slotsComplete,
+  };
+
+  int get _requiredDone => _RequiredField.rows.where(_rowDone).length;
+
+  _RequiredField? get _firstPending =>
+      _RequiredField.rows.where((row) => !_rowDone(row)).firstOrNull;
 
   List<String> get _ticketNeeds => [
     if (_ticketing == OpportunityTicketing.paid) ...[
@@ -179,20 +195,19 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     ],
   ];
 
-  /// A public draft may be saved without slots or a valid deadline; a private
-  /// request needs both because the deposit is quoted from them.
-  List<String> get _saveNeeds => [
-    for (final field in _missingRequired)
-      if (_isPrivate || field != _RequiredField.slots) field.label(_isPrivate),
-    if (_isPrivate && !_validDeadline) _deadlineNeed,
-    ..._ticketNeeds,
-  ];
-
-  List<String> get _openNeeds => [
-    for (final field in _missingRequired) field.label(_isPrivate),
-    if (!_validDeadline) _deadlineNeed,
-    ..._ticketNeeds,
-  ];
+  /// Whether the server would accept the form as a draft right now. A public
+  /// draft needs a title, a date and a venue; a private request also needs a
+  /// fee on every slot and an explicit deadline because the deposit is quoted
+  /// from them. Until this holds, edits stay local and the save state says so.
+  bool get _canPersist {
+    if (_title.text.trim().isEmpty || _date == null || !_locationChosen) {
+      return false;
+    }
+    if (_deadline != null && !_validDeadline) return false;
+    if (_ticketNeeds.isNotEmpty) return false;
+    if (_isPrivate && (!_slotsComplete || !_validDeadline)) return false;
+    return true;
+  }
 
   @override
   void didChangeDependencies() {
@@ -243,6 +258,8 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
       final isPrivate = opportunity == null
           ? app.currentIsHost
           : opportunity.mode == OpportunityMode.privateBooking;
+      // PAID ticketing unlocks off the organization's Stripe account.
+      if (!isPrivate) unawaited(app.refreshOrganizationStripeStatus());
       final venueConsent =
           opportunity != null && !isPrivate && !app.currentIsVenueOperator
           ? await app.repository.venueConsentForOpportunity(opportunity.id)
@@ -259,7 +276,6 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
       setState(() {
         _venues = dashboard.venues;
         _privateLocations = privateLocations;
-        _stripeChargesEnabled = dashboard.verification.stripeChargesEnabled;
         _bands
           ..clear()
           ..addAll(bands);
@@ -268,11 +284,13 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
         if (resetExpansion) {
           _expanded
             ..clear()
-            ..addAll(
-              _RequiredField.rows.where(
-                (row) => row != _RequiredField.title && !_rowDone(row),
-              ),
-            );
+            ..addAll([
+              for (final row in const [
+                _RequiredField.location,
+                _RequiredField.slots,
+              ])
+                if (!_rowDone(row)) row,
+            ]);
           _detailsExpanded = false;
         }
         _loading = false;
@@ -367,12 +385,14 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
       }
     });
     _dirty = false;
+    _saveState = opportunity == null ? _SaveState.idle : _SaveState.saved;
     _error = null;
     _success = null;
   }
 
   @override
   void dispose() {
+    _autosaveTimer?.cancel();
     _scroll.dispose();
     for (final controller in [
       _title,
@@ -393,13 +413,18 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     super.dispose();
   }
 
+  // ---------------------------------------------------------------- editing
+
   void _changed(VoidCallback change) {
     setState(() {
       change();
+      _edits++;
       _dirty = true;
       _error = null;
       _success = null;
+      if (_saveState != _SaveState.saving) _saveState = _SaveState.unsaved;
     });
+    _scheduleAutosave();
   }
 
   void _textChanged(String _) => _changed(() {});
@@ -410,57 +435,113 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     });
   }
 
-  Future<void> _pickDate({bool deadline = false}) async {
-    final initial =
-        (deadline ? _deadline : _date) ??
-        DateTime.now().add(const Duration(days: 30));
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(initial.year - 5),
-      lastDate: DateTime(initial.year + 10, 12, 31),
-      helpText: deadline ? 'APPLICATION DEADLINE' : 'EVENT DATE',
-    );
-    if (!mounted || picked == null) return;
-    _changed(() {
-      if (deadline) {
-        _deadline = picked;
-        _deadlineTouched = true;
-      } else {
-        _date = picked;
-        if (!_isPrivate && !_deadlineTouched && _deadline == null) {
-          _deadline = DateTime(picked.year, picked.month, picked.day - 7);
-        }
-      }
-    });
+  // --------------------------------------------------------------- autosave
+
+  void _scheduleAutosave() {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(_autosaveDelay, _autosave);
   }
 
-  Future<void> _pickTime({required bool doors}) async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: doors ? _doors : _start,
-    );
-    if (!mounted || picked == null) return;
-    _changed(() {
-      if (doors) {
-        _doors = picked;
-      } else {
-        _start = picked;
-      }
-    });
+  /// Saves the draft in the background: creates it the first time the server
+  /// would accept it, updates it afterwards. Never touches `_busy`, so the
+  /// form stays editable while it runs; a save already in flight defers this
+  /// one by another delay.
+  Future<void> _autosave() async {
+    _autosaveTimer = null;
+    if (!mounted || !_dirty || _busy || !_editable || !_canPersist) return;
+    final app = context.read<AppState>();
+    if (!app.canManageOrganization(app.organizationId)) return;
+    if (_inflightSave != null) {
+      _scheduleAutosave();
+      return;
+    }
+    setState(() => _saveState = _SaveState.saving);
+    final save = _persist(app);
+    _inflightSave = save;
+    try {
+      await save;
+      if (!mounted) return;
+      setState(() {
+        _saveState = _dirty ? _SaveState.unsaved : _SaveState.saved;
+      });
+      if (_dirty) _scheduleAutosave();
+    } catch (error) {
+      if (!mounted) return;
+      final recovered = await _handleMutationError(app, error, reveal: false);
+      if (!mounted) return;
+      setState(() {
+        if (!recovered) _saveState = _SaveState.failed;
+      });
+    } finally {
+      _inflightSave = null;
+    }
   }
+
+  void _retrySave() {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = null;
+    unawaited(_autosave());
+  }
+
+  /// Cancels the pending debounce and waits for any save in flight. Callers
+  /// then persist themselves if the form is still dirty.
+  Future<void> _flushAutosave() async {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = null;
+    final inflight = _inflightSave;
+    if (inflight != null) {
+      try {
+        await inflight;
+      } catch (_) {
+        // The autosave path reports its own failure.
+      }
+    }
+  }
+
+  Future<void> _back() async {
+    final app = context.read<AppState>();
+    await _flushAutosave();
+    if (!mounted) return;
+    final shouldSave =
+        _dirty &&
+        _canPersist &&
+        _editable &&
+        !_busy &&
+        app.canManageOrganization(app.organizationId);
+    if (shouldSave) {
+      setState(() => _saveState = _SaveState.saving);
+      try {
+        await _persist(app);
+      } catch (error) {
+        // Stay on the form so nothing is lost silently.
+        if (!mounted) return;
+        setState(() => _saveState = _SaveState.failed);
+        await _handleMutationError(app, error);
+        return;
+      }
+    }
+    if (mounted) app.back();
+  }
+
+  // ---------------------------------------------------------------- actions
 
   void _showNeeds(List<String> needs) {
     setState(() => _error = 'Still needs ${needs.join(' + ')}.');
     revealFormFeedback(this, _scroll);
   }
 
-  Future<void> _handleMutationError(AppState app, Object error) async {
+  /// Returns true when a revision conflict reloaded the form from the server.
+  Future<bool> _handleMutationError(
+    AppState app,
+    Object error, {
+    bool reveal = true,
+  }) async {
     final message = _extractErrorMessage(error);
+    var recovered = false;
     if (message.toLowerCase().contains('changed elsewhere') &&
         _savedId != null) {
       final fresh = await app.loadOpportunity(_savedId!, refresh: true);
-      if (!mounted) return;
+      if (!mounted) return false;
       if (fresh != null) {
         for (final id in fresh.invitedBandIds) {
           if (_bands.containsKey(id)) continue;
@@ -471,19 +552,23 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
             // A missing band name must not prevent conflict recovery.
           }
         }
-        if (!mounted) return;
+        if (!mounted) return false;
         setState(() => _populate(fresh));
+        recovered = true;
       }
     }
-    if (!mounted) return;
+    if (!mounted) return recovered;
     setState(() => _error = message);
-    revealFormFeedback(this, _scroll);
+    if (reveal) revealFormFeedback(this, _scroll);
+    return recovered;
   }
 
   Future<void> _mutate(Future<void> Function(AppState app) action) async {
     final app = context.read<AppState>();
     if (_busy || !app.canManageOrganization(app.organizationId)) return;
     FocusScope.of(context).unfocus();
+    await _flushAutosave();
+    if (!mounted || _busy) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -499,6 +584,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   }
 
   Future<void> _persist(AppState app) async {
+    final edits = _edits;
     final title = _title.text.trim();
     final slots = [for (final slot in _slots) slot.input];
     final paid = _ticketing == OpportunityTicketing.paid;
@@ -563,8 +649,9 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
       );
     }
     _savedTitle = title;
-    _dirty = false;
-    // Retain unsuccessful invites so another explicit save can retry them.
+    // An edit that landed while this save ran still needs its own save.
+    if (_edits == edits) _dirty = false;
+    // Retain unsuccessful invites so the next save can retry them.
     try {
       for (final id in _pendingInvites.toList()) {
         final invited = await app.repository.inviteBandToOpportunity(
@@ -582,16 +669,133 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     }
   }
 
-  Future<void> _save() async {
+  /// Scrolls the form to [row], unfolding its controls, and pulses its
+  /// pending ring when asked so the eye lands on what is missing.
+  void _revealRow(_RequiredField row, {bool pulse = false}) {
+    setState(() {
+      if (row == _RequiredField.location || row == _RequiredField.slots) {
+        _expanded.add(row);
+      }
+      if (pulse) {
+        _pulsing = row;
+        _pulseToken++;
+      }
+    });
+    _scrollTo(_rowKeys[row]!);
+  }
+
+  void _scrollTo(GlobalKey key) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final target = key.currentContext;
+      if (target != null) {
+        Scrollable.ensureVisible(
+          target,
+          alignment: .1,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      } else if (_scroll.hasClients) {
+        // The required rows sit at the top; a row the lazy list has not built
+        // yet is above the viewport.
+        _scroll.animateTo(
+          0,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void _editFromSummary(OpportunityVerifyField field) {
+    switch (field) {
+      case OpportunityVerifyField.title:
+        _revealRow(_RequiredField.title);
+      case OpportunityVerifyField.when || OpportunityVerifyField.deadline:
+        _revealRow(_RequiredField.when);
+      case OpportunityVerifyField.venue:
+        _revealRow(_RequiredField.location);
+      case OpportunityVerifyField.slots:
+        _revealRow(_RequiredField.slots);
+      case OpportunityVerifyField.ticketing:
+        _scrollTo(_ticketingKey);
+      case OpportunityVerifyField.visibility:
+        _scrollTo(_visibilityKey);
+    }
+  }
+
+  /// REVIEW & PUBLISH: never disabled. With a required row pending it points
+  /// at the row; with everything done it opens the verify sheet, and a
+  /// confirmed sheet publishes (or, for an open opportunity, saves).
+  Future<void> _review() async {
     if (_busy || !_editable) return;
-    if (_saveNeeds.isNotEmpty) {
-      _showNeeds(_saveNeeds);
+    FocusScope.of(context).unfocus();
+    final pending = _firstPending;
+    if (pending != null) {
+      _revealRow(pending, pulse: true);
       return;
     }
+    if (_ticketNeeds.isNotEmpty) {
+      setState(() => _error = 'Still needs ${_ticketNeeds.join(' + ')}.');
+      _scrollTo(_ticketingKey);
+      return;
+    }
+    final app = context.read<AppState>();
+    if (_waitingForVenueApproval(app)) {
+      setState(() {
+        _expanded.add(_RequiredField.location);
+        _error = 'Still needs venue approval.';
+      });
+      _scrollTo(_rowKeys[_RequiredField.location]!);
+      return;
+    }
+    await _flushAutosave();
+    if (!mounted) return;
+    final confirmed = await showOpportunityVerifySheet(
+      context,
+      summary: _summary(app),
+      publish: _status == OpportunityStatus.draft,
+      onEdit: _editFromSummary,
+    );
+    if (confirmed && mounted) await _publish();
+  }
+
+  /// Saves whatever is unsaved and, for a draft, opens it for applications —
+  /// one step, no separate save first.
+  Future<void> _publish() async {
     await _mutate((app) async {
-      await _persist(app);
+      if (_dirty || _savedId == null || _pendingInvites.isNotEmpty) {
+        setState(() => _saveState = _SaveState.saving);
+        try {
+          await _persist(app);
+        } catch (_) {
+          if (mounted) setState(() => _saveState = _SaveState.failed);
+          rethrow;
+        }
+      }
+      final wasDraft = _status == OpportunityStatus.draft;
+      if (wasDraft) {
+        final opened = await app.repository.openOpportunity(
+          opportunityId: _savedId!,
+          expectedRevision: _revision,
+        );
+        _revision = opened.revision;
+        _deadline = opened.applicationsCloseAt.toLocal();
+        _status = OpportunityStatus.open;
+        await app.refreshOpportunities(app.organizationId);
+      }
+      final fresh = await app.loadOpportunity(_savedId!, refresh: true);
       if (!mounted) return;
-      setState(() => _success = 'Changes saved.');
+      setState(() {
+        if (fresh != null) {
+          _revision = fresh.revision;
+          _status = fresh.status;
+        }
+        _saveState = _SaveState.saved;
+        _success = wasDraft
+            ? 'Published — artists can apply now.'
+            : 'Changes saved.';
+      });
       revealFormFeedback(this, _scroll);
     });
   }
@@ -657,27 +861,16 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     });
   }
 
+  /// Close or reopen applications on an already published opportunity.
   Future<void> _transition() async {
     if (_savedId == null || !_editable || _busy) return;
-    if (_status == OpportunityStatus.draft && _openNeeds.isNotEmpty) {
-      _showNeeds(_openNeeds);
-      return;
-    }
     if (_status == OpportunityStatus.applicationsClosed && !_validDeadline) {
       _showNeeds([_deadlineNeed]);
       return;
     }
     await _mutate((app) async {
+      if (_dirty && _canPersist) await _persist(app);
       switch (_status) {
-        case OpportunityStatus.draft:
-          if (_dirty || _pendingInvites.isNotEmpty) await _persist(app);
-          final opened = await app.repository.openOpportunity(
-            opportunityId: _savedId!,
-            expectedRevision: _revision,
-          );
-          _revision = opened.revision;
-          _deadline = opened.applicationsCloseAt.toLocal();
-          _status = OpportunityStatus.open;
         case OpportunityStatus.open:
           await app.repository.closeOpportunityApplications(_savedId!);
           _status = OpportunityStatus.applicationsClosed;
@@ -698,6 +891,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
           _revision = fresh.revision;
           _status = fresh.status;
         }
+        _saveState = _SaveState.saved;
       });
     });
   }
@@ -705,7 +899,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   Future<void> _inviteBand(Band band) async {
     if (_invitedIds.contains(band.id) || _busy || !_editable) return;
     if (_savedId == null) {
-      setState(() {
+      _changed(() {
         _bands[band.id] = band;
         _invitedIds.add(band.id);
         _pendingInvites.add(band.id);
@@ -729,7 +923,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   Future<void> _removeInvite(String id) async {
     if (_busy || !_editable) return;
     if (_savedId == null) {
-      setState(() {
+      _changed(() {
         _invitedIds.remove(id);
         _pendingInvites.remove(id);
       });
@@ -798,24 +992,202 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
         }
         await app.refreshOpportunities(app.organizationId);
       }
+      // Nothing left to autosave once the draft is gone.
+      _dirty = false;
       if (mounted) app.back();
     });
   }
 
-  String? _venueLabel(AppState app) {
-    final id = _venueId;
-    if (id == null) return null;
-    final venue =
-        _venues.where((venue) => venue.id == id).firstOrNull ?? app.venue(id);
-    return '${venue.name} · ${venue.area}';
+  Future<void> _showWhenSheet() async {
+    FocusScope.of(context).unfocus();
+    await showEpSheet(
+      context,
+      (_) => _WhenSheet(
+        isPrivate: _isPrivate,
+        date: _date,
+        doors: _doors,
+        start: _start,
+        deadline: _deadline,
+        deadlineTouched: _deadlineTouched,
+        onChanged: (when) => _changed(() {
+          _date = when.date;
+          _doors = when.doors;
+          _start = when.start;
+          _deadline = when.deadline;
+          _deadlineTouched = when.deadlineTouched;
+        }),
+      ),
+    );
   }
 
-  String? _locationLabel(AppState app) => _isPrivate
-      ? _privateLocations
-            .where((location) => location.id == _privateLocationId)
-            .firstOrNull
-            ?.label
-      : _venueLabel(app);
+  Future<void> _preview() async {
+    FocusScope.of(context).unfocus();
+    final opportunity = _previewOpportunity(context.read<AppState>());
+    await showEpSheet(
+      context,
+      (sheetContext) => EpSheetShell(
+        key: const ValueKey('opp-edit-preview-sheet'),
+        heightFactor: .92,
+        padding: const EdgeInsets.only(top: 12),
+        header: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: [
+              const Expanded(child: EpEyebrow('What artists see')),
+              IconButton(
+                tooltip: 'Close',
+                onPressed: () => Navigator.pop(sheetContext),
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+        ),
+        children: [
+          Expanded(
+            child: OpportunityDetailPresentation(
+              opportunity: opportunity,
+              preview: true,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------- labels
+
+  Venue? _venue(AppState app) {
+    final id = _venueId;
+    if (id == null) return null;
+    return _venues.where((venue) => venue.id == id).firstOrNull ??
+        app.venue(id);
+  }
+
+  PrivateLocation? get _privateLocation => _privateLocations
+      .where((location) => location.id == _privateLocationId)
+      .firstOrNull;
+
+  String? _locationLabel(AppState app) {
+    if (_isPrivate) return _privateLocation?.label;
+    final venue = _venue(app);
+    return venue == null ? null : '${venue.name} · ${venue.area}';
+  }
+
+  bool _waitingForVenueApproval(AppState app) =>
+      !app.currentIsVenueOperator &&
+      !_isPrivate &&
+      _status == OpportunityStatus.draft &&
+      _venueId != null &&
+      _venueConsent?.status != VenueConsentStatus.granted;
+
+  String get _slotsLabel => _slots
+      .map(
+        (slot) =>
+            '${slot.role.wireValue} ${Money(slot.input.guaranteeMinor).label}',
+      )
+      .join(' · ');
+
+  String get _ticketingLabel => switch (_ticketing) {
+    OpportunityTicketing.none => 'None',
+    OpportunityTicketing.rsvp => 'RSVP',
+    OpportunityTicketing.external =>
+      'External${_externalUrl.text.trim().isEmpty ? '' : ' · ${_externalUrl.text.trim()}'}',
+    OpportunityTicketing.paid =>
+      'Paid · \$${_ticketPrice.text.trim()} · ${_ticketCapacity.text.trim()} cap',
+  };
+
+  OpportunityVerifySummary _summary(AppState app) {
+    final venue = _venue(app);
+    final capacity = venue?.capacityPublic;
+    return OpportunityVerifySummary(
+      isPrivate: _isPrivate,
+      title: _title.text.trim(),
+      when:
+          '${dateLabel(_date!).toUpperCase()} · '
+          'Doors ${_doors.format(context)} · Start ${_start.format(context)}',
+      deadline: dateLabel(_deadline!).toUpperCase(),
+      venue: _isPrivate
+          ? (_privateLocation?.label ?? '')
+          : '${venue?.name ?? ''}${capacity == null ? '' : ' · Cap $capacity'}',
+      slots: '${_slots.length} · $_slotsLabel',
+      ticketing: _isPrivate ? 'No tickets' : _ticketingLabel,
+      visibility: _visibility == OpportunityVisibility.publicListing
+          ? 'Public'
+          : 'Invite only · ${_invitedIds.length} band${_invitedIds.length == 1 ? '' : 's'}',
+    );
+  }
+
+  /// The artist-facing model built straight from the form, so the preview
+  /// shows unsaved edits too.
+  Opportunity _previewOpportunity(AppState app) {
+    final now = DateTime.now();
+    final startsAt = _startsAt ?? now;
+    final venue = _isPrivate ? null : _venue(app);
+    final title = _title.text.trim();
+    return Opportunity(
+      id: _savedId ?? 'preview',
+      organizationId: app.organizationId,
+      mode: _isPrivate
+          ? OpportunityMode.privateBooking
+          : OpportunityMode.publicEvent,
+      venueId: venue?.id,
+      privateLocationId: _isPrivate ? _privateLocationId : null,
+      privateEvent: _isPrivate,
+      venue: venue,
+      title: title.isEmpty ? 'Untitled' : title,
+      desc: _description.text.trim(),
+      expectedAttendance: int.tryParse(_attendance.text.trim()),
+      genres: _genres.toList(),
+      startsAt: startsAt,
+      doorsAt: _atTime(_doors),
+      ageRequirement: _age,
+      equipment: _equipment.text.trim(),
+      requirements: _requirements.text.trim(),
+      flyKey: 'xerox',
+      applicationsCloseAt: _deadline ?? startsAt,
+      visibility: _visibility,
+      ticketing: _isPrivate ? OpportunityTicketing.none : _ticketing,
+      ticketPriceMinor: _ticketing == OpportunityTicketing.paid
+          ? ((double.tryParse(_ticketPrice.text.trim()) ?? 0) * 100).round()
+          : null,
+      ticketCapacity: _ticketing == OpportunityTicketing.paid
+          ? int.tryParse(_ticketCapacity.text.trim())
+          : null,
+      ticketCurrency: _ticketing == OpportunityTicketing.paid ? 'usd' : null,
+      externalUrl: _externalUrl.text.trim(),
+      status: _status,
+      slug: _saved?.slug ?? '',
+      revision: _revision,
+      applicationCount: 0,
+      slots: [
+        for (var i = 0; i < _slots.length; i++)
+          OpportunitySlot(
+            id: 'preview-$i',
+            order: i,
+            role: _slots[i].role,
+            setLengthMin: _slots[i].input.setLengthMin,
+            guaranteeMinor: _slots[i].input.guaranteeMinor,
+            required: _slots[i].required,
+            status: SlotStatus.open,
+          ),
+      ],
+      invitedBandIds: List.of(_invitedIds),
+      createdAt: now,
+      updatedAt: now,
+      area: _isPrivate
+          ? (_privateLocation?.area ?? '')
+          : (venue == null
+                ? ''
+                : (venue.approx.label.isEmpty
+                      ? venue.area
+                      : venue.approx.label)),
+      venueType: _isPrivate ? VenueType.private : venue?.venueType,
+      currency: 'usd',
+    );
+  }
+
+  // ------------------------------------------------------------------ build
 
   @override
   Widget build(BuildContext context) {
@@ -834,18 +1206,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
         (_venueConsent?.status == VenueConsentStatus.pending ||
             _venueConsent?.status == VenueConsentStatus.granted);
     final whenEnabled = enabled && !venueApprovalLocked;
-    final waitingForVenueApproval =
-        !isVenueOperator &&
-        !_isPrivate &&
-        draft &&
-        _venueId != null &&
-        _venueConsent?.status != VenueConsentStatus.granted;
-    final needs = [
-      ..._openNeeds,
-      if (waitingForVenueApproval) 'venue approval',
-    ];
-    final requiredDone = _RequiredField.rows.where(_rowDone).length;
-    final showFooter =
+    final showActions =
         !_loading && _loadError == null && _editable && canManage;
     final showInvites =
         _visibility == OpportunityVisibility.inviteOnly ||
@@ -863,25 +1224,39 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                 headerTopPad(context),
                 16,
                 tabBarClearance +
-                    _footerClearance +
+                    _actionZoneClearance +
                     MediaQuery.paddingOf(context).bottom,
               ),
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircleIconButton(onTap: app.back),
+                    CircleIconButton(
+                      onTap: _busy ? null : _back,
+                      icon: Icons.chevron_left,
+                      tooltip: 'Back',
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
-                        _savedTitle.trim().isEmpty
-                            ? (_isPrivate ? 'NEW REQUEST' : 'NEW OPPORTUNITY')
-                            : _savedTitle,
-                        style: Theme.of(context).textTheme.epPageHeading,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: EpDisplay(
+                          _savedTitle.trim().isEmpty
+                              ? (_isPrivate ? 'New request' : 'New opportunity')
+                              : _savedTitle,
+                          size: 32,
+                          maxLines: 2,
+                        ),
                       ),
                     ),
                     if (_savedId != null) ...[
                       const SizedBox(width: 8),
-                      StatusPill(label: _status.wireValue.replaceAll('_', ' ')),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: StatusPill(
+                          label: _status.wireValue.replaceAll('_', ' '),
+                        ),
+                      ),
                     ],
                   ],
                 ),
@@ -901,98 +1276,50 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                     child: const Text('RETRY'),
                   ),
                 ] else ...[
-                  EpReadinessBar(
-                    done: requiredDone,
-                    total: _RequiredField.rows.length,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: EpMonoText(
+                          'Required — $_requiredDone of ${_RequiredField.rows.length} done',
+                          key: const ValueKey('opp-edit-required-progress'),
+                          color: palette.muted,
+                        ),
+                      ),
+                      _saveStateText(palette),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  EpEyebrow(
-                    '$requiredDone of ${_RequiredField.rows.length} required done',
-                    key: const ValueKey('opp-edit-required-progress'),
-                  ),
-                  const EpSectionHeader(label: 'REQUIRED'),
+                  const SizedBox(height: 4),
                   _FormRow(
-                    done: _rowDone(_RequiredField.title),
+                    key: _rowKeys[_RequiredField.title],
+                    state: _stateIcon(_RequiredField.title),
                     child: EpLabeledField(
                       fieldKey: const ValueKey('opp-edit-title'),
                       label: 'TITLE',
                       hint: 'Name the night',
                       controller: _title,
-                      required: true,
                       enabled: enabled,
                       onChanged: _textChanged,
                     ),
                   ),
                   _FormRow(
-                    key: const ValueKey('opp-edit-when'),
+                    key: _rowKeys[_RequiredField.when],
+                    rowKey: const ValueKey('opp-edit-when'),
                     label: 'WHEN',
-                    done: _rowDone(_RequiredField.when),
-                    value: _date == null ? null : _dateLabel(context, _date),
+                    value: _date == null ? null : _whenValue,
                     placeholder: 'Pick date, doors and start',
-                    sub: _date == null
-                        ? null
-                        : 'Doors ${_doors.format(context)} · '
-                              'Start ${_start.format(context)} · '
-                              'Deadline ${_dateLabel(context, _deadline)}',
-                    expanded: _expanded.contains(_RequiredField.when),
-                    onTap: () => _toggleRow(_RequiredField.when),
+                    sub: _date == null ? null : _whenSub,
+                    state: _stateIcon(_RequiredField.when),
+                    onTap: whenEnabled ? _showWhenSheet : null,
                   ),
-                  if (_expanded.contains(_RequiredField.when))
-                    _RowBody(
-                      children: [
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            OutlinedButton(
-                              key: const ValueKey('opp-edit-date'),
-                              onPressed: whenEnabled ? _pickDate : null,
-                              child: Text(
-                                'DATE · ${_dateLabel(context, _date)}',
-                              ),
-                            ),
-                            OutlinedButton(
-                              key: const ValueKey('opp-edit-doors'),
-                              onPressed: whenEnabled
-                                  ? () => _pickTime(doors: true)
-                                  : null,
-                              child: Text('DOORS · ${_doors.format(context)}'),
-                            ),
-                            OutlinedButton(
-                              key: const ValueKey('opp-edit-start'),
-                              onPressed: whenEnabled
-                                  ? () => _pickTime(doors: false)
-                                  : null,
-                              child: Text('START · ${_start.format(context)}'),
-                            ),
-                            OutlinedButton(
-                              key: const ValueKey('opp-edit-deadline'),
-                              onPressed: whenEnabled
-                                  ? () => _pickDate(deadline: true)
-                                  : null,
-                              child: Text(
-                                'DEADLINE · ${_dateLabel(context, _deadline)}',
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (venueApprovalLocked) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            'Withdraw the venue request before changing the venue or date.',
-                            style: Theme.of(context).textTheme.epCaption,
-                          ),
-                        ],
-                      ],
-                    ),
                   _FormRow(
-                    key: const ValueKey('opp-edit-location'),
+                    key: _rowKeys[_RequiredField.location],
+                    rowKey: const ValueKey('opp-edit-location'),
                     label: _isPrivate ? 'LOCATION' : 'VENUE',
-                    done: _rowDone(_RequiredField.location),
                     value: _locationLabel(app),
                     placeholder: _isPrivate
                         ? 'Choose a location'
                         : 'Choose a venue',
+                    state: _stateIcon(_RequiredField.location),
                     expanded: _expanded.contains(_RequiredField.location),
                     onTap: () => _toggleRow(_RequiredField.location),
                   ),
@@ -1009,23 +1336,19 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                       ),
                     ),
                   _FormRow(
-                    key: const ValueKey('opp-edit-slots'),
+                    key: _rowKeys[_RequiredField.slots],
+                    rowKey: const ValueKey('opp-edit-slots'),
                     label: 'SLOTS',
-                    done: _rowDone(_RequiredField.slots),
                     value: _slots.isEmpty
                         ? null
                         : '${_slots.length} slot${_slots.length == 1 ? '' : 's'}',
-                    placeholder: _isPrivate
-                        ? 'Add a slot with a fee'
-                        : 'Add a slot',
+                    placeholder: 'Add a slot — headliner, opener, DJ…',
                     sub: _slots.isEmpty
                         ? null
-                        : _slots
-                              .map(
-                                (slot) =>
-                                    '${slot.role.wireValue} ${Money(slot.input.guaranteeMinor).label}',
-                              )
-                              .join(' · '),
+                        : _slotsComplete
+                        ? _slotsLabel
+                        : '$_slotsLabel · every slot needs a fee',
+                    state: _stateIcon(_RequiredField.slots),
                     expanded: _expanded.contains(_RequiredField.slots),
                     onTap: () => _toggleRow(_RequiredField.slots),
                   ),
@@ -1051,11 +1374,9 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                       ],
                     ),
                   _FormRow(
-                    key: const ValueKey('opp-edit-details-toggle'),
+                    rowKey: const ValueKey('opp-edit-details-toggle'),
                     label: 'DETAILS · OPTIONAL',
-                    sub:
-                        'Style · Age · Description · Equipment · Requirements · '
-                        '${_isPrivate ? 'Expected guests' : 'Expected attendance'}',
+                    trailingText: 'Style · Age · Equipment +3',
                     expanded: _detailsExpanded,
                     onTap: () =>
                         setState(() => _detailsExpanded = !_detailsExpanded),
@@ -1066,34 +1387,44 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                       children: _detailControls(enabled),
                     ),
                   if (!_isPrivate) ...[
-                    const EpSectionHeader(label: 'TICKETING'),
+                    Padding(
+                      key: _ticketingKey,
+                      padding: const EdgeInsets.only(top: 24, bottom: 12),
+                      child: const EpEyebrow('Ticketing'),
+                    ),
                     ..._ticketingControls(
+                      app,
                       enabled: enabled,
                       canManage: canManage,
                       ticketFieldsEnabled: ticketFieldsEnabled,
                     ),
                   ],
-                  const EpSectionHeader(label: 'VISIBILITY'),
+                  Padding(
+                    key: _visibilityKey,
+                    padding: const EdgeInsets.only(top: 24, bottom: 12),
+                    child: const EpEyebrow('Visibility'),
+                  ),
                   Wrap(
-                    spacing: 7,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       for (final visibility in OpportunityVisibility.values)
-                        EpChip(
+                        EpPill(
                           key: ValueKey(
                             'opp-edit-visibility-${visibility == OpportunityVisibility.publicListing ? 'public' : 'invite'}',
                           ),
                           label:
                               visibility == OpportunityVisibility.publicListing
-                              ? 'PUBLIC'
-                              : 'INVITE ONLY',
-                          active: _visibility == visibility,
-                          onTap: enabled
+                              ? 'Public'
+                              : 'Invite only',
+                          selected: _visibility == visibility,
+                          onPressed: enabled
                               ? () => _changed(() => _visibility = visibility)
                               : null,
                         ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   EpMonoText(
                     'Public means visible to artists in Discover — never on the fan map.',
                     key: const ValueKey('opp-edit-visibility-note'),
@@ -1124,43 +1455,42 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                     ),
                   ],
                   const SizedBox(height: 24),
-                  if (_editable && canManage)
+                  if (canManage &&
+                      _savedId != null &&
+                      (_status == OpportunityStatus.open ||
+                          _status == OpportunityStatus.applicationsClosed))
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: EpPill(
-                        key: const ValueKey('opp-edit-save'),
-                        label: draft ? 'Save draft' : 'Save changes',
-                        variant: EpPillVariant.outline,
-                        size: EpPillSize.chip,
-                        onPressed: enabled ? _save : null,
+                      child: _TextAction(
+                        buttonKey: ValueKey(
+                          _status == OpportunityStatus.open
+                              ? 'opp-edit-close'
+                              : 'opp-edit-reopen',
+                        ),
+                        label: _status == OpportunityStatus.open
+                            ? 'Close applications'
+                            : 'Reopen applications',
+                        color: _busy ? palette.contentDisabled : palette.ink,
+                        onPressed: _busy ? null : _transition,
                       ),
                     ),
                   if (canManage &&
                       _savedId != null &&
                       _status != OpportunityStatus.cancelled &&
-                      _status != OpportunityStatus.completed) ...[
-                    const SizedBox(height: 8),
+                      _status != OpportunityStatus.completed)
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: TextButton(
-                        key: ValueKey(
+                      child: _TextAction(
+                        buttonKey: ValueKey(
                           draft ? 'opp-edit-delete' : 'opp-edit-cancel',
                         ),
+                        label: draft ? 'Delete draft' : 'Cancel opportunity',
+                        color: _busy
+                            ? palette.contentDisabled
+                            : palette.destructive,
                         onPressed: _busy ? null : _deleteOrCancel,
-                        style: TextButton.styleFrom(
-                          foregroundColor: palette.destructive,
-                          minimumSize: const Size(44, 44),
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                        ),
-                        child: EpMonoText(
-                          draft ? 'Delete draft' : 'Cancel opportunity',
-                          color: _busy
-                              ? palette.contentDisabled
-                              : palette.destructive,
-                        ),
                       ),
                     ),
-                  ],
                   const SizedBox(height: 12),
                   InlineFormFeedback(
                     error: _error,
@@ -1171,7 +1501,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
               ],
             ),
           ),
-          if (showFooter)
+          if (showActions)
             Positioned(
               left: 0,
               right: 0,
@@ -1181,37 +1511,36 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    EpEyebrow(
-                      needs.isEmpty
-                          ? 'Ready'
-                          : 'Still needs ${needs.join(' + ')}',
-                      key: const ValueKey('opp-edit-missing'),
+                    Row(
+                      children: [
+                        EpPill(
+                          key: const ValueKey('opp-edit-preview'),
+                          label: 'Preview',
+                          variant: EpPillVariant.outline,
+                          size: EpPillSize.large,
+                          onPressed: _busy ? null : _preview,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: EpPill(
+                            key: const ValueKey('opp-edit-publish'),
+                            label: draft ? 'Review & publish' : 'Review & save',
+                            variant: EpPillVariant.primary,
+                            size: EpPillSize.large,
+                            expand: true,
+                            onPressed: _busy ? null : _review,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 12),
-                    EpPill(
-                      key: ValueKey(switch (_status) {
-                        OpportunityStatus.draft => 'opp-edit-open',
-                        OpportunityStatus.open => 'opp-edit-close',
-                        _ => 'opp-edit-reopen',
-                      }),
-                      label: waitingForVenueApproval
-                          ? 'WAITING FOR VENUE APPROVAL'
-                          : switch (_status) {
-                              OpportunityStatus.draft =>
-                                'OPEN FOR APPLICATIONS',
-                              OpportunityStatus.open => 'CLOSE APPLICATIONS',
-                              _ => 'REOPEN',
-                            },
-                      variant: EpPillVariant.primary,
-                      size: EpPillSize.large,
-                      expand: true,
-                      onPressed:
-                          !waitingForVenueApproval &&
-                              enabled &&
-                              _savedId != null &&
-                              (!draft || needs.isEmpty)
-                          ? _transition
-                          : null,
+                    const SizedBox(height: 10),
+                    Center(
+                      child: EpMonoText(
+                        'Saves as a draft automatically — no separate save step.',
+                        key: const ValueKey('opp-edit-autosave-note'),
+                        keepCase: true,
+                        color: palette.muted,
+                      ),
                     ),
                   ],
                 ),
@@ -1221,6 +1550,62 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
       ),
     );
   }
+
+  String get _whenValue =>
+      '${dateLabel(_date!).toUpperCase()} · START ${_start.format(context)}';
+
+  String get _whenSub {
+    final deadline = _deadline == null
+        ? 'Choose'
+        : dateLabel(_deadline!).toUpperCase();
+    final warning = _deadline != null && !_validDeadline
+        ? ' · must be before start'
+        : '';
+    return 'Doors ${_doors.format(context)} · Apply deadline $deadline$warning';
+  }
+
+  Widget _saveStateText(EpPalette palette) {
+    final label = switch (_saveState) {
+      _SaveState.idle => null,
+      _SaveState.unsaved => 'Draft · unsaved',
+      _SaveState.saving => 'Saving…',
+      _SaveState.saved =>
+        _status == OpportunityStatus.draft ? 'Draft · saved' : 'Saved',
+      _SaveState.failed => 'Save failed · retry',
+    };
+    if (label == null) return const SizedBox.shrink();
+    final text = EpMonoText(
+      label,
+      key: const ValueKey('opp-edit-save-state'),
+      color: _saveState == _SaveState.failed
+          ? palette.destructive
+          : palette.muted,
+    );
+    if (_saveState != _SaveState.failed) return text;
+    return Semantics(
+      button: true,
+      label: 'Retry save',
+      child: InkWell(
+        onTap: _retrySave,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+          child: text,
+        ),
+      ),
+    );
+  }
+
+  Widget _stateIcon(_RequiredField row) => _rowDone(row)
+      ? Icon(
+          Icons.check_circle,
+          key: ValueKey('opp-edit-done-${row.name}'),
+          size: 18,
+          color: context.epColors.success,
+        )
+      : _PendingRing(
+          key: ValueKey('opp-edit-pulse-${row.name}'),
+          pulseToken: _pulsing == row ? _pulseToken : 0,
+        );
 
   List<Widget> _locationControls(
     AppState app, {
@@ -1306,6 +1691,13 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
             ),
         ],
       ),
+      if (venueApprovalLocked) ...[
+        const SizedBox(height: 8),
+        Text(
+          'Withdraw the venue request before changing the venue or date.',
+          style: caption,
+        ),
+      ],
       if (!isVenueOperator) ...[
         const SizedBox(height: 8),
         Text(
@@ -1433,39 +1825,58 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     ),
   ];
 
-  List<Widget> _ticketingControls({
+  List<Widget> _ticketingControls(
+    AppState app, {
     required bool enabled,
     required bool canManage,
     required bool ticketFieldsEnabled,
   }) {
+    final palette = context.epColors;
     final caption = Theme.of(context).textTheme.epCaption;
+    final stripe = app.organizationStripeStatusFor(app.organizationId);
+    final paidUnlocked =
+        stripe != null &&
+        (stripe.canSellTickets || stripe.state == StripeAccountState.enabled);
     return [
       Wrap(
-        spacing: 7,
-        runSpacing: 7,
+        spacing: 8,
+        runSpacing: 8,
         children: [
-          for (final ticketing in [
+          for (final ticketing in const [
             OpportunityTicketing.none,
             OpportunityTicketing.rsvp,
             OpportunityTicketing.external,
             OpportunityTicketing.paid,
           ])
-            EpChip(
-              key: ValueKey('opp-edit-ticketing-${ticketing.wireValue}'),
-              label: ticketing.wireValue,
-              active: _ticketing == ticketing,
-              onTap:
-                  enabled &&
-                      (ticketing != OpportunityTicketing.paid ||
-                          _stripeChargesEnabled)
-                  ? () => _changed(() => _ticketing = ticketing)
-                  : null,
-            ),
+            if (ticketing == OpportunityTicketing.paid && !paidUnlocked)
+              Opacity(
+                opacity: .45,
+                child: EpPill(
+                  key: const ValueKey('opp-edit-ticketing-paid'),
+                  label: 'Paid',
+                  selected: _ticketing == OpportunityTicketing.paid,
+                  onPressed: null,
+                ),
+              )
+            else
+              EpPill(
+                key: ValueKey('opp-edit-ticketing-${ticketing.wireValue}'),
+                label: ticketing.wireValue,
+                selected: _ticketing == ticketing,
+                onPressed: enabled
+                    ? () => _changed(() => _ticketing = ticketing)
+                    : null,
+              ),
         ],
       ),
-      if (!_stripeChargesEnabled) ...[
-        const SizedBox(height: 8),
-        Text('Connect Stripe in SETTINGS to sell tickets', style: caption),
+      if (!paidUnlocked) ...[
+        const SizedBox(height: 10),
+        EpMonoText(
+          'PAID unlocks after Stripe — finish in ORGANIZATION › FINANCE',
+          key: const ValueKey('opp-edit-paid-locked'),
+          keepCase: true,
+          color: palette.muted,
+        ),
       ],
       if (_ticketing == OpportunityTicketing.paid) ...[
         const SizedBox(height: EpLayout.fieldGap),
@@ -1594,28 +2005,35 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   }
 }
 
-/// One line of the form: a filled check or an empty ring for required rows,
-/// the row's eyebrow, its value (or an accent invitation when empty) and a
-/// chevron that folds the row's controls open underneath. The TITLE row
-/// passes its inline field as [child] instead of a value.
+/// One hairline line of the form: the row's eyebrow, its value (or an accent
+/// invitation when empty), an optional right-aligned mono hint, a chevron
+/// when the row opens something, and the live state icon at the far right.
+/// The TITLE row passes its inline field as [child] instead of a value.
+///
+/// [rowKey] lands on the tappable surface so tests and the readiness scroll
+/// can target the row while the outer widget carries the scroll anchor.
 class _FormRow extends StatelessWidget {
   const _FormRow({
     super.key,
+    this.rowKey,
     this.label,
-    this.done,
     this.value,
     this.placeholder,
     this.sub,
+    this.trailingText,
+    this.state,
     this.expanded,
     this.onTap,
     this.child,
   });
 
+  final Key? rowKey;
   final String? label;
-  final bool? done;
   final String? value;
   final String? placeholder;
   final String? sub;
+  final String? trailingText;
+  final Widget? state;
   final bool? expanded;
   final VoidCallback? onTap;
   final Widget? child;
@@ -1627,20 +2045,6 @@ class _FormRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         children: [
-          if (done != null) ...[
-            if (done!)
-              Icon(Icons.check, size: 16, color: palette.accent)
-            else
-              Container(
-                width: 14,
-                height: 14,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: palette.accent),
-                ),
-              ),
-            const SizedBox(width: 12),
-          ],
           Expanded(
             child:
                 child ??
@@ -1666,14 +2070,32 @@ class _FormRow extends StatelessWidget {
                   ],
                 ),
           ),
-          if (onTap != null) ...[
+          if (trailingText != null) ...[
             const SizedBox(width: 12),
-            Icon(
-              expanded == true ? Icons.expand_less : Icons.expand_more,
-              size: 16,
-              color: palette.contentSecondary,
+            Flexible(
+              child: EpMonoText(
+                trailingText!,
+                color: palette.muted,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
+          if (onTap != null || expanded != null) ...[
+            const SizedBox(width: 12),
+            Icon(
+              expanded == null
+                  ? Icons.chevron_right
+                  : expanded!
+                  ? Icons.expand_less
+                  : Icons.expand_more,
+              size: 16,
+              color: onTap == null
+                  ? palette.contentDisabled
+                  : palette.contentSecondary,
+            ),
+          ],
+          if (state != null) ...[const SizedBox(width: 12), state!],
         ],
       ),
     );
@@ -1684,7 +2106,7 @@ class _FormRow extends StatelessWidget {
           expanded: expanded,
           child: Material(
             type: MaterialType.transparency,
-            child: InkWell(onTap: onTap, child: content),
+            child: InkWell(key: rowKey, onTap: onTap, child: content),
           ),
         ),
         const EpHairline(),
@@ -1708,6 +2130,490 @@ class _RowBody extends StatelessWidget {
     ),
   );
 }
+
+/// The accent ring on a required row that is still pending. Bumping
+/// [pulseToken] plays one 600 ms swell so REVIEW & PUBLISH can point at it.
+class _PendingRing extends StatefulWidget {
+  const _PendingRing({super.key, required this.pulseToken});
+
+  final int pulseToken;
+
+  @override
+  State<_PendingRing> createState() => _PendingRingState();
+}
+
+class _PendingRingState extends State<_PendingRing>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 600),
+  );
+  late final Animation<double> _scale = _controller.drive(
+    TweenSequence([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.5), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 1.5, end: 1.0), weight: 1),
+    ]),
+  );
+  late final Animation<double> _opacity = _controller.drive(
+    TweenSequence([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: .35), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: .35, end: 1.0), weight: 1),
+    ]),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.pulseToken > 0) _controller.forward(from: 0);
+  }
+
+  @override
+  void didUpdateWidget(covariant _PendingRing oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.pulseToken > 0 && widget.pulseToken != oldWidget.pulseToken) {
+      _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ScaleTransition(
+    scale: _scale,
+    child: FadeTransition(
+      opacity: _opacity,
+      child: Container(
+        width: 18,
+        height: 18,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: context.epColors.accent, width: 1.5),
+        ),
+      ),
+    ),
+  );
+}
+
+/// A quiet mono text action (close, reopen, delete, cancel) at tap size.
+class _TextAction extends StatelessWidget {
+  const _TextAction({
+    required this.buttonKey,
+    required this.label,
+    required this.color,
+    required this.onPressed,
+  });
+
+  /// Lands on the button itself so tests can read its enabled state.
+  final Key buttonKey;
+  final String label;
+  final Color color;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+    key: buttonKey,
+    onPressed: onPressed,
+    style: TextButton.styleFrom(
+      foregroundColor: color,
+      minimumSize: const Size(44, 44),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+    ),
+    child: EpMonoText(label, color: color),
+  );
+}
+
+// ------------------------------------------------------------- when sheet
+
+typedef _When = ({
+  DateTime? date,
+  TimeOfDay doors,
+  TimeOfDay start,
+  DateTime? deadline,
+  bool deadlineTouched,
+});
+
+/// One flow for the date, doors, start and apply deadline: a rolling
+/// calendar, two time wheels and a deadline row. Every change lands on the
+/// composer immediately; DONE just closes the sheet.
+class _WhenSheet extends StatefulWidget {
+  const _WhenSheet({
+    required this.isPrivate,
+    required this.date,
+    required this.doors,
+    required this.start,
+    required this.deadline,
+    required this.deadlineTouched,
+    required this.onChanged,
+  });
+
+  final bool isPrivate;
+  final DateTime? date;
+  final TimeOfDay doors;
+  final TimeOfDay start;
+  final DateTime? deadline;
+  final bool deadlineTouched;
+  final ValueChanged<_When> onChanged;
+
+  @override
+  State<_WhenSheet> createState() => _WhenSheetState();
+}
+
+class _WhenSheetState extends State<_WhenSheet> {
+  late DateTime? _date = widget.date;
+  late TimeOfDay _doors = widget.doors;
+  late TimeOfDay _start = widget.start;
+  late DateTime? _deadline = widget.deadline;
+  late bool _deadlineTouched = widget.deadlineTouched;
+
+  DateTime? get _startsAt {
+    final date = _date;
+    return date == null
+        ? null
+        : DateTime(date.year, date.month, date.day, _start.hour, _start.minute);
+  }
+
+  bool get _validDeadline =>
+      _deadline != null && _startsAt != null && _deadline!.isBefore(_startsAt!);
+
+  void _apply(VoidCallback change) {
+    setState(change);
+    widget.onChanged((
+      date: _date,
+      doors: _doors,
+      start: _start,
+      deadline: _deadline,
+      deadlineTouched: _deadlineTouched,
+    ));
+  }
+
+  void _pickDay(DateTime day) => _apply(() {
+    _date = day;
+    // Public events default to a week of applications; a private request
+    // names its own deadline because the deposit is quoted from it.
+    if (!widget.isPrivate && !_deadlineTouched) {
+      _deadline = DateTime(day.year, day.month, day.day - 7);
+    }
+  });
+
+  Future<void> _pickDeadline() async {
+    final initial =
+        _deadline ?? _date ?? DateTime.now().add(const Duration(days: 30));
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(initial.year - 5),
+      lastDate: DateTime(initial.year + 10, 12, 31),
+      helpText: 'APPLICATION DEADLINE',
+    );
+    if (!mounted || picked == null) return;
+    _apply(() {
+      _deadline = picked;
+      _deadlineTouched = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.epColors;
+    final theme = Theme.of(context);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final selected = _date;
+    // Four months ahead, stretched back or forward to keep a chosen date on
+    // the calendar.
+    final firstMonth = selected != null && selected.isBefore(today)
+        ? DateTime(selected.year, selected.month, 1)
+        : DateTime(today.year, today.month, 1);
+    var monthCount = 4;
+    if (selected != null) {
+      final span =
+          (selected.year - firstMonth.year) * 12 +
+          selected.month -
+          firstMonth.month +
+          1;
+      if (span > monthCount) monthCount = span;
+    }
+    final wheelDate = selected ?? today;
+
+    Widget selectionOverlay(
+      BuildContext context, {
+      required int columnCount,
+      required int selectedIndex,
+    }) => Container(
+      decoration: BoxDecoration(
+        border: Border.symmetric(
+          horizontal: BorderSide(color: palette.border, width: 1),
+        ),
+      ),
+    );
+
+    Widget wheel({
+      required Key key,
+      required String label,
+      required TimeOfDay time,
+      required ValueChanged<TimeOfDay> onChanged,
+    }) => Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          EpEyebrow(label),
+          SizedBox(
+            height: 120,
+            child: CupertinoDatePicker(
+              key: key,
+              mode: CupertinoDatePickerMode.time,
+              minuteInterval: 5,
+              use24hFormat: false,
+              initialDateTime: DateTime(
+                wheelDate.year,
+                wheelDate.month,
+                wheelDate.day,
+                time.hour,
+                time.minute ~/ 5 * 5,
+              ),
+              onDateTimeChanged: (dt) =>
+                  onChanged(TimeOfDay(hour: dt.hour, minute: dt.minute)),
+              selectionOverlayBuilder: selectionOverlay,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * .9,
+      ),
+      child: EpFormSheet(
+        key: const ValueKey('opp-edit-when-sheet'),
+        title: 'When',
+        padBody: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: ListView.separated(
+                key: const ValueKey('opp-edit-date'),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: monthCount,
+                separatorBuilder: (_, _) => const SizedBox(height: 14),
+                itemBuilder: (_, index) => _CalendarMonth(
+                  first: DateTime(firstMonth.year, firstMonth.month + index, 1),
+                  today: today,
+                  selected: selected,
+                  onPick: _pickDay,
+                ),
+              ),
+            ),
+            const EpHairline(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 13, 16, 13),
+              child: CupertinoTheme(
+                data: CupertinoThemeData(
+                  brightness: theme.brightness,
+                  primaryColor: palette.accent,
+                  textTheme: CupertinoTextThemeData(
+                    dateTimePickerTextStyle: theme.textTheme.epBody.copyWith(
+                      color: palette.contentPrimary,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    wheel(
+                      key: const ValueKey('opp-edit-doors'),
+                      label: 'DOORS',
+                      time: _doors,
+                      onChanged: (time) => _apply(() => _doors = time),
+                    ),
+                    wheel(
+                      key: const ValueKey('opp-edit-start'),
+                      label: 'START',
+                      time: _start,
+                      onChanged: (time) => _apply(() => _start = time),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const EpHairline(),
+            Semantics(
+              button: true,
+              child: InkWell(
+                key: const ValueKey('opp-edit-deadline'),
+                onTap: _pickDeadline,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const EpEyebrow('APPLY DEADLINE'),
+                            const SizedBox(height: 4),
+                            Text(
+                              _deadline == null
+                                  ? 'Choose'
+                                  : dateLabel(_deadline!).toUpperCase(),
+                              style: theme.textTheme.epBody.copyWith(
+                                color: _deadline == null
+                                    ? palette.accent
+                                    : palette.contentPrimary,
+                              ),
+                            ),
+                            if (_deadline != null && !_validDeadline) ...[
+                              const SizedBox(height: 4),
+                              EpMonoText(
+                                'Must be before the start',
+                                color: palette.destructive,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Icon(
+                        Icons.chevron_right,
+                        size: 16,
+                        color: palette.contentSecondary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const EpHairline(),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 13, 16, 34),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [DoneButton()],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One month of the when sheet's calendar; past days are inert.
+class _CalendarMonth extends StatelessWidget {
+  const _CalendarMonth({
+    required this.first,
+    required this.today,
+    required this.selected,
+    required this.onPick,
+  });
+
+  final DateTime first;
+  final DateTime today;
+  final DateTime? selected;
+  final ValueChanged<DateTime> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.epColors;
+    // The grid starts on Sunday; Dart weekdays run Mon(1)..Sun(7).
+    final lead = first.weekday % 7;
+    final days = DateTime(first.year, first.month + 1, 0).day;
+    final rows = ((lead + days) / 7).ceil();
+    final selectedDay = selected == null
+        ? null
+        : DateTime(selected!.year, selected!.month, selected!.day);
+
+    Widget cell(int slot) {
+      final day = slot - lead + 1;
+      if (day < 1 || day > days) return const SizedBox(height: 44);
+      final date = DateTime(first.year, first.month, day);
+      final past = date.isBefore(today);
+      final isSelected = date == selectedDay;
+      return Semantics(
+        button: !past,
+        selected: isSelected,
+        enabled: !past,
+        label: '${date.year}-${date.month}-$day',
+        child: Material(
+          color: past
+              ? Colors.transparent
+              : isSelected
+              ? palette.surfaceSelected
+              : palette.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.zero,
+            side: BorderSide(
+              color: past
+                  ? palette.surfaceDisabled
+                  : isSelected || date == today
+                  ? palette.accent
+                  : palette.border,
+            ),
+          ),
+          child: InkWell(
+            key: ValueKey('opp-edit-day-${date.year}-${date.month}-$day'),
+            onTap: past ? null : () => onPick(date),
+            borderRadius: BorderRadius.zero,
+            child: SizedBox(
+              height: 44,
+              child: Center(
+                child: Text(
+                  '$day',
+                  style: Theme.of(context).textTheme.epLabel.copyWith(
+                    color: past
+                        ? palette.contentDisabled
+                        : isSelected
+                        ? palette.contentPrimary
+                        : palette.contentSecondary,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget grid(int row, Widget Function(int) child) => Row(
+      children: [
+        for (var column = 0; column < 7; column++) ...[
+          if (column > 0) const SizedBox(width: 4),
+          Expanded(child: child(row * 7 + column)),
+        ],
+      ],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        EpEyebrow(monthLabel(first)),
+        const SizedBox(height: 8),
+        grid(
+          0,
+          (slot) => Center(
+            child: EpMonoText(
+              const ['S', 'M', 'T', 'W', 'T', 'F', 'S'][slot],
+              size: 11,
+              color: palette.muted,
+            ),
+          ),
+        ),
+        const SizedBox(height: 5),
+        for (var row = 0; row < rows; row++) ...[
+          if (row > 0) const SizedBox(height: 4),
+          grid(row, cell),
+        ],
+      ],
+    );
+  }
+}
+
+// ------------------------------------------------------------- helpers
 
 ({String label, EpStatusPillTone tone}) _venueApprovalStatus(
   VenueConsentStatus? status,
@@ -1921,10 +2827,6 @@ class _InviteBandSearchState extends State<_InviteBandSearch> {
     );
   }
 }
-
-String _dateLabel(BuildContext context, DateTime? date) => date == null
-    ? 'CHOOSE'
-    : MaterialLocalizations.of(context).formatMediumDate(date);
 
 String _extractErrorMessage(Object error) =>
     serverErrorMessage(error) ?? error.toString();
