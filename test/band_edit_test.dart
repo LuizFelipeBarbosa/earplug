@@ -5,7 +5,6 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_edit.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/widgets/band_identity_editor.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/form_bits.dart';
@@ -13,13 +12,12 @@ import 'package:earplug/widgets/genre_autocomplete_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
 void main() {
   testWidgets(
-    'editor shows a banner-only form with one links card and save action',
+    'editor opens on the identity fields with one links card and save action',
     (tester) async {
       final semantics = tester.ensureSemantics();
       await pumpApp(
@@ -29,20 +27,18 @@ void main() {
       );
 
       expect(find.text('EDIT BAND'), findsOne);
+      expect(find.byKey(const ValueKey('band-identity-header')), findsNothing);
       expect(
-        tester
-            .widget<BandIdentityHeader>(find.byType(BandIdentityHeader))
-            .showAvatar,
-        isFalse,
+        find.byKey(const ValueKey('band-header-image-control')),
+        findsNothing,
       );
-      expect(find.byKey(const ValueKey('band-header-image-control')), findsOne);
-      expect(find.byKey(const ValueKey('band-header-change')), findsOne);
-      final bannerSize = tester.getSize(
-        find.byKey(const ValueKey('band-identity-header')),
+      expect(find.byKey(const ValueKey('band-header-change')), findsNothing);
+      expect(find.byKey(const ValueKey('band-artwork-error')), findsNothing);
+      expect(
+        find.text('Shown at the top of your public page.'),
+        findsNothing,
       );
-      expect(bannerSize.width, 358);
-      expect(bannerSize.width / bannerSize.height, closeTo(2.65, .001));
-      expect(find.text('Shown at the top of your public page.'), findsOne);
+      expect(find.text('Header image'), findsNothing);
       expect(find.bySemanticsLabel('Back'), findsOne);
       expect(find.bySemanticsLabel('Preview public page'), findsOne);
       expect(find.text('BAND NAME · REQUIRED'), findsOne);
@@ -99,6 +95,8 @@ void main() {
       expect(saveRect.right, 390 - 16);
       final eye = tester.getRect(find.byKey(const ValueKey('band-edit-preview')));
       expect(saveRect.left, eye.right + 8);
+      final nameLabel = tester.getRect(find.text('BAND NAME · REQUIRED'));
+      expect(nameLabel.top, header.bottom + 18);
 
       expect(find.byType(EpCard), findsNothing);
       final linksCard = find
@@ -252,112 +250,6 @@ void main() {
       findsOne,
     );
     expect(find.byKey(const ValueKey('edit-youtube')).hitTestable(), findsOne);
-  });
-
-  testWidgets(
-    'header artwork can be replaced and cleared without losing the draft',
-    (tester) async {
-      final auth = FakeAuthService();
-      final repository = _ArtworkAuditRepository(auth: auth);
-      final harness = await pumpApp(
-        tester,
-        auth: auth,
-        repository: repository,
-        home: const Scaffold(body: BandEditScreen()),
-      );
-      await tester.enterText(
-        find.byKey(const ValueKey('edit-band-name')),
-        'Unsaved New Name',
-      );
-      harness.picker.nextPhoto = photoFixture(filename: 'new_banner.png');
-      await tester.tap(find.byKey(const ValueKey('band-header-image-control')));
-      await tester.pumpAndSettle();
-      expect(find.text('Replace'), findsOne);
-      expect(find.text('Use initials instead'), findsNothing);
-      await tester.tap(find.text('Replace'));
-      await tester.pumpAndSettle();
-
-      expect(
-        harness.media
-            .photosFor('b1')
-            .singleWhere((photo) => photo.isBanner)
-            .title,
-        'NEW BANNER',
-      );
-      expect(
-        tester
-            .widget<BandIdentityHeader>(find.byType(BandIdentityHeader))
-            .bannerBytes,
-        isNotNull,
-      );
-      expect(
-        tester
-            .widget<TextField>(find.byKey(const ValueKey('edit-band-name')))
-            .controller!
-            .text,
-        'Unsaved New Name',
-      );
-      expect(harness.app.myBand!.name, 'Foghorn Diet');
-
-      await tester.tap(find.byKey(const ValueKey('band-header-change')));
-      await tester.pumpAndSettle();
-      expect(find.text('Replace'), findsOne);
-      expect(find.text('Use initials instead'), findsOne);
-      await tester.tap(find.text('Use initials instead'));
-      await tester.pumpAndSettle();
-      expect(repository.clearBannerCalls, 1);
-      expect(
-        tester
-            .widget<BandIdentityHeader>(find.byType(BandIdentityHeader))
-            .bannerBytes,
-        isNull,
-      );
-      expect(harness.app.myBand!.headerImageUrl, isNull);
-      expect(find.text('FD'), findsOne);
-      expect(
-        tester
-            .widget<TextField>(find.byKey(const ValueKey('edit-band-name')))
-            .controller!
-            .text,
-        'Unsaved New Name',
-      );
-    },
-  );
-
-  testWidgets('failed banner replacement restores the saved artwork', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    final repository = StubRepository(auth: auth)
-      ..fail('setBandBanner', StateError('banner assignment failed'));
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const Scaffold(body: BandEditScreen()),
-    );
-    final savedUrl = harness.app.myBand!.headerImageUrl;
-    harness.picker.nextPhoto = photoFixture(filename: 'failed_banner.png');
-    await tester.tap(find.byKey(const ValueKey('band-header-image-control')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Replace'));
-    await tester.pumpAndSettle();
-
-    final header = tester.widget<BandIdentityHeader>(
-      find.byType(BandIdentityHeader),
-    );
-    expect(header.bannerBytes, isNull);
-    expect(header.bannerUrl, savedUrl);
-    expect(header.bannerBusy, isFalse);
-    expect(find.text('FD'), findsOne);
-    expect(find.byKey(const ValueKey('band-artwork-error')), findsOne);
-    expect(find.textContaining('header image could not be saved'), findsOne);
-    expect(
-      harness.media
-          .photosFor('b1')
-          .where((photo) => photo.title == 'FAILED BANNER'),
-      hasLength(1),
-    );
   });
 
   testWidgets('archive dialog preserves irreversible consequence copy', (
@@ -717,18 +609,6 @@ class _ControlledProfileRepository extends DemoRepository {
     updateCalls++;
     if (updateCalls == 1) await firstSave.future;
     await super.updateBandProfile(update);
-  }
-}
-
-class _ArtworkAuditRepository extends StubRepository {
-  _ArtworkAuditRepository({required super.auth});
-
-  int clearBannerCalls = 0;
-
-  @override
-  Future<void> clearBandBanner(String bandId) async {
-    clearBannerCalls++;
-    await super.clearBandBanner(bandId);
   }
 }
 
