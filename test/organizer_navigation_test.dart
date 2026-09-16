@@ -139,7 +139,7 @@ void main() {
 
     expect(find.byKey(const Key('organizer-tab-dash')), findsOne);
     expect(find.byKey(const Key('organizer-tab-venues')), findsNothing);
-    expect(find.byKey(const Key('org-dash-verification')), findsOne);
+    expect(find.byKey(const Key('org-dash-header')), findsOne);
     expect(harness.app.identity, isA<OrganizerIdentity>());
 
     harness.app.toFanView();

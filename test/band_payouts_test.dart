@@ -906,58 +906,51 @@ void main() {
     });
   }
 
-  for (final complete in [false]) {
-    testWidgets('organization Stripe readiness links when complete=$complete', (
+  for (final enabled in [false, true]) {
+    testWidgets('organization dash finance readiness when enabled=$enabled', (
       tester,
     ) async {
       final auth = FakeAuthService();
+      await auth.signInDemo();
       final harness = await pumpApp(
         tester,
         auth: auth,
-        repository: StubRepository(auth: auth)
-          ..wraps<OrganizationDashboard>(
-            'organizationDashboard',
-            (real) => OrganizationDashboard(
-              organization: real.organization,
-              role: real.role,
-              viaPlatformAdmin: real.viaPlatformAdmin,
-              verification: OrganizationVerification(
-                verified: real.verification.verified,
-                stripeDetailsSubmitted: complete,
-                stripeChargesEnabled: complete,
-                stripePayoutsEnabled: complete,
-                profileComplete: real.verification.profileComplete,
-                teamInvited: real.verification.teamInvited,
-              ),
-              venues: real.venues,
-              memberCount: real.memberCount,
-              privateDetails: real.privateDetails,
-            ),
-          ),
+        repository: _stripeStatusRepository(
+          auth: auth,
+          state: enabled
+              ? StripeAccountState.enabled
+              : StripeAccountState.onboarding,
+        ),
         home: const Scaffold(body: OrgDashScreen()),
         beforePump: (app) => app.switchToOrganization('org1'),
       );
       await enterOrganizer(tester, harness, 'org1');
 
       expect(find.text('Stripe setup arrives with bookings'), findsNothing);
-      for (final key in [
-        'org-dash-readiness-stripe',
-        'org-dash-readiness-payouts',
-      ]) {
-        final row = find.byKey(Key(key));
-        if (complete) {
-          expect(row, findsNothing);
-        } else {
-          expect(row, findsOneWidget);
-          await tester.tap(row);
-          await tester.pumpAndSettle();
-          expect(harness.app.current.screen, Screen.orgSettings);
-          harness.app.resetTo(Screen.orgDash);
-          await tester.pumpAndSettle();
-        }
+      expect(find.byKey(const Key('org-dash-readiness-stripe')), findsNothing);
+      expect(find.byKey(const Key('org-dash-readiness-payouts')), findsNothing);
+
+      final badge = find.byKey(const Key('org-dash-finance-badge'));
+      final financeStep = find.byKey(const Key('org-setup-finance'));
+      if (enabled) {
+        // Profile and finance are done, so no module and no badge.
+        expect(find.byKey(const Key('band-readiness')), findsNothing);
+        expect(financeStep, findsNothing);
+        expect(badge, findsNothing);
+        return;
       }
-      expect(find.text('Add Stripe details'), findsOneWidget);
-      expect(find.text('Enable payouts'), findsOneWidget);
+      expect(find.byKey(const Key('band-readiness')), findsOneWidget);
+      expect(financeStep, findsOneWidget);
+      final finance = find.byKey(const Key('org-dash-command-finance'));
+      await tester.scrollUntilVisible(
+        finance,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.descendant(of: finance, matching: badge), findsOneWidget);
+      await tester.tap(finance);
+      await tester.pumpAndSettle();
+      expect(harness.app.current.screen, Screen.orgFinance);
     });
   }
 }

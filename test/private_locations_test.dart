@@ -320,13 +320,14 @@ void main() {
         beforePump: (app) => app.switchToOrganization('org2'),
       );
 
-      await _showAllReadiness(tester);
-      expect(_readinessLines(tester), [
-        'READINESS · 2 OF 2',
-        'ALL SET',
-        'Verified',
-        'Profile complete',
-      ]);
+      // The demo host's profile is complete; finance is not set up: 1 of 2.
+      expect(find.byKey(const Key('org-dash-verification')), findsNothing);
+      final readiness = find.byKey(const Key('band-readiness'));
+      expect(readiness, findsOneWidget);
+      expect(
+        find.descendant(of: readiness, matching: find.text('1 OF 2')),
+        findsOneWidget,
+      );
       expect(find.text('Add Stripe details'), findsNothing);
       expect(find.text('Enable payouts'), findsNothing);
       expect(find.text('Invite your team'), findsNothing);
@@ -346,6 +347,8 @@ void main() {
       );
       expect(find.byKey(const Key('org-dash-command-venues')), findsNothing);
       expect(find.byKey(const Key('org-dash-command-team')), findsNothing);
+      await _reveal(tester, find.byKey(const Key('org-dash-footer-note')));
+      expect(find.byKey(const Key('org-dash-footer-note')), findsOneWidget);
       await _tap(tester, 'org-dash-locations');
       expect(harness.app.current.screen, Screen.privateLocations);
       await _tap(tester, 'org-dash-command-opportunity');
@@ -367,17 +370,16 @@ void main() {
       beforePump: (app) => app.switchToOrganization('org1'),
     );
 
-    await _showAllReadiness(tester);
-    expect(_readinessLines(tester), [
-      'READINESS · 5 OF 5',
-      'ALL SET',
-      'Verified',
-      'Stripe details',
-      'Payouts enabled',
-      'Profile complete',
-      'Team invited',
-    ]);
-    expect(find.text('MEMBERS'), findsOneWidget);
+    // The same two-step host checklist; org1's Stripe account is not set up.
+    expect(find.byKey(const Key('org-dash-verification')), findsNothing);
+    final readiness = find.byKey(const Key('band-readiness'));
+    expect(readiness, findsOneWidget);
+    expect(
+      find.descendant(of: readiness, matching: find.text('1 OF 2')),
+      findsOneWidget,
+    );
+    expect(find.text('MEMBERS'), findsNothing);
+    expect(find.byKey(const Key('org-dash-footer-note')), findsNothing);
     await _reveal(tester, find.byKey(const Key('org-dash-command-venues')));
     expect(find.text('NEW OPPORTUNITY'), findsOneWidget);
     expect(find.byKey(const Key('org-dash-command-venues')), findsOneWidget);
@@ -388,26 +390,6 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 }
-
-/// Done readiness steps collapse behind a "show all" link on phone widths.
-Future<void> _showAllReadiness(WidgetTester tester) async {
-  await tester.tap(
-    find.descendant(
-      of: find.byKey(const Key('org-dash-verification')),
-      matching: find.text('SHOW ALL'),
-    ),
-  );
-  await tester.pumpAndSettle();
-}
-
-Iterable<String?> _readinessLines(WidgetTester tester) => tester
-    .widgetList<Text>(
-      find.descendant(
-        of: find.byKey(const Key('org-dash-verification')),
-        matching: find.byType(Text),
-      ),
-    )
-    .map((text) => text.data);
 
 TextField _field(WidgetTester tester, String key) =>
     tester.widget<TextField>(find.byKey(Key(key)));

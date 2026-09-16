@@ -9,14 +9,16 @@ import 'package:earplug/screens/org_settings.dart';
 import 'package:earplug/screens/org_team.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
-  testWidgets('organizer dashboard shows verification and demo counts', (
+  testWidgets('organizer dashboard leads with header, readiness and hero', (
     tester,
   ) async {
     final auth = FakeAuthService();
@@ -31,24 +33,112 @@ void main() {
     );
     await enterOrganizer(tester, harness, 'org1');
 
-    expect(find.byKey(const Key('org-dash-verification')), findsOneWidget);
-    _expectStat(
-      tester,
-      'org-dash-venue-requests',
-      '1',
-      'VENUES · 1 VENUE REQUEST',
+    expect(find.byKey(const Key('org-dash-header')), findsOneWidget);
+    expect(find.textContaining('ORGANIZER · '), findsOneWidget);
+    expect(
+      tester.widget<EpPill>(find.byKey(const Key('org-dash-discover'))).variant,
+      EpPillVariant.accentOutline,
     );
-    expect(find.textContaining('1 VENUE REQUESTS'), findsNothing);
-    _expectStat(tester, 'org-dash-stat-members', '2', 'MEMBERS');
-    _expectStat(tester, 'org-dash-stat-opportunities', '2', 'OPEN SLOTS');
+    for (final removed in [
+      'org-dash-verification',
+      'org-dash-venue-requests',
+      'org-dash-stat-members',
+      'org-dash-stat-opportunities',
+      'org-dash-stat-rating',
+      'org-dash-reviews',
+    ]) {
+      expect(find.byKey(Key(removed)), findsNothing);
+    }
+    expect(find.textContaining('OPEN SLOTS'), findsNothing);
+    expect(find.textContaining('Profile pending'), findsNothing);
+    expect(find.textContaining('PROFILE PENDING'), findsNothing);
 
-    await tester.tap(find.byKey(const Key('org-dash-stat-opportunities')));
+    // The demo profile is complete and Stripe is not set up: 1 of 2.
+    final readiness = find.byKey(const Key('band-readiness'));
+    expect(readiness, findsOneWidget);
+    expect(
+      find.descendant(of: readiness, matching: find.text('1 OF 2')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('org-setup-finance')), findsOneWidget);
+    expect(find.byKey(const Key('org-dash-finance-badge')), findsOneWidget);
+
+    // Nothing in the demo is fully booked, so the hero prompts for a post.
+    expect(find.byKey(const Key('org-dash-next-event')), findsNothing);
+    expect(find.byKey(const Key('org-dash-next-event-empty')), findsOneWidget);
+    final post = find.byKey(const Key('org-dash-post-request'));
+    await tester.ensureVisible(post);
+    await tester.tap(post);
     await tester.pumpAndSettle();
-
-    expect(harness.app.current.screen, Screen.orgOpportunities);
+    expect(harness.app.current.screen, Screen.opportunityEdit);
+    expect(harness.app.current.param, 'new');
   });
 
-  testWidgets('promoter dashboard hides venue management and keeps members', (
+  testWidgets('next event hero shows the fully booked request and opens it', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final booked = _fullyBooked(DemoData.opportunities['opp1']!);
+    final repository = StubRepository(auth: auth)
+      ..returnsStream<List<Opportunity>>(
+        'watchOrganizationOpportunities',
+        () => Stream.value([booked]),
+      )
+      ..returns('organizationStripeStatus', _enabledStripe);
+    final harness = await pumpApp(
+      tester,
+      size: const Size(390, 844),
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgDashScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    // Profile and finance are both done, so no module and no badge.
+    expect(find.byKey(const Key('band-readiness')), findsNothing);
+    expect(find.byKey(const Key('org-dash-finance-badge')), findsNothing);
+    expect(find.byKey(const Key('org-dash-next-event-empty')), findsNothing);
+
+    final hero = find.byKey(const Key('org-dash-next-event'));
+    final heroRect = tester.getRect(hero);
+    expect(heroRect.top, greaterThanOrEqualTo(0));
+    expect(heroRect.bottom, lessThan(844));
+    expect(
+      tester
+          .state<ScrollableState>(find.byType(Scrollable).first)
+          .position
+          .pixels,
+      0,
+    );
+    expect(find.text('NEXT EVENT'), findsOneWidget);
+    expect(find.byKey(const Key('org-dash-next-event-when')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: hero,
+        matching: find.textContaining(
+          '${booked.slots.length}/${booked.slots.length} slots booked',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is StatusPill && widget.label == 'Confirmed',
+      ),
+      findsOneWidget,
+    );
+
+    final view = find.byKey(const Key('org-dash-next-event-view'));
+    expect(view.hitTestable(), findsOneWidget);
+    await tester.tap(view);
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.opportunityApplicants);
+    expect(harness.app.current.param, 'opp1');
+  });
+
+  testWidgets('promoter dashboard hides venue management and keeps team', (
     tester,
   ) async {
     final auth = FakeAuthService();
@@ -64,40 +154,12 @@ void main() {
     await enterOrganizer(tester, harness, 'org3');
 
     expect(find.textContaining('VENUES'), findsNothing);
-    _expectStat(tester, 'org-dash-stat-members', '1', 'MEMBERS');
     expect(find.byKey(const Key('org-dash-venue-requests')), findsNothing);
     expect(find.byKey(const Key('org-dash-command-venues')), findsNothing);
     expect(find.byKey(const Key('org-dash-locations')), findsNothing);
+    expect(find.byKey(const Key('org-dash-command-team')), findsOneWidget);
+    expect(find.byKey(const Key('org-dash-footer-note')), findsNothing);
   });
-
-  testWidgets(
-    'venue dashboard keeps its caption when no requests are pending',
-    (tester) async {
-      final auth = FakeAuthService();
-      await auth.signInDemo();
-      final repository = DemoRepository(auth: auth);
-      await repository.decideVenueConsent(
-        consentId: 'consent-1',
-        granted: true,
-      );
-      final harness = await pumpApp(
-        tester,
-        auth: auth,
-        repository: repository,
-        beforePump: (app) => app.switchToOrganization('org1'),
-        home: const Scaffold(body: OrgDashScreen()),
-      );
-      await enterOrganizer(tester, harness, 'org1');
-
-      _expectStat(
-        tester,
-        'org-dash-venue-requests',
-        '1',
-        'VENUES · MANAGED PROFILES',
-      );
-      expect(find.byKey(const Key('org-dash-command-venues')), findsOneWidget);
-    },
-  );
 
   testWidgets('organizer dashboard opens a new opportunity draft', (
     tester,
@@ -108,7 +170,7 @@ void main() {
     );
     await enterOrganizer(tester, harness, 'org1');
 
-    expect(find.text('Post a slot for artists'), findsOneWidget);
+    expect(find.text('POST A SLOT FOR ARTISTS'), findsOneWidget);
     final command = find.byKey(const Key('org-dash-command-opportunity'));
     await tester.ensureVisible(command);
     await tester.tap(command);
@@ -135,12 +197,17 @@ void main() {
       ];
       await enterOrganizer(tester, harness, 'org1');
 
-      expect(find.text('Managers post opportunities'), findsOneWidget);
-      final command = find.byKey(const Key('org-dash-command-opportunity'));
-      await tester.ensureVisible(command);
-      await tester.tap(command);
-      await tester.pumpAndSettle();
-
+      expect(
+        find.byKey(const Key('org-dash-command-opportunity')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('org-dash-next-event-empty')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('org-dash-post-request')), findsNothing);
+      // Readiness is a manager's concern.
+      expect(find.byKey(const Key('band-readiness')), findsNothing);
       expect(harness.app.current.screen, Screen.orgDash);
     });
   }
@@ -165,6 +232,13 @@ void main() {
       expect(command, findsOneWidget);
       expect(
         find.descendant(of: command, matching: find.text('FINANCE')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: command,
+          matching: find.byKey(const Key('org-dash-finance-badge')),
+        ),
         findsOneWidget,
       );
       await tester.tap(command);
@@ -482,12 +556,31 @@ void main() {
 
 /// The stat cells render their value as display type and their label as a mono
 /// eyebrow, so both read back uppercased.
-void _expectStat(WidgetTester tester, String key, String value, String label) {
-  final stat = find.byKey(Key(key));
-  expect(stat, findsOneWidget);
-  expect(find.descendant(of: stat, matching: find.text(value)), findsOneWidget);
-  expect(find.descendant(of: stat, matching: find.text(label)), findsOneWidget);
-}
+/// Every slot filled by the demo band, so the request counts as confirmed.
+Opportunity _fullyBooked(Opportunity opportunity) => opportunity.copyWith(
+  slots: [
+    for (final slot in opportunity.slots)
+      OpportunitySlot(
+        id: slot.id,
+        order: slot.order,
+        role: slot.role,
+        setLengthMin: slot.setLengthMin,
+        guaranteeMinor: slot.guaranteeMinor,
+        required: slot.required,
+        status: SlotStatus.booked,
+        bandId: 'b1',
+      ),
+  ],
+);
+
+const _enabledStripe = StripeAccountStatus(
+  state: StripeAccountState.enabled,
+  hasAccount: true,
+  chargesEnabled: true,
+  payoutsEnabled: true,
+  detailsSubmitted: true,
+  requirementsDue: [],
+);
 
 /// The venue card centre sits on its area map, which swallows taps; open the
 /// editor from the venue name instead.
