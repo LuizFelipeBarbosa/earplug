@@ -406,6 +406,14 @@ class EpSegmentTabs extends StatelessWidget {
     for (var index = 0; index < labels.length; index++) {
       if (index > 0) tabs.add(const SizedBox(width: 24));
       final isSelected = index == selected;
+      // Labels never wrap: a scrollable strip gives them unbounded width, a
+      // fixed strip scales a label down when its segment is narrower than it.
+      final label = EpMonoText(
+        labels[index],
+        size: 11,
+        color: isSelected ? palette.ink : palette.muted,
+        maxLines: 1,
+      );
       final tab = Semantics(
         selected: isSelected,
         button: true,
@@ -423,16 +431,22 @@ class EpSegmentTabs extends StatelessWidget {
             ),
             child: Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: EpMonoText(
-                labels[index],
-                size: 11,
-                color: isSelected ? palette.ink : palette.muted,
-              ),
+              child: scrollable
+                  ? label
+                  : FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.bottomLeft,
+                      child: label,
+                    ),
             ),
           ),
         ),
       );
-      tabs.add(scrollable ? tab : Flexible(child: tab));
+      // Segments share the width in proportion to their label length so a
+      // long label borrows the slack of short ones before it has to shrink.
+      tabs.add(
+        scrollable ? tab : Flexible(flex: labels[index].length + 1, child: tab),
+      );
     }
     final row = Row(
       mainAxisSize: scrollable ? MainAxisSize.min : MainAxisSize.max,

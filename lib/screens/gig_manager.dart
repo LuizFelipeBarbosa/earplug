@@ -44,7 +44,14 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
             key: const Key('band-gigs-header'),
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const EpDisplay('Gigs', key: Key('band-gigs-title'), size: 44),
+              const Flexible(
+                child: EpDisplay(
+                  'Gigs',
+                  key: Key('band-gigs-title'),
+                  size: 44,
+                  maxLines: 1,
+                ),
+              ),
               if (app.isAdminOf(app.bandId))
                 EpPill(
                   key: const Key('band-gigs-new'),

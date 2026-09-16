@@ -16,6 +16,7 @@ import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
@@ -52,7 +53,7 @@ void main() {
       expect(find.byType(BandDiscoverTab), findsNothing);
       expect(find.byType(BandApplicationsTab), findsNothing);
       final panel = find.byKey(
-        Key(empty ? 'my-gigs-empty-next' : 'my-gigs-next-up'),
+        Key(empty ? 'my-gigs-empty-next' : 'band-booking-bk2'),
       );
       expect(panel.hitTestable(), findsOneWidget);
       final bounds = tester.getRect(panel);
@@ -84,6 +85,55 @@ void main() {
     });
   }
 
+  for (final (size, scale) in [
+    (const Size(390, 844), 1.0),
+    (const Size(390, 844), 1.3),
+    (const Size(360, 780), 1.0),
+    (const Size(360, 780), 1.3),
+  ]) {
+    testWidgets(
+      'GIGS tab labels stay on one line at ${size.width}px, text scale $scale',
+      (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final auth = FakeAuthService();
+        await auth.signInDemo();
+        await pumpApp(
+          tester,
+          auth: auth,
+          size: size,
+          home: const RootShell(),
+          beforePump: (app) {
+            app.switchToBand('b1');
+            app.resetTo(Screen.gigMgr);
+          },
+        );
+
+        final tabs = find.byKey(const Key('band-gigs-tabs'));
+        final strip = tester.getRect(tabs);
+        final lineHeight = 11 * 1.2 * scale;
+        var previousRight = strip.left;
+        for (final label in ['MY GIGS', 'DISCOVER', 'APPLICATIONS']) {
+          final text = find.descendant(of: tabs, matching: find.text(label));
+          expect(tester.widget<Text>(text).maxLines, 1);
+          final paragraph = _paragraph(tester, text);
+          expect(paragraph.didExceedMaxLines, isFalse, reason: label);
+          expect(paragraph.textSize.height, paragraph.size.height);
+          final rendered = tester.getRect(text);
+          expect(
+            rendered.height,
+            lessThanOrEqualTo(lineHeight + 0.01),
+            reason: label,
+          );
+          expect(rendered.left, greaterThanOrEqualTo(previousRight - 0.01));
+          expect(rendered.right, lessThanOrEqualTo(strip.right + 0.01));
+          previousRight = rendered.right;
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('returning to GIGS resets DISCOVER to MY GIGS', (tester) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
@@ -110,7 +160,7 @@ void main() {
           .selected,
       0,
     );
-    expect(find.byKey(const Key('my-gigs-next-up')), findsOneWidget);
+    expect(find.byKey(const Key('band-booking-bk2')), findsOneWidget);
     expect(find.byType(BandDiscoverTab), findsNothing);
     expect(find.byKey(const Key('discover-search-field')), findsNothing);
   });
@@ -440,6 +490,9 @@ void main() {
     );
   });
 }
+
+RenderParagraph _paragraph(WidgetTester tester, Finder text) => tester
+    .renderObject(find.descendant(of: text, matching: find.byType(RichText)));
 
 Future<AppHarness> _pumpManager(
   WidgetTester tester,

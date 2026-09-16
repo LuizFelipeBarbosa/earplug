@@ -5,6 +5,7 @@ import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
 Future<void> _pump(
@@ -24,6 +25,9 @@ Future<void> _pump(
     ),
   ),
 );
+
+RenderParagraph _paragraph(WidgetTester tester, Finder text) => tester
+    .renderObject(find.descendant(of: text, matching: find.byType(RichText)));
 
 Material _pillMaterial(WidgetTester tester) => tester.widget<Material>(
   find.descendant(of: find.byType(EpPill), matching: find.byType(Material)),
@@ -253,6 +257,71 @@ void main() {
     expect(flags.isSelected, Tristate.isTrue);
     expect(flags.isButton, isTrue);
     expect(flags.isInMutuallyExclusiveGroup, isTrue);
+  });
+
+  testWidgets('fixed tabs scale a long label down instead of wrapping', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      SizedBox(
+        width: 220,
+        child: EpSegmentTabs(
+          labels: const ['Going', 'Applications and invitations'],
+          selected: 0,
+          onSelect: (_) {},
+        ),
+      ),
+    );
+
+    final short = find.text('GOING');
+    final long = find.text('APPLICATIONS AND INVITATIONS');
+    for (final label in [short, long]) {
+      expect(tester.widget<Text>(label).maxLines, 1);
+      final paragraph = _paragraph(tester, label);
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(paragraph.textSize.height, paragraph.size.height);
+      expect(
+        find.ancestor(of: label, matching: find.byType(FittedBox)),
+        findsOneWidget,
+      );
+    }
+    final natural = _paragraph(tester, long).size;
+    final rendered = tester.getRect(long);
+    expect(rendered.height, lessThan(natural.height));
+    expect(rendered.width, lessThan(natural.width));
+    expect(
+      rendered.width / natural.width,
+      closeTo(rendered.height / natural.height, 1e-9),
+    );
+    expect(rendered.right, lessThanOrEqualTo(220));
+    expect(tester.getRect(short).right, lessThanOrEqualTo(rendered.left));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('scrollable tabs keep labels on one line at natural size', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      SizedBox(
+        width: 220,
+        child: EpSegmentTabs(
+          labels: const ['Going', 'Applications and invitations'],
+          selected: 0,
+          onSelect: (_) {},
+          scrollable: true,
+        ),
+      ),
+    );
+
+    final long = find.text('APPLICATIONS AND INVITATIONS');
+    expect(tester.widget<Text>(long).maxLines, 1);
+    final paragraph = _paragraph(tester, long);
+    expect(paragraph.didExceedMaxLines, isFalse);
+    expect(tester.getRect(long).size, paragraph.size);
+    expect(find.byType(FittedBox), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('segmented control callbacks and labels', (tester) async {
