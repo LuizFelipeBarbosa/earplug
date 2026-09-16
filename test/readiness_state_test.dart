@@ -10,6 +10,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
+const _b1 = 'band:b1';
+const _b2 = 'band:b2';
+const _org1 = 'org:org1';
 const _image = 'band-discovery-image';
 const _clip = 'band-discovery-clip';
 const _social = 'band-setup-social';
@@ -103,12 +106,12 @@ void main() {
     )).harness;
     final app = harness.app;
 
-    final snapshot = app.readinessSnapshotFor('b1')!;
+    final snapshot = app.readinessSnapshotFor(_b1)!;
     expect(snapshot.done, 8);
-    expect(app.readinessRegressionFor('b1'), isNull);
-    expect(app.readinessSheetShouldAutoOpen('b1'), isFalse);
+    expect(app.readinessRegressionFor(_b1), isNull);
+    expect(app.readinessSheetShouldAutoOpen(_b1), isFalse);
 
-    final memory = (await store.read('b1'))!;
+    final memory = (await store.read(_b1))!;
     expect(memory.doneIds, snapshot.doneIds);
     expect(memory.doneIds, isNot(contains(_clip)));
     expect(memory.seenAt, start);
@@ -135,12 +138,12 @@ void main() {
       readiness: _readiness(profileImageReady: false),
     );
 
-    final regression = app.readinessRegressionFor('b1')!;
+    final regression = app.readinessRegressionFor(_b1)!;
     expect(regression.stepIds, [_image]);
     expect(regression.since, now);
     expect(notifications, greaterThan(0));
 
-    final memory = (await store.read('b1'))!;
+    final memory = (await store.read(_b1))!;
     expect(memory.regressedIds, {_image});
     expect(memory.regressedAt, now);
     expect(memory.regressionAcknowledged, isFalse);
@@ -159,13 +162,13 @@ void main() {
       readiness: _readiness(profileImageReady: false),
     );
     expect(
-      app.readinessRegressionFor('b1')!.since,
+      app.readinessRegressionFor(_b1)!.since,
       start.add(const Duration(days: 1)),
     );
-    expect((await store.read('b1'))!.seenAt, later);
+    expect((await store.read(_b1))!.seenAt, later);
 
     notifications = 0;
-    await app.reconcileReadiness('b1');
+    await app.reconcileReadiness(_b1);
     expect(notifications, 0);
     app.dispose();
   });
@@ -184,16 +187,16 @@ void main() {
         stub: pumped.stub,
         setup: _setup(socialLinksAdded: false),
       );
-      expect(app.readinessRegressionFor('b1')!.stepIds, [_social]);
-      expect(app.readinessSheetShouldAutoOpen('b1'), isTrue);
-      expect(app.readinessSheetShouldAutoOpen('b1'), isFalse);
+      expect(app.readinessRegressionFor(_b1)!.stepIds, [_social]);
+      expect(app.readinessSheetShouldAutoOpen(_b1), isTrue);
+      expect(app.readinessSheetShouldAutoOpen(_b1), isFalse);
 
-      app.acknowledgeReadinessRegression('b1');
+      app.acknowledgeReadinessRegression(_b1);
       await tester.pump();
-      expect(app.readinessSheetShouldAutoOpen('b1'), isFalse);
-      expect((await store.read('b1'))!.regressionAcknowledged, isTrue);
+      expect(app.readinessSheetShouldAutoOpen(_b1), isFalse);
+      expect((await store.read(_b1))!.regressionAcknowledged, isTrue);
       // Acknowledging hides the prompt, not the regression itself.
-      expect(app.readinessRegressionFor('b1')!.stepIds, [_social]);
+      expect(app.readinessRegressionFor(_b1)!.stepIds, [_social]);
       app.dispose();
     },
   );
@@ -202,7 +205,7 @@ void main() {
     'a persisted unacknowledged regression auto-opens on the next session',
     (tester) async {
       final store = MemoryReadinessMemoryStore({
-        'b1': ReadinessMemory(
+        _b1: ReadinessMemory(
           doneIds: {_image},
           seenAt: start.subtract(const Duration(days: 2)),
           regressedAt: start.subtract(const Duration(days: 1)),
@@ -217,11 +220,11 @@ void main() {
       )).harness.app;
 
       expect(
-        app.readinessRegressionFor('b1')!.since,
+        app.readinessRegressionFor(_b1)!.since,
         start.subtract(const Duration(days: 1)),
       );
-      expect(app.readinessSheetShouldAutoOpen('b1'), isTrue);
-      expect(app.readinessSheetShouldAutoOpen('b1'), isFalse);
+      expect(app.readinessSheetShouldAutoOpen(_b1), isTrue);
+      expect(app.readinessSheetShouldAutoOpen(_b1), isFalse);
       app.dispose();
     },
   );
@@ -230,7 +233,7 @@ void main() {
     'a persisted done step that is missing now regresses on first load',
     (tester) async {
       final store = MemoryReadinessMemoryStore({
-        'b1': ReadinessMemory(
+        _b1: ReadinessMemory(
           doneIds: {_image, _clip},
           seenAt: start.subtract(const Duration(days: 2)),
         ),
@@ -242,7 +245,7 @@ void main() {
         readiness: _readiness(clipReady: false),
       )).harness.app;
 
-      final regression = app.readinessRegressionFor('b1')!;
+      final regression = app.readinessRegressionFor(_b1)!;
       expect(regression.stepIds, [_clip]);
       expect(regression.since, start);
       app.dispose();
@@ -261,7 +264,7 @@ void main() {
       stub: pumped.stub,
       readiness: _readiness(profileImageReady: false),
     );
-    expect(app.readinessRegressionFor('b1'), isNotNull);
+    expect(app.readinessRegressionFor(_b1), isNotNull);
 
     await _reload(
       tester,
@@ -270,11 +273,11 @@ void main() {
       stub: pumped.stub,
       readiness: _readiness(),
     );
-    expect(app.readinessSnapshotFor('b1')!.complete, isTrue);
-    expect(app.readinessRegressionFor('b1'), isNull);
-    expect(app.readinessSheetShouldAutoOpen('b1'), isFalse);
+    expect(app.readinessSnapshotFor(_b1)!.complete, isTrue);
+    expect(app.readinessRegressionFor(_b1), isNull);
+    expect(app.readinessSheetShouldAutoOpen(_b1), isFalse);
 
-    final memory = (await store.read('b1'))!;
+    final memory = (await store.read(_b1))!;
     expect(memory.regressedIds, isEmpty);
     expect(memory.regressedAt, isNull);
     expect(memory.doneIds, hasLength(9));
@@ -299,8 +302,8 @@ void main() {
       readiness: _readiness(clipReady: false),
       setup: _setup(),
     );
-    expect(app.readinessRegressionFor('b1'), isNull);
-    expect(app.readinessSheetShouldAutoOpen('b1'), isFalse);
+    expect(app.readinessRegressionFor(_b1), isNull);
+    expect(app.readinessSheetShouldAutoOpen(_b1), isFalse);
 
     // Done once and then failing counts, but only for that step.
     await _reload(
@@ -317,11 +320,11 @@ void main() {
       stub: pumped.stub,
       readiness: _readiness(clipReady: false, profileImageReady: false),
     );
-    expect(app.readinessRegressionFor('b1')!.stepIds, [_image, _clip]);
+    expect(app.readinessRegressionFor(_b1)!.stepIds, [_image, _clip]);
     app.dispose();
   });
 
-  testWidgets('memory is kept per band', (tester) async {
+  testWidgets('memory is kept per scope', (tester) async {
     final store = MemoryReadinessMemoryStore();
     final pumped = await _pump(
       tester,
@@ -332,7 +335,7 @@ void main() {
     final app = pumped.harness.app;
     app.switchToBand('b2');
     await tester.pumpAndSettle();
-    expect(app.readinessSnapshotFor('b2')!.complete, isTrue);
+    expect(app.readinessSnapshotFor(_b2)!.complete, isTrue);
 
     await _reload(
       tester,
@@ -342,11 +345,11 @@ void main() {
       readiness: _readiness(profileImageReady: false),
     );
 
-    expect(app.readinessRegressionFor('b2')!.stepIds, [_image]);
-    expect(app.readinessRegressionFor('b1'), isNull);
-    expect(app.readinessSheetShouldAutoOpen('b1'), isFalse);
-    expect((await store.read('b1'))!.doneIds, hasLength(9));
-    expect((await store.read('b2'))!.regressedIds, {_image});
+    expect(app.readinessRegressionFor(_b2)!.stepIds, [_image]);
+    expect(app.readinessRegressionFor(_b1), isNull);
+    expect(app.readinessSheetShouldAutoOpen(_b1), isFalse);
+    expect((await store.read(_b1))!.doneIds, hasLength(9));
+    expect((await store.read(_b2))!.regressedIds, {_image});
     app.dispose();
   });
 
@@ -368,7 +371,7 @@ void main() {
       ReadinessAction.inviteMembers: (Screen.bandPreview, 'b1'),
     };
     for (final entry in expectations.entries) {
-      app.performReadinessAction('b1', entry.key);
+      app.performReadinessAction(_b1, entry.key);
       await tester.pumpAndSettle();
       expect(app.current.screen, entry.value.$1, reason: '${entry.key}');
       expect(app.current.param, entry.value.$2, reason: '${entry.key}');
@@ -376,9 +379,58 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    app.performReadinessAction('b1', ReadinessAction.createShow);
+    app.performReadinessAction(_b1, ReadinessAction.createShow);
     await tester.pumpAndSettle();
     expect(app.current.screen, Screen.gigCreate);
+    app.dispose();
+  });
+
+  testWidgets('the scope helpers build the band and org keys', (tester) async {
+    expect(bandReadinessScope('b1'), _b1);
+    expect(orgReadinessScope('org1'), _org1);
+  });
+
+  testWidgets('an org scope has no snapshot until the host hook is provided', (
+    tester,
+  ) async {
+    final store = MemoryReadinessMemoryStore();
+    final app = (await _pump(
+      tester,
+      store: store,
+      now: () => start,
+    )).harness.app;
+
+    expect(app.hostReadinessSnapshotFor('org1'), isNull);
+    expect(app.readinessSnapshotFor(_org1), isNull);
+    expect(app.readinessRegressionFor(_org1), isNull);
+    expect(app.readinessSheetShouldAutoOpen(_org1), isFalse);
+
+    // Reconciling a scope without a snapshot remembers nothing.
+    await app.reconcileReadiness(_org1);
+    expect(await store.read(_org1), isNull);
+    expect(app.readinessSnapshotFor('unknown:x'), isNull);
+    app.dispose();
+  });
+
+  testWidgets('host actions select the organization and open its screens', (
+    tester,
+  ) async {
+    final app = (await _pump(
+      tester,
+      store: MemoryReadinessMemoryStore(),
+      now: () => start,
+    )).harness.app;
+    expect(app.organizationId, isNot('org1'));
+
+    app.performReadinessAction(_org1, ReadinessAction.editOrgProfile);
+    await tester.pumpAndSettle();
+    expect(app.organizationId, 'org1');
+    expect(app.current.screen, Screen.orgSettings);
+
+    app.performReadinessAction(_org1, ReadinessAction.setUpFinance);
+    await tester.pumpAndSettle();
+    expect(app.organizationId, 'org1');
+    expect(app.current.screen, Screen.orgFinance);
     app.dispose();
   });
 }

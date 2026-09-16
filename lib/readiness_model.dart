@@ -11,10 +11,12 @@ enum ReadinessAction {
   preview,
   editLinks,
   inviteMembers,
+  editOrgProfile,
+  setUpFinance,
 }
 
-/// One of the nine band readiness steps, with the copy the checklist shows
-/// and the action that resolves it.
+/// One readiness step, with the copy the checklist shows and the action that
+/// resolves it.
 class ReadinessStep {
   final String id;
   final String label;
@@ -33,17 +35,19 @@ class ReadinessStep {
   });
 }
 
-/// The nine readiness steps in checklist order: six discovery criteria from
-/// [BandDiscoveryReadiness] followed by three setup tasks from
-/// [BandSetupStatus].
+/// A readiness checklist in order. [ReadinessSnapshot.band] builds the nine
+/// band steps and [ReadinessSnapshot.host] the two host steps; the module and
+/// sheet read [total] from the snapshot so they serve either.
 class ReadinessSnapshot {
   final List<ReadinessStep> steps;
 
-  const ReadinessSnapshot._(this.steps);
+  ReadinessSnapshot(List<ReadinessStep> steps)
+    : steps = List.unmodifiable(steps);
 
-  static const int total = 9;
-
-  static const List<String> stepIds = [
+  /// The nine band step ids in checklist order: six discovery criteria from
+  /// [BandDiscoveryReadiness] followed by three setup tasks from
+  /// [BandSetupStatus].
+  static const List<String> bandStepIds = [
     'band-discovery-profile',
     'band-discovery-image',
     'band-discovery-clip',
@@ -55,9 +59,14 @@ class ReadinessSnapshot {
     'band-setup-members',
   ];
 
-  /// Null until both sources have loaded; a partial checklist would report a
-  /// misleading count.
-  static ReadinessSnapshot? from({
+  static const List<String> hostStepIds = [
+    'org-setup-profile',
+    'org-setup-finance',
+  ];
+
+  /// The band checklist. Null until both sources have loaded; a partial
+  /// checklist would report a misleading count.
+  static ReadinessSnapshot? band({
     required BandDiscoveryReadiness? readiness,
     required BandSetupStatus? setup,
   }) {
@@ -66,85 +75,112 @@ class ReadinessSnapshot {
     final showAction = hasShow
         ? ReadinessAction.manageShow
         : ReadinessAction.createShow;
-    return ReadinessSnapshot._(
-      List.unmodifiable([
-        ReadinessStep(
-          id: stepIds[0],
-          label: 'Complete profile',
-          reason: 'Hosts read this first.',
-          actionLabel: 'Edit',
-          action: ReadinessAction.editProfile,
-          done: readiness.profileComplete,
-        ),
-        ReadinessStep(
-          id: stepIds[1],
-          label: 'Profile image',
-          reason: 'Cards and lineups show it.',
-          actionLabel: 'Add',
-          action: ReadinessAction.addMedia,
-          done: readiness.profileImageReady,
-        ),
-        ReadinessStep(
-          id: stepIds[2],
-          label: 'Video clip',
-          reason: 'Hosts listen before booking.',
-          actionLabel: 'Add',
-          action: ReadinessAction.addMedia,
-          done: readiness.clipReady,
-        ),
-        ReadinessStep(
-          id: stepIds[3],
-          label: 'Published lineup',
-          reason: 'Nearby fans find you through shows.',
-          actionLabel: hasShow ? 'Manage' : 'Create',
-          action: showAction,
-          done: readiness.publishedShowReady,
-        ),
-        ReadinessStep(
-          id: stepIds[4],
-          label: 'Venue and readable poster',
-          reason: 'A venue and a readable poster make the listing.',
-          actionLabel: hasShow ? 'Edit' : 'Create',
-          action: showAction,
-          done: readiness.venuePosterReady,
-        ),
-        ReadinessStep(
-          id: stepIds[5],
-          label: 'Latest revision published',
-          reason: 'Fans see the published version.',
-          actionLabel: hasShow ? 'Republish' : 'Create',
-          action: hasShow
-              ? ReadinessAction.republish
-              : ReadinessAction.createShow,
-          done: readiness.publishedRevisionCurrent,
-        ),
-        ReadinessStep(
-          id: stepIds[6],
-          label: 'Public profile previewed',
-          reason: 'See what hosts and fans see.',
-          actionLabel: 'Preview',
-          action: ReadinessAction.preview,
-          done: setup.publicProfilePreviewed,
-        ),
-        ReadinessStep(
-          id: stepIds[7],
-          label: 'Add social links',
-          reason: 'Hosts check these before booking.',
-          actionLabel: 'Edit',
-          action: ReadinessAction.editLinks,
-          done: setup.socialLinksAdded,
-        ),
-        ReadinessStep(
-          id: stepIds[8],
-          label: 'Invite band members',
-          reason: 'Members can manage gigs with you.',
-          actionLabel: 'Invite',
-          action: ReadinessAction.inviteMembers,
-          done: setup.membersInvited,
-        ),
-      ]),
-    );
+    return ReadinessSnapshot([
+      ReadinessStep(
+        id: bandStepIds[0],
+        label: 'Complete profile',
+        reason: 'Hosts read this first.',
+        actionLabel: 'Edit',
+        action: ReadinessAction.editProfile,
+        done: readiness.profileComplete,
+      ),
+      ReadinessStep(
+        id: bandStepIds[1],
+        label: 'Profile image',
+        reason: 'Cards and lineups show it.',
+        actionLabel: 'Add',
+        action: ReadinessAction.addMedia,
+        done: readiness.profileImageReady,
+      ),
+      ReadinessStep(
+        id: bandStepIds[2],
+        label: 'Video clip',
+        reason: 'Hosts listen before booking.',
+        actionLabel: 'Add',
+        action: ReadinessAction.addMedia,
+        done: readiness.clipReady,
+      ),
+      ReadinessStep(
+        id: bandStepIds[3],
+        label: 'Published lineup',
+        reason: 'Nearby fans find you through shows.',
+        actionLabel: hasShow ? 'Manage' : 'Create',
+        action: showAction,
+        done: readiness.publishedShowReady,
+      ),
+      ReadinessStep(
+        id: bandStepIds[4],
+        label: 'Venue and readable poster',
+        reason: 'A venue and a readable poster make the listing.',
+        actionLabel: hasShow ? 'Edit' : 'Create',
+        action: showAction,
+        done: readiness.venuePosterReady,
+      ),
+      ReadinessStep(
+        id: bandStepIds[5],
+        label: 'Latest revision published',
+        reason: 'Fans see the published version.',
+        actionLabel: hasShow ? 'Republish' : 'Create',
+        action: hasShow
+            ? ReadinessAction.republish
+            : ReadinessAction.createShow,
+        done: readiness.publishedRevisionCurrent,
+      ),
+      ReadinessStep(
+        id: bandStepIds[6],
+        label: 'Public profile previewed',
+        reason: 'See what hosts and fans see.',
+        actionLabel: 'Preview',
+        action: ReadinessAction.preview,
+        done: setup.publicProfilePreviewed,
+      ),
+      ReadinessStep(
+        id: bandStepIds[7],
+        label: 'Add social links',
+        reason: 'Hosts check these before booking.',
+        actionLabel: 'Edit',
+        action: ReadinessAction.editLinks,
+        done: setup.socialLinksAdded,
+      ),
+      ReadinessStep(
+        id: bandStepIds[8],
+        label: 'Invite band members',
+        reason: 'Members can manage gigs with you.',
+        actionLabel: 'Invite',
+        action: ReadinessAction.inviteMembers,
+        done: setup.membersInvited,
+      ),
+    ]);
   }
+
+  /// The host checklist: a complete organization profile and a finance setup
+  /// that can take deposits and pay out.
+  factory ReadinessSnapshot.host({
+    required bool profileComplete,
+    required bool financeReady,
+  }) => ReadinessSnapshot([
+    ReadinessStep(
+      id: hostStepIds[0],
+      label: 'Complete profile',
+      reason: 'Artists check this before applying.',
+      actionLabel: 'Edit',
+      action: ReadinessAction.editOrgProfile,
+      done: profileComplete,
+    ),
+    ReadinessStep(
+      id: hostStepIds[1],
+      label: 'Set up finance',
+      reason: 'Deposits and payouts need it.',
+      actionLabel: 'Set up',
+      action: ReadinessAction.setUpFinance,
+      done: financeReady,
+    ),
+  ]);
+
+  int get total => steps.length;
+
+  /// Ids of every step, in checklist order.
+  List<String> get stepIds => [for (final step in steps) step.id];
 
   int get done => steps.where((step) => step.done).length;
 

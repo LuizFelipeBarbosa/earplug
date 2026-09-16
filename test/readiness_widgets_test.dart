@@ -5,13 +5,17 @@ import 'package:earplug/date_names.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/readiness_memory.dart';
+import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/readiness_module.dart';
+import 'package:earplug/widgets/readiness_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
+const _b1 = 'band:b1';
 const _profile = 'band-discovery-profile';
 const _image = 'band-discovery-image';
 const _clip = 'band-discovery-clip';
@@ -85,7 +89,7 @@ Future<AppHarness> _pump(
     now: now,
     size: size,
     home: Scaffold(
-      body: ListView(children: const [ReadinessModule(bandId: 'b1')]),
+      body: ListView(children: const [ReadinessModule(scopeKey: _b1)]),
     ),
   );
   harness.app.switchToBand('b1');
@@ -97,11 +101,54 @@ Future<AppHarness> _pump(
 /// is a regression stamped with the app clock.
 MemoryReadinessMemoryStore _storeRememberingImage() =>
     MemoryReadinessMemoryStore({
-      'b1': ReadinessMemory(
+      _b1: ReadinessMemory(
         doneIds: {..._doneInDemo, _image},
         seenAt: DateTime(2026, 9, 1),
       ),
     });
+
+/// An app whose host hook is wired, standing in for the organizer lane that
+/// will fill it from live organization data.
+class _HostReadyAppState extends AppState {
+  _HostReadyAppState({
+    required super.repository,
+    required super.auth,
+    required this.snapshot,
+  }) : super(readinessMemoryStore: MemoryReadinessMemoryStore());
+
+  final ReadinessSnapshot snapshot;
+  final List<String> askedFor = [];
+
+  @override
+  ReadinessSnapshot? hostReadinessSnapshotFor(String orgId) {
+    askedFor.add(orgId);
+    return snapshot;
+  }
+}
+
+/// [home] under a host-ready app for `org1`, with the same theme and
+/// provider the app harness uses.
+Future<_HostReadyAppState> _pumpHost(
+  WidgetTester tester, {
+  required ReadinessSnapshot snapshot,
+  required Widget home,
+}) async {
+  final auth = FakeAuthService();
+  await auth.signInDemo();
+  final app = _HostReadyAppState(
+    repository: StubRepository(auth: auth),
+    auth: auth,
+    snapshot: snapshot,
+  );
+  await tester.pumpWidget(
+    ChangeNotifierProvider<AppState>(
+      create: (_) => app,
+      child: MaterialApp(theme: buildEpTheme(), home: home),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return app;
+}
 
 Finder _inSheet(Finder finder) =>
     find.descendant(of: find.byKey(_sheet), matching: finder);
@@ -190,7 +237,7 @@ void main() {
       setup: _setup(socialLinksAdded: true),
     );
 
-    expect(harness.app.readinessSnapshotFor('b1')!.complete, isTrue);
+    expect(harness.app.readinessSnapshotFor(_b1)!.complete, isTrue);
     expect(find.byKey(_module), findsNothing);
     expect(find.text('READINESS'), findsNothing);
   });
@@ -198,7 +245,7 @@ void main() {
   testWidgets('a missing snapshot renders nothing', (tester) async {
     final harness = await _pump(tester, readinessPending: true);
 
-    expect(harness.app.readinessSnapshotFor('b1'), isNull);
+    expect(harness.app.readinessSnapshotFor(_b1), isNull);
     expect(find.byKey(_module), findsNothing);
     // The module is mounted but takes no space, so the list keeps it offstage.
     expect(find.byType(ReadinessModule, skipOffstage: false), findsOne);
@@ -276,7 +323,7 @@ void main() {
       now: DateTime.now,
     );
     final app = harness.app;
-    expect(app.readinessRegressionFor('b1')!.stepIds, [_image]);
+    expect(app.readinessRegressionFor(_b1)!.stepIds, [_image]);
 
     // The sheet opened itself on the first build with the regression.
     final sheet = find.byKey(_sheet);
@@ -295,8 +342,8 @@ void main() {
 
     await _closeSheet(tester);
     expect(sheet, findsNothing);
-    expect(app.readinessRegressionFor('b1'), isNotNull);
-    expect(app.readinessSheetShouldAutoOpen('b1'), isFalse);
+    expect(app.readinessRegressionFor(_b1), isNotNull);
+    expect(app.readinessSheetShouldAutoOpen(_b1), isFalse);
 
     // The module still flags the regression but a later build stays quiet.
     expect(find.byKey(_module), findsOne);
@@ -330,8 +377,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(_sheet), findsNothing);
-    expect(harness.app.readinessSheetShouldAutoOpen('b1'), isFalse);
-    expect((await store.read('b1'))!.regressionAcknowledged, isTrue);
+    expect(harness.app.readinessSheetShouldAutoOpen(_b1), isFalse);
+    expect((await store.read(_b1))!.regressionAcknowledged, isTrue);
   });
 
   testWidgets('module and sheet fit a 390 wide phone at text scale 1.3', (
@@ -361,5 +408,79 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('HIDE COMPLETED'), findsOne);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a host scope renders its two steps out of the same module', (
+    tester,
+  ) async {
+    final app = await _pumpHost(
+      tester,
+      snapshot: ReadinessSnapshot.host(
+        profileComplete: true,
+        financeReady: false,
+      ),
+      home: Scaffold(
+        body: ListView(children: const [ReadinessModule(scopeKey: 'org:org1')]),
+      ),
+    );
+
+    expect(app.askedFor, contains('org1'));
+    expect(find.byKey(_module), findsOne);
+    expect(find.text('1 OF 2'), findsOne);
+    expect(find.byKey(const ValueKey('readiness-segment-0')), findsOne);
+    expect(find.byKey(const ValueKey('readiness-segment-1')), findsOne);
+    expect(find.byKey(const ValueKey('readiness-segment-2')), findsNothing);
+    expect(find.byKey(const ValueKey('org-setup-finance')), findsOne);
+    expect(find.byKey(const ValueKey('org-setup-profile')), findsNothing);
+    expect(find.text('Set up finance'), findsOne);
+    expect(find.text('VIEW 1 COMPLETED'), findsOne);
+
+    await tester.tap(find.byKey(_module));
+    await tester.pumpAndSettle();
+    expect(_inSheet(find.text('1 OF 2')), findsOne);
+    expect(find.text('TO DO · 1'), findsOne);
+    expect(find.text('DONE · 1'), findsOne);
+    expect(find.text('DEPOSITS AND PAYOUTS NEED IT.'), findsOne);
+
+    await tester.tap(
+      find.byKey(const ValueKey('readiness-action-org-setup-finance')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(_sheet), findsNothing);
+    expect(app.organizationId, 'org1');
+    expect(app.current.screen, Screen.orgFinance);
+  });
+
+  testWidgets('a complete host scope reads 2 OF 2 in the sheet and hides the '
+      'module', (tester) async {
+    await _pumpHost(
+      tester,
+      snapshot: ReadinessSnapshot.host(
+        profileComplete: true,
+        financeReady: true,
+      ),
+      home: const Scaffold(
+        body: Column(
+          children: [
+            ReadinessModule(scopeKey: 'org:org1'),
+            Expanded(child: ReadinessSheet(scopeKey: 'org:org1')),
+          ],
+        ),
+      ),
+    );
+
+    expect(find.byKey(_module), findsNothing);
+    expect(find.byKey(_sheet), findsOne);
+    expect(find.text('2 OF 2'), findsOne);
+    expect(find.text('TO DO · 0'), findsOne);
+    expect(find.text('DONE · 2'), findsOne);
+    expect(
+      find.byKey(const ValueKey('readiness-done-org-setup-profile')),
+      findsOne,
+    );
+    expect(
+      find.byKey(const ValueKey('readiness-done-org-setup-finance')),
+      findsOne,
+    );
   });
 }

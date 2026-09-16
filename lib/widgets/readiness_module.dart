@@ -8,14 +8,15 @@ import 'ep_rows.dart';
 import 'ep_text.dart';
 import 'readiness_sheet.dart';
 
-/// The dash's compact readiness card: only the steps still to do, with the
-/// finished ones behind a toggle. Renders nothing while the snapshot is
+/// The dash's compact readiness card for one scope (`band:<bandId>` or
+/// `org:<orgId>`): only the steps still to do, with the finished ones behind
+/// a toggle. Renders nothing while the snapshot is
 /// loading (the dash owns the retry affordance) and nothing once every step
 /// is done. Tapping the card opens [ReadinessSheet].
 class ReadinessModule extends StatefulWidget {
-  const ReadinessModule({super.key, required this.bandId});
+  const ReadinessModule({super.key, required this.scopeKey});
 
-  final String bandId;
+  final String scopeKey;
 
   @override
   State<ReadinessModule> createState() => _ReadinessModuleState();
@@ -27,15 +28,15 @@ class _ReadinessModuleState extends State<ReadinessModule> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final bandId = widget.bandId;
-    final snapshot = app.readinessSnapshotFor(bandId);
+    final scopeKey = widget.scopeKey;
+    final snapshot = app.readinessSnapshotFor(scopeKey);
     if (snapshot == null || snapshot.complete) return const SizedBox.shrink();
 
     // The state hands out each regression's auto-open exactly once, so a
     // rebuild while the sheet is up never stacks a second one.
-    if (app.readinessSheetShouldAutoOpen(bandId)) {
+    if (app.readinessSheetShouldAutoOpen(scopeKey)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) showReadinessSheet(context, bandId);
+        if (mounted) showReadinessSheet(context, scopeKey);
       });
     }
 
@@ -43,7 +44,7 @@ class _ReadinessModuleState extends State<ReadinessModule> {
     final finished = snapshot.finished;
     return EpCard(
       key: const Key('band-readiness'),
-      onTap: () => showReadinessSheet(context, bandId),
+      onTap: () => showReadinessSheet(context, scopeKey),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -52,12 +53,12 @@ class _ReadinessModuleState extends State<ReadinessModule> {
               const Expanded(child: EpEyebrow('Readiness')),
               const SizedBox(width: 12),
               EpEyebrow(
-                '${snapshot.done} of ${ReadinessSnapshot.total}',
+                '${snapshot.done} of ${snapshot.total}',
                 key: const Key('band-readiness-count'),
               ),
             ],
           ),
-          if (app.readinessRegressionFor(bandId) != null) ...[
+          if (app.readinessRegressionFor(scopeKey) != null) ...[
             const SizedBox(height: 8),
             const Align(
               alignment: Alignment.centerLeft,
@@ -68,7 +69,7 @@ class _ReadinessModuleState extends State<ReadinessModule> {
             ),
           ],
           const SizedBox(height: 12),
-          EpReadinessBar(done: snapshot.done, total: ReadinessSnapshot.total),
+          EpReadinessBar(done: snapshot.done, total: snapshot.total),
           const SizedBox(height: 4),
           for (final step in snapshot.todo)
             EpChecklistRow(
@@ -76,7 +77,7 @@ class _ReadinessModuleState extends State<ReadinessModule> {
               done: false,
               label: step.label,
               actionLabel: step.actionLabel,
-              onAction: () => app.performReadinessAction(bandId, step.action),
+              onAction: () => app.performReadinessAction(scopeKey, step.action),
             ),
           if (_showCompleted)
             for (final step in finished)

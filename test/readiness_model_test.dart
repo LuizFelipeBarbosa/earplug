@@ -42,26 +42,26 @@ BandSetupStatus _setup({
 );
 
 void main() {
-  test('null until both sources have loaded', () {
-    expect(ReadinessSnapshot.from(readiness: null, setup: null), isNull);
+  test('band snapshot is null until both sources have loaded', () {
+    expect(ReadinessSnapshot.band(readiness: null, setup: null), isNull);
     expect(
-      ReadinessSnapshot.from(readiness: _readiness(), setup: null),
+      ReadinessSnapshot.band(readiness: _readiness(), setup: null),
       isNull,
     );
-    expect(ReadinessSnapshot.from(readiness: null, setup: _setup()), isNull);
+    expect(ReadinessSnapshot.band(readiness: null, setup: _setup()), isNull);
     expect(
-      ReadinessSnapshot.from(readiness: _readiness(), setup: _setup()),
+      ReadinessSnapshot.band(readiness: _readiness(), setup: _setup()),
       isNotNull,
     );
   });
 
-  test('nine steps in checklist order with their copy', () {
-    final snapshot = ReadinessSnapshot.from(
+  test('band snapshot has nine steps in checklist order with their copy', () {
+    final snapshot = ReadinessSnapshot.band(
       readiness: _readiness(),
       setup: _setup(),
     )!;
 
-    expect(ReadinessSnapshot.total, 9);
+    expect(snapshot.total, 9);
     expect(snapshot.steps, hasLength(9));
     expect(snapshot.steps.map((step) => step.id), [
       'band-discovery-profile',
@@ -74,7 +74,7 @@ void main() {
       'band-setup-social',
       'band-setup-members',
     ]);
-    expect(snapshot.steps.map((step) => step.id), ReadinessSnapshot.stepIds);
+    expect(snapshot.stepIds, ReadinessSnapshot.bandStepIds);
     expect(snapshot.steps.map((step) => step.label), [
       'Complete profile',
       'Profile image',
@@ -101,7 +101,7 @@ void main() {
   });
 
   test('done, todo and finished follow each source flag', () {
-    final snapshot = ReadinessSnapshot.from(
+    final snapshot = ReadinessSnapshot.band(
       readiness: _readiness(clipReady: false, venuePosterReady: false),
       setup: _setup(membersInvited: false),
     )!;
@@ -131,8 +131,8 @@ void main() {
     });
   });
 
-  test('all nine done is complete', () {
-    final snapshot = ReadinessSnapshot.from(
+  test('all nine band steps done is complete', () {
+    final snapshot = ReadinessSnapshot.band(
       readiness: _readiness(),
       setup: _setup(),
     )!;
@@ -143,7 +143,7 @@ void main() {
   });
 
   test('show steps create a gig when the band has no relevant show', () {
-    final snapshot = ReadinessSnapshot.from(
+    final snapshot = ReadinessSnapshot.band(
       readiness: _readiness(),
       setup: _setup(),
     )!;
@@ -160,7 +160,7 @@ void main() {
   });
 
   test('show steps manage or republish the relevant show when one exists', () {
-    final snapshot = ReadinessSnapshot.from(
+    final snapshot = ReadinessSnapshot.band(
       readiness: _readiness(relevantShow: _show),
       setup: _setup(),
     )!;
@@ -175,7 +175,7 @@ void main() {
   });
 
   test('the other steps keep their fixed actions', () {
-    final snapshot = ReadinessSnapshot.from(
+    final snapshot = ReadinessSnapshot.band(
       readiness: _readiness(),
       setup: _setup(),
     )!;
@@ -193,5 +193,74 @@ void main() {
     expect(byId['band-setup-social']!.actionLabel, 'Edit');
     expect(byId['band-setup-members']!.action, ReadinessAction.inviteMembers);
     expect(byId['band-setup-members']!.actionLabel, 'Invite');
+  });
+
+  test('total is the number of steps the snapshot holds', () {
+    const step = ReadinessStep(
+      id: 'x',
+      label: 'X',
+      reason: 'Because.',
+      actionLabel: 'Do',
+      action: ReadinessAction.preview,
+      done: true,
+    );
+    final snapshot = ReadinessSnapshot(const [step, step, step]);
+    expect(snapshot.total, 3);
+    expect(snapshot.done, 3);
+    expect(snapshot.complete, isTrue);
+    expect(snapshot.steps.clear, throwsUnsupportedError);
+    expect(ReadinessSnapshot(const []).total, 0);
+  });
+
+  test('host snapshot has two steps with their copy and actions', () {
+    final snapshot = ReadinessSnapshot.host(
+      profileComplete: false,
+      financeReady: false,
+    );
+
+    expect(snapshot.total, 2);
+    expect(snapshot.steps, hasLength(2));
+    expect(snapshot.stepIds, ['org-setup-profile', 'org-setup-finance']);
+    expect(snapshot.stepIds, ReadinessSnapshot.hostStepIds);
+    expect(snapshot.steps.map((step) => step.label), [
+      'Complete profile',
+      'Set up finance',
+    ]);
+    expect(snapshot.steps.map((step) => step.reason), [
+      'Artists check this before applying.',
+      'Deposits and payouts need it.',
+    ]);
+    expect(snapshot.steps.map((step) => step.actionLabel), ['Edit', 'Set up']);
+    expect(snapshot.steps.map((step) => step.action), [
+      ReadinessAction.editOrgProfile,
+      ReadinessAction.setUpFinance,
+    ]);
+    expect(snapshot.done, 0);
+    expect(snapshot.complete, isFalse);
+    expect(snapshot.todo, hasLength(2));
+    expect(snapshot.finished, isEmpty);
+    expect(snapshot.steps.clear, throwsUnsupportedError);
+  });
+
+  test('host snapshot follows each flag and is complete at 2 of 2', () {
+    final half = ReadinessSnapshot.host(
+      profileComplete: true,
+      financeReady: false,
+    );
+    expect(half.done, 1);
+    expect(half.complete, isFalse);
+    expect(half.todo.map((step) => step.id), ['org-setup-finance']);
+    expect(half.doneIds, {'org-setup-profile'});
+
+    final full = ReadinessSnapshot.host(
+      profileComplete: true,
+      financeReady: true,
+    );
+    expect(full.done, 2);
+    expect(full.total, 2);
+    expect('${full.done} of ${full.total}', '2 of 2');
+    expect(full.complete, isTrue);
+    expect(full.todo, isEmpty);
+    expect(full.finished.map((step) => step.id), ReadinessSnapshot.hostStepIds);
   });
 }

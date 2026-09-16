@@ -91,13 +91,16 @@ void main() {
   });
 
   group('MemoryReadinessMemoryStore', () {
-    test('starts empty and keeps one record per band', () async {
+    test('starts empty and keeps one record per scope', () async {
       final store = MemoryReadinessMemoryStore();
-      expect(await store.read('b1'), isNull);
+      expect(await store.read('band:b1'), isNull);
 
-      await store.write('b1', _regressed());
-      expect((await store.read('b1'))!.regressedIds, {'band-discovery-image'});
-      expect(await store.read('b2'), isNull);
+      await store.write('band:b1', _regressed());
+      expect((await store.read('band:b1'))!.regressedIds, {
+        'band-discovery-image',
+      });
+      expect(await store.read('band:b2'), isNull);
+      expect(await store.read('org:b1'), isNull);
     });
   });
 
@@ -108,35 +111,68 @@ void main() {
     });
     tearDown(() => SharedPreferencesAsyncPlatform.instance = null);
 
-    test(
-      'reads missing bands as null and persists under a per-band key',
-      () async {
-        final preferences = SharedPreferencesAsync();
-        final store = PrefsReadinessMemoryStore(preferences: preferences);
-        expect(await store.read('b1'), isNull);
+    test('reads missing bands as null and persists a band scope under the '
+        'legacy per-band key', () async {
+      final preferences = SharedPreferencesAsync();
+      final store = PrefsReadinessMemoryStore(preferences: preferences);
+      expect(await store.read('band:b1'), isNull);
 
-        await store.write('b1', _regressed());
+      await store.write('band:b1', _regressed());
 
-        final stored = await preferences.getString('readiness-memory-b1');
-        expect(stored, isNotNull);
-        expect(
-          ReadinessMemory.decode(stored!)!.hasSameStateAs(_regressed()),
-          isTrue,
-        );
-        expect(await preferences.getString('readiness-memory-b2'), isNull);
+      final stored = await preferences.getString('readiness-memory-b1');
+      expect(stored, isNotNull);
+      expect(
+        ReadinessMemory.decode(stored!)!.hasSameStateAs(_regressed()),
+        isTrue,
+      );
+      expect(await preferences.getString('readiness-memory-band:b1'), isNull);
+      expect(await preferences.getString('readiness-memory-b2'), isNull);
 
-        final reread = (await PrefsReadinessMemoryStore().read('b1'))!;
-        expect(reread.hasSameStateAs(_regressed()), isTrue);
-        expect(reread.seenAt, _seenAt);
-        expect(await PrefsReadinessMemoryStore().read('b2'), isNull);
-      },
-    );
+      final reread = (await PrefsReadinessMemoryStore().read('band:b1'))!;
+      expect(reread.hasSameStateAs(_regressed()), isTrue);
+      expect(reread.seenAt, _seenAt);
+      expect(await PrefsReadinessMemoryStore().read('band:b2'), isNull);
+    });
+
+    test('a band scope reads a record written before scope keys', () async {
+      final preferences = SharedPreferencesAsync();
+      await preferences.setString('readiness-memory-b1', _regressed().encode());
+
+      final store = PrefsReadinessMemoryStore(preferences: preferences);
+      expect(
+        (await store.read('band:b1'))!.hasSameStateAs(_regressed()),
+        isTrue,
+      );
+      expect(await store.read('org:b1'), isNull);
+    });
+
+    test('an org scope persists under its own scoped key', () async {
+      final preferences = SharedPreferencesAsync();
+      final store = PrefsReadinessMemoryStore(preferences: preferences);
+
+      await store.write('org:o1', _regressed());
+
+      final stored = await preferences.getString('readiness-memory-org:o1');
+      expect(stored, isNotNull);
+      expect(
+        ReadinessMemory.decode(stored!)!.hasSameStateAs(_regressed()),
+        isTrue,
+      );
+      expect(await preferences.getString('readiness-memory-o1'), isNull);
+      expect(
+        (await store.read('org:o1'))!.hasSameStateAs(_regressed()),
+        isTrue,
+      );
+      expect(await store.read('band:o1'), isNull);
+    });
 
     test('a corrupt record reads as null', () async {
       final preferences = SharedPreferencesAsync();
       await preferences.setString('readiness-memory-b1', '{broken');
       expect(
-        await PrefsReadinessMemoryStore(preferences: preferences).read('b1'),
+        await PrefsReadinessMemoryStore(
+          preferences: preferences,
+        ).read('band:b1'),
         isNull,
       );
     });
@@ -144,8 +180,8 @@ void main() {
     test('storage is lazy and unavailable platforms do not throw', () async {
       SharedPreferencesAsyncPlatform.instance = null;
       final store = PrefsReadinessMemoryStore();
-      expect(await store.read('b1'), isNull);
-      await expectLater(store.write('b1', _regressed()), completes);
+      expect(await store.read('band:b1'), isNull);
+      await expectLater(store.write('band:b1', _regressed()), completes);
     });
   });
 }

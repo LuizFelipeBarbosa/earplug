@@ -2,8 +2,9 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// What a band's readiness checklist looked like the last time it was seen,
-/// plus any regression noticed since: steps that were done and later failed.
+/// What a readiness checklist looked like the last time it was seen, plus
+/// any regression noticed since: steps that were done and later failed. One
+/// record per scope key (`band:<bandId>`, `org:<orgId>`).
 class ReadinessMemory {
   final Set<String> doneIds;
   final DateTime seenAt;
@@ -70,7 +71,7 @@ class ReadinessMemory {
   String encode() => jsonEncode(toJson());
 
   /// Null for anything that is not a JSON object; a corrupt record starts
-  /// the band's memory over rather than failing the read.
+  /// the scope's memory over rather than failing the read.
   static ReadinessMemory? decode(String source) {
     try {
       final decoded = jsonDecode(source);
@@ -92,8 +93,8 @@ class ReadinessMemory {
 }
 
 abstract class ReadinessMemoryStore {
-  Future<ReadinessMemory?> read(String bandId);
-  Future<void> write(String bandId, ReadinessMemory memory);
+  Future<ReadinessMemory?> read(String scopeKey);
+  Future<void> write(String scopeKey, ReadinessMemory memory);
 }
 
 class MemoryReadinessMemoryStore implements ReadinessMemoryStore {
@@ -103,11 +104,11 @@ class MemoryReadinessMemoryStore implements ReadinessMemoryStore {
   final Map<String, ReadinessMemory> _memories;
 
   @override
-  Future<ReadinessMemory?> read(String bandId) async => _memories[bandId];
+  Future<ReadinessMemory?> read(String scopeKey) async => _memories[scopeKey];
 
   @override
-  Future<void> write(String bandId, ReadinessMemory memory) async {
-    _memories[bandId] = memory;
+  Future<void> write(String scopeKey, ReadinessMemory memory) async {
+    _memories[scopeKey] = memory;
   }
 }
 
@@ -116,13 +117,22 @@ class PrefsReadinessMemoryStore implements ReadinessMemoryStore {
 
   SharedPreferencesAsync? _preferences;
 
-  static String _key(String bandId) => 'readiness-memory-$bandId';
+  static const _bandScopePrefix = 'band:';
+
+  /// Band memories predate scope keys and were stored under the bare band id;
+  /// keeping that key means nothing is forgotten on upgrade.
+  static String _key(String scopeKey) {
+    final legacyBandId = scopeKey.startsWith(_bandScopePrefix)
+        ? scopeKey.substring(_bandScopePrefix.length)
+        : null;
+    return 'readiness-memory-${legacyBandId ?? scopeKey}';
+  }
 
   @override
-  Future<ReadinessMemory?> read(String bandId) async {
+  Future<ReadinessMemory?> read(String scopeKey) async {
     try {
       final preferences = _preferences ??= SharedPreferencesAsync();
-      final stored = await preferences.getString(_key(bandId));
+      final stored = await preferences.getString(_key(scopeKey));
       return stored == null ? null : ReadinessMemory.decode(stored);
     } on Object {
       // Readiness memory is optional; unavailable storage starts fresh.
@@ -131,10 +141,10 @@ class PrefsReadinessMemoryStore implements ReadinessMemoryStore {
   }
 
   @override
-  Future<void> write(String bandId, ReadinessMemory memory) async {
+  Future<void> write(String scopeKey, ReadinessMemory memory) async {
     try {
       final preferences = _preferences ??= SharedPreferencesAsync();
-      await preferences.setString(_key(bandId), memory.encode());
+      await preferences.setString(_key(scopeKey), memory.encode());
     } on Object {
       // Storage failure must not interrupt the dashboard.
     }

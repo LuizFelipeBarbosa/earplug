@@ -10,35 +10,36 @@ import 'ep_sheet.dart';
 import 'ep_text.dart';
 import 'sheets.dart';
 
-/// Presents the full readiness checklist for [bandId]. Every way of leaving
+/// Presents the full readiness checklist for [scopeKey] (`band:<bandId>` or
+/// `org:<orgId>`). Every way of leaving
 /// the sheet (close button, barrier tap, drag) acknowledges the regression it
 /// was showing, so the sheet never auto-opens twice for the same one.
-Future<void> showReadinessSheet(BuildContext context, String bandId) async {
+Future<void> showReadinessSheet(BuildContext context, String scopeKey) async {
   final app = context.read<AppState>();
-  await showEpSheet(context, (_) => ReadinessSheet(bandId: bandId));
-  app.acknowledgeReadinessRegression(bandId);
+  await showEpSheet(context, (_) => ReadinessSheet(scopeKey: scopeKey));
+  app.acknowledgeReadinessRegression(scopeKey);
 }
 
-/// The nine readiness steps split into what is left and what is done, with
-/// the regression banner when a step that used to pass now fails.
+/// The readiness steps split into what is left and what is done, with the
+/// regression banner when a step that used to pass now fails.
 class ReadinessSheet extends StatelessWidget {
-  const ReadinessSheet({super.key, required this.bandId});
+  const ReadinessSheet({super.key, required this.scopeKey});
 
-  final String bandId;
+  final String scopeKey;
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final palette = context.epColors;
-    final snapshot = app.readinessSnapshotFor(bandId);
-    final regression = app.readinessRegressionFor(bandId);
+    final snapshot = app.readinessSnapshotFor(scopeKey);
+    final regression = app.readinessRegressionFor(scopeKey);
     final steps = snapshot?.steps ?? const <ReadinessStep>[];
     final todo = snapshot?.todo ?? const <ReadinessStep>[];
     final finished = snapshot?.finished ?? const <ReadinessStep>[];
 
     void act(ReadinessStep step) {
       Navigator.of(context).pop();
-      app.performReadinessAction(bandId, step.action);
+      app.performReadinessAction(scopeKey, step.action);
     }
 
     return EpSheetShell(
@@ -58,7 +59,7 @@ class ReadinessSheet extends StatelessWidget {
           const SizedBox(width: 12),
           const Expanded(child: EpEyebrow('Readiness')),
           const SizedBox(width: 12),
-          EpEyebrow('${snapshot?.done ?? 0} of ${ReadinessSnapshot.total}'),
+          EpEyebrow('${snapshot?.done ?? 0} of ${snapshot?.total ?? 0}'),
         ],
       ),
       children: [
@@ -73,10 +74,7 @@ class ReadinessSheet extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 16),
-        EpReadinessBar(
-          done: snapshot?.done ?? 0,
-          total: ReadinessSnapshot.total,
-        ),
+        EpReadinessBar(done: snapshot?.done ?? 0, total: snapshot?.total ?? 0),
         const SizedBox(height: 24),
         EpEyebrow('To do · ${todo.length}'),
         const SizedBox(height: 8),
