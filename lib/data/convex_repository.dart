@@ -1295,6 +1295,47 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<List<BandMember>> bandMembers(String bandId) =>
+      _queryList('bandMembers:list', BandMember.fromJson, {'bandId': bandId});
+
+  @override
+  Future<void> setBandMemberRole({
+    required String bandId,
+    required String userId,
+    required BandMemberRole role,
+  }) async {
+    await _convexService.mutation('bandMembers:setRole', {
+      'bandId': bandId,
+      'userId': userId,
+      'role': role.wireValue,
+    });
+  }
+
+  @override
+  Future<void> removeBandMember({
+    required String bandId,
+    required String userId,
+  }) async {
+    await _convexService.mutation('bandMembers:remove', {
+      'bandId': bandId,
+      'userId': userId,
+    });
+  }
+
+  @override
+  Future<void> addBandMember({
+    required String bandId,
+    required String userId,
+    BandMemberRole role = BandMemberRole.member,
+  }) async {
+    await _convexService.mutation('bandMembers:add', {
+      'bandId': bandId,
+      'userId': userId,
+      'role': role.wireValue,
+    });
+  }
+
+  @override
   Future<BandInvite?> bandInvite(String bandId) async {
     return _queryOptional('bandInvites:manage', BandInvite.fromJson, {
       'bandId': bandId,

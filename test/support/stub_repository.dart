@@ -39,6 +39,7 @@ class StubRepository extends DemoRepository {
   static const Set<String> futureMethods = {
     'acceptBandInvite',
     'acceptOrganizationInvite',
+    'addBandMember',
     'addBandMedia',
     'adminBookings',
     'archiveBand',
@@ -49,6 +50,7 @@ class StubRepository extends DemoRepository {
     'bandDiscoveryReadiness',
     'bandHistory',
     'bandInvite',
+    'bandMembers',
     'bandPayoutStatement',
     'bandPayoutStatus',
     'bandProfileDetails',
@@ -110,6 +112,7 @@ class StubRepository extends DemoRepository {
     'refreshFinanceBalance',
     'refreshOrganizationAccountStatus',
     'refundsForBooking',
+    'removeBandMember',
     'removeOrganizationMember',
     'reorderMedia',
     'reserveTickets',
@@ -126,6 +129,7 @@ class StubRepository extends DemoRepository {
     'setApplicationHostNote',
     'setBandAvatar',
     'setBandBanner',
+    'setBandMemberRole',
     'setVenueAddressDisclosure',
     'startBandOnboarding',
     'startDisputeReview',
@@ -305,6 +309,15 @@ class StubRepository extends DemoRepository {
     () => super.adminBookings(filter: filter, cursor: cursor, numItems: numItems),
   );
   @override
+  Future<void> addBandMember({
+    required String bandId,
+    required String userId,
+    BandMemberRole role = BandMemberRole.member,
+  }) => intercept(
+    'addBandMember',
+    () => super.addBandMember(bandId: bandId, userId: userId, role: role),
+  );
+  @override
   Future<BandArchiveResult> archiveBand(String bandId) =>
       intercept('archiveBand', () => super.archiveBand(bandId));
   @override
@@ -327,6 +340,9 @@ class StubRepository extends DemoRepository {
   @override
   Future<BandInvite?> bandInvite(String bandId) =>
       intercept('bandInvite', () => super.bandInvite(bandId));
+  @override
+  Future<List<BandMember>> bandMembers(String bandId) =>
+      intercept('bandMembers', () => super.bandMembers(bandId));
   @override
   Future<PayoutStatement> bandPayoutStatement(
     String bandId, {
@@ -607,6 +623,9 @@ class StubRepository extends DemoRepository {
   Future<List<RefundRecord>> refundsForBooking(String bookingId) =>
       intercept('refundsForBooking', () => super.refundsForBooking(bookingId));
   @override
+  Future<void> removeBandMember({required String bandId, required String userId}) =>
+      intercept('removeBandMember', () => super.removeBandMember(bandId: bandId, userId: userId));
+  @override
   Future<void> removeOrganizationMember({required String organizationId, required String userId}) =>
       intercept(
         'removeOrganizationMember',
@@ -782,6 +801,15 @@ class StubRepository extends DemoRepository {
   @override
   Future<void> setBandBanner({required String bandId, required String mediaId}) =>
       intercept('setBandBanner', () => super.setBandBanner(bandId: bandId, mediaId: mediaId));
+  @override
+  Future<void> setBandMemberRole({
+    required String bandId,
+    required String userId,
+    required BandMemberRole role,
+  }) => intercept(
+    'setBandMemberRole',
+    () => super.setBandMemberRole(bandId: bandId, userId: userId, role: role),
+  );
   @override
   Future<void> setVenueAddressDisclosure({
     required String venueId,

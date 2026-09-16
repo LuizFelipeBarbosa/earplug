@@ -779,6 +779,22 @@ abstract class EarplugRepository {
     DateTime? now,
   });
   Future<void> markBandPreviewed(String bandId);
+  // Band members: `bandMembers:list` returns admins first, then by name.
+  Future<List<BandMember>> bandMembers(String bandId);
+  Future<void> setBandMemberRole({
+    required String bandId,
+    required String userId,
+    required BandMemberRole role,
+  });
+  Future<void> removeBandMember({
+    required String bandId,
+    required String userId,
+  });
+  Future<void> addBandMember({
+    required String bandId,
+    required String userId,
+    BandMemberRole role = BandMemberRole.member,
+  });
   Future<BandInvite?> bandInvite(String bandId);
   Future<BandInvite> createBandInvite(String bandId);
   Future<BandInvite> rotateBandInvite(String bandId);

@@ -5631,6 +5631,59 @@ class BandProfileDetails {
   static const empty = BandProfileDetails(memberNames: []);
 }
 
+/// A band membership role as `bandMembers:*` exchange it.
+enum BandMemberRole {
+  admin('admin', 'Admin'),
+  member('member', 'Member');
+
+  const BandMemberRole(this.wireValue, this.label);
+
+  final String wireValue;
+  final String label;
+
+  static BandMemberRole fromWire(Object? value) =>
+      value == 'admin' ? BandMemberRole.admin : BandMemberRole.member;
+}
+
+/// One row of `bandMembers:list`: a band member with their role, flagged
+/// when it is the signed-in user.
+class BandMember {
+  final String userId;
+  final String name;
+  final String? avatarUrl;
+  final BandMemberRole role;
+  final bool isSelf;
+
+  const BandMember({
+    required this.userId,
+    required this.name,
+    this.avatarUrl,
+    required this.role,
+    this.isSelf = false,
+  });
+
+  factory BandMember.fromJson(Map<String, dynamic> json) => BandMember(
+    userId: json['userId'] as String,
+    name: json['name'] as String,
+    avatarUrl: json['avatarUrl'] is String ? json['avatarUrl'] as String : null,
+    role: BandMemberRole.fromWire(json['role']),
+    isSelf: json['isSelf'] == true,
+  );
+
+  BandMember copyWith({
+    String? name,
+    String? avatarUrl,
+    BandMemberRole? role,
+    bool? isSelf,
+  }) => BandMember(
+    userId: userId,
+    name: name ?? this.name,
+    avatarUrl: avatarUrl ?? this.avatarUrl,
+    role: role ?? this.role,
+    isSelf: isSelf ?? this.isSelf,
+  );
+}
+
 /// The seven task-oriented steps shown only to a band's administrators.
 class BandSetupStatus {
   final bool profileComplete;

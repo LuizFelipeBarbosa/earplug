@@ -40,6 +40,8 @@ mixin _BandConsoleState on _AppStateCore {
 
   final Map<String, BandProfileDetails> _bandProfileDetails = {};
   final Set<String> _bandProfileDetailsLoading = {};
+  final Map<String, List<BandMember>> _bandMembers = {};
+  final Set<String> _bandMembersLoading = {};
   final Map<String, BandSetupStatus> _bandSetupStatuses = {};
   final Set<String> _bandSetupLoading = {};
   final Map<String, BandDiscoveryReadiness> _bandDiscoveryReadiness = {};
@@ -136,6 +138,7 @@ mixin _BandConsoleState on _AppStateCore {
     myBands = [];
     bandId = '';
     _bandRoles.clear();
+    _bandMembers.clear();
   }
 
   /// A band's past gigs, or null until the first load lands. Kicks the load off
@@ -280,6 +283,86 @@ mixin _BandConsoleState on _AppStateCore {
       if (!_disposed) notifyListeners();
     }
   }
+
+  /// A band's members with roles, or null until the first load lands. Kicks
+  /// the load off on first read.
+  List<BandMember>? bandMembersFor(String id) {
+    final members = _bandMembers[id];
+    if (members == null) unawaited(refreshBandMembers(id));
+    return members;
+  }
+
+  Future<void> refreshBandMembers(String id) async {
+    if (!_bandMembersLoading.add(id)) return;
+    try {
+      _bandMembers[id] = await repository.bandMembers(id);
+    } catch (error) {
+      logError('bandMembers', error);
+    } finally {
+      _bandMembersLoading.remove(id);
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  Future<void> setBandMemberRole(
+    String id,
+    String userId,
+    BandMemberRole role,
+  ) => _changeBandMembers(
+    id,
+    'setBandMemberRole',
+    () => repository.setBandMemberRole(bandId: id, userId: userId, role: role),
+  );
+
+  Future<void> removeBandMember(String id, String userId) {
+    final removingSelf =
+        _bandMembers[id]?.any(
+          (member) => member.userId == userId && member.isSelf,
+        ) ??
+        false;
+    return _changeBandMembers(
+      id,
+      'removeBandMember',
+      () => repository.removeBandMember(bandId: id, userId: userId),
+      restartMemberships: removingSelf,
+    );
+  }
+
+  Future<void> addBandMember(String id, String userId) => _changeBandMembers(
+    id,
+    'addBandMember',
+    () => repository.addBandMember(bandId: id, userId: userId),
+  );
+
+  /// Runs a member mutation, then refreshes the member list and the profile
+  /// details (the dash member count). Failures surface as a toast and leave
+  /// the cached list untouched; the server enforces admin and last-admin
+  /// rules. Removing oneself may drop the band, so memberships restart too.
+  Future<void> _changeBandMembers(
+    String id,
+    String operation,
+    Future<void> Function() change, {
+    bool restartMemberships = false,
+  }) async {
+    try {
+      await change();
+    } catch (error) {
+      logError(operation, error);
+      if (!_disposed) say(_bandMemberErrorMessage(error));
+      return;
+    }
+    if (_disposed) return;
+    if (restartMemberships) _restartMemberships();
+    await Future.wait([
+      refreshBandMembers(id),
+      loadBandProfileDetails(id, refresh: true),
+    ]);
+  }
+
+  static String _bandMemberErrorMessage(Object error) =>
+      error.toString().toLowerCase().contains('last admin')
+      ? 'Keep at least one admin.'
+      : genericErrorMessage;
 
   BandSetupStatus? setupStatusFor(String id) {
     final status = _bandSetupStatuses[id];

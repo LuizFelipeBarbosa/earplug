@@ -292,7 +292,10 @@ class DemoRepository implements EarplugRepository {
   final Map<String, BandInvite> _bandInvites = {};
   final Map<String, OrganizationInvite> _organizationInvites = {};
   final Map<String, List<String>> _venuePhotoStorageIds = {};
-  final Map<String, Set<String>> _acceptedMemberNames = {};
+
+  /// Members other than the demo user, per band; the demo user's own row
+  /// is derived from `_memberships`.
+  final Map<String, List<BandMember>> _invitedBandMembers = {};
   final Map<String, DateTime> _archivedBands = {};
   FanOnboarding _fanOnboarding = const FanOnboarding(
     preferredCity: null,
@@ -2407,17 +2410,13 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<BandProfileDetails> bandProfileDetails(String bandId) async {
     final band = _bands[bandId];
-    final names = <String>{
-      if (_memberships.any((membership) => membership.band.id == bandId))
-        _userName ?? _auth.displayName ?? 'Band admin',
-      ...?_acceptedMemberNames[bandId],
-    };
+    final members = await bandMembers(bandId);
     return BandProfileDetails(
       credits: band?.credits,
       linkIg: band?.linkIg,
       linkBc: band?.linkBc,
       linkYt: band?.linkYt,
-      memberNames: names.toList(growable: false),
+      memberNames: [for (final member in members) member.name],
     );
   }
 
@@ -2616,8 +2615,8 @@ class DemoRepository implements EarplugRepository {
             avatarUrl: DemoData.people[friendId]?.avatarUrl,
             relation: KnownRelation.friend,
           ),
-      for (final seen in
-          DemoData.seenAttendees[gigId] ??
+      for (final seen
+          in DemoData.seenAttendees[gigId] ??
               const <({String userId, int sharedShows})>[])
         KnownAttendee(
           userId: seen.userId,
@@ -3540,7 +3539,7 @@ class DemoRepository implements EarplugRepository {
       ].any((gig) => gig.lineup.contains(bandId)),
       membersInvited:
           membershipCount > 1 ||
-          (_acceptedMemberNames[bandId]?.isNotEmpty ?? false),
+          (_invitedBandMembers[bandId]?.isNotEmpty ?? false),
       publicProfilePreviewed: _previewedBands.contains(bandId),
     );
   }
@@ -3663,6 +3662,135 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
+  Future<List<BandMember>> bandMembers(String bandId) async {
+    final own = _memberships
+        .where((membership) => membership.band.id == bandId)
+        .firstOrNull;
+    final members = [
+      if (own != null)
+        BandMember(
+          userId: DemoData.demoUserId,
+          name: _userName ?? _auth.displayName ?? 'Band admin',
+          avatarUrl: _avatarUrl,
+          role: BandMemberRole.fromWire(own.role),
+          isSelf: true,
+        ),
+      ...?_invitedBandMembers[bandId],
+    ];
+    int rank(BandMember member) => member.role == BandMemberRole.admin ? 0 : 1;
+    members.sort((a, b) {
+      final byRole = rank(a).compareTo(rank(b));
+      return byRole != 0 ? byRole : a.name.compareTo(b.name);
+    });
+    return members;
+  }
+
+  @override
+  Future<void> setBandMemberRole({
+    required String bandId,
+    required String userId,
+    required BandMemberRole role,
+  }) async {
+    _requireBandAdmin(bandId);
+    final members = await bandMembers(bandId);
+    final target = _bandMemberOrThrow(members, userId);
+    if (target.role == role) return;
+    if (role != BandMemberRole.admin && _isLastAdmin(members, target)) {
+      throw StateError('Cannot demote the last admin.');
+    }
+    if (target.isSelf) {
+      _setOwnBandRole(bandId, role);
+    } else {
+      final invited = _invitedBandMembers[bandId]!;
+      final index = invited.indexWhere((member) => member.userId == userId);
+      invited[index] = target.copyWith(role: role);
+    }
+  }
+
+  @override
+  Future<void> removeBandMember({
+    required String bandId,
+    required String userId,
+  }) async {
+    final members = await bandMembers(bandId);
+    final target = _bandMemberOrThrow(members, userId);
+    if (!target.isSelf) _requireBandAdmin(bandId);
+    if (_isLastAdmin(members, target)) {
+      throw StateError('Cannot remove the last admin.');
+    }
+    if (target.isSelf) {
+      _memberships.removeWhere((membership) => membership.band.id == bandId);
+      _bandsController.add(_currentMemberships());
+    } else {
+      _invitedBandMembers[bandId]?.removeWhere(
+        (member) => member.userId == userId,
+      );
+    }
+  }
+
+  @override
+  Future<void> addBandMember({
+    required String bandId,
+    required String userId,
+    BandMemberRole role = BandMemberRole.member,
+  }) async {
+    _requireBandAdmin(bandId);
+    if (userId == DemoData.demoUserId) return; // Already a member.
+    final person = DemoData.people[userId];
+    if (person == null) throw StateError('User not found.');
+    final invited = _invitedBandMembers.putIfAbsent(bandId, () => []);
+    if (invited.any((member) => member.userId == userId)) return;
+    invited.add(
+      BandMember(
+        userId: person.id,
+        name: person.name,
+        avatarUrl: person.avatarUrl,
+        role: role,
+      ),
+    );
+  }
+
+  void _requireBandAdmin(String bandId) {
+    final isAdmin = _memberships.any(
+      (membership) =>
+          membership.band.id == bandId && membership.role == 'admin',
+    );
+    if (!isAdmin) throw StateError('Band admin access required.');
+  }
+
+  static BandMember _bandMemberOrThrow(
+    List<BandMember> members,
+    String userId,
+  ) {
+    final member = members
+        .where((member) => member.userId == userId)
+        .firstOrNull;
+    if (member == null) throw StateError('Not a band member.');
+    return member;
+  }
+
+  static bool _isLastAdmin(List<BandMember> members, BandMember target) =>
+      target.role == BandMemberRole.admin &&
+      members.every(
+        (member) =>
+            member.userId == target.userId ||
+            member.role != BandMemberRole.admin,
+      );
+
+  void _setOwnBandRole(String bandId, BandMemberRole role) {
+    for (var index = 0; index < _memberships.length; index++) {
+      final membership = _memberships[index];
+      if (membership.band.id == bandId) {
+        _memberships[index] = BandMembership(
+          band: membership.band,
+          role: role.wireValue,
+        );
+      }
+    }
+    _bandsController.add(_currentMemberships());
+  }
+
+  @override
   Future<BandInvite?> bandInvite(String bandId) async => _bandInvites[bandId];
 
   BandInvite _newInvite(String bandId) {
@@ -3744,10 +3872,6 @@ class DemoRepository implements EarplugRepository {
 
     final band = _bands[resolved.bandId];
     if (band == null) throw StateError('Invitation is no longer active.');
-    final name = _userName ?? _auth.displayName ?? 'Band member';
-    _acceptedMemberNames
-        .putIfAbsent(resolved.bandId, () => <String>{})
-        .add(name);
     final updatedBand = band.copyWith(followers: band.followers + 1);
     _bands[band.id] = updatedBand;
     _memberships.add(BandMembership(band: updatedBand, role: 'member'));
