@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:earplug/app_state.dart';
 import 'package:earplug/demo_data.dart';
+import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/readiness_memory.dart';
@@ -247,6 +248,62 @@ void main() {
     expect(app.organizationDashboardFor(''), isNull);
     expect(stub.callsTo('organizationDashboard'), 2);
     app.dispose();
+  });
+
+  testWidgets('a failed dashboard load is not retried until a refresh', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final stub = StubRepository(auth: auth)
+      ..returns('organizationDashboard', _dashboard())
+      ..failOnce('organizationDashboard');
+    final harness = await _pump(tester, stub);
+    final app = harness.app;
+
+    expect(app.organizationDashboardFor(_org1), isNull);
+    expect(app.organizationDashboardLoadingFor(_org1), isTrue);
+    await tester.pump();
+    expect(app.organizationDashboardLoadingFor(_org1), isFalse);
+    expect(app.organizationDashboardFailedFor(_org1), isTrue);
+
+    // Reads through every path leave the failure alone.
+    expect(app.organizationDashboardFor(_org1), isNull);
+    expect(app.hostReadinessSnapshotFor(_org1), isNull);
+    expect(app.readinessSnapshotFor(_orgScope), isNull);
+    await tester.pumpAndSettle();
+    expect(app.organizationDashboardFor(_org1), isNull);
+    expect(stub.callsTo('organizationDashboard'), 1);
+
+    await app.refreshOrganizationDashboard(_org1);
+    expect(app.organizationDashboardFailedFor(_org1), isFalse);
+    expect(app.organizationDashboardFor(_org1), isNotNull);
+    expect(stub.callsTo('organizationDashboard'), 2);
+    app.dispose();
+  });
+
+  testWidgets('a signed-out org dash settles without refetching', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final stub = StubRepository(auth: auth)
+      ..returns('organizationDashboard', _dashboard());
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: stub,
+      beforePump: (app) => app.switchToOrganization(_org1),
+      home: const RootShell(),
+    );
+    final app = harness.app;
+    expect(app.authed, isFalse);
+    expect(app.current.screen, Screen.orgDash);
+
+    // The discarded result is remembered as a failure, so each rebuild reads
+    // the null dashboard without kicking the load off again.
+    await tester.pumpAndSettle();
+    expect(app.organizationDashboardFor(_org1), isNull);
+    expect(app.organizationDashboardFailedFor(_org1), isTrue);
+    expect(stub.callsTo('organizationDashboard'), 1);
   });
 
   testWidgets('host readiness derives from the dashboard and Stripe status', (

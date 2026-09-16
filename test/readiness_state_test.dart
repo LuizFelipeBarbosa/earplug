@@ -40,7 +40,8 @@ BandSetupStatus _setup({bool socialLinksAdded = true}) => BandSetupStatus(
 );
 
 /// The band console with the stubbed readiness sources loaded for `b1`,
-/// which the demo user administers (and `b2` when [adminOfB2]).
+/// which the demo user administers (and `b2` when [adminOfB2]). Each
+/// method in [failOnce] throws on its first call only.
 Future<({AppHarness harness, StubRepository stub})> _pump(
   WidgetTester tester, {
   required MemoryReadinessMemoryStore store,
@@ -48,12 +49,16 @@ Future<({AppHarness harness, StubRepository stub})> _pump(
   BandDiscoveryReadiness? readiness,
   BandSetupStatus? setup,
   bool adminOfB2 = false,
+  List<String> failOnce = const [],
 }) async {
   final auth = FakeAuthService();
   await auth.signInDemo();
   final stub = StubRepository(auth: auth)
     ..returns('bandDiscoveryReadiness', readiness ?? _readiness())
     ..returns('bandSetupStatus', setup ?? _setup());
+  for (final method in failOnce) {
+    stub.failOnce(method);
+  }
   if (adminOfB2) {
     stub.returnsStream(
       'myBands',
@@ -118,6 +123,48 @@ void main() {
     expect(memory.hasRegression, isFalse);
     app.dispose();
   });
+
+  for (final (method, retry) in [
+    (
+      'bandDiscoveryReadiness',
+      (AppState app) => app.refreshBandDiscoveryReadiness('b1'),
+    ),
+    ('bandSetupStatus', (AppState app) => app.refreshBandSetupStatus('b1')),
+  ]) {
+    testWidgets('a failed $method load is not retried until a refresh', (
+      tester,
+    ) async {
+      final store = MemoryReadinessMemoryStore();
+      final (:harness, :stub) = await _pump(
+        tester,
+        store: store,
+        now: () => start,
+        failOnce: [method],
+      );
+      final app = harness.app;
+
+      // The console settled above with the source failed once; reads through
+      // every path leave that failure alone.
+      expect(app.bandReadinessFailedFor('b1'), isTrue);
+      expect(app.readinessSnapshotFor(_b1), isNull);
+      expect(
+        app.discoveryReadinessFor('b1') == null,
+        method == 'bandDiscoveryReadiness',
+      );
+      expect(app.setupStatusFor('b1') == null, method == 'bandSetupStatus');
+      await tester.pumpAndSettle();
+      expect(app.readinessSnapshotFor(_b1), isNull);
+      expect(stub.callsTo(method), 1);
+      expect(await store.read(_b1), isNull);
+
+      await retry(app);
+      await tester.pumpAndSettle();
+      expect(app.bandReadinessFailedFor('b1'), isFalse);
+      expect(app.readinessSnapshotFor(_b1)!.done, 9);
+      expect(stub.callsTo(method), 2);
+      app.dispose();
+    });
+  }
 
   testWidgets('a step that was done and later fails is a regression', (
     tester,

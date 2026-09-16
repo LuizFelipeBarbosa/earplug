@@ -25,6 +25,11 @@ mixin _OrganizerState on _AppStateCore {
   final Map<String, OrganizationDashboard> _organizationDashboards = {};
   final Set<String> _organizationDashboardLoading = {};
 
+  /// Organizations whose last dashboard load failed or was discarded. The
+  /// lazy accessor leaves these alone so a persistent failure cannot refetch
+  /// on every rebuild; only [refreshOrganizationDashboard] retries.
+  final Set<String> _organizationDashboardFailed = {};
+
   String organizationId = '';
   List<OrganizationMembership> myOrganizations = const [];
   OrganizationApplication? myOrganizationApplication;
@@ -77,10 +82,14 @@ mixin _OrganizerState on _AppStateCore {
       myOrganizationApplication?.kind == ApplicationKind.host;
 
   /// An organization's dashboard, or null until the first load lands. Kicks
-  /// the load off on first read.
+  /// the load off on first read; a failed load waits for
+  /// [refreshOrganizationDashboard].
   OrganizationDashboard? organizationDashboardFor(String organizationId) {
     final dashboard = _organizationDashboards[organizationId];
-    if (dashboard == null && organizationId.isNotEmpty) {
+    if (dashboard == null &&
+        organizationId.isNotEmpty &&
+        !_organizationDashboardLoading.contains(organizationId) &&
+        !_organizationDashboardFailed.contains(organizationId)) {
       unawaited(refreshOrganizationDashboard(organizationId));
     }
     return dashboard;
@@ -89,21 +98,35 @@ mixin _OrganizerState on _AppStateCore {
   bool organizationDashboardLoadingFor(String organizationId) =>
       _organizationDashboardLoading.contains(organizationId);
 
+  /// Whether the last dashboard load for [organizationId] failed (or landed
+  /// after its session ended) — the cue for a RETRY affordance.
+  bool organizationDashboardFailedFor(String organizationId) =>
+      _organizationDashboardFailed.contains(organizationId);
+
   Future<void> refreshOrganizationDashboard(String organizationId) async {
     if (_disposed || !_organizationDashboardLoading.add(organizationId)) {
       return;
     }
+    _organizationDashboardFailed.remove(organizationId);
     final requestedSession = _sessionGeneration;
+    var loaded = false;
     try {
       final dashboard = await repository.organizationDashboard(organizationId);
-      if (!_isCurrentSession(requestedSession)) return;
-      _organizationDashboards[organizationId] = dashboard;
-      unawaited(reconcileReadiness(orgReadinessScope(organizationId)));
+      if (_isCurrentSession(requestedSession)) {
+        _organizationDashboards[organizationId] = dashboard;
+        loaded = true;
+        unawaited(reconcileReadiness(orgReadinessScope(organizationId)));
+      }
     } catch (error) {
       logError('organizationDashboard', error);
     } finally {
-      _organizationDashboardLoading.remove(organizationId);
-      if (!_disposed) notifyListeners();
+      // A replaced session already cleared the caches and this loading
+      // marker, so only a still-current session has something to record.
+      if (!_disposed && requestedSession == _sessionGeneration) {
+        _organizationDashboardLoading.remove(organizationId);
+        if (!loaded) _organizationDashboardFailed.add(organizationId);
+        notifyListeners();
+      }
     }
   }
 
@@ -223,6 +246,7 @@ mixin _OrganizerState on _AppStateCore {
     myOrganizationApplication = null;
     _organizationDashboards.clear();
     _organizationDashboardLoading.clear();
+    _organizationDashboardFailed.clear();
   }
 
   Future<void> refreshOrganizationApplication() async {
