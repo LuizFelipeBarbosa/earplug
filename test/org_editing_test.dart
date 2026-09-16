@@ -40,16 +40,37 @@ void main() {
       ),
     );
     await enterOrganizer(tester, harness, 'org1');
+    final photosRow = find.byKey(const Key('org-hub-photos'));
+    expect(
+      find.descendant(of: photosRow, matching: find.text('0 OF 10')),
+      findsOneWidget,
+    );
+    await tester.tap(photosRow);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('org-hub-sheet-photos')), findsOneWidget);
     final addPhoto = find.byKey(const Key('org-settings-add-photo'));
-    await _scrollTo(tester, addPhoto);
     await tester.tap(addPhoto);
     await tester.pumpAndSettle();
     final firstPhotos = (await repository.organization('org1'))!.photoUrls;
     expect(firstPhotos, hasLength(1));
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('org-hub-sheet-photos')),
+        matching: find.text('1 OF 10'),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('CLOSE'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: photosRow, matching: find.text('1 OF 10')),
+      findsOneWidget,
+    );
 
     rebuildHost(() => settingsKey = UniqueKey());
     await tester.pumpAndSettle();
-    await _scrollTo(tester, addPhoto);
+    await tester.tap(photosRow);
+    await tester.pumpAndSettle();
     await tester.tap(addPhoto);
     await tester.pumpAndSettle();
 

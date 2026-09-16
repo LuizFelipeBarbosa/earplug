@@ -208,7 +208,7 @@ void main() {
       expect(find.byKey(const Key('org-dash-post-request')), findsNothing);
       // Readiness is a manager's concern.
       expect(find.byKey(const Key('band-readiness')), findsNothing);
-      expect(harness.app.current.screen, Screen.orgDash);
+      expect(harness.app.current.screen, Screen.orgOpportunities);
     });
   }
 
@@ -269,7 +269,7 @@ void main() {
     );
     await enterOrganizer(tester, harness, 'org1');
 
-    await tester.tap(find.byKey(const Key('org-dash-command-venues')));
+    await tester.tap(find.byKey(const Key('organizer-tab-venues')));
     await tester.pumpAndSettle();
 
     final venueCard = find.byKey(const ValueKey('org-venue-v1'));
@@ -359,7 +359,7 @@ void main() {
     );
     await enterOrganizer(tester, harness, 'org1');
 
-    await tester.tap(find.byKey(const Key('org-dash-command-venues')));
+    await tester.tap(find.byKey(const Key('organizer-tab-venues')));
     await tester.pumpAndSettle();
     await _openVenue(tester, find.byKey(const ValueKey('org-venue-v1')));
     final pageScrollable = find
@@ -411,74 +411,68 @@ void main() {
     expect(venue?.exactAddress, '22 Valencia St');
   });
 
-  testWidgets('team lists members and creates a role-specific invite', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    final repository = DemoRepository(auth: auth);
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      beforePump: (app) => app.switchToOrganization('org1'),
-      home: const Scaffold(body: OrgTeamScreen()),
-    );
-    await enterOrganizer(tester, harness, 'org1');
+  testWidgets(
+    'hub team section lists members and creates a role-specific invite',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = DemoRepository(auth: auth);
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        beforePump: (app) => app.switchToOrganization('org1'),
+        home: const Scaffold(body: OrgSettingsScreen()),
+      );
+      await enterOrganizer(tester, harness, 'org1');
 
-    expect(
-      find.byKey(const ValueKey('org-team-member-demo-user')),
-      findsOneWidget,
-    );
-    expect(find.textContaining('Mara Kim'), findsOneWidget);
+      final owner = find.byKey(const ValueKey('org-hub-member-demo-user'));
+      await _reveal(tester, owner);
+      expect(owner, findsOneWidget);
+      expect(find.text('MEMBERS · 2'), findsOneWidget);
+      expect(find.textContaining('MARA KIM'), findsOneWidget);
+      expect(
+        tester
+            .widget<StatusPill>(
+              find.descendant(of: owner, matching: find.byType(StatusPill)),
+            )
+            .tone,
+        EpStatusPillTone.selected,
+      );
 
-    final financeRole = find.byKey(
-      const ValueKey('org-team-invite-role-finance'),
-    );
-    await tester.ensureVisible(financeRole);
-    await tester.pump();
-    await tester.tap(financeRole);
-    await tester.pump();
-    expect(tester.widget<EpChip>(financeRole).active, isTrue);
+      final invite = find.byKey(const Key('org-hub-invite'));
+      await _reveal(tester, invite);
+      await tester.tap(invite);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('org-hub-invite-sheet')), findsOneWidget);
 
-    final create = find.byKey(const Key('org-team-invite-create'));
-    await tester.ensureVisible(create);
-    await tester.tap(create);
-    await tester.pumpAndSettle();
+      final financeRole = find.byKey(
+        const ValueKey('org-team-invite-role-finance'),
+      );
+      await tester.tap(financeRole);
+      await tester.pump();
+      expect(tester.widget<EpChip>(financeRole).active, isTrue);
 
-    expect(find.textContaining('/apply/'), findsOneWidget);
-    expect(
-      (await repository.organizationInvite('org1'))?.role,
-      OrganizationRole.finance,
-    );
-  });
+      await tester.tap(find.byKey(const Key('org-team-invite-create')));
+      await tester.pumpAndSettle();
 
-  testWidgets('removing the last owner surfaces the repository error', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    final repository = _LastOwnerGuardRepository(auth: auth);
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      beforePump: (app) => app.switchToOrganization('org1'),
-      home: const Scaffold(body: OrgTeamScreen()),
-    );
-    await enterOrganizer(tester, harness, 'org1');
+      expect(find.textContaining('/apply/'), findsOneWidget);
+      expect(find.byKey(const Key('org-team-invite-copy')), findsOneWidget);
+      expect(find.byKey(const Key('org-team-invite-rotate')), findsOneWidget);
+      expect(find.byKey(const Key('org-team-invite-revoke')), findsOneWidget);
+      expect(
+        (await repository.organizationInvite('org1'))?.role,
+        OrganizationRole.finance,
+      );
 
-    await tester.tap(find.byKey(const ValueKey('org-team-member-demo-user')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Remove'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'REMOVE'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('org-team-invite-revoke')));
+      await tester.pumpAndSettle();
+      expect((await repository.organizationInvite('org1'))?.revoked, isTrue);
+      expect(find.byKey(const Key('org-team-invite-create')), findsOneWidget);
+    },
+  );
 
-    expect(harness.app.toast, contains('at least one owner'));
-  });
-
-  testWidgets('organization public and private settings save together', (
+  testWidgets('hub team section changes a member role from the overflow', (
     tester,
   ) async {
     final auth = FakeAuthService();
@@ -493,37 +487,406 @@ void main() {
     );
     await enterOrganizer(tester, harness, 'org1');
 
-    await tester.enterText(
-      find.byKey(const Key('org-settings-name')),
-      'Foghorn Collective',
+    final actions = find.byKey(
+      const ValueKey('org-hub-member-actions-manager1'),
     );
-    final pageScrollable = find
-        .descendant(
-          of: find.byType(ListView),
-          matching: find.byType(Scrollable),
-        )
-        .first;
-    final legalName = find.byKey(const Key('org-settings-legal-name'));
-    await tester.scrollUntilVisible(legalName, 250, scrollable: pageScrollable);
-    await tester.enterText(legalName, 'Foghorn Collective LLC');
+    await _reveal(tester, actions);
+    await tester.tap(actions);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Change role'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Door'));
+    await tester.pumpAndSettle();
+
+    final members = await repository.organizationMembers('org1');
+    expect(
+      members.singleWhere((member) => member.userId == 'manager1').role,
+      OrganizationRole.door,
+    );
+    expect(harness.app.toast, 'Role updated.');
+  });
+
+  testWidgets('removing the last owner surfaces the repository error', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _LastOwnerGuardRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgSettingsScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    final actions = find.byKey(
+      const ValueKey('org-hub-member-actions-demo-user'),
+    );
+    await _reveal(tester, actions);
+    await tester.tap(actions);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'REMOVE'));
+    await tester.pumpAndSettle();
+
+    expect(harness.app.toast, contains('at least one owner'));
+  });
+
+  testWidgets('standalone team screen still renders the shared panel', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: OrgTeamScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    expect(
+      find.byKey(const ValueKey('org-hub-member-demo-user')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('org-hub-invite')), findsOneWidget);
+  });
+
+  testWidgets('organization hub shows values in rows with no save bar', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      size: const Size(390, 844),
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgSettingsScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    expect(find.byKey(const Key('org-hub-title')), findsOneWidget);
+    expect(find.textContaining('SETTINGS'), findsNothing);
+    expect(find.textContaining('Settings'), findsNothing);
+    expect(find.byType(StickyActionBar), findsNothing);
+    expect(find.byKey(const Key('org-settings-save')), findsNothing);
+    expect(find.byType(TextField), findsNothing);
+
+    final demo = DemoData.organizations['org1']!;
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('org-hub-name')),
+        matching: find.text(demo.name),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('org-hub-about')),
+        matching: find.text(demo.description!),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('org-hub-website')),
+        matching: find.text(demo.website!),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('org-hub-photos')),
+        matching: find.text('0 OF 10'),
+      ),
+      findsOneWidget,
+    );
+
+    final phone = find.byKey(const Key('org-hub-phone'));
+    await _reveal(tester, phone);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('org-hub-legal-name')),
+        matching: find.text('The Foghorn Club LLC'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('org-hub-contact-email')),
+        matching: find.text('hello@foghorn.example'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: phone, matching: find.text('415-555-0142')),
+      findsOneWidget,
+    );
+    expect(find.text('EDIT'), findsNWidgets(3));
+    expect(find.byKey(const Key('org-hub-stripe')), findsOneWidget);
+    expect(find.byKey(const Key('org-hub-tax')), findsOneWidget);
+    expect(find.byKey(const Key('org-settings-deactivate')), findsOneWidget);
+  });
+
+  testWidgets('hub shows NOT SET for empty fields and hides private rows', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    await repository.updateOrganizationProfile(
+      organizationId: 'org1',
+      description: '',
+      website: '',
+    );
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgSettingsScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+    harness.app.myOrganizations = [
+      OrganizationMembership(
+        organization: DemoData.organizations['org1']!,
+        role: OrganizationRole.manager,
+      ),
+    ];
+    await enterOrganizer(tester, harness, 'org1');
+
+    expect(find.text('NOT SET'), findsNWidgets(2));
+    expect(find.byKey(const Key('org-hub-legal-name')), findsNothing);
+    expect(find.byKey(const Key('org-hub-stripe')), findsNothing);
+    await tester.drag(_pageScrollable(), const Offset(0, -1200));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('org-settings-deactivate')), findsOneWidget);
+  });
+
+  testWidgets('name sheet saves the merged public profile', (tester) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgSettingsScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    await tester.tap(find.byKey(const Key('org-hub-name')));
+    await tester.pumpAndSettle();
+    final sheet = find.byKey(const Key('org-hub-sheet-name'));
+    expect(sheet, findsOneWidget);
     expect(
       find.ancestor(of: find.byType(TextField), matching: find.byType(EpCard)),
       findsNothing,
     );
-
-    final save = find.byKey(const Key('org-settings-save'));
-    await tester.pumpAndSettle();
-    await tester.tap(save);
-    await tester.pumpAndSettle();
-
-    expect((await repository.organization('org1'))?.name, 'Foghorn Collective');
+    final field = find.byKey(const Key('org-settings-name'));
     expect(
-      (await repository.organizationDashboard(
-        'org1',
-      )).privateDetails?.legalName,
+      tester.widget<TextField>(field).controller?.text,
+      'The Foghorn Club',
+    );
+
+    await tester.enterText(field, '');
+    await tester.pump();
+    expect(
+      tester
+          .widget<EpPill>(find.byKey(const Key('org-hub-sheet-save')))
+          .onPressed,
+      isNull,
+    );
+    await tester.enterText(field, 'Foghorn Collective');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('org-hub-sheet-save')));
+    await tester.pumpAndSettle();
+
+    expect(sheet, findsNothing);
+    final saved = await repository.organization('org1');
+    expect(saved?.name, 'Foghorn Collective');
+    expect(saved?.description, DemoData.organizations['org1']!.description);
+    expect(saved?.website, DemoData.organizations['org1']!.website);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('org-hub-name')),
+        matching: find.text('Foghorn Collective'),
+      ),
+      findsOneWidget,
+    );
+    expect(harness.app.toast, 'Changes saved.');
+  });
+
+  testWidgets('about and website sheets save just their field', (tester) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgSettingsScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    await tester.tap(find.byKey(const Key('org-hub-about')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('org-hub-sheet-about')), findsOneWidget);
+    final about = find.byKey(const Key('org-settings-description'));
+    expect(tester.widget<TextField>(about).maxLength, 1000);
+    expect(tester.widget<TextField>(about).maxLines, greaterThan(1));
+    await tester.enterText(about, 'A lively neighborhood room.');
+    await tester.tap(find.byKey(const Key('org-hub-sheet-save')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('org-hub-sheet-about')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('org-hub-website')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('org-hub-sheet-website')), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('org-settings-website')),
+      'https://foghorn.example',
+    );
+    await tester.tap(find.byKey(const Key('org-hub-sheet-save')));
+    await tester.pumpAndSettle();
+
+    final saved = await repository.organization('org1');
+    expect(saved?.name, 'The Foghorn Club');
+    expect(saved?.description, 'A lively neighborhood room.');
+    expect(saved?.website, 'https://foghorn.example');
+  });
+
+  testWidgets('private detail sheets save the merged details', (tester) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgSettingsScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    final legalName = find.byKey(const Key('org-hub-legal-name'));
+    await _reveal(tester, legalName);
+    await tester.tap(legalName);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('org-hub-sheet-legal-name')), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('org-settings-contact-name')))
+          .controller
+          ?.text,
+      'Earplug Fan',
+    );
+    await tester.enterText(
+      find.byKey(const Key('org-settings-legal-name')),
       'Foghorn Collective LLC',
     );
-    expect(find.byKey(const Key('org-settings-save-success')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('org-hub-sheet-save')));
+    await tester.pumpAndSettle();
+
+    final phone = find.byKey(const Key('org-hub-phone'));
+    await _reveal(tester, phone);
+    await tester.tap(phone);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('org-settings-phone')),
+      '415-555-0199',
+    );
+    await tester.tap(find.byKey(const Key('org-hub-sheet-save')));
+    await tester.pumpAndSettle();
+
+    final details = (await repository.organizationDashboard(
+      'org1',
+    )).privateDetails;
+    expect(details?.legalName, 'Foghorn Collective LLC');
+    expect(details?.contactName, 'Earplug Fan');
+    expect(details?.businessEmail, 'hello@foghorn.example');
+    expect(details?.phone, '415-555-0199');
+    expect(
+      find.descendant(
+        of: legalName,
+        matching: find.text('Foghorn Collective LLC'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a failed sheet save stays open with the error', (tester) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _FailingProfileRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgSettingsScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    await tester.tap(find.byKey(const Key('org-hub-name')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('org-settings-name')),
+      'Foghorn Collective',
+    );
+    await tester.tap(find.byKey(const Key('org-hub-sheet-save')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('org-hub-sheet-name')), findsOneWidget);
+    expect(find.byKey(const Key('org-settings-save-error')), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('org-settings-name')))
+          .controller
+          ?.text,
+      'Foghorn Collective',
+    );
+    expect((await repository.organization('org1'))?.name, 'The Foghorn Club');
+  });
+
+  testWidgets('danger zone deactivates after typing DEACTIVATE', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgSettingsScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    final deactivate = find.byKey(const Key('org-settings-deactivate'));
+    await _reveal(tester, deactivate);
+    await tester.tap(deactivate);
+    await tester.pumpAndSettle();
+    final confirm = find.widgetWithText(FilledButton, 'DEACTIVATE');
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    await tester.enterText(
+      find.byKey(const Key('org-settings-deactivate-confirmation')),
+      'DEACTIVATE',
+    );
+    await tester.pump();
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+
+    expect(
+      (await repository.organization('org1'))?.status,
+      OrganizationStatus.suspended,
+    );
+    expect(harness.app.current.screen, Screen.home);
   });
 
   testWidgets('organization invite can be accepted and opens organizer mode', (
@@ -589,6 +952,31 @@ Future<void> _openVenue(WidgetTester tester, Finder venueCard) async {
     find.descendant(of: venueCard, matching: find.byType(Text)).first,
   );
   await tester.pumpAndSettle();
+}
+
+/// Scrolls the row into view and settles so its centre is tappable.
+Future<void> _reveal(WidgetTester tester, Finder target) async {
+  await tester.scrollUntilVisible(target, 250, scrollable: _pageScrollable());
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+}
+
+Finder _pageScrollable() => find
+    .descendant(of: find.byType(ListView), matching: find.byType(Scrollable))
+    .first;
+
+class _FailingProfileRepository extends DemoRepository {
+  _FailingProfileRepository({required super.auth});
+
+  @override
+  Future<void> updateOrganizationProfile({
+    required String organizationId,
+    String? name,
+    String? description,
+    String? website,
+  }) async {
+    throw StateError('offline');
+  }
 }
 
 class _LastOwnerGuardRepository extends DemoRepository {

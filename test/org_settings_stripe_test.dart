@@ -1,8 +1,10 @@
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/models.dart';
+import 'package:earplug/navigation.dart';
 import 'package:earplug/screens/org_settings.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -11,59 +13,122 @@ import 'support/harness.dart';
 void main() {
   for (final (state, label, tone) in [
     (StripeAccountState.none, 'SET UP', EpStatusPillTone.attention),
-    (StripeAccountState.onboarding, 'SET UP', EpStatusPillTone.attention),
+    (
+      StripeAccountState.onboarding,
+      'SETUP IN PROGRESS — FINISH IN STRIPE',
+      EpStatusPillTone.attention,
+    ),
+    (
+      StripeAccountState.restricted,
+      'SETUP IN PROGRESS — FINISH IN STRIPE',
+      EpStatusPillTone.attention,
+    ),
     (StripeAccountState.enabled, 'CONNECTED', EpStatusPillTone.success),
   ]) {
-    testWidgets('Stripe section badge reads $label when ${state.name}', (
+    testWidgets('Stripe row pill reads $label when ${state.name}', (
       tester,
     ) async {
-      final harness = await _pumpSettings(tester, stripeState: state);
+      await _pumpHub(tester, stripeState: state);
 
-      final badge = find.byKey(const Key('org-settings-stripe-badge'));
-      await tester.scrollUntilVisible(
-        badge,
-        250,
-        scrollable: _pageScrollable(harness),
+      final row = find.byKey(const Key('org-hub-stripe'));
+      await _reveal(tester, row);
+      final pill = tester.widget<StatusPill>(
+        find.descendant(of: row, matching: find.byType(StatusPill)),
       );
-      final pill = tester.widget<StatusPill>(badge);
-      expect(pill.label, label);
+      expect(pill.label.toUpperCase(), label);
       expect(pill.tone, tone);
     });
   }
 
-  testWidgets('save bar stays pinned above the tab bar while scrolling', (
+  testWidgets('Stripe row opens finance; tax row reflects Stripe details', (
     tester,
   ) async {
-    final harness = await _pumpSettings(
+    final harness = await _pumpHub(
       tester,
-      stripeState: StripeAccountState.none,
+      stripeState: StripeAccountState.enabled,
     );
 
-    final save = find.byKey(const Key('org-settings-save'));
-    expect(save, findsOneWidget);
-    final before = tester.getRect(save);
-    // 900 logical px tall phone surface, 66 px tab bar below the bar.
-    expect(before.bottom, closeTo(900 - 66, 1));
-    expect(before.left, 0);
-    expect(before.width, 402);
+    final tax = find.byKey(const Key('org-hub-tax'));
+    await _reveal(tester, tax);
+    final taxPill = tester.widget<StatusPill>(
+      find.descendant(of: tax, matching: find.byType(StatusPill)),
+    );
+    expect(taxPill.label.toUpperCase(), '✓ COLLECTED VIA STRIPE');
+    expect(taxPill.tone, EpStatusPillTone.success);
 
-    await tester.drag(_pageScrollable(harness), const Offset(0, -600));
+    await tester.tap(find.byKey(const Key('org-hub-stripe')));
     await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.orgFinance);
+  });
 
-    expect(tester.getRect(save), before);
+  testWidgets('tax row flags missing tax details and surfaces open errors', (
+    tester,
+  ) async {
+    final harness = await _pumpHub(
+      tester,
+      stripeState: StripeAccountState.restricted,
+      requirementsDue: const ['individual.id_number'],
+      detailsSubmitted: true,
+    );
+
+    final tax = find.byKey(const Key('org-hub-tax'));
+    await _reveal(tester, tax);
+    final taxPill = tester.widget<StatusPill>(
+      find.descendant(of: tax, matching: find.byType(StatusPill)),
+    );
+    expect(taxPill.label.toUpperCase(), 'ACTION NEEDED');
+    expect(taxPill.tone, EpStatusPillTone.attention);
+
+    harness.app.hostedUrlLauncher = (_) async {
+      throw StateError('Could not open Stripe');
+    };
+    await tester.tap(tax);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('org-settings-stripe-error')), findsOneWidget);
+    expect(find.byKey(const Key('org-settings-save-error')), findsNothing);
+
+    final launched = <String>[];
+    harness.app.hostedUrlLauncher = (url) async => launched.add(url);
+    await tester.tap(tax);
+    await tester.pumpAndSettle();
+    expect(launched, ['https://demo.stripe/dashboard/org1']);
+    expect(find.byKey(const Key('org-settings-stripe-error')), findsNothing);
+  });
+
+  testWidgets('no save bar renders on the hub', (tester) async {
+    await _pumpHub(tester, stripeState: StripeAccountState.none);
+
+    expect(find.byType(StickyActionBar), findsNothing);
+    expect(find.byKey(const Key('org-settings-save')), findsNothing);
+    await tester.drag(_pageScrollable(), const Offset(0, -600));
+    await tester.pumpAndSettle();
+    expect(find.byType(StickyActionBar), findsNothing);
   });
 }
 
-Future<AppHarness> _pumpSettings(
+Future<AppHarness> _pumpHub(
   WidgetTester tester, {
   required StripeAccountState stripeState,
+  List<String> requirementsDue = const [],
+  bool? detailsSubmitted,
 }) async {
   final auth = FakeAuthService();
   await auth.signInDemo();
+  final repository = _StripeStateRepository(
+    auth: auth,
+    state: stripeState,
+    requirementsDue: requirementsDue,
+    detailsSubmitted:
+        detailsSubmitted ?? stripeState == StripeAccountState.enabled,
+  );
+  // The demo dashboard link only resolves once the account exists.
+  if (stripeState != StripeAccountState.none) {
+    await repository.refreshOrganizationAccountStatus('org1');
+  }
   final harness = await pumpApp(
     tester,
     auth: auth,
-    repository: _StripeStateRepository(auth: auth, state: stripeState),
+    repository: repository,
     beforePump: (app) => app.switchToOrganization('org1'),
     home: const Scaffold(body: OrgSettingsScreen()),
   );
@@ -71,15 +136,28 @@ Future<AppHarness> _pumpSettings(
   return harness;
 }
 
-Finder _pageScrollable(AppHarness harness) => find
+Future<void> _reveal(WidgetTester tester, Finder target) async {
+  await tester.scrollUntilVisible(target, 250, scrollable: _pageScrollable());
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+}
+
+Finder _pageScrollable() => find
     .descendant(of: find.byType(ListView), matching: find.byType(Scrollable))
     .first;
 
 /// Demo data with the organization's Stripe account held in one fixed state.
 class _StripeStateRepository extends DemoRepository {
-  _StripeStateRepository({required super.auth, required this.state});
+  _StripeStateRepository({
+    required super.auth,
+    required this.state,
+    required this.requirementsDue,
+    required this.detailsSubmitted,
+  });
 
   final StripeAccountState state;
+  final List<String> requirementsDue;
+  final bool detailsSubmitted;
 
   @override
   Future<StripeAccountStatus> organizationStripeStatus(
@@ -89,7 +167,7 @@ class _StripeStateRepository extends DemoRepository {
     hasAccount: state != StripeAccountState.none,
     chargesEnabled: state == StripeAccountState.enabled,
     payoutsEnabled: state == StripeAccountState.enabled,
-    detailsSubmitted: state == StripeAccountState.enabled,
-    requirementsDue: const [],
+    detailsSubmitted: detailsSubmitted,
+    requirementsDue: requirementsDue,
   );
 }
