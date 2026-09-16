@@ -320,8 +320,8 @@ class OrganizerTabBar extends StatelessWidget {
     ];
   }
 
-  /// Other organizers: GIGS is home, ORGANIZATION gathers settings, team
-  /// and finance, and SWITCH opens the identity switcher.
+  /// Other organizers: GIGS is home, PROFILE gathers settings, team and
+  /// finance, and SWITCH opens the identity switcher.
   List<Widget> _organizerItems(BuildContext context, AppState app) {
     final scr = app.current.screen;
     return [
@@ -345,7 +345,7 @@ class OrganizerTabBar extends StatelessWidget {
         vertical: vertical,
         key: const Key('organizer-tab-organization'),
         icon: Icons.business_outlined,
-        label: 'ORGANIZATION',
+        label: 'PROFILE',
         selected: _organizationScreens.contains(scr),
         onPressed: () => app.resetTo(Screen.orgSettings),
       ),

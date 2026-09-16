@@ -376,9 +376,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   16,
                   headerTopPad(context),
                   16,
-                  tabBarClearance +
-                      actionBarClearance(context) +
-                      MediaQuery.paddingOf(context).bottom,
+                  actionBarClearance(context) +
+                      MediaQuery.paddingOf(context).bottom +
+                      24,
                 ),
                 children: [
                   Row(
@@ -635,7 +635,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               Positioned(
                 left: 0,
                 right: 0,
-                bottom: EpLayout.isDesktop(context) ? 0 : 67,
+                bottom: 0,
                 child: stickyBar,
               ),
           ],

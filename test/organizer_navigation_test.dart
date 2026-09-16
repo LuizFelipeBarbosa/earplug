@@ -154,7 +154,7 @@ void main() {
     expect(harness.app.identity, isA<PersonalIdentity>());
   });
 
-  testWidgets('organizers get GIGS, VENUES, ORGANIZATION and SWITCH tabs', (
+  testWidgets('organizers get GIGS, VENUES, PROFILE and SWITCH tabs', (
     tester,
   ) async {
     final auth = FakeAuthService();
@@ -173,7 +173,7 @@ void main() {
         .widgetList<EpNavigationItem>(find.byType(EpNavigationItem))
         .map((item) => item.label)
         .toList();
-    expect(labels, ['GIGS', 'VENUES', 'ORGANIZATION', 'SWITCH']);
+    expect(labels, ['GIGS', 'VENUES', 'PROFILE', 'SWITCH']);
     expect(find.byKey(const Key('organizer-tab-dash')), findsNothing);
     expect(find.byKey(const Key('organizer-tab-team')), findsNothing);
     expect(find.byKey(const Key('organizer-tab-settings')), findsNothing);
@@ -189,9 +189,6 @@ void main() {
     expect(harness.app.current.screen, Screen.orgSettings);
     expect(_selected(tester, 'organizer-tab-organization'), isTrue);
 
-    harness.app.go(Screen.orgTeam);
-    await tester.pumpAndSettle();
-    expect(_selected(tester, 'organizer-tab-organization'), isTrue);
     expect(_selected(tester, 'organizer-tab-switch'), isFalse);
 
     await tester.tap(find.byKey(const Key('organizer-tab-switch')));
@@ -199,7 +196,127 @@ void main() {
     expect(find.byKey(const Key('switcher-org-org1')), findsOne);
     expect(find.byKey(const Key('switcher-org-org2')), findsOne);
     // Opening the switcher does not navigate.
-    expect(harness.app.current.screen, Screen.orgTeam);
+    expect(harness.app.current.screen, Screen.orgSettings);
+  });
+
+  testWidgets('tab roots keep the organizer bar; pushed screens drop it', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      home: const RootShell(),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    for (final screen in [
+      Screen.orgOpportunities,
+      Screen.orgVenues,
+      Screen.orgSettings,
+    ]) {
+      harness.app.resetTo(screen);
+      await tester.pumpAndSettle();
+      expect(find.byType(OrganizerTabBar), findsOneWidget, reason: '$screen');
+    }
+
+    harness.app.resetTo(Screen.orgOpportunities);
+    await tester.pumpAndSettle();
+    harness.app.openOrgOpportunity('opp1');
+    await tester.pumpAndSettle();
+    expect(find.byType(OrgOpportunityDetailScreen), findsOneWidget);
+    expect(find.byType(OrganizerTabBar), findsNothing);
+
+    harness.app.openApplicantReview('app1');
+    await tester.pumpAndSettle();
+    expect(find.byType(ApplicantReviewScreen), findsOneWidget);
+    expect(find.byType(OrganizerTabBar), findsNothing);
+
+    harness.app.openOpportunityEditor('opp2');
+    await tester.pumpAndSettle();
+    expect(find.byType(OpportunityEditScreen), findsOneWidget);
+    expect(find.byType(OrganizerTabBar), findsNothing);
+
+    for (final screen in [
+      Screen.orgTeam,
+      Screen.orgFinance,
+      Screen.orgTransactions,
+    ]) {
+      harness.app.go(screen);
+      await tester.pumpAndSettle();
+      expect(find.byType(OrganizerTabBar), findsNothing, reason: '$screen');
+    }
+  });
+
+  testWidgets('finance opens as a pushed screen and its back returns', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      home: const RootShell(),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    // Hub → Stripe row → finance → back lands on the hub again.
+    await tester.tap(find.byKey(const Key('organizer-tab-organization')));
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.orgSettings);
+    final stripeRow = find.byKey(const Key('org-hub-stripe'));
+    await tester.scrollUntilVisible(
+      stripeRow,
+      250,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(stripeRow);
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.orgFinance);
+    expect(harness.app.canGoBack, isTrue);
+    expect(find.byType(OrganizerTabBar), findsNothing);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.orgSettings);
+    expect(find.byType(OrganizerTabBar), findsOneWidget);
+
+    // A host's dash → finance → back lands on the dash.
+    await enterOrganizer(tester, harness, 'org2');
+    expect(harness.app.current.screen, Screen.orgDash);
+    harness.app.openFinance();
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.orgFinance);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.orgDash);
+  });
+
+  testWidgets('back on a rootless finance screen falls back to the home tab', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      home: const RootShell(),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    harness.app.resetTo(Screen.orgFinance);
+    await tester.pumpAndSettle();
+    expect(harness.app.canGoBack, isFalse);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.orgOpportunities);
   });
 
   testWidgets('hosts land on the dash with DASH, REQUESTS and SETTINGS', (
@@ -252,14 +369,12 @@ void main() {
     expect(harness.app.current.screen, Screen.orgOpportunity);
     expect(harness.app.current.param, 'opp1');
     expect(harness.app.identity, isA<OrganizerIdentity>());
-    expect(_selected(tester, 'organizer-tab-opportunities'), isTrue);
 
     harness.app.openApplicantReview('app1');
     await tester.pumpAndSettle();
     expect(find.byType(ApplicantReviewScreen), findsOneWidget);
     expect(harness.app.current.screen, Screen.applicantReview);
     expect(harness.app.current.param, 'app1');
-    expect(_selected(tester, 'organizer-tab-opportunities'), isTrue);
 
     await tester.tap(find.byKey(const Key('applicant-review-back')));
     await tester.pumpAndSettle();
@@ -295,7 +410,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(OpportunityEditScreen), findsOneWidget);
     expect(harness.app.current.param, 'new');
-    expect(find.byType(OrganizerTabBar), findsOneWidget);
+    expect(find.byType(OrganizerTabBar), findsNothing);
 
     harness.app.openOpportunityApplicants('opp1');
     await tester.pumpAndSettle();
@@ -326,7 +441,11 @@ void main() {
 
         expect(harness.app.current.screen, screen);
         expect(harness.app.identity, isA<OrganizerIdentity>());
-        expect(find.byType(OrganizerTabBar), findsOneWidget);
+        // The list is a tab-level page; the editor is a pushed edit menu.
+        expect(
+          find.byType(OrganizerTabBar),
+          screen == Screen.privateLocations ? findsOneWidget : findsNothing,
+        );
         expect(find.byKey(ValueKey('${screen.name}-null')), findsOneWidget);
       }
 

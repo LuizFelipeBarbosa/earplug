@@ -619,7 +619,7 @@ void main() {
         expect(find.byType(EpNavigationItem), findsNWidgets(4));
         expect(find.text('GIGS'), findsOneWidget);
         expect(find.text('VENUES'), findsOneWidget);
-        expect(find.text('ORGANIZATION'), findsOneWidget);
+        expect(find.text('PROFILE'), findsOneWidget);
         expect(find.text('SWITCH'), findsOneWidget);
         expect(find.text('REQUESTS'), findsNothing);
       },

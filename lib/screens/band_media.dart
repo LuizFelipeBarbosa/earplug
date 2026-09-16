@@ -72,7 +72,7 @@ class _BandMediaScreenState extends State<BandMediaScreen> {
           EpLayout.gutter,
           EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
           EpLayout.gutter,
-          tabBarClearance + MediaQuery.paddingOf(context).bottom,
+          MediaQuery.paddingOf(context).bottom + 24,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

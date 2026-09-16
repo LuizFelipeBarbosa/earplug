@@ -87,7 +87,7 @@ class _OrgTransactionsScreenState extends State<OrgTransactionsScreen> {
         16,
         headerTopPad(context),
         16,
-        tabBarClearance,
+        MediaQuery.paddingOf(context).bottom + 24,
       ),
       itemCount: app.transactions.length + 2,
       itemBuilder: (context, index) {

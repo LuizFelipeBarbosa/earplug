@@ -670,17 +670,16 @@ void main() {
       ],
     );
 
-    // The sticky action stays above RootShell's organizer tab bar.
+    // A pushed detail renders without the tab bar; the sticky action sits
+    // flush with the bottom of the screen.
+    expect(find.byType(OrganizerTabBar), findsNothing);
     final sticky = find
         .ancestor(
           of: find.byKey(const Key('booking-withdraw')),
           matching: find.byType(SafeArea),
         )
         .first;
-    expect(
-      tester.getBottomRight(sticky).dy,
-      lessThanOrEqualTo(tester.getTopLeft(find.byType(OrganizerTabBar)).dy),
-    );
+    expect(tester.getBottomRight(sticky).dy, tester.view.physicalSize.height);
 
     final fee = find.byKey(const Key('booking-fee'));
     await _reveal(tester, fee);
@@ -720,7 +719,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('band sees its own tab bar for a shared booking screen', (
+  testWidgets('band identity wins for a shared booking screen', (
     tester,
   ) async {
     final harness = await pumpApp(tester, home: const RootShell());
@@ -736,9 +735,10 @@ void main() {
 
     // The cached viewer side wins even with an organization still selected.
     expect(harness.app.organizationId, 'org1');
-    expect(find.byType(BandTabBar), findsOneWidget);
-    expect(find.byType(OrganizerTabBar), findsNothing);
     expect(harness.app.identity, isA<BandIdentity>());
+    // Booking detail is a pushed screen: no tab bar for either identity.
+    expect(find.byType(BandTabBar), findsNothing);
+    expect(find.byType(OrganizerTabBar), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

@@ -1,4 +1,5 @@
 import 'package:earplug/app_state.dart';
+import 'package:earplug/main.dart';
 import 'package:earplug/navigation.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/tab_bars.dart';
@@ -64,6 +65,61 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('SWITCH IDENTITY'), findsOne);
     expect(find.text('Personal account'), findsOne);
+  });
+
+  testWidgets('band tabs keep the bar; edit menus and pushed details drop it', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      home: const RootShell(),
+      beforePump: (app) => app.switchToBand('b1'),
+    );
+
+    for (final screen in [
+      Screen.gigMgr,
+      Screen.analytics,
+      Screen.bandPreview,
+    ]) {
+      harness.app.resetTo(screen, 'b1');
+      await tester.pumpAndSettle();
+      expect(find.byType(BandTabBar), findsOneWidget, reason: '$screen');
+    }
+
+    harness.app.resetTo(Screen.gigMgr);
+    await tester.pumpAndSettle();
+    harness.app.openBandEditor();
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.bandEdit);
+    expect(find.byType(BandTabBar), findsNothing);
+    harness.app.back();
+    await tester.pumpAndSettle();
+
+    harness.app.openBandMedia();
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.bandMedia);
+    expect(find.byType(BandTabBar), findsNothing);
+    harness.app.back();
+    await tester.pumpAndSettle();
+
+    harness.app.startGigCreate();
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.gigCreate);
+    expect(find.byType(BandTabBar), findsNothing);
+    harness.app.closeGigCreate();
+    await tester.pumpAndSettle();
+
+    harness.app.openHostedGig('missing-project');
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.hostedGig);
+    expect(find.byType(BandTabBar), findsNothing);
+    harness.app.back();
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.gigMgr);
+    expect(find.byType(BandTabBar), findsOneWidget);
   });
 
   testWidgets('requestMembersSheet lands on the own profile once', (

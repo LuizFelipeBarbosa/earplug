@@ -43,7 +43,8 @@ void main() {
     expect(find.text('GOING · ${app.rsvpCount(app.gig('g2')!)}'), findsOne);
     expect(app.identity, isA<BandIdentity>());
     expect((app.identity as BandIdentity).bandId, 'b1');
-    expect(find.byType(BandTabBar), findsOne);
+    // A pushed detail: no tab bar for either identity.
+    expect(find.byType(BandTabBar), findsNothing);
     expect(find.byType(FanTabBar), findsNothing);
 
     await _tapControl(tester, 'hosted-gig-door');
@@ -255,10 +256,8 @@ void main() {
     final edit = tester.getRect(find.byKey(const Key('hosted-gig-edit')));
     expect(edit.left, greaterThanOrEqualTo(0));
     expect(edit.right, lessThanOrEqualTo(390));
-    expect(
-      edit.bottom,
-      lessThanOrEqualTo(tester.getTopLeft(find.byType(BandTabBar)).dy),
-    );
+    expect(edit.bottom, lessThanOrEqualTo(844));
+    expect(find.byType(BandTabBar), findsNothing);
   });
 
   test('management paths do not resolve as fan gigs or band slugs', () {

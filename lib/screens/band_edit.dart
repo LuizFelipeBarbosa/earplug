@@ -196,7 +196,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
               16,
               headerTopPad(context),
               16,
-              tabBarClearance + MediaQuery.paddingOf(context).bottom,
+              MediaQuery.paddingOf(context).bottom + 24,
             ),
             children: [
               Row(

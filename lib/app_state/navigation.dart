@@ -13,6 +13,7 @@ mixin _NavigationState on _AppStateCore {
   Venue? knownVenue(String id);
   bool isAdminOf(String id);
   OrganizationRole? organizerRoleFor(String organizationId);
+  bool get currentIsHost;
   Booking? bookingById(String id);
   ActiveIdentity identityForBooking(Booking booking);
   void ensureExploreBands();
@@ -91,13 +92,30 @@ mixin _NavigationState on _AppStateCore {
 
   void back() {
     if (_stack.length <= 1) {
-      if (current.screen == Screen.gig || current.screen == Screen.orgApply) {
+      final root = current.screen;
+      if (root == Screen.gig || root == Screen.orgApply) {
         resetTo(Screen.home);
+      } else if (tabBarHiddenScreens.contains(root)) {
+        // A pushed screen with nothing beneath it (deep link, reload): its
+        // back arrow lands on the home tab of the identity it belongs to.
+        resetTo(_homeTabFor(root));
       }
       return;
     }
     _popAppStack();
     replaceBrowserPath(_browserPathFor(current.screen, current.param));
+  }
+
+  Screen _homeTabFor(Screen screen) {
+    if (screen == Screen.bandMedia || screen == Screen.gigCreate) {
+      return Screen.gigMgr;
+    }
+    return switch (identity) {
+      OrganizerIdentity() =>
+        currentIsHost ? Screen.orgDash : Screen.orgOpportunities,
+      BandIdentity() => Screen.gigMgr,
+      _ => Screen.home,
+    };
   }
 
   void _popAppStack() {

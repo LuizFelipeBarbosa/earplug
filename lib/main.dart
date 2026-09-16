@@ -603,6 +603,7 @@ class RootShell extends StatelessWidget {
         screen == Screen.reviewCompose ||
         screen == Screen.stripeReturn;
     final showAsOrganizerTab = isDualIdentityScreen && identityIsOrganizer;
+    final showTabBar = !desktop && !tabBarHiddenScreens.contains(screen);
 
     final body = switch (dataStatus) {
       DataStatus.connecting => ColoredBox(
@@ -639,15 +640,15 @@ class RootShell extends StatelessWidget {
       DataStatus.ready => Stack(
         children: [
           Positioned.fill(child: _screenFor(entry)),
-          if (!desktop &&
+          if (showTabBar &&
               (fanTabScreens.contains(screen) || showOpportunityAsFanTab))
             const Positioned(left: 0, right: 0, bottom: 0, child: FanTabBar()),
-          if (!desktop &&
+          if (showTabBar &&
               bandTabScreens.contains(screen) &&
               !showOpportunityAsFanTab &&
               (!isDualIdentityScreen || !showAsOrganizerTab))
             const Positioned(left: 0, right: 0, bottom: 0, child: BandTabBar()),
-          if (!desktop &&
+          if (showTabBar &&
               organizerTabScreens.contains(screen) &&
               (!isDualIdentityScreen || showAsOrganizerTab))
             const Positioned(

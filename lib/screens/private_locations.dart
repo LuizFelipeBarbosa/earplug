@@ -390,7 +390,7 @@ class _PrivateLocationEditScreenState extends State<PrivateLocationEditScreen> {
           16,
           headerTopPad(context),
           16,
-          tabBarClearance,
+          MediaQuery.paddingOf(context).bottom + 24,
         ),
         children: [
           Row(

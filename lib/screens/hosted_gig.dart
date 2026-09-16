@@ -69,7 +69,7 @@ class _HostedGigScreenState extends State<HostedGigScreen> {
       EpLayout.gutter,
       headerTopPad(context),
       EpLayout.gutter,
-      tabBarClearance,
+      MediaQuery.paddingOf(context).bottom + 24,
     );
     if (project == null) {
       return ListView(

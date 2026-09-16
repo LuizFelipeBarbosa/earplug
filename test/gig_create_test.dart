@@ -30,7 +30,8 @@ void main() {
     final top = headerTopPad(tester.element(close));
     final list = find.byType(ListView);
     final padding = tester.widget<ListView>(list).padding as EdgeInsets;
-    expect(padding, EdgeInsets.fromLTRB(20, top + 60, 20, tabBarClearance));
+    // No tab bar on the composer: the list clears only the home indicator.
+    expect(padding, EdgeInsets.fromLTRB(20, top + 60, 20, 24));
     for (final control in [close, save]) {
       expect(tester.getTopLeft(control).dy, top);
       expect(tester.getSize(control).height, greaterThanOrEqualTo(44));

@@ -137,7 +137,7 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
             EpLayout.gutter,
             headerTopPad(context) + 44 + 16,
             EpLayout.gutter,
-            tabBarClearance,
+            MediaQuery.paddingOf(context).bottom + 24,
           ),
           children: [
             AspectRatio(

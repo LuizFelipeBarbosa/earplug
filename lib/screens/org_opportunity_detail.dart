@@ -151,7 +151,7 @@ class _OrgOpportunityDetailScreenState
         EpLayout.gutter,
         headerTopPad(context),
         EpLayout.gutter,
-        tabBarClearance,
+        MediaQuery.paddingOf(context).bottom + 24,
       ),
       children: [
         Align(

@@ -15,7 +15,7 @@ class OrgTeamScreen extends StatelessWidget {
         16,
         headerTopPad(context),
         16,
-        tabBarClearance,
+        MediaQuery.paddingOf(context).bottom + 24,
       ),
       children: const [OrgTeamPanel()],
     );
