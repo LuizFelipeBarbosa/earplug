@@ -30,6 +30,8 @@ class _ApplicantReviewScreenState extends State<ApplicantReviewScreen> {
   bool _loading = true;
   bool _busy = false;
   Object? _loadToken;
+  final _barKey = GlobalKey();
+  double _barHeight = 0;
 
   @override
   void initState() {
@@ -86,6 +88,15 @@ class _ApplicantReviewScreenState extends State<ApplicantReviewScreen> {
       if (!mounted || !identical(_loadToken, token)) return;
       setState(() => _loading = false);
     }
+  }
+
+  /// The profile's trailing spacer follows the bar's real height, so its last
+  /// section always scrolls clear of the bar; measured once the bar has laid
+  /// out and refreshed whenever its content changes.
+  void _measureBar() {
+    final height = _barKey.currentContext?.size?.height;
+    if (!mounted || height == null || height == _barHeight) return;
+    setState(() => _barHeight = height);
   }
 
   /// The route carries only the application id; the application lives on one
@@ -196,6 +207,10 @@ class _ApplicantReviewScreenState extends State<ApplicantReviewScreen> {
     final row = _row;
     final opportunity = _opportunity;
     final band = row == null ? null : app.band(row.application.bandId);
+    final showBar = row != null && opportunity != null;
+    if (showBar) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _measureBar());
+    }
 
     final Widget body;
     if (row != null && opportunity != null && band != null) {
@@ -203,7 +218,7 @@ class _ApplicantReviewScreenState extends State<ApplicantReviewScreen> {
         key: ValueKey(band.id),
         bandId: band.id,
         showHeaderBar: false,
-        bottomPadding: actionBarClearance(context) + 24,
+        bottomPadding: _barHeight + 24,
       );
     } else if (row != null && app.publicBandMissing(row.application.bandId)) {
       body = const Center(child: EpEyebrow('Band not found'));
@@ -250,12 +265,16 @@ class _ApplicantReviewScreenState extends State<ApplicantReviewScreen> {
               tone: applicationStatusTone(row.application.status),
             ),
           ),
-        if (row != null && opportunity != null)
+        // Last in the stack so it sits over the profile's scroll content and
+        // takes the taps; the CTA's own SafeArea keeps the buttons above the
+        // home indicator while its background runs to the viewport edge.
+        if (showBar)
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
             child: _DecisionBar(
+              key: _barKey,
               row: row,
               opportunity: opportunity,
               booking: app.organizationBookings
@@ -279,6 +298,7 @@ class _ApplicantReviewScreenState extends State<ApplicantReviewScreen> {
 
 class _DecisionBar extends StatelessWidget {
   const _DecisionBar({
+    super.key,
     required this.row,
     required this.opportunity,
     required this.booking,

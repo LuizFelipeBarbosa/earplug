@@ -239,6 +239,48 @@ void main() {
     expect(find.byKey(const Key('applicant-review-status')), findsOneWidget);
   });
 
+  for (final inset in const [0.0, 34.0]) {
+    testWidgets(
+      'the decision bar sits on the viewport bottom, keeps its content above '
+      'a $inset inset and stays tappable over the profile',
+      (tester) async {
+        final harness = await _pumpReview(tester, 'app1', bottomInset: inset);
+        final viewportBottom =
+            tester.view.physicalSize.height / tester.view.devicePixelRatio;
+        final bar = find.byKey(const Key('applicant-review-actions'));
+        final book = find.byKey(const Key('applicant-review-book'));
+
+        expect(tester.getRect(bar).bottom, viewportBottom);
+        expect(_barContentRect(tester).bottom, viewportBottom - inset);
+        expect(
+          tester.getRect(book).bottom,
+          lessThanOrEqualTo(viewportBottom - inset),
+        );
+
+        // The last profile section scrolls fully clear of the bar.
+        await tester.drag(
+          find.byType(Scrollable).first,
+          const Offset(0, -5000),
+        );
+        await tester.pumpAndSettle();
+        final reviews = find.byKey(const ValueKey('band-reviews-loader-b1'));
+        expect(reviews, findsOneWidget);
+        expect(
+          tester.getRect(reviews).bottom,
+          lessThanOrEqualTo(tester.getRect(bar).top),
+        );
+
+        expect(book.hitTestable(), findsOneWidget);
+        await tester.tap(book);
+        await tester.pumpAndSettle();
+        expect(
+          await _statusOf(harness.app, 'app1'),
+          ArtistApplicationStatus.shortlisted,
+        );
+      },
+    );
+  }
+
   testWidgets('the review lays out on a 390x844 phone without overflow', (
     tester,
   ) async {
@@ -255,9 +297,16 @@ Future<AppHarness> _pumpReview(
   String applicationId, {
   Future<void> Function(AppState app)? beforePump,
   Size size = const Size(402, 900),
+  double bottomInset = 0,
   FakeAuthService? auth,
   DemoRepository? repository,
 }) async {
+  if (bottomInset > 0) {
+    // A home-indicator style safe area; pumpApp resets the view at teardown.
+    final padding = FakeViewPadding(bottom: bottomInset);
+    tester.view.padding = padding;
+    tester.view.viewPadding = padding;
+  }
   final resolvedAuth = auth ?? FakeAuthService();
   if (auth == null) await resolvedAuth.signInDemo();
   final harness = await pumpApp(
@@ -276,6 +325,19 @@ Future<AppHarness> _pumpReview(
   await tester.pumpAndSettle();
   return harness;
 }
+
+/// The decision bar's content box: what its bottom safe-area padding wraps.
+Rect _barContentRect(WidgetTester tester) => tester.getRect(
+  find
+      .descendant(
+        of: find.descendant(
+          of: find.byKey(const Key('applicant-review-actions')),
+          matching: find.byType(SafeArea),
+        ),
+        matching: find.byType(Container),
+      )
+      .first,
+);
 
 Future<ArtistApplicationStatus> _statusOf(
   AppState app,
