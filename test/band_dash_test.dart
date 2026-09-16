@@ -295,7 +295,20 @@ void main() {
           ..returns(
             'bandProfileDetails',
             const BandProfileDetails(memberNames: ['Avery', 'Morgan']),
-          ),
+          )
+          ..returns('bandMembers', const [
+            BandMember(
+              userId: 'u-avery',
+              name: 'Avery',
+              role: BandMemberRole.admin,
+              isSelf: true,
+            ),
+            BandMember(
+              userId: 'u-morgan',
+              name: 'Morgan',
+              role: BandMemberRole.member,
+            ),
+          ]),
         home: const Scaffold(body: BandDashScreen()),
       );
 
@@ -311,12 +324,18 @@ void main() {
 
       final sheet = find.byKey(const Key('band-members-sheet'));
       expect(sheet, findsOne);
-      expect(find.text('BAND MEMBERS · 2'), findsOne);
-      for (final member in ['Avery', 'Morgan']) {
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('band-members-count')),
+          matching: find.text('2'),
+        ),
+        findsOne,
+      );
+      for (final member in ['u-avery', 'u-morgan']) {
         expect(
           find.descendant(
             of: sheet,
-            matching: find.byKey(ValueKey('accepted-member-$member')),
+            matching: find.byKey(ValueKey('band-member-$member')),
           ),
           findsOne,
         );
@@ -338,7 +357,10 @@ void main() {
     expect(harness.app.canGoBack, isFalse);
     final sheet = find.byKey(const Key('band-members-sheet'));
     expect(sheet, findsOne);
-    expect(find.byKey(const ValueKey('accepted-member-Band admin')), findsOne);
+    expect(
+      find.byKey(const ValueKey('band-member-${DemoData.demoUserId}')),
+      findsOne,
+    );
 
     Navigator.of(tester.element(sheet)).pop();
     await tester.pumpAndSettle();
@@ -607,7 +629,10 @@ void main() {
     await expectAction('setup-members', Screen.bandDash, param: 'members');
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('band-members-sheet')), findsOne);
-    expect(find.byKey(const ValueKey('accepted-member-Band admin')), findsOne);
+    expect(
+      find.byKey(const ValueKey('band-member-${DemoData.demoUserId}')),
+      findsOne,
+    );
     Navigator.of(
       tester.element(find.byKey(const Key('band-members-sheet'))),
     ).pop();
@@ -680,7 +705,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('band-members-sheet')), findsOne);
-    expect(find.byKey(const ValueKey('accepted-member-Band admin')), findsOne);
+    expect(
+      find.byKey(const ValueKey('band-member-${DemoData.demoUserId}')),
+      findsOne,
+    );
   });
 
   testWidgets('single-band switcher lists the managed account', (tester) async {
