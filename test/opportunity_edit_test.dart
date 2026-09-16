@@ -6,7 +6,9 @@ import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/opportunity_edit.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
@@ -18,7 +20,7 @@ import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
 void main() {
-  testWidgets('draft save action stays above the organizer tab bar', (
+  testWidgets('the pinned open footer stays above the organizer tab bar', (
     tester,
   ) async {
     final harness = await pumpApp(tester, home: const RootShell());
@@ -29,7 +31,7 @@ void main() {
     expect(find.byType(OpportunityEditScreen), findsOneWidget);
     expect(find.byType(OrganizerTabBar), findsOneWidget);
     expect(
-      tester.getRect(find.byKey(const ValueKey('opp-edit-save'))).bottom,
+      tester.getRect(find.byKey(const ValueKey('opp-edit-open'))).bottom,
       lessThanOrEqualTo(tester.getRect(find.byType(OrganizerTabBar)).top),
     );
   });
@@ -46,7 +48,7 @@ void main() {
       'org1',
     )).map((opportunity) => opportunity.id).toSet();
     expect(find.byType(StatusPill), findsNothing);
-    expect(_action(tester, 'open').onPrimary, isNull);
+    expect(_action(tester, 'open').onPressed, isNull);
     expect(
       find.descendant(
         of: find.byType(EpCard),
@@ -72,7 +74,7 @@ void main() {
       )).map((opportunity) => opportunity.id).toSet(),
       originalIds,
     );
-    expect(_action(tester, 'open').onPrimary, isNull);
+    expect(_action(tester, 'open').onPressed, isNull);
 
     await _tapAction(tester, 'save');
     final saved = (await repository.manageOpportunities(
@@ -92,7 +94,7 @@ void main() {
           .any((opportunity) => opportunity.id == saved.id),
       isTrue,
     );
-    expect(_action(tester, 'open').onPrimary, isNotNull);
+    expect(_action(tester, 'open').onPressed, isNotNull);
 
     // OPEN must persist edits made since the explicit save before transitioning.
     await _enterText(tester, 'opp-edit-title', 'Basement Saturday Live');
@@ -168,8 +170,15 @@ void main() {
       tester.widget<EpChip>(find.byKey(const Key('opp-edit-venue-v1'))).active,
       isFalse,
     );
-    expect(_action(tester, 'open').primaryLabel, 'OPEN FOR APPLICATIONS');
-    expect(_action(tester, 'open').onPrimary, isNull);
+    expect(find.text('Choose a venue'), findsOneWidget);
+    expect(find.text('0 OF 4 REQUIRED DONE'), findsOneWidget);
+    _expectFooter(
+      tester,
+      'STILL NEEDS A TITLE + A DATE AND TIME + A VENUE + A SLOT + '
+      'A DEADLINE BEFORE START',
+    );
+    expect(_action(tester, 'open').label, 'OPEN FOR APPLICATIONS');
+    expect(_action(tester, 'open').onPressed, isNull);
     expect(find.text('OPEN FOR APPLICATIONS'), findsOneWidget);
     expect(find.text('WAITING FOR VENUE APPROVAL'), findsNothing);
 
@@ -207,6 +216,8 @@ void main() {
     );
     await _enterText(tester, 'opp-edit-venue-search', 'No matching venue');
     expect(find.byKey(const Key('opp-edit-venue-v1')), findsNothing);
+    // The chosen venue reads on the VENUE row above the search field.
+    await _reveal(tester, find.byKey(const ValueKey('opp-edit-location')));
     expect(
       find.text('The Foghorn Club · Mission, San Francisco'),
       findsOneWidget,
@@ -227,6 +238,9 @@ void main() {
       'opp-promoter',
       organizationId: 'org3',
     );
+    // A loaded draft folds its filled rows; open the ones under test.
+    await _tap(tester, 'opp-edit-when');
+    await _tap(tester, 'opp-edit-location');
     expect(_field(tester, 'opp-edit-venue-search').enabled, isFalse);
     expect(
       tester.widget<EpChip>(find.byKey(const Key('opp-edit-venue-v1'))).onTap,
@@ -245,8 +259,8 @@ void main() {
       isNotNull,
     );
     expect(find.byKey(const Key('opp-edit-request-approval')), findsNothing);
-    expect(_action(tester, 'open').primaryLabel, 'WAITING FOR VENUE APPROVAL');
-    expect(_action(tester, 'open').onPrimary, isNull);
+    expect(_action(tester, 'open').label, 'WAITING FOR VENUE APPROVAL');
+    expect(_action(tester, 'open').onPressed, isNull);
     await _reveal(tester, find.byKey(const Key('opp-edit-date')));
     for (final key in ['date', 'doors', 'start', 'deadline']) {
       expect(
@@ -286,7 +300,7 @@ void main() {
       tester.widget<EpChip>(find.byKey(const Key('opp-edit-venue-v1'))).onTap,
       isNotNull,
     );
-    expect(_action(tester, 'open').onPrimary, isNull);
+    expect(_action(tester, 'open').onPressed, isNull);
     await _disposeApp(tester, harness.app);
   });
 
@@ -329,7 +343,7 @@ void main() {
       _field(tester, 'opp-edit-title').controller!.text,
       'Promoter showcase',
     );
-    expect(_action(tester, 'open').onPrimary, isNull);
+    expect(_action(tester, 'open').onPressed, isNull);
     await _disposeApp(tester, harness.app);
   });
 
@@ -346,6 +360,7 @@ void main() {
       'opp-promoter',
       organizationId: 'org3',
     );
+    await _tap(tester, 'opp-edit-location');
     await _tap(tester, 'opp-edit-request-approval');
     final message = find.byKey(const Key('opp-edit-approval-message'));
     final submit = find.byKey(const Key('opp-edit-send-approval'));
@@ -383,6 +398,8 @@ void main() {
         'opp-promoter',
         organizationId: 'org3',
       );
+      await _tap(tester, 'opp-edit-when');
+      await _tap(tester, 'opp-edit-location');
       await _reveal(tester, find.byKey(const Key('opp-edit-venue-approval')));
       expect(find.text('APPROVED'), findsOneWidget);
       expect(find.byKey(const Key('opp-edit-request-approval')), findsNothing);
@@ -390,8 +407,8 @@ void main() {
         find.byKey(const Key('opp-edit-withdraw-approval')),
         findsOneWidget,
       );
-      expect(_action(tester, 'open').primaryLabel, 'OPEN FOR APPLICATIONS');
-      expect(_action(tester, 'open').onPrimary, isNotNull);
+      expect(_action(tester, 'open').label, 'OPEN FOR APPLICATIONS');
+      expect(_action(tester, 'open').onPressed, isNotNull);
       await _reveal(tester, find.byKey(const Key('opp-edit-date')));
       expect(
         tester
@@ -404,7 +421,7 @@ void main() {
         (await repository.opportunity('opp-promoter'))!.status,
         OpportunityStatus.open,
       );
-      expect(_action(tester, 'close').onPrimary, isNotNull);
+      expect(_action(tester, 'close').onPressed, isNotNull);
       await _reveal(tester, find.byKey(const Key('opp-edit-venue-approval')));
       expect(find.byKey(const Key('opp-edit-withdraw-approval')), findsNothing);
       await _disposeApp(tester, harness.app);
@@ -518,7 +535,11 @@ void main() {
     );
     expect(find.byKey(const ValueKey('opp-edit-external-url')), findsNothing);
     await _tapAction(tester, 'save');
-    expect(find.text('Needs: ticket price, ticket capacity'), findsWidgets);
+    expect(
+      find.text('Still needs a ticket price + a ticket capacity.'),
+      findsOneWidget,
+    );
+    _expectFooter(tester, 'STILL NEEDS A TICKET PRICE + A TICKET CAPACITY');
     expect(
       (await repository.manageOpportunities(
         'org1',
@@ -536,7 +557,7 @@ void main() {
     expect(saved.ticketPriceMinor, 2500);
     expect(saved.ticketCapacity, 100);
     expect(saved.ticketCurrency, 'usd');
-    expect(_action(tester, 'open').onPrimary, isNotNull);
+    expect(_action(tester, 'open').onPressed, isNotNull);
 
     for (final price in ['0.99', 'NaN', 'Infinity', '1e308']) {
       await _enterText(tester, 'opp-edit-ticket-price', price);
@@ -544,9 +565,9 @@ void main() {
         find.text('Enter a ticket price of at least \$1.00.'),
         findsOneWidget,
       );
-      expect(_action(tester, 'open').onPrimary, isNull);
+      expect(_action(tester, 'open').onPressed, isNull);
       await _tapAction(tester, 'save');
-      expect(find.text('Needs: ticket price'), findsWidgets);
+      expect(find.text('Still needs a ticket price.'), findsOneWidget);
       expect(
         (await repository.opportunity(saved.id))!.revision,
         saved.revision,
@@ -556,9 +577,9 @@ void main() {
     for (final capacity in ['0', '6000', '1.5']) {
       await _enterText(tester, 'opp-edit-ticket-capacity', capacity);
       expect(find.text('Enter a whole number from 1 to 5000.'), findsOneWidget);
-      expect(_action(tester, 'open').onPrimary, isNull);
+      expect(_action(tester, 'open').onPressed, isNull);
       await _tapAction(tester, 'save');
-      expect(find.text('Needs: ticket capacity'), findsWidgets);
+      expect(find.text('Still needs a ticket capacity.'), findsOneWidget);
       final unchanged = (await repository.opportunity(saved.id))!;
       expect(unchanged.revision, saved.revision);
       expect(unchanged.status, OpportunityStatus.draft);
@@ -576,7 +597,7 @@ void main() {
         find.byKey(const ValueKey('opp-edit-external-url')),
         ticketing == 'external' ? findsOneWidget : findsNothing,
       );
-      expect(_action(tester, 'open').onPrimary, isNotNull);
+      expect(_action(tester, 'open').onPressed, isNotNull);
     }
     await _tapAction(tester, 'save');
     expect(
@@ -702,11 +723,13 @@ void main() {
     final fixture = (await repository.opportunity('opp1'))!;
     final harness = await _pumpEditor(tester, auth, repository, 'opp1');
     expect(_field(tester, 'opp-edit-title').controller!.text, fixture.title);
+    await _tap(tester, 'opp-edit-location');
     final venue = tester.widget<EpChip>(
       find.byKey(const ValueKey('opp-edit-venue-v1')),
     );
     expect(venue.active, isTrue);
     expect(venue.onTap, isNull);
+    await _tap(tester, 'opp-edit-details-toggle');
     await _reveal(tester, find.byKey(const ValueKey('opp-edit-desc')));
     expect(_field(tester, 'opp-edit-desc').controller!.text, fixture.desc);
     await _enterText(
@@ -726,7 +749,7 @@ void main() {
       (await repository.opportunity('opp1'))!.status,
       OpportunityStatus.applicationsClosed,
     );
-    expect(_action(tester, 'reopen').onPrimary, isNotNull);
+    expect(_action(tester, 'reopen').onPressed, isNotNull);
     expect(
       harness.app
           .opportunitiesFor('org1')
@@ -741,10 +764,7 @@ void main() {
     final auth = FakeAuthService();
     final repository = DemoRepository(auth: auth);
     final harness = await _pumpEditor(tester, auth, repository, 'opp2');
-    await _reveal(tester, find.byKey(const ValueKey('opp-edit-delete')));
-    // DangerZone's caption makes its center fall outside the actual button.
-    await tester.tap(find.widgetWithText(TextButton, 'DELETE DRAFT'));
-    await tester.pumpAndSettle();
+    await _tap(tester, 'opp-edit-delete');
     expect(await repository.opportunity('opp2'), isNull);
     expect(harness.app.current.screen, Screen.orgDash);
     expect(harness.app.canGoBack, isFalse);
@@ -764,6 +784,8 @@ void main() {
     final repository = DemoRepository(auth: auth);
     final harness = await _pumpEditor(tester, auth, repository, 'opp1');
     final band = (await repository.band('b1'))!;
+    expect(find.byKey(const ValueKey('opp-edit-invite-add')), findsNothing);
+    await _tap(tester, 'opp-edit-visibility-invite');
     await _invite(tester, band);
     final chipFinder = find.byKey(const ValueKey('opp-edit-invite-b1'));
     await _reveal(tester, chipFinder);
@@ -817,6 +839,7 @@ void main() {
     final harness = await _pumpEditor(tester, auth, repository, 'new');
     final originalCount = (await repository.manageOpportunities('org1')).length;
     await _enterText(tester, 'opp-edit-title', 'Never saved');
+    await _tap(tester, 'opp-edit-visibility-invite');
     await _invite(tester, (await repository.band('b1'))!);
     await tester.pump(const Duration(seconds: 2));
     expect(
@@ -842,7 +865,10 @@ void main() {
     final harness = await _pumpEditor(tester, auth, repository, 'new');
     final originalCount = (await repository.manageOpportunities('org1')).length;
     await _tapAction(tester, 'save');
-    expect(find.text('Needs: title, venue, date'), findsOneWidget);
+    expect(
+      find.text('Still needs a title + a date and time + a venue.'),
+      findsOneWidget,
+    );
     expect(
       (await repository.manageOpportunities('org1')).length,
       originalCount,
@@ -852,6 +878,7 @@ void main() {
     await _pickDate(tester, 'opp-edit-date', _futureDate(30));
     // Saving is allowed even when the deadline would prevent opening.
     await _pickDate(tester, 'opp-edit-deadline', _futureDate(31));
+    await _tap(tester, 'opp-edit-visibility-invite');
     await _invite(tester, (await repository.band('b1'))!);
     await _invite(tester, (await repository.band('b2'))!);
     await _removeInvite(tester, 'b2');
@@ -861,11 +888,8 @@ void main() {
     )).singleWhere((opportunity) => opportunity.title == 'Minimal draft');
     expect(saved.status, OpportunityStatus.draft);
     expect(saved.invitedBandIds, ['b1']);
-    expect(_action(tester, 'open').onPrimary, isNull);
-    expect(
-      find.text('Needs: at least one slot, deadline before start'),
-      findsOneWidget,
-    );
+    expect(_action(tester, 'open').onPressed, isNull);
+    _expectFooter(tester, 'STILL NEEDS A SLOT + A DEADLINE BEFORE START');
     await _disposeApp(tester, harness.app);
   });
 
@@ -877,6 +901,7 @@ void main() {
       await repository.closeOpportunityApplications('opp1');
       final harness = await _pumpEditor(tester, auth, repository, 'opp1');
       final fixture = (await repository.opportunity('opp1'))!;
+      await _tap(tester, 'opp-edit-when');
       await _pickDate(
         tester,
         'opp-edit-deadline',
@@ -886,7 +911,7 @@ void main() {
       // The form scrolls towards its feedback line, but the lazy list only
       // reaches the extent it has laid out; finish the scroll before reading it.
       await _reveal(tester, find.byKey(const ValueKey('opp-edit-feedback')));
-      expect(find.text('Needs: deadline before start'), findsWidgets);
+      expect(find.text('Still needs a deadline before start.'), findsOneWidget);
       expect(
         (await repository.opportunity('opp1'))!.status,
         OpportunityStatus.applicationsClosed,
@@ -911,17 +936,14 @@ void main() {
     final auth = FakeAuthService();
     final repository = DemoRepository(auth: auth);
     final harness = await _pumpEditor(tester, auth, repository, 'opp1');
-    await _reveal(tester, find.byKey(const ValueKey('opp-edit-cancel')));
-    await tester.tap(find.widgetWithText(TextButton, 'CANCEL OPPORTUNITY'));
-    await tester.pumpAndSettle();
+    await _tap(tester, 'opp-edit-cancel');
     await tester.tap(find.widgetWithText(TextButton, 'KEEP'));
     await tester.pumpAndSettle();
     expect(
       (await repository.opportunity('opp1'))!.status,
       OpportunityStatus.open,
     );
-    await tester.tap(find.widgetWithText(TextButton, 'CANCEL OPPORTUNITY'));
-    await tester.pumpAndSettle();
+    await _tap(tester, 'opp-edit-cancel');
     await tester.tap(find.widgetWithText(FilledButton, 'CONFIRM'));
     await tester.pumpAndSettle();
     expect(
@@ -940,13 +962,15 @@ void main() {
       await repository.cancelOpportunity('opp3');
       final harness = await _pumpEditor(tester, auth, repository, 'opp3');
       expect(_field(tester, 'opp-edit-title').enabled, isFalse);
-      expect(find.byType(StickyActionBar), findsNothing);
+      expect(find.byType(EpBottomCta), findsNothing);
+      expect(find.byKey(const ValueKey('opp-edit-save')), findsNothing);
       final chipFinder = find.byKey(const ValueKey('opp-edit-invite-b1'));
       await _reveal(tester, chipFinder);
       final chip = tester.widget<EpChip>(chipFinder);
       expect(chip.label, (await repository.band('b1'))!.name);
       expect(chip.onRemoved, isNull);
-      expect(find.byType(DangerZone), findsNothing);
+      expect(find.byKey(const ValueKey('opp-edit-cancel')), findsNothing);
+      expect(find.byKey(const ValueKey('opp-edit-delete')), findsNothing);
       await _disposeApp(tester, harness.app);
     },
   );
@@ -974,7 +998,8 @@ void main() {
         find.byKey(const Key('opp-edit-update-ticketing')),
         findsOneWidget,
       );
-      expect(find.byType(StickyActionBar), findsNothing);
+      expect(find.byType(EpBottomCta), findsNothing);
+      expect(find.byKey(const ValueKey('opp-edit-save')), findsNothing);
       await _disposeApp(tester, harness.app);
     },
   );
@@ -1062,6 +1087,7 @@ void main() {
         ),
         findsOneWidget,
       );
+      await _tap(tester, 'opp-edit-details-toggle');
       await _reveal(tester, find.byKey(const Key('opp-edit-attendance')));
       expect(find.text('EXPECTED GUESTS'), findsOneWidget);
       expectNoFieldInCard(tester);
@@ -1102,15 +1128,16 @@ void main() {
       expect(find.byKey(const Key('opp-edit-feedback')), findsOneWidget);
       expect(
         find.text(
-          'Needs: title, location, date, deadline, a fee for every slot',
+          'Still needs a title + a date and time + a location + a slot + '
+          'a deadline before start.',
         ),
-        findsWidgets,
+        findsOneWidget,
       );
       await _tap(tester, 'opp-edit-slot-add');
       await _tapAction(tester, 'save');
       expect(
-        find.textContaining('deadline, a fee for every slot'),
-        findsWidgets,
+        find.textContaining('a fee for every slot + a deadline before start.'),
+        findsOneWidget,
       );
       await _enterText(tester, 'opp-edit-slot-0-guarantee', '150');
       await _tap(tester, 'opp-edit-slot-add');
@@ -1119,7 +1146,13 @@ void main() {
       await _enterText(tester, 'opp-edit-slot-1-guarantee', '50');
       await _tapAction(tester, 'save');
       expect(find.textContaining('a fee for every slot'), findsNothing);
-      expect(find.text('Needs: title, location, date, deadline'), findsWidgets);
+      expect(
+        find.text(
+          'Still needs a title + a date and time + a location + '
+          'a deadline before start.',
+        ),
+        findsOneWidget,
+      );
       expect(
         await repository.manageOpportunities('org2'),
         hasLength(beforeCount),
@@ -1153,19 +1186,20 @@ void main() {
       await tester.pumpAndSettle();
       await _tap(tester, 'opp-edit-slot-add');
       await _enterText(tester, 'opp-edit-slot-0-guarantee', '150');
+      await _tap(tester, 'opp-edit-details-toggle');
       await _enterText(tester, 'opp-edit-attendance', '35');
       expectNoFieldInCard(tester);
 
       // Private deadlines must be explicit and strictly before the start.
       await _tapAction(tester, 'save');
-      expect(find.text('Needs: deadline'), findsWidgets);
+      expect(find.text('Still needs a deadline before start.'), findsOneWidget);
       expect(
         await repository.manageOpportunities('org2'),
         hasLength(beforeCount),
       );
       await _pickDate(tester, 'opp-edit-deadline', _futureDate(31));
       await _tapAction(tester, 'save');
-      expect(find.text('Needs: deadline'), findsWidgets);
+      expect(find.text('Still needs a deadline before start.'), findsOneWidget);
       expect(
         await repository.manageOpportunities('org2'),
         hasLength(beforeCount),
@@ -1215,6 +1249,7 @@ void main() {
         home: const OpportunityEditScreen(opportunityId: 'opp-private'),
         beforePump: (app) => app.switchToOrganization('org2'),
       );
+      await _tap(tester, 'opp-edit-location');
       final location = tester.widget<EpChip>(
         find.byKey(const Key('opp-location-private-location-org2')),
       );
@@ -1232,6 +1267,160 @@ void main() {
       await _disposeApp(tester, harness.app);
     },
   );
+
+  testWidgets(
+    'required progress counts filled rows and names the missing slot',
+    (tester) async {
+      final auth = FakeAuthService();
+      final repository = DemoRepository(auth: auth);
+      final harness = await _pumpEditor(tester, auth, repository, 'new');
+      expect(
+        find.byKey(const ValueKey('opp-edit-required-progress')),
+        findsOne,
+      );
+      expect(find.text('0 OF 4 REQUIRED DONE'), findsOneWidget);
+      expect(find.text('Name the night'), findsOneWidget);
+      expect(find.text('Pick date, doors and start'), findsOneWidget);
+      expect(find.text('Choose a venue'), findsOneWidget);
+      expect(find.text('Add a slot'), findsOneWidget);
+
+      await _enterText(tester, 'opp-edit-title', 'Three of four');
+      await _tap(tester, 'opp-edit-venue-v1');
+      await _pickDate(tester, 'opp-edit-date', _futureDate(30));
+      await _expectProgress(tester, '3 OF 4 REQUIRED DONE');
+      _expectFooter(tester, 'STILL NEEDS A SLOT');
+      expect(_action(tester, 'open').onPressed, isNull);
+
+      await _tap(tester, 'opp-edit-slot-add');
+      await _expectProgress(tester, '4 OF 4 REQUIRED DONE');
+      _expectFooter(tester, 'READY');
+      // Opening still waits for the first explicit save.
+      expect(_action(tester, 'open').onPressed, isNull);
+      await _tapAction(tester, 'save');
+      expect(_action(tester, 'open').onPressed, isNotNull);
+      await _disposeApp(tester, harness.app);
+    },
+  );
+
+  testWidgets('a private slot without a fee keeps the footer on the fee', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const OpportunityEditScreen(opportunityId: 'new'),
+      beforePump: (app) => app.switchToOrganization('org2'),
+    );
+    expect(find.text('Choose a location'), findsOneWidget);
+    expect(find.text('Add a slot with a fee'), findsOneWidget);
+
+    await _enterText(tester, 'opp-edit-title', 'Fee check');
+    await _tap(tester, 'opp-location-private-location-org2');
+    await _pickDate(tester, 'opp-edit-date', _futureDate(30));
+    await _pickDate(tester, 'opp-edit-deadline', _futureDate(20));
+    await _tap(tester, 'opp-edit-slot-add');
+    await _expectProgress(tester, '3 OF 4 REQUIRED DONE');
+    _expectFooter(tester, 'STILL NEEDS A FEE FOR EVERY SLOT');
+    expect(_action(tester, 'open').onPressed, isNull);
+
+    await _enterText(tester, 'opp-edit-slot-0-guarantee', '150');
+    await _expectProgress(tester, '4 OF 4 REQUIRED DONE');
+    _expectFooter(tester, 'READY');
+    await _disposeApp(tester, harness.app);
+  });
+
+  testWidgets('the details toggle reveals the six optional fields', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = DemoRepository(auth: auth);
+    final harness = await _pumpEditor(tester, auth, repository, 'opp2');
+    await _reveal(
+      tester,
+      find.byKey(const ValueKey('opp-edit-details-toggle')),
+    );
+    expect(
+      find.text(
+        'STYLE · AGE · DESCRIPTION · EQUIPMENT · REQUIREMENTS · '
+        'EXPECTED ATTENDANCE',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('opp-edit-details-body')), findsNothing);
+    expect(find.byKey(const ValueKey('opp-edit-desc')), findsNothing);
+
+    await _tap(tester, 'opp-edit-details-toggle');
+    expect(find.byKey(const ValueKey('opp-edit-details-body')), findsOneWidget);
+    for (final key in [
+      'opp-edit-genre-punk',
+      'opp-edit-age-allAges',
+      'opp-edit-desc',
+      'opp-edit-equipment',
+      'opp-edit-requirements',
+      'opp-edit-attendance',
+    ]) {
+      await _reveal(tester, find.byKey(ValueKey(key)));
+      expect(find.byKey(ValueKey(key)), findsOneWidget);
+    }
+    expectNoFieldInCard(tester);
+    await _disposeApp(tester, harness.app);
+  });
+
+  testWidgets('visibility explains that public never reaches the fan map', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = DemoRepository(auth: auth);
+    final harness = await _pumpEditor(tester, auth, repository, 'opp2');
+    final note = find.byKey(const ValueKey('opp-edit-visibility-note'));
+    await _reveal(tester, note);
+    expect(
+      find.descendant(
+        of: note,
+        matching: find.text(
+          'Public means visible to artists in Discover — never on the fan map.',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('opp-edit-invite-add')), findsNothing);
+    await _tap(tester, 'opp-edit-visibility-invite');
+    expect(find.byKey(const ValueKey('opp-edit-invite-add')), findsOneWidget);
+    await _disposeApp(tester, harness.app);
+  });
+
+  testWidgets('a saved draft offers a save pill and a red delete action', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = DemoRepository(auth: auth);
+    final harness = await _pumpEditor(tester, auth, repository, 'opp2');
+    final save = find.byKey(const ValueKey('opp-edit-save'));
+    await _reveal(tester, save);
+    final pill = tester.widget<EpPill>(save);
+    expect(pill.label, 'Save draft');
+    expect(pill.variant, EpPillVariant.outline);
+    expect(pill.onPressed, isNotNull);
+
+    final delete = find.byKey(const ValueKey('opp-edit-delete'));
+    await _reveal(tester, delete);
+    expect(
+      find.descendant(of: delete, matching: find.text('DELETE DRAFT')),
+      findsOneWidget,
+    );
+    final deleteText = tester.widget<EpMonoText>(
+      find.descendant(of: delete, matching: find.byType(EpMonoText)),
+    );
+    expect(deleteText.color, tester.element(delete).epColors.destructive);
+    expect(find.byType(DangerZone), findsNothing);
+    expect(find.byType(StickyActionBar), findsNothing);
+    expect(find.byKey(const ValueKey('opp-edit-cancel')), findsNothing);
+    await _disposeApp(tester, harness.app);
+  });
 }
 
 Future<void> _disposeApp(WidgetTester tester, AppState app) async {
@@ -1285,8 +1474,19 @@ class _EditorHost extends StatelessWidget {
 TextField _field(WidgetTester tester, String key) =>
     tester.widget<TextField>(find.byKey(ValueKey(key)));
 
-StickyActionBar _action(WidgetTester tester, String action) =>
-    tester.widget<StickyActionBar>(find.byKey(ValueKey('opp-edit-$action')));
+EpPill _action(WidgetTester tester, String action) =>
+    tester.widget<EpPill>(find.byKey(ValueKey('opp-edit-$action')));
+
+/// The footer hint renders upper-case; assert on what is drawn.
+void _expectFooter(WidgetTester tester, String text) {
+  expect(
+    find.descendant(
+      of: find.byKey(const ValueKey('opp-edit-missing')),
+      matching: find.text(text),
+    ),
+    findsOneWidget,
+  );
+}
 
 Future<void> _reveal(WidgetTester tester, Finder finder) async {
   final list = find
@@ -1315,9 +1515,17 @@ Future<void> _tap(WidgetTester tester, String key) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _tapAction(WidgetTester tester, String action) async {
-  await tester.tap(find.byKey(ValueKey('opp-edit-$action')));
-  await tester.pumpAndSettle();
+// The save pill scrolls with the form; the open/close/reopen pill is pinned.
+Future<void> _tapAction(WidgetTester tester, String action) =>
+    _tap(tester, 'opp-edit-$action');
+
+/// The progress eyebrow sits at the top of the form; scroll back to it.
+Future<void> _expectProgress(WidgetTester tester, String text) async {
+  await _reveal(
+    tester,
+    find.byKey(const ValueKey('opp-edit-required-progress')),
+  );
+  expect(find.text(text), findsOneWidget);
 }
 
 Future<void> _enterText(WidgetTester tester, String key, String value) async {
