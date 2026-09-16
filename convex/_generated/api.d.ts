@@ -12,6 +12,7 @@ import type * as admin from "../admin.js";
 import type * as analytics from "../analytics.js";
 import type * as artistApplications from "../artistApplications.js";
 import type * as bandInvites from "../bandInvites.js";
+import type * as bandMembers from "../bandMembers.js";
 import type * as bands from "../bands.js";
 import type * as bookings from "../bookings.js";
 import type * as bookingsRead from "../bookingsRead.js";
@@ -110,6 +111,7 @@ declare const fullApi: ApiFromModules<{
   analytics: typeof analytics;
   artistApplications: typeof artistApplications;
   bandInvites: typeof bandInvites;
+  bandMembers: typeof bandMembers;
   bands: typeof bands;
   bookings: typeof bookings;
   bookingsRead: typeof bookingsRead;
