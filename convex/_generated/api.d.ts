@@ -26,6 +26,7 @@ import type * as financeActions from "../financeActions.js";
 import type * as gigs from "../gigs.js";
 import type * as http from "../http.js";
 import type * as interactions from "../interactions.js";
+import type * as lib_applicationStamps from "../lib/applicationStamps.js";
 import type * as lib_authz from "../lib/authz.js";
 import type * as lib_bookingConfirm from "../lib/bookingConfirm.js";
 import type * as lib_bookingStatus from "../lib/bookingStatus.js";
@@ -123,6 +124,7 @@ declare const fullApi: ApiFromModules<{
   gigs: typeof gigs;
   http: typeof http;
   interactions: typeof interactions;
+  "lib/applicationStamps": typeof lib_applicationStamps;
   "lib/authz": typeof lib_authz;
   "lib/bookingConfirm": typeof lib_bookingConfirm;
   "lib/bookingStatus": typeof lib_bookingStatus;

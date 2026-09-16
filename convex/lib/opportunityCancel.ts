@@ -1,6 +1,7 @@
 import { Doc, Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
 import { loadCurrentOffer, sendBookingEmail } from "../bookings";
+import { applicationStatusPatch } from "./applicationStamps";
 import { releaseSlot } from "./bookingConfirm";
 import { assertBookingTransition } from "./bookingStatus";
 import { unpublishOpportunityGig } from "./gigPublish";
@@ -67,20 +68,20 @@ export async function cancelOpportunity(
       const application = await ctx.db.get(booking.applicationId);
       if (application?.status === "offered") {
         assertApplicationTransition(application.status, "shortlisted");
-        await ctx.db.patch(application._id, {
-          status: "shortlisted",
-          updatedAt: now,
-        });
+        await ctx.db.patch(
+          application._id,
+          applicationStatusPatch(application, "shortlisted", now),
+        );
       }
     } else {
       await releaseSlot(ctx, booking.slotId);
       const application = await ctx.db.get(booking.applicationId);
       if (application?.status === "booked") {
         assertApplicationTransition(application.status, "declined");
-        await ctx.db.patch(application._id, {
-          status: "declined",
-          updatedAt: now,
-        });
+        await ctx.db.patch(
+          application._id,
+          applicationStatusPatch(application, "declined", now),
+        );
       }
     }
     const cancelledBooking = await ctx.db.get(booking._id);
@@ -140,9 +141,8 @@ export async function expireActiveApplications(
         .take(200);
       for (const application of page) {
         await ctx.db.patch(application._id, {
-          status: options.to,
+          ...applicationStatusPatch(application, options.to, now),
           decidedAt: now,
-          updatedAt: now,
           ...(options.decidedBy ? { decidedBy: options.decidedBy } : {}),
         });
         patchedCount++;

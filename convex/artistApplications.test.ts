@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api as generatedApi } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import * as artistApplications from "./artistApplications";
+import { shortlistApplication } from "./bookings";
 import {
   APPLICATION_ACTIVE_STATUSES,
   APPLICATION_TRANSITIONS,
@@ -619,6 +620,12 @@ describe("artist applications: apply", () => {
       askMinor: null,
       availabilityNote: null,
       lineupNote: null,
+      viewedAt: null,
+      shortlistedAt: null,
+      declineReason: null,
+      declineNote: null,
+      hostNote: null,
+      hostNoteAt: null,
       decidedAt: null,
       createdAt: NOW,
       updatedAt: NOW,
@@ -855,6 +862,514 @@ describe("artist applications: withdrawal and review", () => {
   });
 });
 
+describe("artist applications: tracker", () => {
+  test("review stamps viewing and shortlisting once across later decisions", async () => {
+    const f = await setupApplications();
+    const { applicationId } = await f.apply();
+    const actions = ["under_review", "shortlisted", "declined"] as const;
+    for (const [index, action] of actions.entries()) {
+      vi.setSystemTime(NOW + (index + 1) * 100);
+      await f.checked(() =>
+        f.as("owner").mutation(api.artistApplications.review, {
+          applicationId,
+          action,
+        }),
+      );
+      expect(await f.readApplication(applicationId)).toMatchObject({
+        viewedAt: NOW + 100,
+        ...(index > 0 ? { shortlistedAt: NOW + 200 } : {}),
+      });
+    }
+  });
+
+  test("review can stamp viewing and shortlisting directly from submitted", async () => {
+    const f = await setupApplications();
+    const { applicationId } = await f.apply();
+    vi.setSystemTime(NOW + 100);
+    await f.checked(() =>
+      f.as("manager").mutation(api.artistApplications.review, {
+        applicationId,
+        action: "shortlisted",
+      }),
+    );
+    expect(await f.readApplication(applicationId)).toMatchObject({
+      status: "shortlisted",
+      viewedAt: NOW + 100,
+      shortlistedAt: NOW + 100,
+    });
+  });
+
+  test.each([undefined, 0])(
+    "booking shortlisting preserves existing stamps, including %s",
+    async (existingStamp) => {
+      const f = await setupApplications();
+      const [applicationId] = await f.seedApplications([{ status: "offered" }]);
+      await f.checked(() =>
+        f.t.run(async (ctx) => {
+          if (existingStamp !== undefined) {
+            await ctx.db.patch(applicationId, {
+              viewedAt: existingStamp,
+              shortlistedAt: existingStamp,
+            });
+          }
+          await shortlistApplication(ctx, applicationId, NOW + 100);
+        }),
+      );
+      const stamps = {
+        viewedAt: existingStamp ?? NOW + 100,
+        shortlistedAt: existingStamp ?? NOW + 100,
+      };
+      expect(await f.readApplication(applicationId)).toMatchObject(stamps);
+      await f.checked(() =>
+        f.t.run(async (ctx) => {
+          await ctx.db.patch(applicationId, { status: "offered" });
+          await shortlistApplication(ctx, applicationId, NOW + 200);
+        }),
+      );
+      expect(await f.readApplication(applicationId)).toMatchObject({
+        ...stamps,
+        status: "shortlisted",
+        updatedAt: NOW + 200,
+      });
+    },
+  );
+
+  test.each([
+    "slot_filled",
+    "not_a_fit",
+    "lineup_full",
+    "date_conflict",
+    "other",
+  ] as const)(
+    "decline reason %s and its trimmed note reach band payloads",
+    async (declineReason) => {
+      const f = await setupApplications();
+      const { applicationId } = await f.apply();
+      vi.setSystemTime(NOW + 100);
+      await f.checked(() =>
+        f.as("owner").mutation(api.artistApplications.review, {
+          applicationId,
+          action: "declined",
+          declineReason,
+          declineNote: "  Thanks for applying  ",
+        }),
+      );
+      const expected = {
+        declineReason,
+        declineNote: "Thanks for applying",
+        status: "declined",
+        viewedAt: NOW + 100,
+        decidedAt: NOW + 100,
+      };
+      expect(await f.readApplication(applicationId)).toMatchObject({
+        ...expected,
+        decidedBy: f.users.owner,
+      });
+      expect(
+        await f.as("member").query(api.artistApplications.mine, {
+          opportunityId: f.opportunityId,
+          bandId: f.bandId,
+        }),
+      ).toMatchObject(expected);
+      expect(
+        await f.as("member").query(api.artistApplications.forBand, {
+          bandId: f.bandId,
+        }),
+      ).toMatchObject([{ application: expected }]);
+    },
+  );
+
+  test("decline notes reject more than 500 trimmed characters atomically", async () => {
+    const f = await setupApplications();
+    const { applicationId } = await f.apply();
+    const before = await f.readApplication(applicationId);
+    await expect(
+      f.checked(() =>
+        f.as("owner").mutation(api.artistApplications.review, {
+          applicationId,
+          action: "declined",
+          declineReason: "other",
+          declineNote: "x".repeat(501),
+        }),
+      ),
+    ).rejects.toThrow("Decline note must be at most 500 characters");
+    expect(await f.readApplication(applicationId)).toEqual(before);
+    await f.checked(() =>
+      f.as("owner").mutation(api.artistApplications.review, {
+        applicationId,
+        action: "declined",
+        declineNote: ` ${"x".repeat(500)} `,
+      }),
+    );
+    expect((await f.readApplication(applicationId))?.declineNote).toBe(
+      "x".repeat(500),
+    );
+  });
+
+  test.each([undefined, " \n\t "])(
+    "omits empty decline notes (%s)",
+    async (declineNote) => {
+      const f = await setupApplications();
+      const { applicationId } = await f.apply();
+      await f.checked(() =>
+        f.as("owner").mutation(api.artistApplications.review, {
+          applicationId,
+          action: "declined",
+          ...(declineNote !== undefined ? { declineNote } : {}),
+        }),
+      );
+      expect(await f.readApplication(applicationId)).not.toHaveProperty(
+        "declineNote",
+      );
+      expect(
+        await f.as("member").query(api.artistApplications.mine, {
+          opportunityId: f.opportunityId,
+          bandId: f.bandId,
+        }),
+      ).toMatchObject({ declineReason: null, declineNote: null });
+    },
+  );
+
+  test.each([false, true])(
+    "confirmation stamps competitors and preserves or fills the winner's viewedAt (legacy: %s)",
+    async (legacyWinner) => {
+      const f = await setupApplications();
+      const [applicationId, competitorId] = await f.seedApplications([
+        { status: "shortlisted" },
+        { status: "submitted", bandId: f.otherBandId },
+      ]);
+      const offer = await f.checked(() =>
+        f.as("owner").mutation(api.bookings.sendOffer, {
+          applicationId,
+          grossMinor: 0,
+          cancellationTemplate: "standard",
+        }),
+      );
+      expect(await f.readApplication(applicationId)).toMatchObject({
+        status: "offered",
+        viewedAt: NOW,
+      });
+      if (legacyWinner) {
+        await f.checked(() =>
+          f.t.run((ctx) =>
+            ctx.db.patch(applicationId, { viewedAt: undefined }),
+          ),
+        );
+      }
+      vi.setSystemTime(NOW + 100);
+      await f.checked(() =>
+        f.as("admin").mutation(api.bookings.respond, {
+          bookingId: offer.bookingId,
+          expectedRevision: offer.revision,
+          action: "accept",
+        }),
+      );
+      expect(await f.readApplication(applicationId)).toMatchObject({
+        status: "booked",
+        viewedAt: legacyWinner ? NOW + 100 : NOW,
+      });
+      expect(await f.readApplication(competitorId)).toMatchObject({
+        status: "declined",
+        declineReason: "slot_filled",
+        decidedAt: NOW + 100,
+        viewedAt: NOW + 100,
+      });
+      expect(await f.readApplication(competitorId)).not.toHaveProperty(
+        "shortlistedAt",
+      );
+    },
+  );
+
+  test.each(["expired", "declined"] as const)(
+    "opportunity bulk %s stamps viewing only for declines",
+    async (status) => {
+      const f = await setupApplications();
+      const statuses =
+        status === "expired"
+          ? (["submitted", "under_review"] as const)
+          : APPLICATION_ACTIVE_STATUSES;
+      const applicationIds = await f.seedApplications(
+        statuses.map((status) => ({ status })),
+      );
+      vi.setSystemTime(NOW + 100);
+      if (status === "expired") {
+        await f.checked(() =>
+          f.as("owner").mutation(api.talentOpportunities.closeApplications, {
+            opportunityId: f.opportunityId,
+          }),
+        );
+      } else {
+        await f.checked(() =>
+          f.as("owner").mutation(api.talentOpportunities.cancel, {
+            opportunityId: f.opportunityId,
+          }),
+        );
+      }
+      for (const applicationId of applicationIds) {
+        const application = await f.readApplication(applicationId);
+        expect(application).toMatchObject({
+          status,
+          decidedAt: NOW + 100,
+        });
+        expect(application?.decidedBy).toBe(
+          status === "declined" ? f.users.owner : undefined,
+        );
+        expect(application?.viewedAt).toBe(
+          status === "declined" ? NOW + 100 : undefined,
+        );
+        expect(application).not.toHaveProperty("shortlistedAt");
+      }
+    },
+  );
+});
+
+describe("artist applications: viewing and host notes", () => {
+  test.each(["submitted", "under_review"] as const)(
+    "markViewed is idempotent for %s and only changes viewedAt",
+    async (status) => {
+      const f = await setupApplications();
+      const [applicationId] = await f.seedApplications([{ status }]);
+      const before = await f.readApplication(applicationId);
+      const opportunityBefore = await f.readOpportunity();
+      vi.setSystemTime(NOW + 100);
+      await expect(
+        f.checked(() =>
+          f
+            .as("owner")
+            .mutation(api.artistApplications.markViewed, { applicationId }),
+        ),
+      ).resolves.toEqual({ viewedAt: NOW + 100 });
+      vi.setSystemTime(NOW + 200);
+      await expect(
+        f.checked(() =>
+          f
+            .as("manager")
+            .mutation(api.artistApplications.markViewed, { applicationId }),
+        ),
+      ).resolves.toEqual({ viewedAt: NOW + 100 });
+      expect(await f.readApplication(applicationId)).toEqual({
+        ...before,
+        viewedAt: NOW + 100,
+      });
+      expect(await f.readOpportunity()).toEqual(opportunityBefore);
+    },
+  );
+
+  test.each([
+    "shortlisted",
+    "offered",
+    "booked",
+    "declined",
+    "withdrawn",
+    "expired",
+  ] as const)(
+    "markViewed does not stamp %s but returns any existing stamp",
+    async (status) => {
+      const f = await setupApplications();
+      const [applicationId] = await f.seedApplications([{ status }]);
+      const before = await f.readApplication(applicationId);
+      vi.setSystemTime(NOW + 100);
+      await expect(
+        f.checked(() =>
+          f
+            .as("owner")
+            .mutation(api.artistApplications.markViewed, { applicationId }),
+        ),
+      ).resolves.toEqual({ viewedAt: null });
+      expect(await f.readApplication(applicationId)).toEqual(before);
+      await f.checked(() =>
+        f.t.run((ctx) => ctx.db.patch(applicationId, { viewedAt: 0 })),
+      );
+      await expect(
+        f.checked(() =>
+          f
+            .as("owner")
+            .mutation(api.artistApplications.markViewed, { applicationId }),
+        ),
+      ).resolves.toEqual({ viewedAt: 0 });
+      expect(await f.readApplication(applicationId)).toEqual({
+        ...before,
+        viewedAt: 0,
+      });
+    },
+  );
+
+  test.each(APPLICATION_ACTIVE_STATUSES)(
+    "sets, updates, and clears host notes on %s without changing updatedAt",
+    async (status) => {
+      const f = await setupApplications();
+      const [applicationId] = await f.seedApplications([{ status }]);
+      const before = await f.readApplication(applicationId);
+      const opportunityBefore = await f.readOpportunity();
+      for (const [index, note] of ["First note", "Updated note"].entries()) {
+        const now = NOW + (index + 1) * 100;
+        vi.setSystemTime(now);
+        await expect(
+          f.checked(() =>
+            f.as("manager").mutation(api.artistApplications.setHostNote, {
+              applicationId,
+              note: ` ${note} `,
+            }),
+          ),
+        ).resolves.toEqual({ hostNote: note });
+        expect(await f.readApplication(applicationId)).toEqual({
+          ...before,
+          hostNote: note,
+          hostNoteAt: now,
+        });
+        expect(
+          await f.as("member").query(api.artistApplications.mine, {
+            opportunityId: f.opportunityId,
+            bandId: f.bandId,
+          }),
+        ).toMatchObject({ hostNote: note, hostNoteAt: now });
+      }
+      vi.setSystemTime(NOW + 300);
+      await expect(
+        f.checked(() =>
+          f.as("owner").mutation(api.artistApplications.setHostNote, {
+            applicationId,
+            note: " \n\t ",
+          }),
+        ),
+      ).resolves.toEqual({ hostNote: null });
+      expect(await f.readApplication(applicationId)).toEqual(before);
+      expect(
+        await f.as("member").query(api.artistApplications.mine, {
+          opportunityId: f.opportunityId,
+          bandId: f.bandId,
+        }),
+      ).toMatchObject({ hostNote: null, hostNoteAt: null });
+      expect(await f.readOpportunity()).toEqual(opportunityBefore);
+    },
+  );
+
+  test("host notes enforce the 280-character trimmed limit", async () => {
+    const f = await setupApplications();
+    const { applicationId } = await f.apply();
+    const note = "x".repeat(artistApplications.MAX_HOST_NOTE_CHARS);
+    await f.checked(() =>
+      f
+        .as("owner")
+        .mutation(api.artistApplications.setHostNote, {
+          applicationId,
+          note: ` ${note} `,
+        }),
+    );
+    const before = await f.readApplication(applicationId);
+    await expect(
+      f.checked(() =>
+        f
+          .as("owner")
+          .mutation(api.artistApplications.setHostNote, {
+            applicationId,
+            note: `${note}x`,
+          }),
+      ),
+    ).rejects.toThrow("Host note must be at most 280 characters");
+    expect(await f.readApplication(applicationId)).toEqual(before);
+  });
+
+  test.each(["booked", "declined", "withdrawn", "expired"] as const)(
+    "rejects host note writes and clears on %s",
+    async (status) => {
+      const f = await setupApplications();
+      const [applicationId] = await f.seedApplications([{ status }]);
+      await f.checked(() =>
+        f.t.run((ctx) =>
+          ctx.db.patch(applicationId, { hostNote: "Keep", hostNoteAt: NOW }),
+        ),
+      );
+      const before = await f.readApplication(applicationId);
+      for (const note of ["New note", ""]) {
+        await expect(
+          f.checked(() =>
+            f
+              .as("owner")
+              .mutation(api.artistApplications.setHostNote, {
+                applicationId,
+                note,
+              }),
+          ),
+        ).rejects.toThrow("Cannot add a note to a closed application");
+        expect(await f.readApplication(applicationId)).toEqual(before);
+      }
+    },
+  );
+
+  test.each([
+    "finance",
+    "door",
+    "stranger",
+    "admin",
+    "otherAdmin",
+    "member",
+  ] as const)("%s cannot mark viewed or set host notes", async (actor) => {
+    const f = await setupApplications();
+    const { applicationId } = await f.apply();
+    const before = await f.readApplication(applicationId);
+    await expect(
+      f.checked(() =>
+        f
+          .as(actor)
+          .mutation(api.artistApplications.markViewed, { applicationId }),
+      ),
+    ).rejects.toThrow("Not permitted for this organization");
+    await expect(
+      f.checked(() =>
+        f
+          .as(actor)
+          .mutation(api.artistApplications.setHostNote, {
+            applicationId,
+            note: "Note",
+          }),
+      ),
+    ).rejects.toThrow("Not permitted for this organization");
+    expect(await f.readApplication(applicationId)).toEqual(before);
+  });
+
+  test("new mutations reject signed-out callers and missing applications or opportunities", async () => {
+    const f = await setupApplications();
+    const { applicationId } = await f.apply();
+    await expect(
+      f.checked(() =>
+        f.t.mutation(api.artistApplications.markViewed, { applicationId }),
+      ),
+    ).rejects.toThrow("Not signed in");
+    await expect(
+      f.checked(() =>
+        f.t.mutation(api.artistApplications.setHostNote, {
+          applicationId,
+          note: "Note",
+        }),
+      ),
+    ).rejects.toThrow("Not signed in");
+    await f.checked(() => f.t.run((ctx) => ctx.db.delete(f.opportunityId)));
+    for (const error of ["Opportunity not found", "Application not found"]) {
+      await expect(
+        f.checked(() =>
+          f
+            .as("owner")
+            .mutation(api.artistApplications.markViewed, { applicationId }),
+        ),
+      ).rejects.toThrow(error);
+      await expect(
+        f.checked(() =>
+          f
+            .as("owner")
+            .mutation(api.artistApplications.setHostNote, {
+              applicationId,
+              note: "Note",
+            }),
+        ),
+      ).rejects.toThrow(error);
+      if (error === "Opportunity not found") {
+        await f.checked(() => f.t.run((ctx) => ctx.db.delete(applicationId)));
+      }
+    }
+  });
+});
+
 describe("artist applications: private queries", () => {
   test.each([
     ["owner", "admin@application.test"],
@@ -884,6 +1399,12 @@ describe("artist applications: private queries", () => {
           askMinor: null,
           availabilityNote: null,
           lineupNote: null,
+          viewedAt: null,
+          shortlistedAt: null,
+          declineReason: null,
+          declineNote: null,
+          hostNote: null,
+          hostNoteAt: null,
           decidedAt: null,
           createdAt: NOW,
           updatedAt: NOW,

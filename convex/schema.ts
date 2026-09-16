@@ -134,6 +134,14 @@ export const artistApplicationStatusValidator = v.union(
   v.literal("expired"),
 );
 
+export const declineReasonValidator = v.union(
+  v.literal("slot_filled"),
+  v.literal("not_a_fit"),
+  v.literal("lineup_full"),
+  v.literal("date_conflict"),
+  v.literal("other"),
+);
+
 export const bookingStatusValidator = v.union(
   v.literal("offer_sent"),
   v.literal("artist_accepted"),
@@ -612,9 +620,12 @@ export default defineSchema({
     availabilityNote: v.optional(v.string()),
     lineupNote: v.optional(v.string()),
     status: artistApplicationStatusValidator,
-    // Set when another applicant's confirmed booking auto-declines this
-    // application because its slot has been filled.
-    declineReason: v.optional(v.union(v.literal("slot_filled"))),
+    viewedAt: v.optional(v.number()),
+    shortlistedAt: v.optional(v.number()),
+    declineReason: v.optional(declineReasonValidator),
+    declineNote: v.optional(v.string()),
+    hostNote: v.optional(v.string()),
+    hostNoteAt: v.optional(v.number()),
     decidedBy: v.optional(v.id("users")),
     decidedAt: v.optional(v.number()),
     createdAt: v.number(),

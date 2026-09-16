@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.33)
+# EarPlug Convex function contract (FROZEN — v1.34)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -346,6 +346,8 @@ myApplicationStatus: ArtistApplicationStatus | null }`. The exact
 [`convex/lib/opportunityPayload.ts`](../convex/lib/opportunityPayload.ts);
 `ApplicationPayload` is defined by `applicationPayloadValidator` in
 [`convex/artistApplications.ts`](../convex/artistApplications.ts).
+It also carries the additive, nullable fields `viewedAt`, `shortlistedAt`,
+`declineReason`, `declineNote`, `hostNote`, and `hostNoteAt`.
 
 - `talentOpportunities:create` — Mutation; `{ organizationId, venueId, mode?, title, desc?, eventType?, expectedAttendance?, genres?, startsAt, doorsAt?, endsAt?, ageRequirement?, equipment?, requirements?, flyKey?, flyStorageId?, applicationsCloseAt?, visibility?, ticketing?, currency?, externalUrl?, slots? } -> { opportunityId, slug }`; verified organization owner/manager creates a draft at one of its verified venues.
 - `talentOpportunities:update` — Mutation; `{ opportunityId, expectedRevision, venueId?, title?, desc?, eventType?, expectedAttendance?, genres?, startsAt?, doorsAt?, endsAt?, ageRequirement?, equipment?, requirements?, flyKey?, flyStorageId?, applicationsCloseAt?, visibility?, ticketing?, currency?, externalUrl?, slots? } -> { revision }`; organization owner/manager edits a draft/open opportunity with revision checking; slots and venue changes are draft-only.
@@ -364,7 +366,9 @@ myApplicationStatus: ArtistApplicationStatus | null }`. The exact
 - `talentOpportunitiesRead:get` — Query; `{ opportunityId } -> OpportunityPayload | null`; owning-organization members only; missing or inaccessible opportunities return null.
 - `artistApplications:apply` — Mutation; `{ opportunityId, slotId, bandId, message, askMinor?, availabilityNote?, lineupNote? } -> { applicationId }`; band admin applies to an open slot belonging to an open `publicEvent` opportunity visible to the band (public or invited), with at most one active application per opportunity/band.
 - `artistApplications:withdraw` — Mutation; `{ applicationId } -> null`; band admin withdraws any active application and decrements the active count.
-- `artistApplications:review` — Mutation; `{ applicationId, action: "under_review" | "shortlisted" | "declined" } -> null`; organization owner/manager reviews through an allowed status transition; declining decrements the active count.
+- `artistApplications:review` — Mutation; `{ applicationId, action: "under_review" | "shortlisted" | "declined", declineReason?, declineNote? } -> null`; organization owner/manager reviews through an allowed status transition; declining decrements the active count.
+- `artistApplications:markViewed` — Mutation; `{ applicationId } -> { viewedAt: number | null }`; organization owner/manager marks a submitted/under-review application as viewed; idempotent, no-op otherwise. Returns an existing stamp even on other statuses, or null if no stamp exists and the status is ineligible; does not change `updatedAt`.
+- `artistApplications:setHostNote` — Mutation; `{ applicationId, note } -> { hostNote: string | null }`; organization owner/manager sets or clears a private note on an active application, capped at `MAX_HOST_NOTE_CHARS` (280) characters after trimming. Blank notes clear both `hostNote` and `hostNoteAt`; does not change `updatedAt`.
 - `artistApplications:forOpportunity` — Query; `{ opportunityId } -> Array<{ application: ApplicationPayload, band: BandPayload, contactEmail: string | null }>`; any organization role, active applications first then oldest first, skipping archived bands; only owner/manager/platform-admin receives contact email.
 - `artistApplications:forBand` — Query; `{ bandId } -> Array<{ application: ApplicationPayload, opportunity: OpportunityPayload }>`; band members receive all statuses, newest first, capped at 100; nonmembers receive `[]`.
 - `artistApplications:mine` — Query; `{ opportunityId, bandId } -> ApplicationPayload | null`; band-member role required; returns the band's most recent application for that opportunity.
@@ -1129,6 +1133,22 @@ users allowed by `sharesRsvps()` contribute to `sharedShows`: a user with
 `shareRsvpsWithFriends: false` can still surface through mutual friends with
 `sharedShows: 0`, but their real shared-show count is never revealed. Rows
 carry no email; an absent avatar is omitted rather than returned as null.
+
+**v1.34 — application tracker.** `ApplicationPayload` adds nullable `viewedAt`,
+`shortlistedAt`, `declineReason`, `declineNote`, `hostNote`, and `hostNoteAt`
+for the APPLIED → VIEWED → SHORTLISTED → DECISION tracker. Storage fields are
+optional so existing applications remain readable without a migration.
+Added `artistApplications:markViewed` and `artistApplications:setHostNote`
+for organization owner/manager access. A host action moving an application
+into `under_review | shortlisted | declined | offered | booked` stamps
+`viewedAt` once; reaching `shortlisted` stamps `shortlistedAt` once. Both
+stamps are set-once, never overwritten or cleared. Expiry and withdrawal do
+not imply viewing. `declineReason` now accepts
+`slot_filled | not_a_fit | lineup_full | date_conflict | other`, with an
+optional free-text `declineNote` trimmed and limited to 500 characters;
+`artistApplications:review` accepts both as optional arguments on decline.
+Host notes are trimmed and limited to 280 characters, may be cleared while
+active, and are included in the authorized application payloads above.
 
 ## Reconciliation
 
