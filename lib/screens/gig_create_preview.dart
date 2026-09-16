@@ -30,7 +30,51 @@ class GigDraftPreview extends StatelessWidget {
         onBack: app.closeGigPreview,
         flyerBytes: app.gfFlyerArt?.bytes,
         venueSet: app.gfVenueId != null,
+        footer: const _GigPreviewFooter(),
       ),
+    );
+  }
+}
+
+class _GigPreviewFooter extends StatelessWidget {
+  const _GigPreviewFooter();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final editingPublished =
+        app.gfProject?.status == GigProjectStatus.published;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        EpPill(
+          key: const Key('gig-preview-publish'),
+          label: editingPublished ? 'Publish updates' : 'Publish gig',
+          variant: EpPillVariant.primary,
+          size: EpPillSize.large,
+          expand: true,
+          onPressed: (app.canPublishGig && !app.gfFlyerUploading)
+              ? app.publishGig
+              : null,
+        ),
+        const SizedBox(height: 12),
+        if (app.gfFlyerUploading)
+          const EpEyebrow(
+            'Still uploading your flyer',
+            key: Key('gig-publish-hint'),
+          )
+        else if (!app.canPublishGig)
+          EpEyebrow(
+            'Still needs ${app.gigMissing.join(' + ')}',
+            key: const Key('gig-publish-hint'),
+          )
+        else
+          EpMonoText(
+            'Fans nearby see it as soon as you publish.',
+            color: context.epColors.contentSecondary,
+          ),
+      ],
     );
   }
 }
