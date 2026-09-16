@@ -570,7 +570,14 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
   }
 }
 
-/// Label left, value right; the row itself opens the field's sheet.
+/// Width of the label column shared by every hub row, so labels and values
+/// line up across sections regardless of the label's length.
+const _hubLabelWidth = 112.0;
+
+/// One grid for every label/value row in the hub: mono label in a fixed-width
+/// left column, the value starting at the same x on every row, and a trailing
+/// chevron (or the [action] word) flush with the right edge. The row itself
+/// opens the field's sheet.
 class _HubRow extends StatelessWidget {
   const _HubRow({
     super.key,
@@ -598,23 +605,37 @@ class _HubRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: Row(
               children: [
-                Flexible(child: EpDisplay(label, size: 20)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: EpMonoText(
-                      text.isEmpty ? 'Not set' : text,
-                      keepCase: text.isNotEmpty,
-                      color: text.isEmpty ? palette.muted : palette.ink,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                SizedBox(
+                  width: _hubLabelWidth,
+                  child: EpMonoText(
+                    label,
+                    color: palette.contentSecondary,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (action != null && onTap != null) ...[
+                const SizedBox(width: 12),
+                Expanded(
+                  child: EpMonoText(
+                    text.isEmpty ? 'Not set' : text,
+                    keepCase: text.isNotEmpty,
+                    color: text.isEmpty
+                        ? palette.contentSecondary
+                        : palette.contentPrimary,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (onTap != null) ...[
                   const SizedBox(width: 12),
-                  EpMonoText(action!, weight: FontWeight.w500),
+                  if (action != null)
+                    EpMonoText(action!, weight: FontWeight.w500)
+                  else
+                    Icon(
+                      Icons.chevron_right,
+                      size: 16,
+                      color: palette.contentSecondary,
+                    ),
                 ],
               ],
             ),

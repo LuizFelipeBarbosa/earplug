@@ -630,6 +630,66 @@ void main() {
     expect(find.byKey(const Key('org-settings-deactivate')), findsOneWidget);
   });
 
+  testWidgets('hub label, value and trailing columns line up across rows', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      size: const Size(390, 844),
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgSettingsScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    final demo = DemoData.organizations['org1']!;
+    final rows = [
+      ('org-hub-name', 'NAME', demo.name),
+      ('org-hub-about', 'ABOUT', demo.description!),
+      ('org-hub-website', 'WEBSITE', demo.website!),
+      ('org-hub-photos', 'PHOTOS', '0 OF 10'),
+      ('org-hub-legal-name', 'LEGAL NAME', 'The Foghorn Club LLC'),
+      ('org-hub-contact-email', 'CONTACT EMAIL', 'hello@foghorn.example'),
+      ('org-hub-phone', 'PHONE', '415-555-0142'),
+    ];
+    final labelLefts = <double>[];
+    final valueLefts = <double>[];
+    final trailingRights = <double>[];
+    for (final (key, label, value) in rows) {
+      final row = find.byKey(Key(key));
+      await _reveal(tester, row);
+      expect(tester.getSize(row).height, greaterThanOrEqualTo(44), reason: key);
+      labelLefts.add(
+        tester
+            .getRect(find.descendant(of: row, matching: find.text(label)))
+            .left,
+      );
+      valueLefts.add(
+        tester
+            .getRect(find.descendant(of: row, matching: find.text(value)))
+            .left,
+      );
+      final trailing = find.descendant(
+        of: row,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              (widget is Icon && widget.icon == Icons.chevron_right) ||
+              (widget is Text && widget.data == 'EDIT'),
+        ),
+      );
+      trailingRights.add(tester.getRect(trailing).right);
+    }
+    for (final xs in [labelLefts, valueLefts, trailingRights]) {
+      for (final x in xs) {
+        expect((x - xs.first).abs(), lessThanOrEqualTo(1), reason: '$xs');
+      }
+    }
+  });
+
   testWidgets('hub shows NOT SET for empty fields and hides private rows', (
     tester,
   ) async {
