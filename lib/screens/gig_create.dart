@@ -15,6 +15,7 @@ import '../services/media_picker.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
@@ -600,6 +601,15 @@ class _DraftPoster extends StatelessWidget {
   }
 }
 
+String _lineupInitials(String name) {
+  final trimmed = name.trim();
+  if (trimmed.isEmpty) return '?';
+  final words = trimmed.split(RegExp(r'\s+'));
+  return words.length == 1
+      ? words.first.characters.first
+      : '${words.first.characters.first}${words.last.characters.first}';
+}
+
 class _LineupField extends StatelessWidget {
   const _LineupField();
 
@@ -626,88 +636,111 @@ class _LineupField extends StatelessWidget {
             onReorderItem: app.moveGigPerformer,
             itemBuilder: (context, index) {
               final performer = performers[index];
+              final band = performer.bandId == null
+                  ? null
+                  : app.band(performer.bandId!);
               return Column(
                 key: ValueKey(performer.id),
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    performer.name,
-                    style: Theme.of(context).textTheme.epBody,
-                  ),
-                  const SizedBox(height: 4),
-                  EpMonoText(
-                    switch (performer.kind) {
-                      GigPerformerKind.band => 'EarPlug band',
-                      GigPerformerKind.invited => 'Invite pending',
-                      GigPerformerKind.text => 'Text-only performer',
-                    },
-                    color: context.epColors.muted,
-                    keepCase: performer.kind == GigPerformerKind.band,
-                  ),
-                  Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      ReorderableDragStartListener(
-                        index: index,
-                        child: Semantics(
-                          label: 'Reorder performer',
-                          child: SizedBox.square(
-                            dimension: 48,
-                            child: Icon(
-                              Icons.drag_handle,
-                              size: 16,
-                              color: context.epColors.muted,
-                            ),
-                          ),
-                        ),
-                      ),
-                      PopupMenuButton<GigPerformerRole>(
-                        key: ValueKey(
-                          'gig-performer-role-target-${performer.id}',
-                        ),
-                        tooltip: 'Billing role',
-                        initialValue: performer.role,
-                        onSelected: (role) =>
-                            app.setGigPerformerRole(performer.id, role),
-                        itemBuilder: (_) => [
-                          for (final role in GigPerformerRole.values)
-                            PopupMenuItem(
-                              value: role,
-                              child: EpMonoText(role.name),
-                            ),
-                        ],
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            minHeight: 48,
-                            minWidth: 48,
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            child: EpBadge(
-                              key: ValueKey(
-                                'gig-performer-role-pill-${performer.id}',
+                  if (index > 0) const EpHairline(),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 56),
+                    child: Row(
+                      children: [
+                        ReorderableDragStartListener(
+                          index: index,
+                          child: Semantics(
+                            label: 'Reorder performer',
+                            child: SizedBox(
+                              width: 20,
+                              height: 48,
+                              child: Icon(
+                                Icons.drag_handle,
+                                size: 16,
+                                color: context.epColors.muted,
                               ),
-                              label: performer.role.name,
                             ),
                           ),
                         ),
-                      ),
-                      if (performer.inviteUrl != null)
-                        EpIconPill(
-                          icon: Icons.link,
-                          semanticLabel: 'Copy invite link',
-                          onPressed: () => copyForUser(
-                            context,
-                            performer.inviteUrl!,
-                            successMessage: 'Invite link copied.',
+                        PopupMenuButton<GigPerformerRole>(
+                          key: ValueKey(
+                            'gig-performer-role-target-${performer.id}',
+                          ),
+                          tooltip: 'Billing role',
+                          initialValue: performer.role,
+                          onSelected: (role) =>
+                              app.setGigPerformerRole(performer.id, role),
+                          itemBuilder: (_) => [
+                            for (final role in GigPerformerRole.values)
+                              PopupMenuItem(
+                                value: role,
+                                child: EpMonoText(role.name),
+                              ),
+                          ],
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(
+                              minHeight: 48,
+                              minWidth: 48,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: EpPill(
+                                key: ValueKey(
+                                  'gig-performer-role-pill-${performer.id}',
+                                ),
+                                label: performer.role.name,
+                                size: EpPillSize.chip,
+                                variant: EpPillVariant.outline,
+                                onPressed: null,
+                              ),
+                            ),
                           ),
                         ),
-                      EpIconPill(
-                        icon: Icons.close,
-                        semanticLabel: 'Remove performer',
-                        onPressed: () => app.removeGigPerformer(performer.id),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        if (band != null)
+                          BandAvatar(
+                            band,
+                            key: ValueKey(
+                              'gig-performer-avatar-${performer.id}',
+                            ),
+                            size: 36,
+                          )
+                        else
+                          EpAvatarTile(
+                            key: ValueKey(
+                              'gig-performer-avatar-${performer.id}',
+                            ),
+                            initials: _lineupInitials(performer.name),
+                            size: 36,
+                          ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            performer.name,
+                            style: Theme.of(context).textTheme.epBody,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (performer.inviteUrl != null)
+                          EpIconPill(
+                            icon: Icons.link,
+                            semanticLabel: 'Copy invite link',
+                            onPressed: () => copyForUser(
+                              context,
+                              performer.inviteUrl!,
+                              successMessage: 'Invite link copied.',
+                            ),
+                          ),
+                        EpIconPill(
+                          key: ValueKey('gig-performer-remove-${performer.id}'),
+                          icon: Icons.close,
+                          semanticLabel: 'Remove ${performer.name}',
+                          onPressed: () => app.removeGigPerformer(performer.id),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               );

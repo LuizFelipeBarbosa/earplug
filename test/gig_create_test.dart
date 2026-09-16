@@ -8,6 +8,7 @@ import 'package:earplug/screens/gig_create.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/cupertino.dart';
@@ -1028,13 +1029,15 @@ void main() {
     expect(find.text('CURRENT DRAFT NOISE'), findsOne);
     expect(find.text('PRIVATE DRAFT'), findsWidgets);
     expect(find.textContaining('THE FOGHORN CLUB'), findsWidgets);
+    expect(find.text(r'$12'), findsOne);
     expect(find.text('LINEUP · 1'), findsOne);
     expect(find.text('ABOUT'), findsOne);
     expect(
       find.text('Everything entered in the editor stays visible.'),
       findsOne,
     );
-    expect(find.text(r'RSVP — $12 AT DOOR'), findsOne);
+    expect(find.byKey(const Key('gig-preview-publish')), findsOne);
+    expect(find.textContaining('RSVP'), findsNothing);
     expect(find.text("WHO'S GOING"), findsNothing);
     expect(
       find.byKey(const ValueKey('gig-detail-save-draft-preview')),
@@ -1070,15 +1073,18 @@ void main() {
 
     await _scrollTo(tester, target);
     expect(tester.getSize(target).height, greaterThanOrEqualTo(48));
-    expect(tester.getSize(pill).height, lessThan(32));
+    expect(tester.getSize(pill).height, 36);
+    expect(tester.getSize(pill).height, lessThan(48));
+    expect(tester.widget<EpPill>(pill).variant, EpPillVariant.outline);
+    expect(tester.widget<EpPill>(pill).onPressed, isNull);
 
-    await harness.app.setGigPerformerRole(
-      performer.id,
-      GigPerformerRole.support,
-    );
+    await tester.tap(target);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('SUPPORT'));
     await tester.pumpAndSettle();
     expect(find.text('SUPPORT'), findsOne);
     final updatedPerformer = harness.app.gfPerformers.single;
+    expect(updatedPerformer.role, GigPerformerRole.support);
     expect(
       tester
           .getSize(
@@ -1087,7 +1093,152 @@ void main() {
             ),
           )
           .height,
-      lessThan(32),
+      36,
+    );
+  });
+
+  testWidgets('lineup rows order role, avatar, name and removal controls', (
+    tester,
+  ) async {
+    final app = (await _pumpGigCreate(tester)).app;
+    await app.addNamedGigPerformer(
+      'A Very Long Unlisted Performer Name',
+      invite: false,
+    );
+    await app.addNamedGigPerformer('Guest Band', invite: true);
+    await tester.pumpAndSettle();
+    await _toggleDetails(tester);
+    final lineup = find.byKey(const Key('gig-slot-lineup'));
+    expect(app.gfPerformers, hasLength(3));
+    expect(
+      find.descendant(of: lineup, matching: find.byType(EpHairline)),
+      findsNWidgets(2),
+    );
+
+    for (final performer in app.gfPerformers) {
+      final row = find.byKey(ValueKey(performer.id));
+      final pill = find.byKey(
+        ValueKey('gig-performer-role-pill-${performer.id}'),
+      );
+      final avatar = find.byKey(
+        ValueKey('gig-performer-avatar-${performer.id}'),
+      );
+      final name = find.descendant(
+        of: row,
+        matching: find.text(performer.name),
+      );
+      final remove = find.byKey(
+        ValueKey('gig-performer-remove-${performer.id}'),
+      );
+      await _scrollTo(tester, row);
+
+      var previousLeft = -double.infinity;
+      for (final element in [pill, avatar, name, remove]) {
+        final left = tester.getTopLeft(element).dx;
+        expect(left, greaterThan(previousLeft));
+        previousLeft = left;
+      }
+      expect(tester.getSize(row).height, greaterThanOrEqualTo(56));
+      expect(tester.getSize(avatar), const Size.square(36));
+      expect(tester.getTopLeft(name).dx - tester.getTopRight(avatar).dx, 12);
+      expect(tester.getCenter(name).dy, tester.getCenter(avatar).dy);
+      expect(tester.widget<Text>(name).maxLines, 1);
+      expect(tester.widget<Text>(name).overflow, TextOverflow.ellipsis);
+      expect(tester.getTopRight(remove).dx, tester.getTopRight(row).dx);
+      expect(tester.getSize(remove), const Size.square(44));
+      expect(
+        tester.widget<EpIconPill>(remove).semanticLabel,
+        'Remove ${performer.name}',
+      );
+      if (performer.bandId != null) {
+        expect(
+          tester.widget<BandAvatar>(avatar).band,
+          app.band(performer.bandId!),
+        );
+      } else {
+        expect(
+          tester.widget<EpAvatarTile>(avatar).initials,
+          performer.kind == GigPerformerKind.invited ? 'GB' : 'AN',
+        );
+      }
+      if (performer.inviteUrl != null) {
+        final invite = find.descendant(
+          of: row,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is EpIconPill &&
+                widget.semanticLabel == 'Copy invite link',
+          ),
+        );
+        expect(tester.widget<EpIconPill>(invite).icon, Icons.link);
+        expect(
+          tester.getTopLeft(invite).dx,
+          greaterThan(tester.getTopLeft(name).dx),
+        );
+        expect(
+          tester.getTopLeft(invite).dx,
+          lessThan(tester.getTopLeft(remove).dx),
+        );
+      }
+    }
+    for (final label in [
+      'EarPlug band',
+      'Invite pending',
+      'Text-only performer',
+    ]) {
+      for (final text in [label, label.toUpperCase()]) {
+        expect(
+          find.descendant(of: lineup, matching: find.text(text)),
+          findsNothing,
+        );
+      }
+    }
+
+    final removedPerformer = app.gfPerformers.last;
+    await tester.tap(
+      find.byKey(ValueKey('gig-performer-remove-${removedPerformer.id}')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      app.gfPerformers.any((performer) => performer.id == removedPerformer.id),
+      isFalse,
+    );
+    expect(find.byKey(ValueKey(removedPerformer.id)), findsNothing);
+    expect(app.gfPerformers, hasLength(2));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('lineup drag handles still reorder performers', (tester) async {
+    final app = (await _pumpGigCreate(tester)).app;
+    await app.addNamedGigPerformer('Solo', invite: false);
+    await tester.pumpAndSettle();
+    await _toggleDetails(tester);
+    final originalIds = app.gfPerformers
+        .map((performer) => performer.id)
+        .toList();
+    final firstRow = find.byKey(ValueKey(originalIds.first));
+    final lastRow = find.byKey(ValueKey(originalIds.last));
+    await _scrollTo(tester, firstRow);
+    final avatar = find.byKey(
+      ValueKey('gig-performer-avatar-${originalIds.last}'),
+    );
+    expect(tester.widget<EpAvatarTile>(avatar).initials, 'S');
+    final handle = find.descendant(
+      of: lastRow,
+      matching: find.byType(ReorderableDragStartListener),
+    );
+    final delta =
+        tester.getTopLeft(firstRow).dy - tester.getBottomLeft(lastRow).dy;
+    final gesture = await tester.startGesture(tester.getCenter(handle));
+    for (var step = 0; step < 10; step++) {
+      await gesture.moveBy(Offset(0, delta / 10));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(
+      app.gfPerformers.map((performer) => performer.id),
+      originalIds.reversed,
     );
   });
 
