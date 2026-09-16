@@ -75,17 +75,30 @@ void main() {
         findsNothing,
       );
 
-      final bar = find.byKey(const ValueKey('save-band-profile'));
-      expect(tester.widget<StickyActionBar>(bar).secondaryLabel, isNull);
-      expect(tester.widget<StickyActionBar>(bar).onSecondary, isNull);
-      expect(
-        find.descendant(of: bar, matching: find.byType(FilledButton)),
-        findsOne,
+      final save = find.byKey(const ValueKey('save-band-profile'));
+      final pill = tester.widget<EpPill>(save);
+      expect(pill.label, 'Save');
+      expect(pill.variant, EpPillVariant.primary);
+      expect(pill.size, EpPillSize.chip);
+      expect(pill.onPressed, isNotNull);
+      expect(find.descendant(of: save, matching: find.text('SAVE')), findsOne);
+      expect(find.text('SAVE CHANGES'), findsNothing);
+      expect(find.byType(StickyActionBar), findsNothing);
+
+      final header = tester.getRect(
+        find
+            .ancestor(
+              of: find.byKey(const ValueKey('band-edit-back')),
+              matching: find.byType(Row),
+            )
+            .first,
       );
-      expect(
-        find.descendant(of: bar, matching: find.byType(OutlinedButton)),
-        findsNothing,
-      );
+      final saveRect = tester.getRect(save);
+      expect(saveRect.top, greaterThanOrEqualTo(header.top));
+      expect(saveRect.bottom, lessThanOrEqualTo(header.bottom));
+      expect(saveRect.right, 390 - 16);
+      final eye = tester.getRect(find.byKey(const ValueKey('band-edit-preview')));
+      expect(saveRect.left, eye.right + 8);
 
       expect(find.byType(EpCard), findsNothing);
       final linksCard = find
@@ -390,7 +403,12 @@ void main() {
         await _scrollToKey(tester, const Key('archive-band'));
         expect(find.byKey(const Key('archive-band')).hitTestable(), findsOne);
         expect(tester.takeException(), isNull);
-        expect(find.byType(StickyActionBar), findsOne);
+        expect(find.byType(StickyActionBar), findsNothing);
+        await _scrollToTop(tester);
+        expect(
+          find.byKey(const ValueKey('save-band-profile')).hitTestable(),
+          findsOne,
+        );
       },
     );
   }
@@ -432,8 +450,7 @@ void main() {
     expect(find.byKey(const ValueKey('edit-credits')), findsNothing);
     expect(harness.app.myBand!.bio, isNot('A concise new bio.'));
 
-    await _scrollTo(tester, 'SAVE CHANGES');
-    await tester.tap(find.text('SAVE CHANGES'));
+    await _tapSave(tester);
     await tester.pumpAndSettle();
 
     final updated = harness.app.myBand!;
@@ -460,8 +477,7 @@ void main() {
       home: const Scaffold(body: BandEditScreen()),
     );
 
-    await _scrollTo(tester, 'SAVE CHANGES');
-    await tester.tap(find.text('SAVE CHANGES'));
+    await _tapSave(tester);
     await tester.pumpAndSettle();
     await tester.drag(find.byType(Scrollable).first, const Offset(0, 2400));
     await tester.pumpAndSettle();
@@ -469,8 +485,7 @@ void main() {
       find.byKey(const ValueKey('edit-band-name')),
       'Profile Only Change',
     );
-    await _scrollTo(tester, 'SAVE CHANGES');
-    await tester.tap(find.text('SAVE CHANGES'));
+    await _tapSave(tester);
     await tester.pumpAndSettle();
 
     expect(repository.profileUpdates, 2);
@@ -513,8 +528,7 @@ void main() {
     expect(instagram.controller!.text, '@existing');
     expect(find.byKey(const ValueKey('edit-credits')), findsNothing);
 
-    await _scrollTo(tester, 'SAVE CHANGES');
-    await tester.tap(find.text('SAVE CHANGES'));
+    await _tapSave(tester);
     await tester.pumpAndSettle();
     expect(harness.app.myBand!.name, 'Keep This Draft');
     expect(harness.app.myBand!.credits, 'Existing private credits');
@@ -531,8 +545,7 @@ void main() {
         find.byKey(const ValueKey('edit-band-name')),
         '   ',
       );
-      await _scrollTo(tester, 'SAVE CHANGES');
-      await tester.tap(find.text('SAVE CHANGES'));
+      await _tapSave(tester);
       await tester.pumpAndSettle();
 
       expect(
@@ -547,8 +560,7 @@ void main() {
         find.byKey(const ValueKey('edit-band-name')),
         'Recovered Name',
       );
-      await _scrollTo(tester, 'SAVE CHANGES');
-      await tester.tap(find.text('SAVE CHANGES'));
+      await _tapSave(tester);
       await tester.pumpAndSettle();
       expect(harness.app.myBand!.name, 'Recovered Name');
       expect(find.text('Changes saved.'), findsOne);
@@ -567,17 +579,20 @@ void main() {
       home: const Scaffold(body: BandEditScreen()),
     );
 
-    await _scrollTo(tester, 'SAVE CHANGES');
-    await tester.tap(find.text('SAVE CHANGES'));
+    final save = find.byKey(const ValueKey('save-band-profile'));
+    await _tapSave(tester);
     await tester.pump();
-    expect(find.text('SAVING…'), findsOne);
+    expect(find.descendant(of: save, matching: find.text('SAVING…')), findsOne);
+    expect(tester.widget<EpPill>(save).onPressed, isNull);
 
     repository.firstSave.completeError(StateError('offline'));
     await tester.pumpAndSettle();
     expect(find.textContaining('could not be saved'), findsOne);
-    expect(find.text('SAVE CHANGES'), findsOne);
+    await _scrollToTop(tester);
+    expect(find.descendant(of: save, matching: find.text('SAVE')), findsOne);
+    expect(tester.widget<EpPill>(save).onPressed, isNotNull);
 
-    await tester.tap(find.text('SAVE CHANGES'));
+    await _tapSave(tester);
     await tester.pumpAndSettle();
     expect(repository.updateCalls, 2);
     expect(find.text('Changes saved.'), findsOne);
@@ -657,8 +672,22 @@ void main() {
   });
 }
 
-Future<void> _scrollTo(WidgetTester tester, String text) async {
-  await _scrollToFinder(tester, find.text(text));
+/// Brings the header back into view and taps its Save pill. Callers pump
+/// afterwards so pending and settled states can both be observed.
+Future<void> _tapSave(WidgetTester tester) async {
+  await _scrollToTop(tester);
+  final save = find.byKey(const ValueKey('save-band-profile'));
+  await tester.ensureVisible(save);
+  await tester.pumpAndSettle();
+  await tester.tap(save);
+}
+
+/// Drops field focus first: a focused field re-reveals its caret after any
+/// jump and would drag the header back out of the viewport.
+Future<void> _scrollToTop(WidgetTester tester) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+  tester.widget<ListView>(find.byType(ListView)).controller!.jumpTo(0);
+  await tester.pumpAndSettle();
 }
 
 Future<void> _scrollToKey(WidgetTester tester, Key key) async {

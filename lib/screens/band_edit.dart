@@ -285,9 +285,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
               16,
               headerTopPad(context),
               16,
-              tabBarClearance +
-                  actionBarClearance(context) +
-                  MediaQuery.paddingOf(context).bottom,
+              tabBarClearance + MediaQuery.paddingOf(context).bottom,
             ),
             children: [
               Row(
@@ -310,6 +308,17 @@ class _BandEditScreenState extends State<BandEditScreen> {
                     icon: Icons.visibility_outlined,
                     semanticLabel: 'Preview public page',
                     onPressed: app.previewPublicProfile,
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    height: 44,
+                    child: EpPill(
+                      key: const ValueKey('save-band-profile'),
+                      label: _saving ? 'Saving…' : 'Save',
+                      variant: EpPillVariant.primary,
+                      size: EpPillSize.chip,
+                      onPressed: _saving ? null : _save,
+                    ),
                   ),
                 ],
               ),
@@ -528,16 +537,6 @@ class _BandEditScreenState extends State<BandEditScreen> {
                 ),
               ),
             ],
-          ),
-        ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: EpLayout.isDesktop(context) ? 0 : 66,
-          child: StickyActionBar(
-            key: const ValueKey('save-band-profile'),
-            primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',
-            onPrimary: _saving ? null : _save,
           ),
         ),
       ],
