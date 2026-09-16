@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../genres.dart';
 import '../theme.dart';
 import 'common.dart';
+import 'ep_text.dart';
 import 'form_bits.dart';
 
 /// The public band-profile header, with optional editing controls layered over
@@ -22,6 +23,7 @@ class BandIdentityHeader extends StatelessWidget {
     this.bannerBytes,
     this.onAvatarTap,
     this.onBannerTap,
+    this.showAvatar = true,
     this.avatarBusy = false,
     this.bannerBusy = false,
   });
@@ -36,6 +38,7 @@ class BandIdentityHeader extends StatelessWidget {
   final Uint8List? bannerBytes;
   final VoidCallback? onAvatarTap;
   final VoidCallback? onBannerTap;
+  final bool showAvatar;
   final bool avatarBusy;
   final bool bannerBusy;
 
@@ -55,12 +58,12 @@ class BandIdentityHeader extends StatelessWidget {
         ? 'Change header image'
         : 'Add header image';
 
-    return Semantics(
+    final header = Semantics(
       container: true,
       label: _editable ? 'Band profile header preview' : null,
       child: Container(
         key: const ValueKey('band-identity-header'),
-        height: 188 + (textScale - 1).clamp(0, 1) * 80,
+        height: showAvatar ? 188 + (textScale - 1).clamp(0, 1) * 80 : null,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: color,
@@ -74,7 +77,20 @@ class BandIdentityHeader extends StatelessWidget {
               bytes: bannerBytes,
               url: bannerUrl,
               fit: BoxFit.cover,
-              fallback: ColoredBox(color: color),
+              fallback: ColoredBox(
+                color: color,
+                child: showAvatar
+                    ? null
+                    : Center(
+                        child: Text(
+                          initials,
+                          style: Theme.of(context).textTheme.epDisplay.copyWith(
+                            color: context.epColors.contentPrimary,
+                            fontSize: 29,
+                          ),
+                        ),
+                      ),
+              ),
             ),
             DecoratedBox(
               key: const ValueKey('band-profile-banner-scrim'),
@@ -89,38 +105,39 @@ class BandIdentityHeader extends StatelessWidget {
                 ),
               ),
             ),
-            Padding(
-              padding: EdgeInsets.fromLTRB(18, 24, 104, _editable ? 54 : 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'BAND · ${displayArea.toUpperCase()}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.epChipLabel.copyWith(
-                      color: Colors.white,
-                      letterSpacing: 1.5,
+            if (showAvatar)
+              Padding(
+                padding: EdgeInsets.fromLTRB(18, 24, 104, _editable ? 54 : 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'BAND · ${displayArea.toUpperCase()}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.epChipLabel.copyWith(
+                        color: Colors.white,
+                        letterSpacing: 1.5,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    displayName,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.epDisplay.copyWith(
-                      color: Colors.white,
-                      fontSize: 29,
-                      height: 1.02,
-                      shadows: const [
-                        Shadow(color: Colors.black54, blurRadius: 8),
-                      ],
+                    const SizedBox(height: 10),
+                    Text(
+                      displayName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.epDisplay.copyWith(
+                        color: Colors.white,
+                        fontSize: 29,
+                        height: 1.02,
+                        shadows: const [
+                          Shadow(color: Colors.black54, blurRadius: 8),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
             if (onBannerTap != null)
               Positioned.fill(
                 child: Semantics(
@@ -137,115 +154,119 @@ class BandIdentityHeader extends StatelessWidget {
                   ),
                 ),
               ),
-            Positioned(
-              top: 22,
-              right: 18,
-              child: Semantics(
-                button: onAvatarTap != null,
-                enabled: onAvatarTap != null && !avatarBusy,
-                label: onAvatarTap == null
-                    ? '$displayName profile image'
-                    : avatarLabel,
-                image: onAvatarTap == null,
-                excludeSemantics: true,
-                child: Material(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(EpLayout.cardRadius),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    key: const ValueKey('band-profile-image-control'),
-                    onTap: avatarBusy ? null : onAvatarTap,
-                    child: SizedBox(
-                      width: 72,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            key: const ValueKey('band-profile-avatar-frame'),
-                            width: 66,
-                            height: 66,
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: .35),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: .86),
-                                width: 2,
+            if (showAvatar)
+              Positioned(
+                top: 22,
+                right: 18,
+                child: Semantics(
+                  button: onAvatarTap != null,
+                  enabled: onAvatarTap != null && !avatarBusy,
+                  label: onAvatarTap == null
+                      ? '$displayName profile image'
+                      : avatarLabel,
+                  image: onAvatarTap == null,
+                  excludeSemantics: true,
+                  child: Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(EpLayout.cardRadius),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      key: const ValueKey('band-profile-image-control'),
+                      onTap: avatarBusy ? null : onAvatarTap,
+                      child: SizedBox(
+                        width: 72,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              key: const ValueKey('band-profile-avatar-frame'),
+                              width: 66,
+                              height: 66,
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: .35),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: .86),
+                                  width: 2,
+                                ),
+                                borderRadius: BorderRadius.circular(
+                                  EpLayout.cardRadius,
+                                ),
                               ),
-                              borderRadius: BorderRadius.circular(
-                                EpLayout.cardRadius,
-                              ),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(
-                                EpLayout.cardRadius,
-                              ),
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  _ArtworkImage(
-                                    bytes: avatarBytes,
-                                    url: avatarUrl,
-                                    fit: BoxFit.cover,
-                                    fallback: ColoredBox(
-                                      color: color,
-                                      child: Center(
-                                        child: Text(
-                                          initials,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .epDisplay
-                                              .copyWith(
-                                                color: Colors.white,
-                                                fontSize: 18,
-                                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(
+                                  EpLayout.cardRadius,
+                                ),
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    _ArtworkImage(
+                                      bytes: avatarBytes,
+                                      url: avatarUrl,
+                                      fit: BoxFit.cover,
+                                      fallback: ColoredBox(
+                                        color: color,
+                                        child: Center(
+                                          child: Text(
+                                            initials,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .epDisplay
+                                                .copyWith(
+                                                  color: Colors.white,
+                                                  fontSize: 18,
+                                                ),
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                                  if (onAvatarTap != null)
-                                    Align(
-                                      alignment: Alignment.bottomRight,
-                                      child: Container(
-                                        width: 26,
-                                        height: 26,
-                                        color: Colors.black87,
-                                        child: avatarBusy
-                                            ? const Padding(
-                                                padding: EdgeInsets.all(6),
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                      color: Colors.white,
-                                                    ),
-                                              )
-                                            : Icon(
-                                                Icons.photo_camera_outlined,
-                                                color: Colors.white,
-                                                size: 16,
-                                              ),
+                                    if (onAvatarTap != null)
+                                      Align(
+                                        alignment: Alignment.bottomRight,
+                                        child: Container(
+                                          width: 26,
+                                          height: 26,
+                                          color: Colors.black87,
+                                          child: avatarBusy
+                                              ? const Padding(
+                                                  padding: EdgeInsets.all(6),
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                        color: Colors.white,
+                                                      ),
+                                                )
+                                              : Icon(
+                                                  Icons.photo_camera_outlined,
+                                                  color: Colors.white,
+                                                  size: 16,
+                                                ),
+                                        ),
                                       ),
-                                    ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                          if (onAvatarTap != null) ...[
-                            const SizedBox(height: 5),
-                            Text(
-                              'PROFILE IMAGE',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.epChipLabel
-                                  .copyWith(color: Colors.white, fontSize: 11),
-                            ),
+                            if (onAvatarTap != null) ...[
+                              const SizedBox(height: 5),
+                              Text(
+                                'PROFILE IMAGE',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.epChipLabel
+                                    .copyWith(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                    ),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-            if (onBannerTap != null)
+            if (showAvatar && onBannerTap != null)
               Positioned(
                 left: 14,
                 bottom: 12,
@@ -256,10 +277,32 @@ class BandIdentityHeader extends StatelessWidget {
                   ),
                 ),
               ),
+            if (!showAvatar)
+              Positioned(
+                right: 12,
+                bottom: 12,
+                child: Material(
+                  color: context.epColors.surface.withValues(alpha: .85),
+                  borderRadius: BorderRadius.circular(EpLayout.pillRadius),
+                  child: EpPill(
+                    key: const ValueKey('band-header-change'),
+                    label: 'Change',
+                    keepCase: true,
+                    icon: Icons.photo_camera_outlined,
+                    variant: EpPillVariant.ghost,
+                    size: EpPillSize.regular,
+                    semanticLabel: bannerBusy
+                        ? 'Uploading header image'
+                        : bannerLabel,
+                    onPressed: bannerBusy ? null : onBannerTap,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
     );
+    return showAvatar ? header : AspectRatio(aspectRatio: 2.65, child: header);
   }
 }
 
