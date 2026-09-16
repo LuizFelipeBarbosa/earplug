@@ -42,7 +42,7 @@ class BandProfileScreen extends StatelessWidget {
         app.current.screen == Screen.bandPreview &&
         app.current.param == bandId &&
         app.myBands.contains(bandId);
-    return _BandProfileView(
+    return BandProfileView(
       key: ValueKey(bandId),
       bandId: bandId,
       isManagedPreview: isManagedPreview,
@@ -50,21 +50,30 @@ class BandProfileScreen extends StatelessWidget {
   }
 }
 
-class _BandProfileView extends StatefulWidget {
-  const _BandProfileView({
+/// The band page body: hero, actions and every profile section.
+///
+/// The band must already be in [AppState.band]. Screens that frame the page
+/// with their own chrome (the applicant review) hide the overlay header bar
+/// and pick the bottom clearance their own bar needs.
+class BandProfileView extends StatefulWidget {
+  const BandProfileView({
     super.key,
     required this.bandId,
-    required this.isManagedPreview,
+    this.isManagedPreview = false,
+    this.showHeaderBar = true,
+    this.bottomPadding = tabBarClearance,
   });
 
   final String bandId;
   final bool isManagedPreview;
+  final bool showHeaderBar;
+  final double bottomPadding;
 
   @override
-  State<_BandProfileView> createState() => _BandProfileViewState();
+  State<BandProfileView> createState() => _BandProfileViewState();
 }
 
-class _BandProfileViewState extends State<_BandProfileView> {
+class _BandProfileViewState extends State<BandProfileView> {
   final _scrollController = ScrollController();
 
   @override
@@ -293,38 +302,39 @@ class _BandProfileViewState extends State<_BandProfileView> {
                     ),
                   ),
                 ),
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: tabBarClearance),
+                SliverToBoxAdapter(
+                  child: SizedBox(height: widget.bottomPadding),
                 ),
               ],
             ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: _BandProfileHeaderBar(
-                band: band,
-                topInset: topInset,
-                progress: progress,
-                following: app.follows.contains(bandId),
-                onFollow: own ? null : () => app.requestFollow(bandId),
-                trailing: admin
-                    ? EpPill(
-                        key: const ValueKey('band-profile-edit'),
-                        label: 'Edit profile',
-                        variant: EpPillVariant.outline,
-                        size: EpPillSize.chip,
-                        onPressed: app.openBandEditor,
-                      )
-                    : null,
-                backLabel: widget.isManagedPreview
-                    ? 'Return to band dashboard'
-                    : 'Back',
-                onBack: widget.isManagedPreview
-                    ? app.returnToBandDashboard
-                    : app.back,
+            if (widget.showHeaderBar)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: _BandProfileHeaderBar(
+                  band: band,
+                  topInset: topInset,
+                  progress: progress,
+                  following: app.follows.contains(bandId),
+                  onFollow: own ? null : () => app.requestFollow(bandId),
+                  trailing: admin
+                      ? EpPill(
+                          key: const ValueKey('band-profile-edit'),
+                          label: 'Edit profile',
+                          variant: EpPillVariant.outline,
+                          size: EpPillSize.chip,
+                          onPressed: app.openBandEditor,
+                        )
+                      : null,
+                  backLabel: widget.isManagedPreview
+                      ? 'Return to band dashboard'
+                      : 'Back',
+                  onBack: widget.isManagedPreview
+                      ? app.returnToBandDashboard
+                      : app.back,
+                ),
               ),
-            ),
           ],
         ),
       ),
