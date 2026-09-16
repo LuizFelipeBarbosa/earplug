@@ -676,8 +676,11 @@ void main() {
     },
   );
 
-  for (final (state, caption) in [(StripeAccountState.enabled, 'ENABLED')]) {
-    testWidgets('band payouts tile shows ${state.name} and opens payouts', (
+  for (final (state, flagged) in [
+    (StripeAccountState.restricted, true),
+    (StripeAccountState.enabled, false),
+  ]) {
+    testWidgets('band payouts tile flags ${state.name} and opens payouts', (
       tester,
     ) async {
       final auth = FakeAuthService();
@@ -702,10 +705,17 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(tile, findsOneWidget);
-      expect(
-        find.descendant(of: tile, matching: find.text(caption)),
-        findsOneWidget,
+      final badge = find.descendant(
+        of: tile,
+        matching: find.byKey(const Key('band-dash-payouts-badge')),
       );
+      expect(badge, flagged ? findsOneWidget : findsNothing);
+      expect(
+        find.descendant(of: tile, matching: find.text('SET UP')),
+        flagged ? findsOneWidget : findsNothing,
+      );
+      await tester.ensureVisible(tile);
+      await tester.pump();
       await tester.tap(tile);
       await tester.pumpAndSettle();
       expect(harness.app.current.screen, Screen.bandPayouts);

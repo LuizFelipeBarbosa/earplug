@@ -6,7 +6,9 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_dash.dart';
 import 'package:earplug/screens/door_mode.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -14,6 +16,46 @@ import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
 const _readiness = Key('band-readiness');
+const _hero = Key('band-next-up');
+
+const _stepIds = [
+  'band-discovery-profile',
+  'band-discovery-image',
+  'band-discovery-clip',
+  'band-discovery-show',
+  'band-discovery-listing',
+  'band-discovery-revision',
+  'band-setup-preview',
+  'band-setup-social',
+  'band-setup-members',
+];
+
+/// The demo band has five steps done; these four are still to do.
+const _demoTodo = [
+  'band-discovery-image',
+  'band-setup-preview',
+  'band-setup-social',
+  'band-setup-members',
+];
+
+const _allMissingSetup = BandSetupStatus(
+  profileComplete: false,
+  profileImageAdded: false,
+  musicAdded: false,
+  socialLinksAdded: false,
+  firstGigCreated: false,
+  membersInvited: false,
+  publicProfilePreviewed: false,
+);
+
+const _allMissingReadiness = BandDiscoveryReadiness(
+  profileComplete: false,
+  profileImageReady: false,
+  clipReady: false,
+  publishedShowReady: false,
+  venuePosterReady: false,
+  publishedRevisionCurrent: false,
+);
 
 Future<void> _tapAfterScroll(WidgetTester tester, Finder finder) async {
   await tester.scrollUntilVisible(
@@ -31,57 +73,152 @@ Finder _rowAction(Key row) =>
     find.descendant(of: find.byKey(row), matching: find.byType(TextButton));
 
 void main() {
-  testWidgets('dashboard derives remaining tasks from current band data', (
+  testWidgets('dashboard leads with the hero, then readiness, then manage', (
     tester,
   ) async {
     await pumpApp(tester, home: const Scaffold(body: BandDashScreen()));
 
     expect(find.text('MANAGING · ADMIN'), findsOne);
-    expect(find.byKey(const Key('profile-complete-badge')), findsOne);
+    expect(find.byKey(const Key('profile-complete-badge')), findsNothing);
     expect(find.text('DISCOVER'), findsOne);
-    expect(find.text('FANS'), findsOne);
-    expect(find.textContaining('NEXT UP · '), findsOne);
+    expect(find.text('FANS'), findsNothing);
+    expect(find.text('NEXT RSVPS'), findsNothing);
+    expect(find.text('CLIPS'), findsNothing);
+    expect(find.byType(EpStatGrid), findsNothing);
+
+    expect(find.byKey(_hero), findsOne);
+    expect(find.text('NEXT UP'), findsOne);
+    expect(find.byKey(const Key('band-next-up-when')), findsOne);
     expect(find.text('DOOR MODE'), findsOne);
     expect(find.byKey(const Key('band-next-public-gig')), findsOne);
-    expect(find.text('PUBLISH A GIG'), findsOne);
-    expect(find.text('ADD MEDIA'), findsOne);
-    expect(find.text('INSIGHTS'), findsOne);
-    expect(find.byKey(const Key('band-command-edit-profile')), findsOne);
+    expect(find.text('PUBLISH ANOTHER'), findsNothing);
 
-    await tester.scrollUntilVisible(
-      find.byKey(_readiness),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('PREVIEW PUBLIC PROFILE'), findsOne);
+    // Readiness sits directly under the hero, showing only what is left.
+    expect(find.byKey(_readiness), findsOne);
     expect(find.text('READINESS'), findsOne);
     expect(find.text('5 OF 9'), findsOne);
     for (var index = 0; index < 9; index++) {
       expect(find.byKey(ValueKey('readiness-segment-$index')), findsOne);
     }
-
-    // The phone list hides the completed items until "show all" is tapped.
-    expect(find.byKey(const ValueKey('band-discovery-profile')), findsNothing);
-    await _tapAfterScroll(
-      tester,
-      find.byKey(const Key('band-readiness-toggle')),
+    for (final id in _stepIds) {
+      expect(
+        find.byKey(ValueKey(id)),
+        _demoTodo.contains(id) ? findsOne : findsNothing,
+        reason: id,
+      );
+    }
+    final toggle = find.byKey(const Key('band-readiness-toggle'));
+    await tester.scrollUntilVisible(
+      toggle,
+      140,
+      scrollable: find.byType(Scrollable).first,
     );
-    for (final row in [
-      'band-discovery-profile',
-      'band-discovery-image',
-      'band-discovery-clip',
-      'band-discovery-show',
-      'band-discovery-listing',
-      'band-discovery-revision',
-      'band-setup-preview',
-      'band-setup-social',
-      'band-setup-members',
-    ]) {
-      expect(find.byKey(ValueKey(row)), findsOne);
+    expect(
+      find.descendant(of: toggle, matching: find.text('VIEW 5 COMPLETED')),
+      findsOne,
+    );
+    await tester.tap(toggle);
+    await tester.pump();
+    for (final id in _stepIds) {
+      expect(find.byKey(ValueKey(id)), findsOne, reason: id);
     }
     expect(find.text('Complete profile'), findsOne);
     expect(find.text('Add social links'), findsOne);
     expect(find.text('Invite band members'), findsOne);
+
+    // The manage menu follows, without descriptions or stats.
+    final manage = find.text('MANAGE');
+    await tester.scrollUntilVisible(
+      manage,
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(manage, findsOne);
+    for (final row in [
+      'band-command-publish-gig',
+      'band-command-add-media',
+      'band-command-analytics',
+      'band-dash-payouts',
+      'band-command-edit-profile',
+      'band-command-members',
+      'band-public-profile',
+    ]) {
+      expect(find.byKey(Key(row)), findsOne, reason: row);
+      expect(tester.widget<EpMenuRow>(find.byKey(Key(row))).sub, isNull);
+    }
+    expect(find.text('PUBLISH A GIG'), findsOne);
+    expect(find.text('ADD MEDIA'), findsOne);
+    expect(find.text('INSIGHTS'), findsOne);
+    expect(find.text('PREVIEW PUBLIC PROFILE'), findsOne);
+  });
+
+  testWidgets('hero is visible without scrolling on a 390x844 phone', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      size: const Size(390, 844),
+      home: const Scaffold(body: BandDashScreen()),
+    );
+
+    final position = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position;
+    expect(position.pixels, 0);
+    final hero = tester.getRect(find.byKey(_hero));
+    expect(hero.top, greaterThanOrEqualTo(0));
+    expect(hero.bottom, lessThanOrEqualTo(844));
+    expect(
+      tester.getRect(find.byKey(const Key('band-next-door-mode'))).bottom,
+      lessThanOrEqualTo(844),
+    );
+  });
+
+  testWidgets('discover chip uses the accent outline variant', (tester) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: BandDashScreen()),
+    );
+
+    final discover = find.byKey(const Key('band-dash-discover'));
+    expect(
+      tester.widget<EpPill>(discover).variant,
+      EpPillVariant.accentOutline,
+    );
+    await tester.tap(discover);
+    await tester.pump();
+    expect(harness.app.current.screen, Screen.home);
+  });
+
+  testWidgets('empty hero prompts admins to publish a gig', (tester) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: _NoGigsRepository(auth: auth, role: 'admin'),
+      home: const Scaffold(body: BandDashScreen()),
+    );
+
+    expect(find.byKey(_hero), findsNothing);
+    expect(find.byKey(const Key('band-next-up-empty')), findsOne);
+    expect(find.text('NOTHING SCHEDULED'), findsOne);
+    expect(find.text('NO GIG COMING UP — PUBLISH ONE'), findsOne);
+    await tester.tap(find.byKey(const Key('band-next-up-publish')));
+    await tester.pump();
+    expect(harness.app.current.screen, Screen.gigCreate);
+  });
+
+  testWidgets('empty hero offers members no publish action', (tester) async {
+    final auth = FakeAuthService();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _NoGigsRepository(auth: auth, role: 'member'),
+      home: const Scaffold(body: BandDashScreen()),
+    );
+
+    expect(find.byKey(const Key('band-next-up-empty')), findsOne);
+    expect(find.byKey(const Key('band-next-up-publish')), findsNothing);
   });
 
   testWidgets('role copy and interactive checklist rows meet size floors', (
@@ -119,26 +256,15 @@ void main() {
       home: const Scaffold(body: BandDashScreen()),
     );
 
-    final editProfile = find.byKey(const Key('band-command-edit-profile'));
-    await tester.scrollUntilVisible(
-      editProfile,
-      180,
-      scrollable: find.byType(Scrollable).first,
+    await _tapAfterScroll(
+      tester,
+      find.byKey(const Key('band-command-edit-profile')),
     );
-    await tester.tap(editProfile);
-    await tester.pump();
     expect(harness.app.current.screen, Screen.bandEdit);
 
     harness.app.returnToBandDashboard();
     await tester.pump();
-    final preview = find.byKey(const Key('band-public-profile'));
-    await tester.scrollUntilVisible(
-      preview,
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(preview);
-    await tester.pump();
+    await _tapAfterScroll(tester, find.byKey(const Key('band-public-profile')));
     expect(harness.app.current.screen, Screen.bandPreview);
     expect(harness.app.current.param, 'b1');
   });
@@ -174,6 +300,11 @@ void main() {
       );
 
       final row = find.byKey(const Key('band-command-members'));
+      await tester.scrollUntilVisible(
+        row,
+        140,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(tester.widget<EpMenuRow>(row).trailingText, '2');
       await _tapAfterScroll(tester, row);
       await tester.pumpAndSettle();
@@ -252,65 +383,85 @@ void main() {
     );
   }
 
-  for (final (cardPaymentsStatus, caption) in [
-    (null, 'ENABLE TICKET SALES'),
-    ('active', 'ENABLED'),
+  for (final state in [
+    null,
+    StripeAccountState.none,
+    StripeAccountState.onboarding,
+    StripeAccountState.restricted,
+    StripeAccountState.enabled,
   ]) {
-    testWidgets(
-      'enabled payouts with card payments $cardPaymentsStatus show $caption',
-      (tester) async {
-        final auth = FakeAuthService();
-        await pumpApp(
-          tester,
-          auth: auth,
-          repository: StubRepository(auth: auth)
-            ..returns(
-              'bandPayoutStatus',
-              StripeAccountStatus(
-                state: StripeAccountState.enabled,
-                hasAccount: true,
-                chargesEnabled: true,
-                payoutsEnabled: true,
-                detailsSubmitted: true,
-                requirementsDue: const [],
-                cardPaymentsStatus: cardPaymentsStatus,
-              ),
-            ),
-          home: const Scaffold(body: BandDashScreen()),
-          beforePump: (app) => app.switchToBand('b1'),
+    testWidgets('payouts row flags unfinished Stripe setup for $state', (
+      tester,
+    ) async {
+      final auth = FakeAuthService();
+      final repository = StubRepository(auth: auth);
+      if (state == null) {
+        repository.wraps<StripeAccountStatus>(
+          'bandPayoutStatus',
+          (_) => throw StateError('offline'),
         );
+      } else {
+        repository.returns(
+          'bandPayoutStatus',
+          StripeAccountStatus(
+            state: state,
+            hasAccount: state != StripeAccountState.none,
+            chargesEnabled: state == StripeAccountState.enabled,
+            payoutsEnabled: state == StripeAccountState.enabled,
+            detailsSubmitted: state == StripeAccountState.enabled,
+            requirementsDue: const [],
+            cardPaymentsStatus: state == StripeAccountState.enabled
+                ? 'active'
+                : null,
+          ),
+        );
+      }
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        home: const Scaffold(body: BandDashScreen()),
+        beforePump: (app) => app.switchToBand('b1'),
+      );
+      expect(harness.app.bandPayoutStatus?.state, state);
 
-        final tile = find.byKey(const Key('band-dash-payouts'));
-        await tester.scrollUntilVisible(
-          tile,
-          180,
-          scrollable: find.byType(Scrollable).first,
-        );
+      final tile = find.byKey(const Key('band-dash-payouts'));
+      await tester.scrollUntilVisible(
+        tile,
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final badge = find.descendant(
+        of: tile,
+        matching: find.byKey(const Key('band-dash-payouts-badge')),
+      );
+      if (state == StripeAccountState.enabled) {
+        expect(badge, findsNothing);
+        expect(find.text('SET UP'), findsNothing);
+      } else {
+        expect(badge, findsOne);
         expect(
-          find.descendant(of: tile, matching: find.text(caption)),
+          find.descendant(of: badge, matching: find.text('SET UP')),
           findsOne,
         );
-      },
-    );
+      }
+      expect(find.text('ENABLED'), findsNothing);
+      expect(find.text('FINISH SETUP'), findsNothing);
+    });
   }
 
-  testWidgets('readiness merges discovery steps and the setup checklist', (
+  testWidgets('readiness module and boost footer draw on the merged data', (
     tester,
   ) async {
     await pumpApp(tester, home: const Scaffold(body: BandDashScreen()));
 
-    await tester.scrollUntilVisible(
-      find.byKey(_readiness),
-      250,
-      scrollable: find.byType(Scrollable).first,
-    );
     expect(find.byKey(_readiness), findsOne);
     expect(find.text('READINESS'), findsOne);
     expect(find.text('5 OF 9'), findsOne);
-    expect(
-      find.textContaining('NEXT ELIGIBLE · RIPTIDE RELEASE SHOW'),
-      findsOne,
-    );
+    expect(find.byType(EpReadinessBar), findsOne);
+    // One merged list: the old separate checklist section is gone.
+    expect(find.text('SETUP CHECKLIST'), findsNothing);
+    expect(find.text('PROFILE COMPLETE'), findsNothing);
 
     await _tapAfterScroll(
       tester,
@@ -319,9 +470,24 @@ void main() {
     expect(find.text('Profile image'), findsOne);
     expect(find.text('Video clip'), findsOne);
     expect(find.text('Public profile previewed'), findsOne);
-    // One merged list: the old separate checklist section is gone.
-    expect(find.text('SETUP CHECKLIST'), findsNothing);
-    expect(find.byType(EpReadinessBar), findsOne);
+
+    final next = find.byKey(const Key('band-boost-next'));
+    await tester.scrollUntilVisible(
+      next,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      tester.widget<EpMonoText>(next).text,
+      'Next eligible · Riptide Release Show',
+    );
+    expect(
+      tester
+          .widget<EpMonoText>(find.byKey(const Key('band-boost-window')))
+          .text,
+      startsWith('Boost window · '),
+    );
+    expect(find.text('BOOST NOW'), findsNothing);
   });
 
   testWidgets('discovery readiness requeries at boost window boundaries', (
@@ -337,8 +503,9 @@ void main() {
       home: const Scaffold(body: BandDashScreen()),
       now: () => now,
     );
+    final window = find.byKey(const Key('band-boost-window'));
     await tester.scrollUntilVisible(
-      find.byKey(_readiness),
+      window,
       250,
       scrollable: find.byType(Scrollable).first,
     );
@@ -349,6 +516,10 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     await tester.pump();
     expect(find.textContaining('ACTIVE NOW'), findsOne);
+    expect(
+      tester.widget<EpMonoText>(window).color,
+      tester.element(window).epColors.accent,
+    );
 
     now = now.add(const Duration(seconds: 2));
     await tester.pump(const Duration(seconds: 2));
@@ -357,32 +528,46 @@ void main() {
     expect(repository.readinessCalls, greaterThanOrEqualTo(3));
   });
 
-  testWidgets('profile-complete note disappears after the bio is cleared', (
+  testWidgets('a fully ready band shows manage directly under the hero', (
     tester,
   ) async {
-    final harness = await pumpApp(
+    final auth = FakeAuthService();
+    await pumpApp(
       tester,
+      auth: auth,
+      repository: StubRepository(auth: auth)
+        ..returns(
+          'bandSetupStatus',
+          const BandSetupStatus(
+            profileComplete: true,
+            profileImageAdded: true,
+            musicAdded: true,
+            socialLinksAdded: true,
+            firstGigCreated: true,
+            membersInvited: true,
+            publicProfilePreviewed: true,
+          ),
+        )
+        ..returns(
+          'bandDiscoveryReadiness',
+          const BandDiscoveryReadiness(
+            profileComplete: true,
+            profileImageReady: true,
+            clipReady: true,
+            publishedShowReady: true,
+            venuePosterReady: true,
+            publishedRevisionCurrent: true,
+          ),
+        ),
       home: const Scaffold(body: BandDashScreen()),
     );
-    expect(find.byKey(const Key('profile-complete-badge')), findsOne);
-    final band = harness.app.myBand!;
 
-    await harness.app.saveBandProfile(
-      BandProfileUpdate(
-        bandId: band.id,
-        name: band.name,
-        genres: band.genres,
-        area: band.area,
-        bio: '',
-        linkIg: band.linkIg ?? '',
-        linkBc: band.linkBc ?? '',
-        linkYt: band.linkYt ?? '',
-        credits: band.credits ?? '',
-      ),
-    );
-    await tester.pump();
-
-    expect(find.byKey(const Key('profile-complete-badge')), findsNothing);
+    expect(find.byKey(_readiness), findsNothing);
+    expect(find.byKey(const Key('band-readiness-retry')), findsNothing);
+    expect(find.byKey(const Key('band-boost-next')), findsNothing);
+    final heroBottom = tester.getBottomLeft(find.byKey(_hero)).dy;
+    final manageTop = tester.getTopLeft(find.text('MANAGE')).dy;
+    expect(manageTop - heroBottom, closeTo(28, 1));
   });
 
   testWidgets('every readiness action routes to the intended task', (
@@ -393,29 +578,8 @@ void main() {
       tester,
       auth: auth,
       repository: StubRepository(auth: auth)
-        ..returns(
-          'bandSetupStatus',
-          const BandSetupStatus(
-            profileComplete: false,
-            profileImageAdded: false,
-            musicAdded: false,
-            socialLinksAdded: false,
-            firstGigCreated: false,
-            membersInvited: false,
-            publicProfilePreviewed: false,
-          ),
-        )
-        ..returns(
-          'bandDiscoveryReadiness',
-          const BandDiscoveryReadiness(
-            profileComplete: false,
-            profileImageReady: false,
-            clipReady: false,
-            publishedShowReady: false,
-            venuePosterReady: false,
-            publishedRevisionCurrent: false,
-          ),
-        ),
+        ..returns('bandSetupStatus', _allMissingSetup)
+        ..returns('bandDiscoveryReadiness', _allMissingReadiness),
       home: const Scaffold(body: BandDashScreen()),
     );
 
@@ -436,12 +600,45 @@ void main() {
     await expectAction('discovery-clip', Screen.bandMedia, param: 'b1');
     // No published show yet, so the listing steps start a new gig.
     await expectAction('discovery-show', Screen.gigCreate);
+    await expectAction('discovery-listing', Screen.gigCreate);
+    await expectAction('discovery-revision', Screen.gigCreate);
     await expectAction('setup-preview', Screen.bandPreview, param: 'b1');
     await expectAction('setup-social', Screen.bandEdit, param: 'links');
     await expectAction('setup-members', Screen.bandDash, param: 'members');
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('band-members-sheet')), findsOne);
     expect(find.byKey(const ValueKey('accepted-member-Band admin')), findsOne);
+    Navigator.of(
+      tester.element(find.byKey(const Key('band-members-sheet'))),
+    ).pop();
+    await tester.pumpAndSettle();
+    harness.app.returnToBandDashboard();
+    await tester.pumpAndSettle();
+
+    // The same actions are reachable from the sheet the module opens.
+    await _tapAfterScroll(
+      tester,
+      find.descendant(
+        of: find.byKey(_readiness),
+        matching: find.text('READINESS'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final sheet = find.byKey(const Key('band-readiness-sheet'));
+    expect(sheet, findsOne);
+    final action = find.byKey(
+      const ValueKey('readiness-action-band-setup-social'),
+    );
+    await tester.scrollUntilVisible(
+      action,
+      140,
+      scrollable: find.descendant(of: sheet, matching: find.byType(Scrollable)),
+    );
+    await tester.tap(action);
+    await tester.pumpAndSettle();
+    expect(sheet, findsNothing);
+    expect(harness.app.current.screen, Screen.bandEdit);
+    expect(harness.app.current.param, 'links');
   });
 
   testWidgets('members can use the dashboard without admin setup controls', (
@@ -460,8 +657,12 @@ void main() {
     expect(find.text('VIEW PUBLIC PROFILE'), findsOne);
     expect(find.byKey(const Key('band-public-profile')), findsOne);
     expect(find.byKey(const Key('band-command-edit-profile')), findsNothing);
+    expect(find.byKey(const Key('band-dash-payouts')), findsNothing);
     expect(find.text('DOOR MODE'), findsNothing);
+    expect(find.byKey(const Key('band-next-public-gig')), findsOne);
     expect(find.byKey(_readiness), findsNothing);
+    expect(find.byKey(const Key('band-readiness-retry')), findsNothing);
+    expect(find.byKey(const Key('band-boost-next')), findsNothing);
     expect(find.text('PUBLISH A GIG'), findsNothing);
     expect(repository.setupStatusCalls, 0);
 
@@ -565,6 +766,22 @@ class _DoorRepository extends DemoRepository {
   Future<DoorRoster> doorRoster(String projectId) async {
     projectRosterRequests.add(projectId);
     return super.doorRoster(projectId);
+  }
+}
+
+/// A band with no published gigs, so the hero shows its empty state.
+class _NoGigsRepository extends StubRepository {
+  _NoGigsRepository({required super.auth, required String role}) {
+    returnsStream(
+      'feed',
+      () => Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
+    );
+    returnsStream(
+      'myBands',
+      () => Stream.value([
+        BandMembership(band: DemoData.bands['b1']!, role: role),
+      ]),
+    );
   }
 }
 

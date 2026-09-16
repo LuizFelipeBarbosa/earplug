@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
-import '../band_media_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/band_members_panel.dart';
@@ -10,8 +9,12 @@ import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/ep_text.dart';
+import '../widgets/readiness_module.dart';
 import '../widgets/sheets.dart';
 import 'door_mode.dart';
+
+/// Vertical rhythm between the dashboard's sections.
+const double _sectionGap = 28;
 
 class BandDashScreen extends StatefulWidget {
   const BandDashScreen({super.key});
@@ -54,16 +57,25 @@ class _BandDashScreenState extends State<BandDashScreen> {
 
     final gigs = app.myBandGigs;
     final next = gigs.isEmpty ? null : gigs.first;
-    final clips = context.watch<BandMediaController>().videosFor(band.id);
     final isAdmin = app.isAdminOf(band.id);
-    final desktop = EpLayout.isDesktop(context);
-    final stats = [
-      EpStat(band.followersLabel, 'Fans'),
-      EpStat(next == null ? '0' : '${app.rsvpCount(next)}', 'Next RSVPs'),
-      EpStat('${clips.length}', 'Clips'),
+    // Only admins load readiness; the module renders nothing once every step
+    // is done, so the gap around it follows the same rule.
+    final snapshot = isAdmin ? app.readinessSnapshotFor(band.id) : null;
+    final showReadiness = snapshot != null && !snapshot.complete;
+    final readiness = isAdmin ? app.discoveryReadinessFor(band.id) : null;
+    final readinessFailed =
+        isAdmin &&
+        readiness == null &&
+        !app.discoveryReadinessLoadingFor(band.id);
+
+    final manage = [
+      const EpEyebrow('Manage'),
+      const SizedBox(height: 4),
+      _MenuRows(app: app, bandId: band.id, isAdmin: isAdmin),
+      if (readiness != null) _BoostFooter(readiness: readiness),
     ];
 
-    if (desktop) {
+    if (EpLayout.isDesktop(context)) {
       // The rail carries the identity, the switcher and "back to discover",
       // so the content column starts at the hero.
       return ListView(
@@ -77,17 +89,9 @@ class _BandDashScreenState extends State<BandDashScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _NextUp(
-                      app: app,
-                      gig: next,
-                      isAdmin: isAdmin,
-                      displaySize: 72,
-                      showPublishAnother: true,
-                    ),
+                    _NextUp(app: app, gig: next, isAdmin: isAdmin),
                     const SizedBox(height: 40),
-                    EpStatGrid(stats: stats, valueSize: 48),
-                    _UpcomingGigs(app: app, gigs: gigs),
-                    _MenuRows(app: app, bandId: band.id, isAdmin: isAdmin),
+                    ...manage,
                   ],
                 ),
               ),
@@ -102,10 +106,13 @@ class _BandDashScreenState extends State<BandDashScreen> {
                         left: BorderSide(color: context.epColors.line),
                       ),
                     ),
-                    child: _Readiness(
-                      app: app,
-                      bandId: band.id,
-                      expanded: true,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ReadinessModule(bandId: band.id),
+                        if (readinessFailed)
+                          _ReadinessRetry(app: app, bandId: band.id),
+                      ],
                     ),
                   ),
                 ),
@@ -125,12 +132,18 @@ class _BandDashScreenState extends State<BandDashScreen> {
       ),
       children: [
         _Header(app: app, band: band),
-        const SizedBox(height: 28),
-        _NextUp(app: app, gig: next, isAdmin: isAdmin, displaySize: 44),
-        const SizedBox(height: 28),
-        EpStatGrid(stats: stats),
-        _MenuRows(app: app, bandId: band.id, isAdmin: isAdmin),
-        if (isAdmin) _Readiness(app: app, bandId: band.id, expanded: false),
+        const SizedBox(height: _sectionGap),
+        _NextUp(app: app, gig: next, isAdmin: isAdmin),
+        if (isAdmin) ...[
+          if (showReadiness) const SizedBox(height: _sectionGap),
+          ReadinessModule(bandId: band.id),
+          if (readinessFailed) ...[
+            const SizedBox(height: _sectionGap),
+            _ReadinessRetry(app: app, bandId: band.id),
+          ],
+        ],
+        const SizedBox(height: _sectionGap),
+        ...manage,
       ],
     );
   }
@@ -196,16 +209,7 @@ class _Header extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Wrap(
-                        children: [
-                          EpEyebrow('Managing · ${app.roleFor(band.id)}'),
-                          if (band.profileComplete)
-                            const EpEyebrow(
-                              ' · Profile complete',
-                              key: Key('profile-complete-badge'),
-                            ),
-                        ],
-                      ),
+                      EpEyebrow('Managing · ${app.roleFor(band.id)}'),
                     ],
                   ),
                 ),
@@ -214,128 +218,118 @@ class _Header extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        EpPill(label: 'Discover', onPressed: app.toFanView),
+        EpPill(
+          key: const Key('band-dash-discover'),
+          label: 'Discover',
+          variant: EpPillVariant.accentOutline,
+          size: EpPillSize.chip,
+          onPressed: app.toFanView,
+        ),
       ],
     );
   }
 }
 
+/// The hero: the next published gig with its live RSVP count, or a prompt to
+/// publish one.
 class _NextUp extends StatelessWidget {
-  const _NextUp({
-    required this.app,
-    required this.gig,
-    required this.isAdmin,
-    required this.displaySize,
-    this.showPublishAnother = false,
-  });
+  const _NextUp({required this.app, required this.gig, required this.isAdmin});
 
   final AppState app;
   final Gig? gig;
   final bool isAdmin;
-  final double displaySize;
-  final bool showPublishAnother;
 
   @override
   Widget build(BuildContext context) {
     final gig = this.gig;
     if (gig == null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const EpEyebrow.accent('Nothing scheduled'),
-          const SizedBox(height: 12),
-          EpDisplay('Publish\nyour next show', size: displaySize, maxLines: 3),
-          if (isAdmin) ...[
-            const SizedBox(height: 20),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: EpPill(
-                label: 'Publish a gig',
-                variant: EpPillVariant.primary,
-                size: EpPillSize.regular,
-                onPressed: app.startGigCreate,
-              ),
+      return EpCard(
+        key: const Key('band-next-up-empty'),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const EpEyebrow('Nothing scheduled'),
+            const SizedBox(height: 12),
+            const EpDisplay(
+              'No gig coming up — publish one',
+              size: 24,
+              maxLines: 3,
             ),
+            if (isAdmin) ...[
+              const SizedBox(height: 20),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: EpPill(
+                  key: const Key('band-next-up-publish'),
+                  label: 'Publish a gig',
+                  variant: EpPillVariant.primary,
+                  size: EpPillSize.chip,
+                  onPressed: app.startGigCreate,
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        EpEyebrow.accent(
-          'Next up · ${gig.dateShort} · Doors ${_doorsLabel(context, gig)}',
-        ),
-        const SizedBox(height: 12),
-        EpDisplay(gig.title, size: displaySize, maxLines: 3),
-        const SizedBox(height: 12),
-        Text(
-          '${app.venue(gig.venueId).name} · ${app.rsvpCount(gig)} RSVPs · '
-          'counting live',
-          style: Theme.of(
-            context,
-          ).textTheme.epBody.copyWith(color: context.epColors.muted),
-        ),
-        const SizedBox(height: 20),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            if (isAdmin)
-              EpPill(
-                label: 'Door mode',
-                variant: EpPillVariant.primary,
-                size: EpPillSize.regular,
-                onPressed: () =>
-                    showDoorMode(context, _doorLaunchFor(context, app, gig)),
+    return EpCard(
+      key: const Key('band-next-up'),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(child: EpEyebrow.accent('Next up')),
+              const SizedBox(width: 12),
+              Flexible(
+                child: EpMonoText(
+                  '${gig.dateShort} · Doors ${_doorsLabel(context, gig)}',
+                  key: const Key('band-next-up-when'),
+                  color: context.epColors.contentSecondary,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            EpPill(
-              key: const Key('band-next-public-gig'),
-              label: 'Public gig ↗',
-              size: EpPillSize.regular,
-              onPressed: () => app.openGig(gig.id),
-            ),
-            if (isAdmin && showPublishAnother)
-              EpPill(
-                label: 'Publish another',
-                size: EpPillSize.regular,
-                onPressed: app.startGigCreate,
-              ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-/// Desktop-only list of the band's gigs; the rail has no gig manager shortcut.
-class _UpcomingGigs extends StatelessWidget {
-  const _UpcomingGigs({required this.app, required this.gigs});
-
-  final AppState app;
-  final List<Gig> gigs;
-
-  @override
-  Widget build(BuildContext context) {
-    if (gigs.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 32, bottom: 4),
-          child: EpEyebrow('Upcoming · ${gigs.length}'),
-        ),
-        for (final gig in gigs)
-          EpGigRow(
-            key: ValueKey('band-gig-${gig.id}'),
-            date: gig.startsAt.toLocal(),
-            title: gig.title,
-            sub: '${app.venue(gig.venueId).name} · ${app.rsvpCount(gig)} RSVPs',
-            onTap: app.openGigManager,
-            trailing: EpMonoText('Manage', color: context.epColors.muted),
+            ],
           ),
-      ],
+          const SizedBox(height: 12),
+          EpDisplay(gig.title, size: 32, maxLines: 3),
+          const SizedBox(height: 12),
+          EpMonoText(
+            '${app.venue(gig.venueId).name} · ${app.rsvpCount(gig)} RSVPs · '
+            'counting live',
+            color: context.epColors.contentSecondary,
+          ),
+          const SizedBox(height: 20),
+          // A wrap rather than a row so large text never clips an action.
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (isAdmin)
+                EpPill(
+                  key: const Key('band-next-door-mode'),
+                  label: 'Door mode',
+                  variant: EpPillVariant.primary,
+                  size: EpPillSize.chip,
+                  onPressed: () =>
+                      showDoorMode(context, _doorLaunchFor(context, app, gig)),
+                ),
+              EpPill(
+                key: const Key('band-next-public-gig'),
+                label: 'Public gig ↗',
+                variant: EpPillVariant.outline,
+                size: EpPillSize.chip,
+                keepCase: true,
+                onPressed: () => app.openGig(gig.id),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -380,15 +374,13 @@ class _MenuRows extends StatelessWidget {
             key: const Key('band-dash-payouts'),
             icon: Icons.confirmation_number_outlined,
             label: 'Payouts',
-            trailingText: switch (app.bandPayoutStatus?.state) {
-              StripeAccountState.enabled =>
-                (app.bandPayoutStatus?.canSellTickets ?? false)
-                    ? 'Enabled'
-                    : 'Enable ticket sales',
-              StripeAccountState.onboarding ||
-              StripeAccountState.restricted => 'Finish setup',
-              _ => 'Set up',
-            },
+            trailing: _payoutsNeedSetup(app.bandPayoutStatus)
+                ? const StatusPill(
+                    key: Key('band-dash-payouts-badge'),
+                    label: 'Set up',
+                    tone: EpStatusPillTone.attention,
+                  )
+                : null,
             onTap: () => app.resetTo(Screen.bandPayouts),
           ),
         if (isAdmin)
@@ -417,237 +409,79 @@ class _MenuRows extends StatelessWidget {
   }
 }
 
-/// Discovery readiness and the setup checklist as one list: the six discovery
-/// steps plus the three setup tasks discovery does not already cover.
-class _Readiness extends StatefulWidget {
-  const _Readiness({
-    required this.app,
-    required this.bandId,
-    required this.expanded,
-  });
+/// Stripe onboarding is not finished until the account is enabled.
+bool _payoutsNeedSetup(StripeAccountStatus? status) => switch (status?.state) {
+  StripeAccountState.enabled => false,
+  _ => true,
+};
 
-  final AppState app;
-  final String bandId;
+/// Two muted lines under the menu: the next show that can be boosted and its
+/// window. The boundary refresh that keeps `active` current lives in AppState.
+class _BoostFooter extends StatelessWidget {
+  const _BoostFooter({required this.readiness});
 
-  /// Desktop shows every item; the phone hides completed ones behind a toggle.
-  final bool expanded;
-
-  @override
-  State<_Readiness> createState() => _ReadinessState();
-}
-
-class _ReadinessState extends State<_Readiness> {
-  bool _showAll = false;
+  final BandDiscoveryReadiness readiness;
 
   @override
   Widget build(BuildContext context) {
-    final app = widget.app;
-    final readiness = app.discoveryReadinessFor(widget.bandId);
-    final status = app.setupStatusFor(widget.bandId);
-    final items = _readinessItems(app, readiness, status);
-    final done = items.where((item) => item.done).length;
-    final showAll = widget.expanded || _showAll;
-    final visible = showAll
-        ? items
-        : items.where((item) => !item.done).toList(growable: false);
-
-    return Column(
-      key: const Key('band-readiness'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: EdgeInsets.only(top: widget.expanded ? 0 : 24, bottom: 8),
-          child: Row(
-            children: [
-              const Expanded(child: EpEyebrow('Readiness')),
-              const SizedBox(width: 12),
-              EpEyebrow('$done of ${items.length}'),
-            ],
+    final show = readiness.nextEligibleShow;
+    final window = readiness.boostWindow;
+    if (show == null || window == null) return const SizedBox.shrink();
+    final palette = context.epColors;
+    return Padding(
+      padding: const EdgeInsets.only(top: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          EpMonoText(
+            'Next eligible · ${show.title}',
+            key: const Key('band-boost-next'),
+            color: palette.contentSecondary,
           ),
-        ),
-        if (items.isNotEmpty) ...[
-          EpReadinessBar(done: done, total: items.length),
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
+          EpMonoText(
+            'Boost window · '
+            '${Gig.dateShortFor(window.opensAt.millisecondsSinceEpoch)} – '
+            '${Gig.dateShortFor(window.closesAt.millisecondsSinceEpoch)}'
+            '${window.active ? ' · Active now' : ''}',
+            key: const Key('band-boost-window'),
+            color: window.active ? palette.accent : palette.contentSecondary,
+          ),
         ],
-        if (widget.expanded)
-          Text(
-            'Complete listings move ahead within nearby same-day results.',
-            style: Theme.of(
-              context,
-            ).textTheme.epBody.copyWith(color: context.epColors.muted),
-          ),
-        for (final item in visible)
-          EpChecklistRow(
-            key: item.key,
-            done: item.done,
-            label: item.label,
-            actionLabel: item.done ? null : item.actionLabel,
-            onAction: item.done ? null : item.onAction,
-          ),
-        if (!widget.expanded && done > 0)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              key: const Key('band-readiness-toggle'),
-              onPressed: () => setState(() => _showAll = !_showAll),
-              child: EpMonoText(_showAll ? 'Show remaining' : 'Show all'),
-            ),
-          ),
-        if (readiness == null)
-          _ReadinessRetry(
-            label: 'Retry discovery readiness',
-            loading: app.discoveryReadinessLoadingFor(widget.bandId),
-            onRetry: () => app.refreshBandDiscoveryReadiness(widget.bandId),
-          ),
-        if (status == null)
-          _ReadinessRetry(
-            label: 'Retry setup checklist',
-            loading: app.setupStatusLoadingFor(widget.bandId),
-            onRetry: () => app.refreshBandSetupStatus(widget.bandId),
-          ),
-        if (readiness?.nextEligibleShow case final show?)
-          if (readiness?.boostWindow case final window?) ...[
-            const SizedBox(height: 20),
-            EpEyebrow('Next eligible · ${show.title}'),
-            const SizedBox(height: 4),
-            _BoostWindow(window: window),
-          ],
-      ],
+      ),
     );
   }
 }
 
-class _BoostWindow extends StatelessWidget {
-  const _BoostWindow({required this.window});
-
-  final DiscoveryBoostWindow window;
-
-  @override
-  Widget build(BuildContext context) {
-    final label =
-        'Boost window · '
-        '${Gig.dateShortFor(window.opensAt.millisecondsSinceEpoch)} – '
-        '${Gig.dateShortFor(window.closesAt.millisecondsSinceEpoch)}'
-        '${window.active ? ' · Active now' : ''}';
-    return window.active ? EpEyebrow.accent(label) : EpEyebrow(label);
-  }
-}
-
+/// Shown only when discovery readiness failed to load, so the checklist has
+/// nothing to build from.
 class _ReadinessRetry extends StatelessWidget {
-  const _ReadinessRetry({
-    required this.label,
-    required this.loading,
-    required this.onRetry,
-  });
+  const _ReadinessRetry({required this.app, required this.bandId});
 
-  final String label;
-  final bool loading;
-  final VoidCallback onRetry;
+  final AppState app;
+  final String bandId;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 8),
-    child: loading
-        ? const Center(child: CircularProgressIndicator())
-        : Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(onPressed: onRetry, child: EpMonoText(label)),
-          ),
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(
+        child: EpMonoText(
+          'Readiness unavailable',
+          color: context.epColors.contentSecondary,
+        ),
+      ),
+      const SizedBox(width: 12),
+      EpPill(
+        key: const Key('band-readiness-retry'),
+        label: 'Retry',
+        size: EpPillSize.chip,
+        onPressed: () {
+          app.refreshBandDiscoveryReadiness(bandId);
+          app.refreshBandSetupStatus(bandId);
+        },
+      ),
+    ],
   );
-}
-
-class _ReadinessItem {
-  const _ReadinessItem({
-    required this.key,
-    required this.label,
-    required this.done,
-    required this.actionLabel,
-    required this.onAction,
-  });
-
-  final Key key;
-  final String label;
-  final bool done;
-  final String actionLabel;
-  final VoidCallback onAction;
-}
-
-List<_ReadinessItem> _readinessItems(
-  AppState app,
-  BandDiscoveryReadiness? readiness,
-  BandSetupStatus? status,
-) {
-  final hasShow = readiness?.relevantShow != null;
-  final showAction = hasShow ? app.openGigManager : app.startGigCreate;
-  return [
-    if (readiness != null) ...[
-      _ReadinessItem(
-        key: const ValueKey('band-discovery-profile'),
-        label: 'Complete profile',
-        done: readiness.profileComplete,
-        actionLabel: 'Edit',
-        onAction: () => app.openBandEditor(section: 'required'),
-      ),
-      _ReadinessItem(
-        key: const ValueKey('band-discovery-image'),
-        label: 'Profile image',
-        done: readiness.profileImageReady,
-        actionLabel: 'Add',
-        onAction: app.openBandMedia,
-      ),
-      _ReadinessItem(
-        key: const ValueKey('band-discovery-clip'),
-        label: 'Video clip',
-        done: readiness.clipReady,
-        actionLabel: 'Add',
-        onAction: app.openBandMedia,
-      ),
-      _ReadinessItem(
-        key: const ValueKey('band-discovery-show'),
-        label: 'Published lineup',
-        done: readiness.publishedShowReady,
-        actionLabel: hasShow ? 'Manage' : 'Create',
-        onAction: showAction,
-      ),
-      _ReadinessItem(
-        key: const ValueKey('band-discovery-listing'),
-        label: 'Venue and readable poster',
-        done: readiness.venuePosterReady,
-        actionLabel: hasShow ? 'Edit' : 'Create',
-        onAction: showAction,
-      ),
-      _ReadinessItem(
-        key: const ValueKey('band-discovery-revision'),
-        label: 'Latest revision published',
-        done: readiness.publishedRevisionCurrent,
-        actionLabel: hasShow ? 'Republish' : 'Create',
-        onAction: showAction,
-      ),
-    ],
-    if (status != null) ...[
-      _ReadinessItem(
-        key: const ValueKey('band-setup-preview'),
-        label: 'Public profile previewed',
-        done: status.publicProfilePreviewed,
-        actionLabel: 'Preview',
-        onAction: app.previewPublicProfile,
-      ),
-      _ReadinessItem(
-        key: const ValueKey('band-setup-social'),
-        label: 'Add social links',
-        done: status.socialLinksAdded,
-        actionLabel: 'Edit',
-        onAction: () => app.openBandEditor(section: 'links'),
-      ),
-      _ReadinessItem(
-        key: const ValueKey('band-setup-members'),
-        label: 'Invite band members',
-        done: status.membersInvited,
-        actionLabel: 'Invite',
-        onAction: app.openInvitationPanel,
-      ),
-    ],
-  ];
 }
 
 String _doorsLabel(BuildContext context, Gig gig) => gig.doorsAt == null
