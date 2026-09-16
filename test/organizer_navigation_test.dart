@@ -7,7 +7,7 @@ import 'package:earplug/screens/applicant_review.dart';
 import 'package:earplug/screens/opportunity_applicants.dart';
 import 'package:earplug/screens/opportunity_detail.dart';
 import 'package:earplug/screens/opportunity_edit.dart';
-import 'package:earplug/screens/org_opportunities.dart';
+import 'package:earplug/screens/org_gigs.dart';
 import 'package:earplug/screens/org_opportunity_detail.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/tab_bars.dart';
@@ -141,7 +141,7 @@ void main() {
     await enterOrganizer(tester, harness, 'org1');
 
     expect(find.byType(OrganizerTabBar), findsOne);
-    expect(find.byType(OrgOpportunitiesScreen), findsOne);
+    expect(find.byType(OrgGigsScreen), findsOne);
     expect(harness.app.identity, isA<OrganizerIdentity>());
 
     harness.app.toFanView();
@@ -288,7 +288,7 @@ void main() {
     await tester.tap(opportunitiesTab);
     await tester.pumpAndSettle();
 
-    expect(find.byType(OrgOpportunitiesScreen), findsOneWidget);
+    expect(find.byType(OrgGigsScreen), findsOneWidget);
     expect(harness.app.current.screen, Screen.orgOpportunities);
 
     harness.app.openOpportunityEditor();

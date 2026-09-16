@@ -46,6 +46,7 @@ import 'screens/org_application_status.dart';
 import 'screens/org_apply.dart';
 import 'screens/org_dash.dart';
 import 'screens/org_finance.dart';
+import 'screens/org_gigs.dart';
 import 'screens/org_join.dart';
 import 'screens/org_opportunities.dart';
 import 'screens/org_opportunity_detail.dart';
@@ -777,7 +778,12 @@ class RootShell extends StatelessWidget {
       Screen.orgSettings => OrgSettingsScreen(key: key),
       Screen.orgFinance => OrgFinanceScreen(key: key),
       Screen.orgTransactions => OrgTransactionsScreen(key: key),
-      Screen.orgOpportunities => OrgOpportunitiesScreen(key: key),
+      Screen.orgOpportunities => Builder(
+        key: key,
+        builder: (context) => context.watch<AppState>().currentIsHost
+            ? const OrgOpportunitiesScreen()
+            : const OrgGigsScreen(),
+      ),
       Screen.orgOpportunity => OrgOpportunityDetailScreen(
         key: key,
         opportunityId: entry.param!,
