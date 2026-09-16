@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -265,6 +266,161 @@ class _Month extends StatelessWidget {
           if (row > 0) const SizedBox(height: 4),
           grid(row, cell),
         ],
+      ],
+    );
+  }
+}
+
+Future<void> showGigWhenSheet(BuildContext context) {
+  return showEpSheet(context, (ctx) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(ctx).height * .82,
+      ),
+      child: const EpFormSheet(
+        title: 'WHEN',
+        padBody: false,
+        child: _GigWhenBody(),
+      ),
+    );
+  });
+}
+
+DateTime _roundDownToMinuteInterval(DateTime dt, int interval) => DateTime(
+  dt.year,
+  dt.month,
+  dt.day,
+  dt.hour,
+  dt.minute ~/ interval * interval,
+);
+
+class _GigWhenBody extends StatelessWidget {
+  const _GigWhenBody();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final date = app.gfDate ?? today;
+    final theme = Theme.of(context);
+
+    Widget selectionOverlay(
+      BuildContext context, {
+      required int columnCount,
+      required int selectedIndex,
+    }) => Container(
+      decoration: BoxDecoration(
+        border: Border.symmetric(
+          horizontal: BorderSide(color: context.epColors.border, width: 1),
+        ),
+      ),
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: 4,
+            separatorBuilder: (_, _) => const SizedBox(height: 14),
+            itemBuilder: (_, index) => _Month(
+              first: DateTime(today.year, today.month + index, 1),
+              today: today,
+            ),
+          ),
+        ),
+        const EpHairline(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 13, 16, 13),
+          child: CupertinoTheme(
+            data: CupertinoThemeData(
+              brightness: theme.brightness,
+              primaryColor: context.epColors.accent,
+              textTheme: CupertinoTextThemeData(
+                dateTimePickerTextStyle: theme.textTheme.epBody.copyWith(
+                  color: context.epColors.contentPrimary,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const EpEyebrow('DOORS'),
+                      SizedBox(
+                        height: 140,
+                        child: CupertinoDatePicker(
+                          key: const Key('gig-doors-wheel'),
+                          mode: CupertinoDatePickerMode.time,
+                          minuteInterval: 5,
+                          use24hFormat: false,
+                          initialDateTime: _roundDownToMinuteInterval(
+                            DateTime(
+                              date.year,
+                              date.month,
+                              date.day,
+                              app.gfDoors.hour,
+                              app.gfDoors.minute,
+                            ),
+                            5,
+                          ),
+                          onDateTimeChanged: (dt) => app.setGfDoors(
+                            TimeOfDay(hour: dt.hour, minute: dt.minute),
+                          ),
+                          selectionOverlayBuilder: selectionOverlay,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const EpEyebrow('START'),
+                      SizedBox(
+                        height: 140,
+                        child: CupertinoDatePicker(
+                          key: const Key('gig-start-wheel'),
+                          mode: CupertinoDatePickerMode.time,
+                          minuteInterval: 5,
+                          use24hFormat: false,
+                          initialDateTime: _roundDownToMinuteInterval(
+                            DateTime(
+                              date.year,
+                              date.month,
+                              date.day,
+                              app.gfStart.hour,
+                              app.gfStart.minute,
+                            ),
+                            5,
+                          ),
+                          onDateTimeChanged: (dt) => app.setGfStart(
+                            TimeOfDay(hour: dt.hour, minute: dt.minute),
+                          ),
+                          selectionOverlayBuilder: selectionOverlay,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const EpHairline(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 13, 16, 34),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: const [DoneButton()],
+          ),
+        ),
       ],
     );
   }
