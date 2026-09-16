@@ -12,6 +12,8 @@ import 'package:earplug/screens/org_opportunities.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,66 +25,205 @@ import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
 void main() {
-  testWidgets('opportunities group drafts and open listings with counts', (
+  testWidgets('the requests list leads with segments and application chips', (
     tester,
   ) async {
     final harness = await _pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
-    final openSection = find.byKey(const ValueKey('org-opps-section-OPEN'));
-    final draftsSection = find.byKey(const ValueKey('org-opps-section-DRAFTS'));
     final openCard = find.byKey(const ValueKey('org-opp-opp1'));
+    final quietCard = find.byKey(const ValueKey('org-opp-opp3'));
     final draftCard = find.byKey(const ValueKey('org-opp-opp2'));
 
+    expect(find.byKey(const Key('org-opps-title')), findsOneWidget);
     expect(find.text('OPPORTUNITIES'), findsOneWidget);
     expect(find.text('Post a slot. Find your next artist.'), findsOneWidget);
-    expect(find.text('NEW OPPORTUNITY'), findsOneWidget);
+    final newPill = tester.widget<EpPill>(
+      find.byKey(const Key('org-opps-new')),
+    );
+    expect(newPill.label, '+ New opportunity');
+    expect(newPill.variant, EpPillVariant.outline);
+    expect(newPill.size, EpPillSize.chip);
+    final tabs = tester.widget<EpSegmentTabs>(
+      find.byKey(const Key('org-opps-tabs')),
+    );
+    expect(tabs.labels, ['Active', 'Confirmed', 'Past']);
+    expect(tabs.selected, 0);
+    expect(find.byType(SectionBar), findsNothing);
+    expect(find.byKey(const ValueKey('org-opps-section-OPEN')), findsNothing);
+    expect(find.byKey(const ValueKey('org-opps-section-DRAFTS')), findsNothing);
+
+    // Nothing is booked in the demo, so CONFIRMED is absent and ACTIVE lists
+    // the open listings first and the draft last.
+    expect(find.text('ACTIVE · 3'), findsOneWidget);
+    expect(find.textContaining('CONFIRMED ·'), findsNothing);
     expect(
-      tester
-          .widget<SectionBar>(
-            find.descendant(of: openSection, matching: find.byType(SectionBar)),
-          )
-          .count,
-      2,
+      tester.getTopLeft(openCard).dy,
+      lessThan(tester.getTopLeft(quietCard).dy),
     );
     expect(
-      tester
-          .widget<SectionBar>(
-            find.descendant(
-              of: draftsSection,
-              matching: find.byType(SectionBar),
-            ),
-          )
-          .label,
-      'DRAFTS',
+      tester.getTopLeft(quietCard).dy,
+      lessThan(tester.getTopLeft(draftCard).dy),
     );
+
+    final applied = tester.widget<StatusPill>(
+      find.byKey(const Key('org-opp-applied-opp1')),
+    );
+    expect(applied.label, '2 applied');
+    expect(applied.tone, EpStatusPillTone.selected);
     expect(
-      find.descendant(of: openSection, matching: openCard),
+      find.descendant(of: openCard, matching: find.text('2 APPLIED')),
       findsOneWidget,
     );
+    final none = tester.widget<StatusPill>(
+      find.byKey(const Key('org-opp-applied-opp3')),
+    );
+    expect(none.label, '0 applied');
+    expect(none.tone, EpStatusPillTone.neutral);
     expect(
-      find.descendant(of: draftsSection, matching: draftCard),
+      find.descendant(of: draftCard, matching: find.text('DRAFT')),
       findsOneWidget,
     );
-    expect(
-      find.descendant(of: openCard, matching: find.text('2 applied')),
-      findsOneWidget,
-    );
+    // Card titles speak in the display voice, so the title is shouted.
     expect(
       find.descendant(
         of: openCard,
-        matching: find.text(DemoData.opportunities['opp1']!.title),
+        matching: find.text(
+          DemoData.opportunities['opp1']!.title.toUpperCase(),
+        ),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
         of: openCard,
-        matching: find.text(r'Headliner $300.00 · Support $150.00'),
+        matching: find.textContaining('Headliner, Support · 2 slots · closes '),
       ),
       findsOneWidget,
     );
+    expect(find.text('PAST · 0'), findsOneWidget);
+    expect(find.byKey(const Key('org-opps-past-body')), findsNothing);
+    harness.app.dispose();
+  });
+
+  testWidgets('confirmed requests lead the Active view and fill Confirmed', (
+    tester,
+  ) async {
+    final harness = await _pumpOrganizerScreen(
+      tester,
+      const OrgOpportunitiesScreen(),
+      repositoryBuilder: (auth) =>
+          StubRepository(auth: auth)
+            ..wraps<List<Opportunity>>('manageOpportunities', (opportunities) {
+              return opportunities.map((opportunity) {
+                if (opportunity.id != 'opp3') return opportunity;
+                // Booked slots alone make a request confirmed; the status
+                // may lag behind.
+                return opportunity.copyWith(
+                  slots: [
+                    for (final slot in opportunity.slots)
+                      OpportunitySlot(
+                        id: slot.id,
+                        order: slot.order,
+                        role: slot.role,
+                        guaranteeMinor: slot.guaranteeMinor,
+                        required: slot.required,
+                        status: SlotStatus.booked,
+                        bandId: 'b1',
+                      ),
+                  ],
+                );
+              }).toList();
+            }),
+    );
+    final confirmedCard = find.byKey(const ValueKey('org-opp-opp3'));
+    final openCard = find.byKey(const ValueKey('org-opp-opp1'));
+
+    expect(find.text('CONFIRMED · 1'), findsOneWidget);
+    expect(find.text('ACTIVE · 2'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('CONFIRMED · 1')).dy,
+      lessThan(tester.getTopLeft(find.text('ACTIVE · 2')).dy),
+    );
+    expect(
+      tester.getTopLeft(confirmedCard).dy,
+      lessThan(tester.getTopLeft(openCard).dy),
+    );
+    expect(
+      find.descendant(of: confirmedCard, matching: find.text('CONFIRMED')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: confirmedCard,
+        matching: find.text(r'Headliner · $0.00 · 1/1 slots booked'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('org-opp-applied-opp3')), findsNothing);
+
+    await tester.tap(_segment('CONFIRMED'));
+    await tester.pumpAndSettle();
+    expect(confirmedCard, findsOneWidget);
+    expect(openCard, findsNothing);
+    expect(find.byKey(const Key('org-opps-past-toggle')), findsNothing);
+    harness.app.dispose();
+  });
+
+  testWidgets('past requests collapse into one row and fill the Past view', (
+    tester,
+  ) async {
+    final harness = await _pumpOrganizerScreen(
+      tester,
+      const OrgOpportunitiesScreen(),
+      repositoryBuilder: (auth) => StubRepository(auth: auth)
+        ..wraps<List<Opportunity>>('manageOpportunities', (opportunities) {
+          return opportunities.map((opportunity) {
+            return switch (opportunity.id) {
+              'opp2' => opportunity.copyWith(
+                status: OpportunityStatus.completed,
+              ),
+              'opp3' => opportunity.copyWith(
+                status: OpportunityStatus.cancelled,
+              ),
+              _ => opportunity,
+            };
+          }).toList();
+        }),
+    );
+    final completedCard = find.byKey(const ValueKey('org-opp-opp2'));
+    final cancelledCard = find.byKey(const ValueKey('org-opp-opp3'));
+    final toggle = find.byKey(const Key('org-opps-past-toggle'));
+    final body = find.byKey(const Key('org-opps-past-body'));
+
+    expect(find.text('ACTIVE · 1'), findsOneWidget);
+    expect(find.text('PAST · 2'), findsOneWidget);
+    expect(find.text('Incl. 1 cancelled'), findsOneWidget);
+    expect(body, findsNothing);
+    expect(completedCard, findsNothing);
+
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(body, findsOneWidget);
+    expect(find.descendant(of: body, matching: completedCard), findsOneWidget);
+    expect(find.descendant(of: body, matching: cancelledCard), findsOneWidget);
+    expect(
+      find.descendant(of: cancelledCard, matching: find.text('CANCELLED')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: completedCard, matching: find.text('COMPLETED')),
+      findsOneWidget,
+    );
+
+    await tester.tap(_segment('PAST'));
+    await tester.pumpAndSettle();
+    expect(toggle, findsNothing);
+    expect(completedCard, findsOneWidget);
+    expect(cancelledCard, findsOneWidget);
+    expect(find.byKey(const ValueKey('org-opp-opp1')), findsNothing);
     harness.app.dispose();
   });
 
@@ -126,10 +267,10 @@ void main() {
 
     expect(find.text('REQUESTS'), findsOneWidget);
     expect(find.text('Post a request. Find your artist.'), findsOneWidget);
-    expect(find.text('NEW REQUEST'), findsOneWidget);
+    expect(find.text('+ NEW REQUEST'), findsOneWidget);
     expect(find.text('OPPORTUNITIES'), findsNothing);
     expect(find.text('Post a slot. Find your next artist.'), findsNothing);
-    expect(find.text('NEW OPPORTUNITY'), findsNothing);
+    expect(find.text('+ NEW OPPORTUNITY'), findsNothing);
     final privateCard = find.byKey(const ValueKey('org-opp-opp-private'));
     await tester.ensureVisible(privateCard);
     expect(
@@ -188,7 +329,7 @@ void main() {
       final caption = find.byKey(const Key('org-opp-sales-opp1'));
       await tester.ensureVisible(caption);
       expect(
-        tester.widget<Text>(caption).data,
+        tester.widget<EpMonoText>(caption).text,
         '${expected.sold}/${expected.capacity} sold · ${expected.net.label} net',
       );
       expect(repository.salesReads, readsBeforeScreen + 1);
@@ -232,7 +373,7 @@ void main() {
         expect(find.byKey(const Key('org-opp-sales-opp1')), findsNothing);
         final card = find.byKey(const ValueKey('org-opp-opp1'));
         await _revealOpportunityCard(tester, card);
-        await tester.tap(card);
+        await tester.tap(find.byKey(const Key('org-opp-actions-opp1')));
         await tester.pumpAndSettle();
         expect(find.text('Door'), published ? findsOneWidget : findsNothing);
         harness.app.dispose();
@@ -256,7 +397,7 @@ void main() {
     harness.app.dispose();
   });
 
-  testWidgets('close applications moves the opportunity to CLOSED', (
+  testWidgets('close applications keeps the opportunity active as CLOSED', (
     tester,
   ) async {
     final harness = await _pumpOrganizerScreen(
@@ -269,19 +410,21 @@ void main() {
     final card = find.byKey(const ValueKey('org-opp-opp1'));
     await tester.ensureVisible(card);
     await tester.pumpAndSettle();
-    final closedSection = find.byKey(const ValueKey('org-opps-section-CLOSED'));
-    expect(find.descendant(of: closedSection, matching: card), findsOneWidget);
+    expect(find.text('ACTIVE · 3'), findsOneWidget);
     expect(
-      tester
-          .widget<SectionBar>(
-            find.descendant(
-              of: closedSection,
-              matching: find.byType(SectionBar),
-            ),
-          )
-          .label,
-      'CLOSED',
+      find.descendant(of: card, matching: find.text('CLOSED')),
+      findsOneWidget,
     );
+    expect(
+      find.descendant(
+        of: card,
+        matching: find.text(
+          'Headliner, Support · 2 slots · applications closed',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('org-opp-applied-opp1')), findsOneWidget);
     final opportunities = await harness.app.repository.manageOpportunities(
       'org1',
     );
@@ -396,7 +539,7 @@ void main() {
     );
     final card = find.byKey(const ValueKey('org-opp-opp1'));
     await _revealOpportunityCard(tester, card);
-    await tester.tap(card);
+    await tester.tap(find.byKey(const Key('org-opp-actions-opp1')));
     await tester.pumpAndSettle();
     expect(find.text('Reopen'), findsOneWidget);
 
@@ -1264,6 +1407,13 @@ class _PublishedOpportunityRepository extends StubRepository {
   );
 }
 
+/// A label in the ACTIVE / CONFIRMED / PAST strip; status pills lower in the
+/// list may carry the same word.
+Finder _segment(String label) => find.descendant(
+  of: find.byKey(const Key('org-opps-tabs')),
+  matching: find.text(label),
+);
+
 /// Brings an opportunity card fully into view before it is tapped.
 ///
 /// The list builds its rows lazily, so a single [WidgetTester.ensureVisible]
@@ -1286,7 +1436,7 @@ Future<void> _chooseOpportunityAction(
 ) async {
   final card = find.byKey(ValueKey('org-opp-$opportunityId'));
   await _revealOpportunityCard(tester, card);
-  await tester.tap(card);
+  await tester.tap(find.byKey(Key('org-opp-actions-$opportunityId')));
   await tester.pumpAndSettle();
   await tester.tap(find.text(action));
   await tester.pumpAndSettle();
