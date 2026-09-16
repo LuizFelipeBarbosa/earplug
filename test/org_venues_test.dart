@@ -1,12 +1,15 @@
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
+import 'package:earplug/navigation.dart';
 import 'package:earplug/screens/org_venues.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'support/design_rules.dart';
 import 'support/harness.dart';
@@ -241,4 +244,160 @@ void main() {
     expect(find.byKey(const Key('venue-request-consent-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('org-venue-v1')), findsOneWidget);
   });
+
+  testWidgets('venues tab shows the title, add pill, venue card and hint', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgVenuesScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    expect(find.byType(AppBar), findsNothing);
+    expect(
+      tester.widget<EpDisplay>(find.byKey(const Key('org-venues-title'))).text,
+      'Venues',
+    );
+    expect(
+      tester.widget<EpPill>(find.byKey(const Key('org-venues-add'))).label,
+      '+ Add venue',
+    );
+
+    final card = find.byKey(const ValueKey('org-venue-v1'));
+    expect(tester.widget(card), isA<EpCard>());
+    expect(
+      tester
+          .widget<EpDisplay>(
+            find.descendant(of: card, matching: find.byType(EpDisplay)),
+          )
+          .text,
+      'The Foghorn Club',
+    );
+    // opp1 and opp3 are open and upcoming at v1; opp2 is a draft and is not
+    // counted.
+    expect(
+      find.descendant(of: card, matching: find.text('CAP 180 · 2 UPCOMING')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: card,
+        matching: find.byKey(const Key('org-venue-default-v1')),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('VERIFIED'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('org-venues-hint')),
+        matching: find.text(
+          'Venues you run. Opportunities pick from this list.',
+        ),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'only the first venue carries DEFAULT and CAP is omitted when unknown',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = StubRepository(auth: auth)
+        ..wraps<OrganizationDashboard>(
+          'organizationDashboard',
+          (real) => OrganizationDashboard(
+            organization: real.organization,
+            role: real.role,
+            viaPlatformAdmin: real.viaPlatformAdmin,
+            verification: real.verification,
+            venues: [...real.venues, _annex],
+            memberCount: real.memberCount,
+            pendingVenueConsents: real.pendingVenueConsents,
+            privateDetails: real.privateDetails,
+          ),
+        );
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        beforePump: (app) => app.switchToOrganization('org1'),
+        home: const Scaffold(body: OrgVenuesScreen()),
+      );
+      await enterOrganizer(tester, harness, 'org1');
+
+      expect(find.byKey(const Key('org-venue-default-v1')), findsOneWidget);
+      expect(find.byKey(const Key('org-venue-default-v-annex')), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is StatusPill && widget.label == 'Default',
+        ),
+        findsOneWidget,
+      );
+      final annexCard = find.byKey(const ValueKey('org-venue-v-annex'));
+      expect(
+        find.descendant(of: annexCard, matching: find.text('0 UPCOMING')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: annexCard, matching: find.textContaining('CAP')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('tapping a venue card opens its edit flow', (tester) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgVenuesScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    await tester.tap(find.byKey(const ValueKey('org-venue-v1')));
+    await tester.pumpAndSettle();
+
+    expect(harness.app.current.screen, Screen.orgVenueEdit);
+    expect(harness.app.current.param, 'v1');
+  });
+
+  testWidgets('venues tab fits a 390px phone without overflow', (tester) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      size: const Size(390, 900),
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgVenuesScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    expect(find.byKey(const Key('org-venues-title')), findsOneWidget);
+    expect(find.byKey(const Key('org-venues-add')), findsOneWidget);
+    expect(find.byKey(const ValueKey('org-venue-v1')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
+
+/// A second org1 venue with no public capacity.
+const _annex = Venue(
+  id: 'v-annex',
+  name: 'The Annex',
+  area: 'SoMa, San Francisco',
+  addr: '1 Annex St, San Francisco',
+  point: LatLng(37.7785, -122.4056),
+  verified: true,
+  managedByOrganizationId: 'org1',
+);
