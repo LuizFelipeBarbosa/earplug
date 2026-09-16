@@ -7,6 +7,7 @@ import '../app_state.dart';
 import '../band_gig_buckets.dart';
 import '../models.dart';
 import '../theme.dart';
+import 'band_next_up_card.dart';
 import 'common.dart';
 import 'ep_rows.dart';
 import 'ep_text.dart';
@@ -70,7 +71,9 @@ class _BandMyGigsTabState extends State<BandMyGigsTab> {
           tabBarClearance,
         ),
         children: [
-          const EpSectionHeader(label: 'NEXT UP'),
+          BandNextUpCard(bandId: app.bandId),
+          const SizedBox(height: 28),
+          const EpSectionHeader(label: 'NEXT BOOKING'),
           if (buckets.nextUp case final booking?)
             _NextBookingCard(booking: booking)
           else if (loadingEmpty)
@@ -160,11 +163,35 @@ class _BandMyGigsTabState extends State<BandMyGigsTab> {
                 ],
               ),
           ],
+          if (app.isAdminOf(app.bandId)) ...[
+            const SizedBox(height: 28),
+            const EpEyebrow('Manage'),
+            const SizedBox(height: 4),
+            EpMenuRow(
+              key: const Key('band-dash-payouts'),
+              icon: Icons.confirmation_number_outlined,
+              label: 'Payouts',
+              trailing: _payoutsNeedSetup(app.bandPayoutStatus)
+                  ? const StatusPill(
+                      key: Key('band-dash-payouts-badge'),
+                      label: 'Set up',
+                      tone: EpStatusPillTone.attention,
+                    )
+                  : null,
+              onTap: () => app.resetTo(Screen.bandPayouts),
+            ),
+          ],
         ],
       ),
     );
   }
 }
+
+/// Stripe onboarding is not finished until the account is enabled.
+bool _payoutsNeedSetup(StripeAccountStatus? status) => switch (status?.state) {
+  StripeAccountState.enabled => false,
+  _ => true,
+};
 
 class _NextBookingCard extends StatelessWidget {
   const _NextBookingCard({required this.booking});

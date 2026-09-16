@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
+import 'package:earplug/screens/door_mode.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/band_my_gigs_tab.dart';
+import 'package:earplug/widgets/band_next_up_card.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
@@ -269,7 +271,7 @@ void main() {
     expect(discoveries, 1);
   });
 
-  testWidgets('next-up hero is fully visible without scrolling at 390x844', (
+  testWidgets('up-next hero leads the list and is visible at 390x844', (
     tester,
   ) async {
     await _pumpTab(
@@ -278,16 +280,26 @@ void main() {
       bookings: [_booking('first', days: 1), _booking('later', days: 3)],
       projects: [_project('published-paid', unpublishedChanges: true)],
     );
-    final hero = find.byKey(const Key('my-gigs-next-up'));
-    final bounds = tester.getRect(hero);
+    final hero = tester.getRect(find.byKey(const Key('band-next-up')));
+    final booking = tester.getRect(find.byKey(const Key('my-gigs-next-up')));
 
-    expect(find.text('NEXT UP').hitTestable(), findsOneWidget);
     expect(
-      find.byKey(const Key('my-gigs-next-up-view')).hitTestable(),
+      tester.widget<ListView>(find.byType(ListView)).childrenDelegate,
+      isA<SliverChildListDelegate>().having(
+        (delegate) => delegate.children.first,
+        'first child',
+        isA<BandNextUpCard>(),
+      ),
+    );
+    expect(find.text('UP NEXT').hitTestable(), findsOneWidget);
+    expect(
+      find.byKey(const Key('band-next-door-mode')).hitTestable(),
       findsOneWidget,
     );
-    expect(bounds.top, greaterThanOrEqualTo(0));
-    expect(bounds.bottom, lessThan(844));
+    expect(hero.top, greaterThanOrEqualTo(0));
+    expect(hero.bottom, lessThan(844));
+    expect(booking.top, greaterThanOrEqualTo(hero.bottom + 28));
+    expect(find.text('NEXT BOOKING').hitTestable(), findsOneWidget);
     expect(
       tester
           .state<ScrollableState>(find.byType(Scrollable).first)
@@ -296,6 +308,153 @@ void main() {
       0,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('up-next hero shows the next published gig and opens door mode', (
+    tester,
+  ) async {
+    final harness = await _pumpTab(tester);
+    final hero = find.byKey(const Key('band-next-up'));
+
+    expect(hero, findsOneWidget);
+    expect(find.byKey(const Key('band-next-up-empty')), findsNothing);
+    expect(
+      find.descendant(of: hero, matching: find.text('RIPTIDE RELEASE SHOW')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<EpMonoText>(find.byKey(const Key('band-next-up-when')))
+          .text,
+      endsWith(' · Doors 8PM'),
+    );
+    final details = tester.widgetList<EpMonoText>(
+      find.descendant(of: hero, matching: find.byType(EpMonoText)),
+    );
+    expect(
+      details.any(
+        (text) =>
+            text.text.startsWith('The Foghorn Club · ') &&
+            text.text.endsWith(' RSVPs · counting live'),
+      ),
+      isTrue,
+    );
+    expect(find.byKey(const Key('band-next-public-gig')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('band-next-door-mode')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DoorModeScreen), findsOneWidget);
+    expect(
+      (harness.app.repository as _MyGigsRepository).organizerRosterRequests,
+      ['g2'],
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const Key('door-organizer-roster'))).data,
+      'RSVPs 4/17 · Tickets 3/12',
+    );
+  });
+
+  testWidgets('up-next hero opens the public gig', (tester) async {
+    final harness = await _pumpTab(tester);
+
+    await tester.tap(find.byKey(const Key('band-next-public-gig')));
+    await tester.pump();
+
+    expect(harness.app.current.screen, Screen.gig);
+    expect(harness.app.current.param, 'g2');
+  });
+
+  testWidgets('members get no door mode on the up-next hero', (tester) async {
+    await _pumpTab(tester, member: true);
+
+    expect(find.byKey(const Key('band-next-up')), findsOneWidget);
+    expect(find.byKey(const Key('band-next-door-mode')), findsNothing);
+    expect(find.byKey(const Key('band-next-public-gig')), findsOneWidget);
+  });
+
+  testWidgets('empty up-next hero prompts admins to publish a gig', (
+    tester,
+  ) async {
+    final harness = await _pumpTab(tester, configure: _withoutPublishedGigs);
+
+    expect(find.byKey(const Key('band-next-up')), findsNothing);
+    expect(find.byKey(const Key('band-next-up-empty')), findsOneWidget);
+    expect(find.text('NOTHING SCHEDULED'), findsOneWidget);
+    expect(find.text('NO GIG COMING UP — PUBLISH ONE'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('band-next-up-publish')));
+    await tester.pump();
+    expect(harness.app.current.screen, Screen.gigCreate);
+  });
+
+  testWidgets('empty up-next hero offers members no publish action', (
+    tester,
+  ) async {
+    await _pumpTab(tester, member: true, configure: _withoutPublishedGigs);
+
+    expect(find.byKey(const Key('band-next-up-empty')), findsOneWidget);
+    expect(find.byKey(const Key('band-next-up-publish')), findsNothing);
+  });
+
+  for (final state in [
+    null,
+    StripeAccountState.none,
+    StripeAccountState.onboarding,
+    StripeAccountState.restricted,
+    StripeAccountState.enabled,
+  ]) {
+    testWidgets('payouts row flags unfinished Stripe setup for $state', (
+      tester,
+    ) async {
+      final harness = await _pumpTab(
+        tester,
+        configure: (repository) => _withPayoutState(repository, state),
+      );
+      expect(harness.app.bandPayoutStatus?.state, state);
+
+      final row = find.byKey(const Key('band-dash-payouts'));
+      await tester.scrollUntilVisible(
+        row,
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('MANAGE'), findsOneWidget);
+      final badge = find.descendant(
+        of: row,
+        matching: find.byKey(const Key('band-dash-payouts-badge')),
+      );
+      if (state == StripeAccountState.enabled) {
+        expect(badge, findsNothing);
+        expect(find.text('SET UP'), findsNothing);
+      } else {
+        expect(badge, findsOneWidget);
+        expect(
+          find.descendant(of: badge, matching: find.text('SET UP')),
+          findsOneWidget,
+        );
+      }
+
+      await tester.ensureVisible(row);
+      await tester.pump();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expect(harness.app.current.screen, Screen.bandPayouts);
+    });
+  }
+
+  testWidgets('members see no payouts row', (tester) async {
+    await _pumpTab(
+      tester,
+      configure: (repository) =>
+          _withPayoutState(repository, StripeAccountState.none),
+      member: true,
+    );
+
+    await tester.drag(find.byType(ListView), const Offset(0, -2000));
+    await tester.pumpAndSettle();
+    expect(find.text('PAST · 0'), findsOneWidget);
+    expect(find.text('MANAGE'), findsNothing);
+    expect(find.byKey(const Key('band-dash-payouts')), findsNothing);
   });
 
   for (final source in ['bandBookings', 'manageGigs']) {
@@ -407,6 +566,7 @@ class _MyGigsRepository extends StubRepository {
 
   final List<Booking> bookings;
   final List<GigProject> projects;
+  final organizerRosterRequests = <String>[];
   BookingSide? lastBookingSide;
 
   @override
@@ -416,8 +576,50 @@ class _MyGigsRepository extends StubRepository {
   }
 
   @override
+  Future<DoorCounts> organizerDoorRoster(String gigId) async {
+    organizerRosterRequests.add(gigId);
+    return const DoorCounts(
+      rsvpTotal: 17,
+      rsvpCheckedIn: 4,
+      ticketsSold: 12,
+      ticketsCheckedIn: 3,
+      truncated: false,
+    );
+  }
+
+  @override
   Future<GigProject> getGigProject(String projectId) async =>
       projects.firstWhere((project) => project.id == projectId);
+}
+
+/// The band has no published gigs, so the up-next hero shows its empty state.
+void _withoutPublishedGigs(_MyGigsRepository repository) =>
+    repository.returnsStream(
+      'feed',
+      () => Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
+    );
+
+/// A `null` state stands for a failed status load.
+void _withPayoutState(_MyGigsRepository repository, StripeAccountState? state) {
+  if (state == null) {
+    repository.wraps<StripeAccountStatus>(
+      'bandPayoutStatus',
+      (_) => throw StateError('offline'),
+    );
+    return;
+  }
+  repository.returns(
+    'bandPayoutStatus',
+    StripeAccountStatus(
+      state: state,
+      hasAccount: state != StripeAccountState.none,
+      chargesEnabled: state == StripeAccountState.enabled,
+      payoutsEnabled: state == StripeAccountState.enabled,
+      detailsSubmitted: state == StripeAccountState.enabled,
+      requirementsDue: const [],
+      cardPaymentsStatus: state == StripeAccountState.enabled ? 'active' : null,
+    ),
+  );
 }
 
 Booking _booking(

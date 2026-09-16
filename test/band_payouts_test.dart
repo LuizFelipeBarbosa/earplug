@@ -6,11 +6,12 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
-import 'package:earplug/screens/band_dash.dart';
 import 'package:earplug/screens/band_payouts.dart';
+import 'package:earplug/screens/gig_manager.dart';
 import 'package:earplug/screens/org_dash.dart';
 import 'package:earplug/screens/org_settings.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/band_my_gigs_tab.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/material.dart';
@@ -694,16 +695,15 @@ void main() {
               ? 'active'
               : null,
         ),
-        home: const Scaffold(body: BandDashScreen()),
-        beforePump: (app) => app.switchToBand('b1'),
+        home: const Scaffold(body: GigManagerScreen()),
+        beforePump: (app) {
+          app.switchToBand('b1');
+          app.resetTo(Screen.gigMgr);
+        },
       );
 
       final tile = find.byKey(const Key('band-dash-payouts'));
-      await tester.scrollUntilVisible(
-        tile,
-        180,
-        scrollable: find.byType(Scrollable).first,
-      );
+      await tester.scrollUntilVisible(tile, 180, scrollable: _myGigsList());
       expect(tile, findsOneWidget);
       final badge = find.descendant(
         of: tile,
@@ -743,11 +743,17 @@ void main() {
             ),
           ]),
         ),
-      home: const Scaffold(body: BandDashScreen()),
-      beforePump: (app) => app.switchToBand('b1'),
+      home: const Scaffold(body: GigManagerScreen()),
+      beforePump: (app) {
+        app.switchToBand('b1');
+        app.resetTo(Screen.gigMgr);
+      },
     );
 
-    expect(find.text('MANAGING · MEMBER'), findsOneWidget);
+    // Scroll past everything so an absent row is not merely off screen.
+    await tester.drag(_myGigsList(), const Offset(0, -2000));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('PAST · '), findsOneWidget);
     expect(find.byKey(const Key('band-dash-payouts')), findsNothing);
   });
 
@@ -1048,6 +1054,14 @@ class _TruncatedPayoutRepository extends _PayoutRepository {
     );
   }
 }
+
+/// The MY GIGS list on the GIGS page, which now carries the payouts entry.
+Finder _myGigsList() => find
+    .descendant(
+      of: find.byType(BandMyGigsTab),
+      matching: find.byType(Scrollable),
+    )
+    .first;
 
 StubRepository _stripeStatusRepository({
   required AuthService auth,
