@@ -1,5 +1,6 @@
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/applicant_review.dart';
@@ -196,6 +197,48 @@ void main() {
     expect(harness.app.current.param, 'opp1');
   });
 
+  testWidgets('a band missing from the cache is fetched before the page', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _UncachedBandRepository(auth: auth);
+    final harness = await _pumpReview(
+      tester,
+      'app1',
+      auth: auth,
+      repository: repository,
+    );
+    final band = DemoData.bands['b1']!;
+
+    expect(repository.bandCalls, 1);
+    expect(harness.app.band('b1')?.isSummary, isFalse);
+    expect(find.text(band.name.toUpperCase()), findsWidgets);
+    expect(find.text('LOADING…'), findsNothing);
+    expect(find.byKey(const Key('applicant-review-book')), findsOneWidget);
+  });
+
+  testWidgets('a band the repository cannot load reads as not found', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _UncachedBandRepository(auth: auth)
+      ..failBandLoads = true;
+    final harness = await _pumpReview(
+      tester,
+      'app1',
+      auth: auth,
+      repository: repository,
+    );
+
+    expect(harness.app.band('b1'), isNull);
+    expect(harness.app.publicBandMissing('b1'), isTrue);
+    expect(find.text('BAND NOT FOUND'), findsOneWidget);
+    expect(find.text('LOADING…'), findsNothing);
+    expect(find.byKey(const Key('applicant-review-status')), findsOneWidget);
+  });
+
   testWidgets('the review lays out on a 390x844 phone without overflow', (
     tester,
   ) async {
@@ -212,14 +255,16 @@ Future<AppHarness> _pumpReview(
   String applicationId, {
   Future<void> Function(AppState app)? beforePump,
   Size size = const Size(402, 900),
+  FakeAuthService? auth,
+  DemoRepository? repository,
 }) async {
-  final auth = FakeAuthService();
-  await auth.signInDemo();
+  final resolvedAuth = auth ?? FakeAuthService();
+  if (auth == null) await resolvedAuth.signInDemo();
   final harness = await pumpApp(
     tester,
-    auth: auth,
+    auth: resolvedAuth,
     size: size,
-    repository: DemoRepository(auth: auth),
+    repository: repository ?? DemoRepository(auth: resolvedAuth),
     home: Scaffold(body: ApplicantReviewScreen(applicationId: applicationId)),
     beforePump: (app) async {
       await beforePump?.call(app);
@@ -241,4 +286,34 @@ Future<ArtistApplicationStatus> _statusOf(
       .singleWhere((row) => row.application.id == applicationId)
       .application
       .status;
+}
+
+/// A demo repository that keeps the applicant's band out of the cache: the
+/// feed never carries it and the demo user manages no bands, so the review
+/// has to fetch it by id; [failBandLoads] makes that fetch throw.
+class _UncachedBandRepository extends DemoRepository {
+  _UncachedBandRepository({required super.auth});
+
+  var bandCalls = 0;
+  var failBandLoads = false;
+
+  @override
+  Stream<List<BandMembership>> myBands() => const Stream.empty();
+
+  @override
+  Stream<FeedSnapshot> feed() => super.feed().map(
+    (snapshot) => FeedSnapshot(
+      gigs: snapshot.gigs,
+      venues: snapshot.venues,
+      bands: {...snapshot.bands}..remove('b1'),
+      nextStartsAt: snapshot.nextStartsAt,
+    ),
+  );
+
+  @override
+  Future<Band?> band(String bandId) async {
+    if (bandId == 'b1') bandCalls++;
+    if (failBandLoads) throw StateError('band load failed');
+    return super.band(bandId);
+  }
 }

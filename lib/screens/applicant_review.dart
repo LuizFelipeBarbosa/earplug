@@ -68,6 +68,10 @@ class _ApplicantReviewScreenState extends State<ApplicantReviewScreen> {
       final row = applicants
           .where((row) => row.application.id == widget.applicationId)
           .firstOrNull;
+      // The applicant's band is usually only a feed summary, or not cached at
+      // all; the band page needs the full band before it can render.
+      if (row != null) await app.ensurePublicBand(row.application.bandId);
+      if (!mounted || !identical(_loadToken, token)) return;
       setState(() {
         _opportunity = opportunity;
         _row = row;

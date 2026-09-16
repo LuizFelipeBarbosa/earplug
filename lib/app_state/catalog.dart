@@ -11,6 +11,7 @@ mixin _CatalogState on _AppStateCore {
   String get bandId;
   Map<String, BandDiscoveryReadiness> get _bandDiscoveryReadiness;
   Set<String> get _bandDiscoveryLoading;
+  Set<String> get _loadingFollowBands;
   Set<String> get _bandDiscoveryBoundaryRefreshPending;
   Map<String, VenueDetail> get _venueDetails;
   Map<String, List<Gig>> get _followedBandGigs;
@@ -51,6 +52,7 @@ mixin _CatalogState on _AppStateCore {
   int _publicGigGeneration = 0;
   final Set<String> _missingPublicBands = {};
   final Set<String> _loadingPublicBands = {};
+  final Map<String, Future<void>> _ensuredBandLoads = {};
 
   List<String> _mergedUpcoming(
     List<String> feedIds,
@@ -478,6 +480,38 @@ mixin _CatalogState on _AppStateCore {
   Band? band(String id) => _bands[id];
 
   bool publicBandMissing(String ref) => _missingPublicBands.contains(ref);
+
+  /// Makes sure [band] holds the full band for [bandId], fetching it when the
+  /// cache has nothing or only a feed summary. Screens that embed the band
+  /// page outside [openBand] (the applicant review) await this before they
+  /// render; a band the repository does not know ends up in
+  /// [publicBandMissing]. Concurrent calls share one load.
+  Future<void> ensurePublicBand(String bandId) {
+    final cached = _bands[bandId];
+    if (cached != null && !cached.isSummary) return Future.value();
+    // Block body on purpose: `remove` hands back the future itself, and
+    // whenComplete would wait on it forever if the closure returned it.
+    return _ensuredBandLoads[bandId] ??= _ensurePublicBand(bandId).whenComplete(
+      () {
+        _ensuredBandLoads.remove(bandId);
+      },
+    );
+  }
+
+  Future<void> _ensurePublicBand(String bandId) async {
+    if (_missingPublicBands.remove(bandId)) notifyListeners();
+    await _loadFollowBand(bandId);
+    if (_disposed) return;
+    if (_bands.containsKey(bandId)) {
+      unawaited(loadBandProfileDetails(bandId));
+      return;
+    }
+    // A load already in flight elsewhere returns straight away; it fills the
+    // cache and notifies on its own, so only a settled miss counts as missing.
+    if (_loadingFollowBands.contains(bandId)) return;
+    _missingPublicBands.add(bandId);
+    notifyListeners();
+  }
 
   Future<void> _loadPublicBand(String slug) async {
     if (!_loadingPublicBands.add(slug)) return;

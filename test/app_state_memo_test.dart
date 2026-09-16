@@ -368,6 +368,57 @@ void main() {
   });
 
   test(
+    'ensurePublicBand loads a summary band once for concurrent calls',
+    () async {
+      final auth = FakeAuthService();
+      final repository = _SummaryBandRepository(auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
+      addTearDown(() async {
+        app.dispose();
+        await repository.close();
+      });
+      final fullBand = DemoData.bands['b1']!;
+      final summaryBand = fullBand.copyWith(isSummary: true);
+      repository.bandValue = fullBand;
+      repository.emitFeed(bands: {summaryBand.id: summaryBand});
+      await flushAsyncWork();
+
+      await Future.wait([
+        app.ensurePublicBand(summaryBand.id),
+        app.ensurePublicBand(summaryBand.id),
+      ]);
+
+      expect(repository.bandCalls, 1);
+      expect(app.band(summaryBand.id)?.isSummary, isFalse);
+      expect(app.publicBandMissing(summaryBand.id), isFalse);
+
+      await app.ensurePublicBand(summaryBand.id);
+      expect(repository.bandCalls, 1);
+    },
+  );
+
+  test(
+    'ensurePublicBand marks a band the repository lacks as missing',
+    () async {
+      final auth = FakeAuthService();
+      final repository = _SummaryBandRepository(auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
+      addTearDown(() async {
+        app.dispose();
+        await repository.close();
+      });
+      repository.emitFeed();
+      await flushAsyncWork();
+
+      await app.ensurePublicBand('b-unknown');
+
+      expect(repository.bandCalls, 1);
+      expect(app.band('b-unknown'), isNull);
+      expect(app.publicBandMissing('b-unknown'), isTrue);
+    },
+  );
+
+  test(
     'leaving a gig cancels its stream but keeps the fetched gig cached',
     () async {
       final auth = FakeAuthService();
