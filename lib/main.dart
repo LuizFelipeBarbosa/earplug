@@ -37,6 +37,7 @@ import 'screens/gig_invite.dart';
 import 'screens/gig_manager.dart';
 import 'screens/home.dart';
 import 'screens/host_apply.dart';
+import 'screens/hosted_gig.dart';
 import 'screens/my_gigs.dart';
 import 'screens/opportunity_applicants.dart';
 import 'screens/opportunity_detail.dart';
@@ -326,6 +327,7 @@ String? bandSlugFromUri(Uri uri) {
         'tickets',
         'explore',
         'people',
+        'manage',
       }.contains(slug)) {
     return null;
   }
@@ -754,6 +756,7 @@ class RootShell extends StatelessWidget {
       Screen.bandEdit => BandEditScreen(key: key),
       Screen.bandMedia => BandMediaScreen(key: key, bandId: entry.param!),
       Screen.gigMgr => GigManagerScreen(key: key),
+      Screen.hostedGig => HostedGigScreen(key: key, projectId: entry.param!),
       Screen.gigCreate => GigCreateScreen(key: key),
       Screen.analytics => AnalyticsScreen(key: key),
       Screen.orgApply => OrgApplyScreen(key: key),

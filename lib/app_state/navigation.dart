@@ -23,6 +23,7 @@ mixin _NavigationState on _AppStateCore {
   Future<void> refreshBandDiscoveryReadiness(String id);
   Future<void> refreshBandInvite(String id);
   Future<void> refreshManagedGigs();
+  void ensureManagedGigs();
 
   VoidCallback? _stopBrowserHistory;
 
@@ -126,6 +127,7 @@ mixin _NavigationState on _AppStateCore {
 
   String _browserPathFor(Screen screen, String? param) => switch (screen) {
     Screen.gig => '/g/${gig(param ?? '')?.publicRef ?? param ?? ''}',
+    Screen.hostedGig => '/manage/gigs/${param ?? ''}',
     Screen.band => '/${_bands[param]?.publicRef ?? param ?? ''}',
     Screen.venue => _venueBrowserPath(param),
     Screen.exploreCollection =>
@@ -169,6 +171,11 @@ mixin _NavigationState on _AppStateCore {
     if (current.screen == Screen.gig && current.param == id) return;
     go(Screen.gig, id);
     unawaited(_loadPublicGig(id));
+  }
+
+  void openHostedGig(String projectId) {
+    go(Screen.hostedGig, projectId);
+    ensureManagedGigs();
   }
 
   void openBand(String id) {

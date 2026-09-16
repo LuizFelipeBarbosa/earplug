@@ -156,6 +156,33 @@ void main() {
               app.go(screen, 'opp2');
             case Screen.bookingDetail || Screen.checkoutCancel:
               app.go(screen, 'bk1');
+            case Screen.hostedGig:
+              final startsAt = DateTime.now().add(const Duration(days: 2));
+              repository.returns('manageGigs', [
+                GigProject(
+                  id: 'published-rsvp',
+                  bandId: 'b1',
+                  publicGigId: 'g2',
+                  status: GigProjectStatus.published,
+                  revision: 2,
+                  publishedRevision: 2,
+                  title: 'Riptide Release Show',
+                  doorsAt: startsAt.subtract(const Duration(hours: 1)),
+                  startsAt: startsAt,
+                  venueId: 'v1',
+                  price: 0,
+                  flyKey: 'blue',
+                  overlay: true,
+                  desc: '',
+                  ticketing: Ticketing.rsvp,
+                  ageRequirement: AgeRequirement.allAges,
+                  cap: 'No cap',
+                  updatedAt: DateTime.now(),
+                  performers: const [],
+                ),
+              ]);
+              await app.refreshManagedGigs();
+              app.openHostedGig('published-rsvp');
             case Screen.reviewCompose:
               app.go(screen, 'bk4');
             case Screen.checkoutReturn:
