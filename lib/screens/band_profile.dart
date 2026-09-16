@@ -8,7 +8,6 @@ import '../app_state.dart';
 import '../band_media_state.dart';
 import '../data/repository.dart';
 import '../models.dart';
-import '../services/media_picker.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/band_members_panel.dart';
@@ -67,8 +66,6 @@ class _BandProfileView extends StatefulWidget {
 
 class _BandProfileViewState extends State<_BandProfileView> {
   final _scrollController = ScrollController();
-  bool _artworkBusy = false;
-  String? _artworkError;
 
   @override
   void initState() {
@@ -93,83 +90,6 @@ class _BandProfileViewState extends State<_BandProfileView> {
   }
 
   void _showMembersSheet() => _showBandMembersSheet(context, widget.bandId);
-
-  void _showArtworkSheet() {
-    final app = context.read<AppState>();
-    final band = app.band(widget.bandId);
-    if (band == null || !app.isAdminOf(band.id)) return;
-
-    showEpActionSheet(
-      context,
-      header: 'Profile image',
-      items: [
-        EpActionSheetItem(
-          label: 'Replace',
-          icon: Icons.photo_library_outlined,
-          onPressed: _changeArtwork,
-        ),
-        if (band.profileImageUrl != null)
-          EpActionSheetItem(
-            label: 'Use initials instead',
-            icon: Icons.delete_outline,
-            destructive: true,
-            onPressed: _clearArtwork,
-          ),
-      ],
-    );
-  }
-
-  Future<void> _changeArtwork() async {
-    final app = context.read<AppState>();
-    final media = context.read<BandMediaController>();
-    final bandId = widget.bandId;
-    if (!app.isAdminOf(bandId)) return;
-
-    final PickedMedia? picked;
-    try {
-      picked = await media.pickFlyerArt();
-    } on MediaPickException catch (error) {
-      app.say(error.message);
-      return;
-    }
-    if (!mounted || picked == null) return;
-
-    setState(() {
-      _artworkError = null;
-      _artworkBusy = true;
-    });
-    final mediaId = await media.uploadHeldPhoto(bandId, picked);
-    final assigned = mediaId != null && await media.setAvatar(bandId, mediaId);
-    if (!mounted) return;
-    setState(() {
-      _artworkBusy = false;
-      if (!assigned) {
-        _artworkError =
-            'The profile image could not be saved. Choose it again here; '
-            'the failed upload remains available in Media.';
-      }
-    });
-  }
-
-  Future<void> _clearArtwork() async {
-    final app = context.read<AppState>();
-    final media = context.read<BandMediaController>();
-    final bandId = widget.bandId;
-    if (!app.isAdminOf(bandId)) return;
-
-    setState(() {
-      _artworkError = null;
-      _artworkBusy = true;
-    });
-    final cleared = await media.clearAvatar(bandId);
-    if (!mounted) return;
-    setState(() {
-      _artworkBusy = false;
-      if (!cleared) {
-        _artworkError = 'The profile image could not be removed. Try again.';
-      }
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -199,7 +119,7 @@ class _BandProfileViewState extends State<_BandProfileView> {
         : 0.0;
     final progress = (offset / 80).clamp(0.0, 1.0);
     // Any member of the band sees the management row on their own preview;
-    // the artwork and profile editors are admin-only.
+    // the profile editor is admin-only.
     final own = widget.isManagedPreview;
     final admin = own && app.isAdminOf(bandId);
 
@@ -212,36 +132,8 @@ class _BandProfileViewState extends State<_BandProfileView> {
               controller: _scrollController,
               slivers: [
                 SliverToBoxAdapter(
-                  child: _BandHero(
-                    band: band,
-                    topInset: topInset,
-                    onEditAvatar: admin && !_artworkBusy
-                        ? _showArtworkSheet
-                        : null,
-                  ),
+                  child: _BandHero(band: band, topInset: topInset),
                 ),
-                if (_artworkError case final error?)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        EpLayout.gutter,
-                        8,
-                        EpLayout.gutter,
-                        0,
-                      ),
-                      child: Semantics(
-                        liveRegion: true,
-                        child: Text(
-                          error,
-                          key: const ValueKey('band-artwork-error'),
-                          style: Theme.of(context).textTheme.epCaption.copyWith(
-                            fontSize: 11,
-                            color: context.epColors.warning,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(
@@ -441,15 +333,10 @@ class _BandProfileViewState extends State<_BandProfileView> {
 }
 
 class _BandHero extends StatelessWidget {
-  const _BandHero({
-    required this.band,
-    required this.topInset,
-    required this.onEditAvatar,
-  });
+  const _BandHero({required this.band, required this.topInset});
 
   final Band band;
   final double topInset;
-  final VoidCallback? onEditAvatar;
 
   @override
   Widget build(BuildContext context) {
@@ -520,32 +407,6 @@ class _BandHero extends StatelessWidget {
                 ],
               ),
             ),
-            if (onEditAvatar != null)
-              // Top-left corner of the profile image, just under the floating
-              // header bar so it sits in line with the back control.
-              Positioned(
-                top: topInset + 56 + 4,
-                left: EpLayout.gutter,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: ShapeDecoration(
-                        color: colors.background,
-                        shape: const CircleBorder(),
-                      ),
-                    ),
-                    EpIconPill(
-                      key: const ValueKey('band-profile-avatar-edit'),
-                      icon: Icons.edit,
-                      semanticLabel: 'Change profile image',
-                      onPressed: onEditAvatar,
-                    ),
-                  ],
-                ),
-              ),
           ],
         ),
       ),

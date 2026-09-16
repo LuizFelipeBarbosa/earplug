@@ -17,7 +17,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
@@ -200,91 +199,6 @@ void main() {
     },
   );
 
-  testWidgets(
-    'own preview puts the avatar edit icon at the top-left of the image',
-    (tester) async {
-      final auth = FakeAuthService();
-      final repository = _profileRepository(
-        auth: auth,
-        profileBand: DemoData.bands['b1']!.copyWith(
-          avatarUrl: 'https://example.com/avatar.jpg',
-        ),
-      );
-      final harness = await _pumpOwnPreview(
-        tester,
-        auth: auth,
-        repository: repository,
-      );
-
-      final hero = find.byKey(const ValueKey('band-profile-hero-b1'));
-      final frame = find.byKey(const ValueKey('band-profile-avatar-frame'));
-      final miniHeader = find.byKey(const ValueKey('band-profile-mini-header'));
-      final edit = find.byKey(const ValueKey('band-profile-avatar-edit'));
-      expect(edit.hitTestable(), findsOneWidget);
-      expect(
-        tester.widget<EpIconPill>(edit).semanticLabel,
-        'Change profile image',
-      );
-      final editRect = tester.getRect(edit);
-      final frameRect = tester.getRect(frame);
-      expect(editRect.width, greaterThanOrEqualTo(44));
-      expect(editRect.height, greaterThanOrEqualTo(44));
-      expect(editRect.left, frameRect.left + EpLayout.gutter);
-      expect(
-        editRect.top,
-        greaterThanOrEqualTo(tester.getRect(miniHeader).bottom),
-      );
-      expect(editRect.bottom, lessThan(frameRect.top + frameRect.height / 3));
-      expect(tester.getRect(hero).contains(editRect.center), isTrue);
-      expect(harness.app.band('b1')!.profileImageUrl, isNotNull);
-
-      await tester.tap(edit);
-      await tester.pumpAndSettle();
-      expect(find.text('PROFILE IMAGE'), findsOne);
-      expect(find.text('Replace'), findsOne);
-      expect(find.text('Use initials instead'), findsOne);
-
-      await tester.tap(find.text('Use initials instead'));
-      await tester.pumpAndSettle();
-      expect(repository.callsTo('clearBandAvatar'), 1);
-      expect(find.byKey(const ValueKey('band-artwork-error')), findsNothing);
-      expect(find.text('Use initials instead'), findsNothing);
-    },
-  );
-
-  testWidgets('a failed profile image upload shows the artwork error line', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    final repository = _profileRepository(auth: auth)
-      ..fail('setBandAvatar', StateError('avatar assignment failed'));
-    final harness = await _pumpOwnPreview(
-      tester,
-      auth: auth,
-      repository: repository,
-    );
-    harness.picker.nextPhoto = photoFixture(filename: 'failed_avatar.png');
-
-    await tester.tap(find.byKey(const ValueKey('band-profile-avatar-edit')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Replace'));
-    await tester.pumpAndSettle();
-
-    expect(harness.picker.photoCalls, 1);
-    final error = find.byKey(const ValueKey('band-artwork-error'));
-    expect(error, findsOne);
-    expect(find.textContaining('profile image could not be saved'), findsOne);
-    final hero = find.byKey(const ValueKey('band-profile-hero-b1'));
-    expect(
-      tester.getTopLeft(error).dy,
-      greaterThanOrEqualTo(tester.getBottomLeft(hero).dy),
-    );
-    expect(
-      tester.getTopLeft(find.byKey(const ValueKey('band-follow'))).dy,
-      greaterThan(tester.getBottomLeft(error).dy),
-    );
-  });
-
   testWidgets('own preview shows EDIT PROFILE at the header bar right edge', (
     tester,
   ) async {
@@ -326,6 +240,13 @@ void main() {
     final editProfile = find.byKey(const ValueKey('band-profile-edit-profile'));
     expect(find.byKey(const ValueKey('band-follow')), findsOneWidget);
     expect(share, findsOneWidget);
+    // The profile image is changed from the editor, never from the hero.
+    expect(
+      find.byKey(const ValueKey('band-profile-avatar-edit')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('band-artwork-error')), findsNothing);
+    expect(find.bySemanticsLabel('Change profile image'), findsNothing);
     for (final chip in [members, editMedia, editProfile]) {
       expect(chip.hitTestable(), findsOneWidget);
       expect(
@@ -1168,10 +1089,6 @@ void main() {
       find.byKey(const ValueKey('band-profile-edit-profile')),
       findsNothing,
     );
-    expect(
-      find.byKey(const ValueKey('band-profile-avatar-edit')),
-      findsNothing,
-    );
     expect(find.byKey(const ValueKey('band-mini-follow')), findsNothing);
     expect(
       find.byKey(const ValueKey('band-profile-members')).hitTestable(),
@@ -1660,7 +1577,6 @@ Future<AppHarness> _pumpOwnPreview(
 );
 
 const _ownBandKeys = [
-  ValueKey('band-profile-avatar-edit'),
   ValueKey('band-profile-edit'),
   ValueKey('band-profile-members'),
   ValueKey('band-profile-edit-media'),
