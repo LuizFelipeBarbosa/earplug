@@ -15,8 +15,15 @@ mixin _OrganizerState on _AppStateCore {
   void resetTo(Screen s);
   void needAuth(PendingAuth p);
   void openVenue(String id);
+  StripeAccountStatus? organizationStripeStatusFor(String organizationId);
+  Future<void> reconcileReadiness(String scopeKey);
 
   int _organizationsGeneration = 0;
+
+  /// The organizer dashboard payload per organization, lazily loaded on
+  /// first read and held until [refreshOrganizationDashboard] or sign-out.
+  final Map<String, OrganizationDashboard> _organizationDashboards = {};
+  final Set<String> _organizationDashboardLoading = {};
 
   String organizationId = '';
   List<OrganizationMembership> myOrganizations = const [];
@@ -68,6 +75,51 @@ mixin _OrganizerState on _AppStateCore {
 
   bool get hasHostApplication =>
       myOrganizationApplication?.kind == ApplicationKind.host;
+
+  /// An organization's dashboard, or null until the first load lands. Kicks
+  /// the load off on first read.
+  OrganizationDashboard? organizationDashboardFor(String organizationId) {
+    final dashboard = _organizationDashboards[organizationId];
+    if (dashboard == null && organizationId.isNotEmpty) {
+      unawaited(refreshOrganizationDashboard(organizationId));
+    }
+    return dashboard;
+  }
+
+  bool organizationDashboardLoadingFor(String organizationId) =>
+      _organizationDashboardLoading.contains(organizationId);
+
+  Future<void> refreshOrganizationDashboard(String organizationId) async {
+    if (_disposed || !_organizationDashboardLoading.add(organizationId)) {
+      return;
+    }
+    final requestedSession = _sessionGeneration;
+    try {
+      final dashboard = await repository.organizationDashboard(organizationId);
+      if (!_isCurrentSession(requestedSession)) return;
+      _organizationDashboards[organizationId] = dashboard;
+      unawaited(reconcileReadiness(orgReadinessScope(organizationId)));
+    } catch (error) {
+      logError('organizationDashboard', error);
+    } finally {
+      _organizationDashboardLoading.remove(organizationId);
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  /// The host checklist from live data: profile completeness from the
+  /// dashboard and finance readiness from the organization's Stripe status.
+  /// Null until both are in for [organizationId], mirroring the band snapshot,
+  /// so a reconcile never records a step as undone before its source loaded.
+  ReadinessSnapshot? hostReadinessSnapshotFor(String organizationId) {
+    final dashboard = organizationDashboardFor(organizationId);
+    final stripeStatus = organizationStripeStatusFor(organizationId);
+    if (dashboard == null || stripeStatus == null) return null;
+    return ReadinessSnapshot.host(
+      profileComplete: dashboard.verification.profileComplete,
+      financeReady: stripeStatus.state == StripeAccountState.enabled,
+    );
+  }
 
   void switchToOrganization(String id) {
     organizationId = id;
@@ -169,6 +221,8 @@ mixin _OrganizerState on _AppStateCore {
     myOrganizations = const [];
     organizationId = '';
     myOrganizationApplication = null;
+    _organizationDashboards.clear();
+    _organizationDashboardLoading.clear();
   }
 
   Future<void> refreshOrganizationApplication() async {

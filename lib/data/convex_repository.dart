@@ -1622,6 +1622,21 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Stream<List<Opportunity>> watchOrganizationOpportunities(
+    String organizationId,
+  ) {
+    return _convexService.subscribe(
+      'talentOpportunitiesRead:manageForOrganization',
+      {'organizationId': organizationId},
+      (decoded) {
+        return [
+          for (final json in asCastMapList(decoded)) Opportunity.fromJson(json),
+        ];
+      },
+    );
+  }
+
+  @override
   Future<Opportunity?> opportunity(String opportunityId) async {
     return _queryOptional('talentOpportunitiesRead:get', Opportunity.fromJson, {
       'opportunityId': opportunityId,

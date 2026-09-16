@@ -164,6 +164,7 @@ class StubRepository extends DemoRepository {
     'publicGig',
     'upcomingGigsForBand',
     'watchMyApplications',
+    'watchOrganizationOpportunities',
     'watchVenues',
   };
 
@@ -1008,6 +1009,12 @@ class StubRepository extends DemoRepository {
   @override
   Stream<List<BandApplication>> watchMyApplications(String bandId) =>
       _interceptStream('watchMyApplications', () => super.watchMyApplications(bandId));
+  @override
+  Stream<List<Opportunity>> watchOrganizationOpportunities(String organizationId) =>
+      _interceptStream(
+        'watchOrganizationOpportunities',
+        () => super.watchOrganizationOpportunities(organizationId),
+      );
   @override
   Stream<List<Venue>> watchVenues() => _interceptStream('watchVenues', super.watchVenues);
 }

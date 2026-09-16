@@ -895,6 +895,12 @@ abstract class EarplugRepository {
 
   Future<List<Opportunity>> manageOpportunities(String organizationId);
 
+  /// Live view of [manageOpportunities]: the organization's opportunities,
+  /// re-emitted whenever one of them or its applications changes.
+  Stream<List<Opportunity>> watchOrganizationOpportunities(
+    String organizationId,
+  );
+
   Future<Opportunity?> opportunity(String opportunityId);
 
   Future<List<ApplicantRow>> applicantsFor(String opportunityId);

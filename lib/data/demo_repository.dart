@@ -237,6 +237,8 @@ class DemoRepository implements EarplugRepository {
       StreamController<List<OrganizationMembership>>.broadcast();
   final StreamController<void> _applicationsController =
       StreamController<void>.broadcast();
+  final StreamController<void> _opportunitiesController =
+      StreamController<void>.broadcast();
 
   late final Map<String, Band> _bands;
   late final Map<String, Venue> _venues;
@@ -1312,6 +1314,7 @@ class DemoRepository implements EarplugRepository {
       message: trimmedMessage.isEmpty ? null : trimmedMessage,
       createdAt: DateTime.now(),
     );
+    _emitOpportunities();
     return id;
   }
 
@@ -1332,6 +1335,7 @@ class DemoRepository implements EarplugRepository {
       note: consent.note,
       decidedAt: consent.decidedAt,
     );
+    _emitOpportunities();
   }
 
   @override
@@ -1358,6 +1362,7 @@ class DemoRepository implements EarplugRepository {
       note: trimmedNote.isEmpty ? null : trimmedNote,
       decidedAt: DateTime.now(),
     );
+    _emitOpportunities();
   }
 
   @override
@@ -1398,6 +1403,7 @@ class DemoRepository implements EarplugRepository {
         opportunity.status != OpportunityStatus.completed) {
       await cancelOpportunity(opportunity.id, reason: 'Venue approval revoked');
     }
+    _emitOpportunities();
   }
 
   @override
@@ -4043,6 +4049,7 @@ class DemoRepository implements EarplugRepository {
       venueType: isPrivate ? VenueType.private : venue?.venueType,
       currency: 'usd',
     );
+    _emitOpportunities();
     return (opportunityId: id, slug: slug);
   }
 
@@ -4118,6 +4125,7 @@ class DemoRepository implements EarplugRepository {
       updatedAt: DateTime.now(),
     );
     _opportunities[opportunityId] = updated;
+    _emitOpportunities();
     return updated.revision;
   }
 
@@ -4138,6 +4146,7 @@ class DemoRepository implements EarplugRepository {
       updatedAt: DateTime.now(),
     );
     _opportunities[opportunityId] = updated;
+    _emitOpportunities();
     for (var index = 0; index < _publishedGigs.length; index++) {
       final gig = _publishedGigs[index];
       if (gig.opportunityId == opportunityId) {
@@ -4183,6 +4192,7 @@ class DemoRepository implements EarplugRepository {
       updatedAt: DateTime.now(),
     );
     _opportunities[opportunityId] = updated;
+    _emitOpportunities();
     return (
       revision: updated.revision,
       applicationsCloseAt: existing.applicationsCloseAt,
@@ -4229,6 +4239,7 @@ class DemoRepository implements EarplugRepository {
       revision: existing.revision + 1,
       updatedAt: DateTime.now(),
     );
+    _emitOpportunities();
   }
 
   @override
@@ -4262,6 +4273,7 @@ class DemoRepository implements EarplugRepository {
       throw StateError('Only draft opportunities can be deleted');
     }
     _opportunities.remove(opportunityId);
+    _emitOpportunities();
   }
 
   @override
@@ -4292,6 +4304,7 @@ class DemoRepository implements EarplugRepository {
       createdAt: now,
       updatedAt: now,
     );
+    _emitOpportunities();
     return (opportunityId: id, slug: slug);
   }
 
@@ -4306,6 +4319,7 @@ class DemoRepository implements EarplugRepository {
       existing,
       invitedBandIds: [...existing.invitedBandIds, bandId],
     );
+    _emitOpportunities();
     return true;
   }
 
@@ -4321,6 +4335,7 @@ class DemoRepository implements EarplugRepository {
           .where((invitedBandId) => invitedBandId != bandId)
           .toList(),
     );
+    _emitOpportunities();
   }
 
   @override
@@ -4584,7 +4599,48 @@ class DemoRepository implements EarplugRepository {
     );
   }
 
-  void _emitApplications() => _applicationsController.add(null);
+  /// Applications change an opportunity's count and slots, so the
+  /// organization's opportunity list re-emits with them.
+  void _emitApplications() {
+    _applicationsController.add(null);
+    _emitOpportunities();
+  }
+
+  void _emitOpportunities() => _opportunitiesController.add(null);
+
+  @override
+  Stream<List<Opportunity>> watchOrganizationOpportunities(
+    String organizationId,
+  ) {
+    late final StreamController<List<Opportunity>> controller;
+    StreamSubscription<void>? ticks;
+    // Snapshots are fetched one after another so events stay in order.
+    var chain = Future<void>.value();
+    void snapshot() {
+      chain = chain.then((_) async {
+        try {
+          final opportunities = await manageOpportunities(organizationId);
+          if (!controller.isClosed) controller.add(opportunities);
+        } catch (error, stackTrace) {
+          if (!controller.isClosed) controller.addError(error, stackTrace);
+        }
+      });
+    }
+
+    controller = StreamController<List<Opportunity>>(
+      // Listening to the ticks before the first fetch means a mutation that
+      // lands while it is in flight still produces a fresh snapshot.
+      onListen: () {
+        ticks = _opportunitiesController.stream.listen((_) => snapshot());
+        snapshot();
+      },
+      onCancel: () {
+        unawaited(ticks?.cancel());
+        unawaited(controller.close());
+      },
+    );
+    return controller.stream;
+  }
 
   @override
   Future<DateTime?> markApplicationViewed(String applicationId) async {
@@ -6137,6 +6193,7 @@ class DemoRepository implements EarplugRepository {
       }
     }
     _emitFeed();
+    _emitOpportunities();
   }
 
   Review _visibleReview(Review review, DateTime visibleAt) => Review(

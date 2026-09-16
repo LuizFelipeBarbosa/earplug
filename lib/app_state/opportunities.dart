@@ -10,6 +10,8 @@ mixin _OpportunityState on _AppStateCore {
 
   final Map<String, List<Opportunity>> _opportunitiesByOrg = {};
   final Map<String, DataStatus> _opportunitiesStatusByOrg = {};
+  final Map<String, StreamSubscription<List<Opportunity>>>
+  _opportunitySubscriptions = {};
   final Map<String, Object> _opportunitiesLoadTokens = {};
 
   List<Opportunity> opportunitiesFor(String organizationId) =>
@@ -18,29 +20,48 @@ mixin _OpportunityState on _AppStateCore {
   DataStatus opportunitiesStatus(String organizationId) =>
       _opportunitiesStatusByOrg[organizationId] ?? DataStatus.connecting;
 
+  /// (Re)subscribes to the organization's opportunity list, replacing any
+  /// earlier subscription for that organization. Resolves once the first
+  /// event or error has landed, so callers can read [opportunitiesFor] after
+  /// awaiting it; later events keep the cache current. An error keeps the
+  /// last list and marks the status.
   Future<void> refreshOpportunities(String organizationId) async {
     if (_disposed) return;
+    unawaited(_opportunitySubscriptions.remove(organizationId)?.cancel());
     final token = Object();
     _opportunitiesLoadTokens[organizationId] = token;
-    try {
-      final opportunities = await repository.manageOpportunities(
-        organizationId,
-      );
-      if (_disposed ||
-          !identical(_opportunitiesLoadTokens[organizationId], token)) {
-        return;
-      }
-      _opportunitiesByOrg[organizationId] = opportunities;
-      _opportunitiesStatusByOrg[organizationId] = DataStatus.ready;
-    } catch (error) {
-      if (_disposed ||
-          !identical(_opportunitiesLoadTokens[organizationId], token)) {
-        return;
-      }
-      _opportunitiesStatusByOrg[organizationId] = DataStatus.error;
-      logError('manageOpportunities', error);
+    final firstEvent = Completer<void>();
+    bool current() =>
+        !_disposed &&
+        identical(_opportunitiesLoadTokens[organizationId], token);
+    _opportunitySubscriptions[organizationId] = repository
+        .watchOrganizationOpportunities(organizationId)
+        .listen(
+          (opportunities) {
+            if (!current()) return;
+            _opportunitiesByOrg[organizationId] = opportunities;
+            _opportunitiesStatusByOrg[organizationId] = DataStatus.ready;
+            notifyListeners();
+            if (!firstEvent.isCompleted) firstEvent.complete();
+          },
+          onError: (Object error) {
+            if (!current()) return;
+            _opportunitiesStatusByOrg[organizationId] = DataStatus.error;
+            logError('manageOpportunities', error);
+            notifyListeners();
+            if (!firstEvent.isCompleted) firstEvent.complete();
+          },
+        );
+    await firstEvent.future;
+  }
+
+  void _cancelOpportunitySubscriptions() {
+    _opportunitiesLoadTokens.clear();
+    final subscriptions = _opportunitySubscriptions.values.toList();
+    _opportunitySubscriptions.clear();
+    for (final subscription in subscriptions) {
+      unawaited(subscription.cancel());
     }
-    notifyListeners();
   }
 
   final Map<String, Opportunity> _opportunityById = {};
@@ -294,7 +315,7 @@ mixin _OpportunityState on _AppStateCore {
   @override
   void _clearOpportunityState() {
     // Invalidate in-flight loads before clearing the session's cached values.
-    _opportunitiesLoadTokens.clear();
+    _cancelOpportunitySubscriptions();
     _opportunityByIdTokens.clear();
     _browseLoadToken = null;
     unawaited(_myApplicationsSubscription?.cancel());
