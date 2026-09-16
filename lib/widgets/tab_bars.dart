@@ -209,6 +209,24 @@ class BandTabBar extends StatelessWidget {
 
   final bool vertical;
 
+  static const _gigsScreens = {
+    Screen.gigMgr,
+    Screen.gigCreate,
+    Screen.hostedGig,
+    Screen.opportunityDetail,
+    Screen.bookingDetail,
+    Screen.bandPayouts,
+  };
+
+  static bool _onOwnProfile(AppState app) {
+    final current = app.current;
+    return switch (current.screen) {
+      Screen.bandPreview => current.param == app.bandId,
+      Screen.bandEdit || Screen.bandMedia => true,
+      _ => false,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
@@ -219,31 +237,35 @@ class BandTabBar extends StatelessWidget {
       items: [
         EpNavigationItem(
           vertical: vertical,
-          icon: Icons.home_outlined,
-          label: 'DASH',
-          selected: scr == Screen.bandDash,
-          onPressed: () => app.resetTo(Screen.bandDash),
-        ),
-        EpNavigationItem(
-          vertical: vertical,
-          icon: Icons.mic_none,
-          label: 'PROFILE',
-          selected: scr == Screen.bandEdit,
-          onPressed: () => app.resetTo(Screen.bandEdit),
-        ),
-        EpNavigationItem(
-          vertical: vertical,
+          key: const Key('band-tab-gigs'),
           icon: Icons.list,
           label: 'GIGS',
-          selected: scr == Screen.gigMgr,
+          selected: _gigsScreens.contains(scr),
           onPressed: () => app.resetTo(Screen.gigMgr),
         ),
         EpNavigationItem(
           vertical: vertical,
+          key: const Key('band-tab-insights'),
           icon: Icons.bar_chart,
           label: 'INSIGHTS',
           selected: scr == Screen.analytics,
           onPressed: () => app.resetTo(Screen.analytics),
+        ),
+        EpNavigationItem(
+          vertical: vertical,
+          key: const Key('band-tab-profile'),
+          icon: Icons.mic_none,
+          label: 'PROFILE',
+          selected: _onOwnProfile(app),
+          onPressed: app.openOwnProfileTab,
+        ),
+        EpNavigationItem(
+          vertical: vertical,
+          key: const Key('band-tab-switch'),
+          icon: Icons.swap_horiz,
+          label: 'SWITCH',
+          selected: false,
+          onPressed: () => showSwitcherSheet(context),
         ),
       ],
     );

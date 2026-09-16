@@ -276,7 +276,7 @@ mixin _CatalogState on _AppStateCore {
 
     final readinessIds = <String>{
       ..._bandDiscoveryReadiness.keys,
-      if (current.screen == Screen.bandDash && bandId.isNotEmpty) bandId,
+      if (current.screen == Screen.gigMgr && bandId.isNotEmpty) bandId,
     };
     for (final id in readinessIds.where(isAdminOf)) {
       if (_bandDiscoveryLoading.contains(id)) {

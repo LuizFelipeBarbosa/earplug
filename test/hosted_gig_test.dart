@@ -199,7 +199,7 @@ void main() {
     );
     expect(find.text('GIG UNAVAILABLE'), findsOne);
     await _tapControl(tester, 'hosted-gig-unavailable-back');
-    expect(harness.app.current.screen, Screen.bandDash);
+    expect(harness.app.current.screen, Screen.gigMgr);
     expect(find.byType(HostedGigScreen), findsNothing);
   });
 
@@ -222,7 +222,7 @@ void main() {
     expect(find.byKey(const Key('hosted-gig-edit')), findsOne);
     expect(doorLaunchFor(harness.app, repository.projects[3]), isNull);
     await _tapControl(tester, 'hosted-gig-back-control');
-    expect(harness.app.current.screen, Screen.bandDash);
+    expect(harness.app.current.screen, Screen.gigMgr);
   });
 
   testWidgets('unpublished changes use the warning status', (tester) async {

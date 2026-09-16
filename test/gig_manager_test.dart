@@ -98,7 +98,7 @@ void main() {
     );
     await _selectTab(tester, 'DISCOVER');
     expect(find.byType(BandDiscoverTab), findsOneWidget);
-    harness.app.resetTo(Screen.bandDash);
+    harness.app.resetTo(Screen.analytics);
     await tester.pumpAndSettle();
     expect(find.byType(GigManagerScreen), findsNothing);
     harness.app.openGigManager();

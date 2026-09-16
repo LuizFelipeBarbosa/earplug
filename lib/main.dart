@@ -20,7 +20,6 @@ import 'screens/admin_safety.dart';
 import 'screens/analytics.dart';
 import 'screens/auth.dart';
 import 'screens/band_create.dart';
-import 'screens/band_dash.dart';
 import 'screens/band_edit.dart';
 import 'screens/band_join.dart';
 import 'screens/band_media.dart';
@@ -665,7 +664,6 @@ class RootShell extends StatelessWidget {
     final bandNavigation =
         (bandTabScreens.contains(screen) ||
             screen == Screen.bandMedia ||
-            screen == Screen.bandPreview ||
             screen == Screen.gigCreate) &&
         !showOpportunityAsFanTab &&
         !organizerNavigation;
@@ -752,7 +750,6 @@ class RootShell extends StatelessWidget {
       Screen.settings => SettingsScreen(key: key),
       Screen.auth => AuthScreen(key: key),
       Screen.bandCreate => BandCreateScreen(key: key),
-      Screen.bandDash => BandDashScreen(key: key),
       Screen.bandEdit => BandEditScreen(key: key),
       Screen.bandMedia => BandMediaScreen(key: key, bandId: entry.param!),
       Screen.gigMgr => GigManagerScreen(key: key),

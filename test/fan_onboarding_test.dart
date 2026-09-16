@@ -104,7 +104,7 @@ void main() {
     expect(find.text('SWITCH IDENTITY'), findsOne);
     await tester.tap(find.text('Foghorn Diet'));
     await tester.pumpAndSettle();
-    expect(harness.app.current.screen, Screen.bandDash);
+    expect(harness.app.current.screen, Screen.gigMgr);
     expect(harness.app.bandId, 'b1');
 
     await harness.app.signOut();
@@ -137,7 +137,7 @@ void main() {
     expect(find.text('Personal account'), findsOne);
     await tester.tap(find.text('Foghorn Diet'));
     await tester.pumpAndSettle();
-    expect(harness.app.current.screen, Screen.bandDash);
+    expect(harness.app.current.screen, Screen.gigMgr);
     expect(harness.app.bandId, 'b1');
   });
 

@@ -27,6 +27,10 @@ mixin _NavigationState on _AppStateCore {
 
   VoidCallback? _stopBrowserHistory;
 
+  /// Set by [requestMembersSheet] and consumed once by the band profile
+  /// screen via [takeMembersSheetRequest].
+  bool _membersSheetRequested = false;
+
   // ---- navigation
   List<ScreenEntry> _stack = const [ScreenEntry(Screen.home)];
   ScreenEntry get current => _stack.last;
@@ -102,7 +106,7 @@ mixin _NavigationState on _AppStateCore {
       _stack = _stack.sublist(0, _stack.length - 1);
       _syncPublicGigSubscriptionForCurrentScreen();
     });
-    _refreshVisibleBandDashboard();
+    _refreshVisibleBandHome();
     if (_showsBandDirectory(current)) ensureExploreBands();
     if (current.screen == Screen.explore) ensureSocial();
   }
@@ -113,7 +117,7 @@ mixin _NavigationState on _AppStateCore {
       _syncPublicGigSubscriptionForCurrentScreen();
     });
     replaceBrowserPath(_browserPathFor(s, param));
-    _refreshVisibleBandDashboard();
+    _refreshVisibleBandHome();
     _onBandChanged();
     _onOrganizationChanged();
     if (_showsBandDirectory(current)) ensureExploreBands();
@@ -160,8 +164,10 @@ mixin _NavigationState on _AppStateCore {
     return '/venues/$browserRef';
   }
 
-  void _refreshVisibleBandDashboard() {
-    if (current.screen == Screen.bandDash && bandId.isNotEmpty) {
+  /// GIGS is the band home: it hosts the readiness hero, so landing there
+  /// refreshes what the hero shows.
+  void _refreshVisibleBandHome() {
+    if (current.screen == Screen.gigMgr && bandId.isNotEmpty) {
       unawaited(refreshBandSetupStatus(bandId));
       unawaited(refreshBandDiscoveryReadiness(bandId));
     }
@@ -192,7 +198,17 @@ mixin _NavigationState on _AppStateCore {
     unawaited(_markBandPreviewed(id));
   }
 
-  void returnToBandDashboard() => resetTo(Screen.bandDash);
+  /// The PROFILE tab: the band's own public profile as a tab root.
+  void openOwnProfileTab() {
+    final id = bandId;
+    if (id.isEmpty) return;
+    resetTo(Screen.bandPreview, id);
+    unawaited(loadBandProfileDetails(id));
+    unawaited(_markBandPreviewed(id));
+  }
+
+  /// Back to the band home, which is the GIGS tab.
+  void returnToBandDashboard() => resetTo(Screen.gigMgr);
 
   void openBandEditor({String? section}) {
     if (!isAdminOf(bandId)) return;
@@ -201,10 +217,25 @@ mixin _NavigationState on _AppStateCore {
     if (section == 'members') unawaited(refreshBandInvite(bandId));
   }
 
-  void openInvitationPanel() {
-    resetTo(Screen.bandDash, 'members');
-    unawaited(refreshBandInvite(bandId));
+  /// Lands on the band's own profile with the members sheet requested;
+  /// the profile screen picks the request up with [takeMembersSheetRequest].
+  void requestMembersSheet() {
+    final id = bandId;
+    if (id.isEmpty) return;
+    _membersSheetRequested = true;
+    resetTo(Screen.bandPreview, id);
+    unawaited(loadBandProfileDetails(id));
+    unawaited(refreshBandInvite(id));
   }
+
+  /// Returns whether a members sheet was requested, clearing the request.
+  bool takeMembersSheetRequest() {
+    final requested = _membersSheetRequested;
+    _membersSheetRequested = false;
+    return requested;
+  }
+
+  void openInvitationPanel() => requestMembersSheet();
 
   void openVenue(String id) {
     if (current.screen == Screen.venue && current.param == id) return;

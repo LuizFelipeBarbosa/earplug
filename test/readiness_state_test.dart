@@ -365,7 +365,7 @@ void main() {
       ReadinessAction.republish: (Screen.gigMgr, null),
       ReadinessAction.preview: (Screen.bandPreview, 'b1'),
       ReadinessAction.editLinks: (Screen.bandEdit, 'links'),
-      ReadinessAction.inviteMembers: (Screen.bandDash, 'members'),
+      ReadinessAction.inviteMembers: (Screen.bandPreview, 'b1'),
     };
     for (final entry in expectations.entries) {
       app.performReadinessAction('b1', entry.key);

@@ -15,7 +15,6 @@ enum Screen {
   myGigs,
   auth,
   bandCreate,
-  bandDash,
   bandEdit,
   bandMedia,
   editProfile,
@@ -99,7 +98,7 @@ const fanTabScreens = {
   Screen.ticketCheckoutCancel,
 };
 const bandTabScreens = {
-  Screen.bandDash,
+  Screen.bandPreview,
   Screen.bandEdit,
   Screen.gigMgr,
   Screen.hostedGig,

@@ -186,7 +186,7 @@ void main() {
     expect(find.text('NOT NOW'), findsOne);
     await tester.tap(find.text('NOT NOW'));
     await tester.pumpAndSettle();
-    expect(app.current.screen, Screen.bandDash);
+    expect(app.current.screen, Screen.gigMgr);
   });
 
   testWidgets('start another clears the rendered form and backing draft', (

@@ -256,7 +256,7 @@ mixin _BandConsoleState on _AppStateCore {
 
   void switchToBand(String id) {
     bandId = id;
-    resetTo(Screen.bandDash);
+    resetTo(Screen.gigMgr);
     unawaited(refreshBandSetupStatus(id));
     unawaited(refreshBandDiscoveryReadiness(id));
   }

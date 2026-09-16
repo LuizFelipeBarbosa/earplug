@@ -92,7 +92,7 @@ void main() {
       'app1',
     ]);
 
-    harness.app.resetTo(Screen.bandDash);
+    harness.app.resetTo(Screen.gigMgr);
     await tester.pumpAndSettle();
 
     expect(repository.bandRequests, ['b1']);
