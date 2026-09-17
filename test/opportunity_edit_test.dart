@@ -89,7 +89,7 @@ void main() {
       final harness = await _pumpEditor(tester, auth, repository, 'new');
       expect(find.byKey(const Key('opp-edit-venue-search')), findsNothing);
       expect(find.byKey(const Key('opp-edit-venue-v1')), findsOneWidget);
-      expect(find.byType(StatusPill), findsNothing);
+      expect(find.byType(EpBadge), findsNothing);
       expect(find.byKey(const ValueKey('opp-edit-save-state')), findsNothing);
       expect(_action(tester, 'publish').onPressed, isNotNull);
       expect(_action(tester, 'publish').label, 'Review & publish');
@@ -129,7 +129,7 @@ void main() {
         isTrue,
       );
       await _reveal(tester, find.byType(CircleIconButton));
-      expect(find.byType(StatusPill), findsOneWidget);
+      expect(find.byType(EpBadge), findsOneWidget);
 
       await _tap(tester, 'opp-edit-slot-add');
       await _tap(tester, 'opp-edit-slot-0-role-support');

@@ -66,20 +66,20 @@ void main() {
       lessThan(tester.getTopLeft(draftCard).dy),
     );
 
-    final applied = tester.widget<StatusPill>(
+    final applied = tester.widget<EpBadge>(
       find.byKey(const Key('org-opp-applied-opp1')),
     );
     expect(applied.label, '2 applied');
-    expect(applied.tone, EpStatusPillTone.selected);
+    expect(applied.tone, EpBadgeTone.selected);
     expect(
       find.descendant(of: openCard, matching: find.text('2 APPLIED')),
       findsOneWidget,
     );
-    final none = tester.widget<StatusPill>(
+    final none = tester.widget<EpBadge>(
       find.byKey(const Key('org-opp-applied-opp3')),
     );
     expect(none.label, '0 applied');
-    expect(none.tone, EpStatusPillTone.neutral);
+    expect(none.tone, EpBadgeTone.neutral);
     expect(
       find.descendant(of: draftCard, matching: find.text('DRAFT')),
       findsOneWidget,
@@ -242,7 +242,7 @@ void main() {
       of: card,
       matching: find.byKey(const Key('org-opp-venue-consent-opp-promoter')),
     );
-    expect(tester.widget<StatusPill>(consent).tone, EpStatusPillTone.warning);
+    expect(tester.widget<EpBadge>(consent).tone, EpBadgeTone.warning);
     expect(
       find.descendant(of: consent, matching: find.text('PENDING APPROVAL')),
       findsOneWidget,
@@ -1441,10 +1441,10 @@ Future<void> _chooseOpportunityAction(
   await tester.pumpAndSettle();
 }
 
-StatusPill _applicantPill(WidgetTester tester, String applicationId) =>
-    tester.widget<StatusPill>(
+EpBadge _applicantPill(WidgetTester tester, String applicationId) =>
+    tester.widget<EpBadge>(
       find.descendant(
         of: find.byKey(ValueKey('applicant-$applicationId')),
-        matching: find.byType(StatusPill),
+        matching: find.byType(EpBadge),
       ),
     );

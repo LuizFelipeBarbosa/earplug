@@ -338,7 +338,7 @@ void main() {
       expect(
         find.descendant(
           of: row,
-          matching: find.widgetWithText(StatusPill, 'WITHDRAWN'),
+          matching: find.widgetWithText(EpBadge, 'WITHDRAWN'),
         ),
         findsOneWidget,
       );

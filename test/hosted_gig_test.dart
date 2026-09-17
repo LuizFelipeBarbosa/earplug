@@ -10,7 +10,6 @@ import 'package:earplug/screens/door_mode.dart';
 import 'package:earplug/screens/hosted_gig.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
-import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/gig_project_actions.dart';
 import 'package:earplug/widgets/sheets.dart';
@@ -31,11 +30,11 @@ void main() {
 
     expect(find.byType(HostedGigScreen), findsOne);
     expect(find.text('RIPTIDE RELEASE SHOW'), findsOne);
-    final status = tester.widget<StatusPill>(
+    final status = tester.widget<EpBadge>(
       find.byKey(const Key('hosted-gig-status')),
     );
     expect(status.label, 'PUBLISHED');
-    expect(status.tone, EpStatusPillTone.success);
+    expect(status.tone, EpBadgeTone.success);
     expect(find.text('DOOR'), findsOne);
     expect(find.text('PREVIEW'), findsOne);
     expect(find.text('EDIT'), findsOne);
@@ -177,11 +176,11 @@ void main() {
       auth,
       projectId: 'cancelled',
     );
-    final status = tester.widget<StatusPill>(
+    final status = tester.widget<EpBadge>(
       find.byKey(const Key('hosted-gig-status')),
     );
     expect(status.label, 'CANCELLED');
-    expect(status.tone, EpStatusPillTone.neutral);
+    expect(status.tone, EpBadgeTone.neutral);
     expect(find.text('TOOLS'), findsNothing);
     for (final action in ['door', 'preview', 'edit', 'actions']) {
       expect(find.byKey(Key('hosted-gig-$action')), findsNothing);
@@ -231,11 +230,11 @@ void main() {
     final repository = _HostedGigRepository(auth: auth);
     repository.projects[0] = repository.projects[0].copyWith(revision: 3);
     await _pumpHostedGig(tester, repository, auth);
-    final status = tester.widget<StatusPill>(
+    final status = tester.widget<EpBadge>(
       find.byKey(const Key('hosted-gig-status')),
     );
     expect(status.label, 'UNPUBLISHED CHANGES');
-    expect(status.tone, EpStatusPillTone.warning);
+    expect(status.tone, EpBadgeTone.warning);
   });
 
   testWidgets('390-wide phone lays out all tools without overflow', (
