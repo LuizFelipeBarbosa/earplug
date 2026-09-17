@@ -9,11 +9,13 @@ import 'package:provider/provider.dart';
 import '../app_links.dart';
 import '../app_state.dart';
 import '../flyer_styles.dart';
+import '../initials.dart';
 import '../models.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart' show EpAvatarTile, EpEntityRow;
+import '../widgets/ep_scroll_header_bar.dart';
 import '../widgets/ep_sheet.dart' show showEpSheet;
 import '../widgets/ep_text.dart';
 import '../widgets/explore_tiles.dart';
@@ -172,10 +174,7 @@ class _GigDetailPresentationState extends State<GigDetailPresentation> {
     final venue = app.venue(gig.venueId);
     final interactive = !widget.isPreview;
     final topInset = MediaQuery.paddingOf(context).top;
-    final offset = _scrollController.hasClients
-        ? _scrollController.offset
-        : 0.0;
-    final progress = (offset / 80).clamp(0.0, 1.0);
+    final progress = scrollFadeProgress(_scrollController);
 
     return Stack(
       children: [
@@ -522,92 +521,63 @@ class _GigDetailHeaderBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.epColors;
     final saved = app.saved.contains(gig.id);
-    return Container(
-      key: const ValueKey('gig-detail-header-bar'),
-      height: _headerBarContentHeight + topInset,
-      padding: EdgeInsets.only(top: topInset),
-      decoration: BoxDecoration(
-        color: Color.lerp(
-          colors.background.withValues(alpha: 0),
-          colors.background,
-          progress,
-        ),
-      ),
-      // Paint the hairline without subtracting from the centered row's height.
-      foregroundDecoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: Color.lerp(
-              colors.line.withValues(alpha: 0),
-              colors.line,
-              progress,
-            )!,
+    return EpScrollHeaderBar(
+      barKey: const ValueKey('gig-detail-header-bar'),
+      topInset: topInset,
+      progress: progress,
+      height: _headerBarContentHeight,
+      hairlineInForeground: true,
+      leading: SizedBox.square(
+        dimension: 44,
+        child: Tooltip(
+          message: 'Back',
+          excludeFromSemantics: true,
+          child: ExploreCardIconButton(
+            key: const ValueKey('gig-detail-back-control'),
+            circle: true,
+            icon: Icons.arrow_back,
+            semanticLabel: 'Back',
+            onPressed: onBack,
           ),
         ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
-        child: Row(
-          children: [
-            SizedBox.square(
-              dimension: 44,
-              child: Tooltip(
-                message: 'Back',
-                excludeFromSemantics: true,
-                child: ExploreCardIconButton(
-                  key: const ValueKey('gig-detail-back-control'),
-                  circle: true,
-                  icon: Icons.arrow_back,
-                  semanticLabel: 'Back',
-                  onPressed: onBack,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Opacity(
-                opacity: progress,
-                // Keep the hidden title out of traversal until it fades in.
-                child: Offstage(
-                  offstage: progress == 0,
-                  child: EpDisplay(gig.title, size: 18, maxLines: 1),
-                ),
-              ),
-            ),
-            if (previewLabel == null) ...[
-              const SizedBox(width: 12),
-              SizedBox.square(
-                dimension: 44,
-                child: ExploreCardIconButton(
-                  key: ValueKey('gig-detail-save-${gig.id}'),
-                  circle: true,
-                  icon: saved ? Icons.favorite : Icons.favorite_border,
-                  semanticLabel: saved ? 'Remove saved event' : 'Save',
-                  onPressed: () => app.requestSave(gig.id),
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox.square(
-                dimension: 44,
-                child: ExploreCardIconButton(
-                  key: ValueKey('gig-detail-share-${gig.id}'),
-                  circle: true,
-                  icon: Icons.ios_share,
-                  semanticLabel: 'Share',
-                  onPressed: () => copyForUser(
-                    context,
-                    publicWebUrl('g/${gig.publicRef}'),
-                    successMessage:
-                        'Link copied: ${publicWebDisplayUrl('g/${gig.publicRef}')}',
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
+      // Keep the hidden title out of traversal until it fades in.
+      title: Offstage(
+        offstage: progress == 0,
+        child: EpDisplay(gig.title, size: 18, maxLines: 1),
       ),
+      trailing: [
+        if (previewLabel == null) ...[
+          const SizedBox(width: 12),
+          SizedBox.square(
+            dimension: 44,
+            child: ExploreCardIconButton(
+              key: ValueKey('gig-detail-save-${gig.id}'),
+              circle: true,
+              icon: saved ? Icons.favorite : Icons.favorite_border,
+              semanticLabel: saved ? 'Remove saved event' : 'Save',
+              onPressed: () => app.requestSave(gig.id),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox.square(
+            dimension: 44,
+            child: ExploreCardIconButton(
+              key: ValueKey('gig-detail-share-${gig.id}'),
+              circle: true,
+              icon: Icons.ios_share,
+              semanticLabel: 'Share',
+              onPressed: () => copyForUser(
+                context,
+                publicWebUrl('g/${gig.publicRef}'),
+                successMessage:
+                    'Link copied: ${publicWebDisplayUrl('g/${gig.publicRef}')}',
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -856,14 +826,6 @@ class _MonoLine extends StatelessWidget {
   );
 }
 
-String _initialsFor(String name) {
-  final words = name.trim().split(RegExp(r'\s+'))
-    ..removeWhere((word) => word.isEmpty);
-  if (words.isEmpty) return '?';
-  if (words.length == 1) return words.first.substring(0, 1);
-  return '${words.first.substring(0, 1)}${words.last.substring(0, 1)}';
-}
-
 class _LineupRow extends StatelessWidget {
   final GigPerformer performer;
   final AppState app;
@@ -886,7 +848,7 @@ class _LineupRow extends StatelessWidget {
     final genreLine = band?.genreLine ?? '';
     return EpEntityRow(
       leading: band == null
-          ? EpAvatarTile(initials: _initialsFor(performer.name))
+          ? EpAvatarTile(initials: initialsFirstLast(performer.name))
           : BandAvatar(band),
       title: performer.name,
       sub: genreLine.isEmpty ? role : '$role · $genreLine',

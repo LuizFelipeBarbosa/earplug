@@ -13,6 +13,7 @@ import '../theme.dart';
 import '../widgets/band_members_panel.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
+import '../widgets/ep_scroll_header_bar.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/explore_tiles.dart';
@@ -123,10 +124,7 @@ class _BandProfileViewState extends State<BandProfileView> {
       context,
     ).textTheme.epBody.copyWith(color: context.epColors.muted);
     final topInset = MediaQuery.paddingOf(context).top;
-    final offset = _scrollController.hasClients
-        ? _scrollController.offset
-        : 0.0;
-    final progress = (offset / 80).clamp(0.0, 1.0);
+    final progress = scrollFadeProgress(_scrollController);
     // Any member of the band sees the management row on their own preview;
     // the profile editor is admin-only.
     final own = widget.isManagedPreview;
@@ -322,8 +320,6 @@ class _BandProfileViewState extends State<BandProfileView> {
                       ? EpPill(
                           key: const ValueKey('band-profile-edit'),
                           label: 'Edit profile',
-                          variant: EpPillVariant.outline,
-                          size: EpPillSize.chip,
                           onPressed: app.openBandEditor,
                         )
                       : null,
@@ -456,7 +452,6 @@ class _ProfileActions extends StatelessWidget {
                 label: band.followers > 0
                     ? '$followLabel · ${band.followersLabel}'
                     : followLabel,
-                variant: EpPillVariant.outline,
                 size: EpPillSize.regular,
                 expand: true,
                 onPressed: () => app.requestFollow(bandId),
@@ -466,7 +461,6 @@ class _ProfileActions extends StatelessWidget {
             EpPill(
               key: const ValueKey('band-share'),
               label: 'Share',
-              variant: EpPillVariant.outline,
               size: EpPillSize.regular,
               icon: Icons.ios_share,
               onPressed: () => copyForUser(
@@ -538,91 +532,65 @@ class _BandProfileHeaderBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.epColors;
-    return Container(
-      key: const ValueKey('band-profile-mini-header'),
-      height: 56 + topInset,
-      padding: EdgeInsets.only(top: topInset),
-      decoration: BoxDecoration(
-        color: Color.lerp(
-          colors.background.withValues(alpha: 0),
-          colors.background,
-          progress,
-        ),
-        border: Border(
-          bottom: BorderSide(
-            color: Color.lerp(
-              colors.line.withValues(alpha: 0),
-              colors.line,
-              progress,
-            )!,
-          ),
-        ),
+    return EpScrollHeaderBar(
+      barKey: const ValueKey('band-profile-mini-header'),
+      topInset: topInset,
+      progress: progress,
+      height: 56,
+      hairlineInForeground: false,
+      leading: ExploreCardIconButton(
+        key: const ValueKey('band-profile-back-control'),
+        circle: true,
+        icon: Icons.arrow_back,
+        semanticLabel: backLabel,
+        onPressed: onBack,
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
-        child: Row(
-          children: [
-            ExploreCardIconButton(
-              key: const ValueKey('band-profile-back-control'),
-              circle: true,
-              icon: Icons.arrow_back,
-              semanticLabel: backLabel,
-              onPressed: onBack,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Opacity(
-                opacity: progress,
-                child: Row(
-                  children: [
-                    ClipRect(
-                      child: SizedBox.square(
-                        dimension: 36,
-                        child: EpNetworkImage(
-                          url: band.profileImageUrl,
-                          fallback: EpAvatarTile(
-                            initials: band.initials,
-                            size: 36,
-                            accent: true,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          EpDisplay(band.name, size: 18, maxLines: 1),
-                          if (band.area.trim().isNotEmpty)
-                            DefaultTextStyle.merge(
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              child: EpEyebrow(band.area),
-                            ),
-                        ],
-                      ),
-                    ),
-                    if (onFollow case final onFollow?) ...[
-                      const SizedBox(width: 12),
-                      IgnorePointer(
-                        ignoring: progress == 0,
-                        child: _BandMiniFollowPill(
-                          following: following,
-                          onFollow: onFollow,
-                        ),
-                      ),
-                    ],
-                  ],
+      title: Row(
+        children: [
+          ClipRect(
+            child: SizedBox.square(
+              dimension: 36,
+              child: EpNetworkImage(
+                url: band.profileImageUrl,
+                fallback: EpAvatarTile(
+                  initials: band.initials,
+                  size: 36,
+                  accent: true,
                 ),
               ),
             ),
-            if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                EpDisplay(band.name, size: 18, maxLines: 1),
+                if (band.area.trim().isNotEmpty)
+                  DefaultTextStyle.merge(
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    child: EpEyebrow(band.area),
+                  ),
+              ],
+            ),
+          ),
+          if (onFollow case final onFollow?) ...[
+            const SizedBox(width: 12),
+            IgnorePointer(
+              ignoring: progress == 0,
+              child: _BandMiniFollowPill(
+                following: following,
+                onFollow: onFollow,
+              ),
+            ),
           ],
-        ),
+        ],
       ),
+      trailing: [
+        if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+      ],
     );
   }
 }
@@ -1171,11 +1139,9 @@ class _ReviewRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    return Container(
+    return EpRow(
+      minHeight: 0,
       padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: context.epColors.line)),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
