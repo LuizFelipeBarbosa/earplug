@@ -7,11 +7,11 @@ import '../app_state.dart';
 import '../date_names.dart';
 import '../host_request_groups.dart';
 import '../models.dart';
-import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_states.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/opportunity_labels.dart';
@@ -216,15 +216,10 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (status == DataStatus.error)
-            Column(
-              children: [
-                const SizedBox(height: 16),
-                Text('Could not load ${noun}s. Please retry.'),
-                TextButton(
-                  onPressed: () => app.refreshOpportunities(app.organizationId),
-                  child: const Text('RETRY'),
-                ),
-              ],
+            EpInlineRetry(
+              message: 'Could not load ${noun}s. Please retry.',
+              topGap: 16,
+              onRetry: () => app.refreshOpportunities(app.organizationId),
             )
           else
             ...switch (_tab) {
@@ -430,7 +425,7 @@ class _OpportunityCard extends StatelessWidget {
                 EpMonoText(
                   group == _RequestGroup.active
                       ? _activeSlotLine(opportunity)
-                      : _bookedSlotLine(opportunity),
+                      : bookedSlotLine(opportunity, countExtraRoles: true),
                   keepCase: true,
                   color: secondary,
                 ),
@@ -451,7 +446,7 @@ class _OpportunityCard extends StatelessWidget {
                   children: [
                     ..._statusPills(),
                     if (venueApproval != null)
-                      StatusPill(
+                      EpBadge(
                         key: Key('org-opp-venue-consent-${opportunity.id}'),
                         label: venueApproval.label,
                         tone: venueApproval.tone,
@@ -475,47 +470,44 @@ class _OpportunityCard extends StatelessWidget {
 
   List<Widget> _statusPills() => switch (group) {
     _RequestGroup.confirmed => const [
-      StatusPill(label: 'Confirmed', tone: EpStatusPillTone.success),
+      EpBadge(label: 'Confirmed', tone: EpBadgeTone.success),
     ],
     _RequestGroup.past => [
-      StatusPill(
+      EpBadge(
         label: opportunityStatusLabel(opportunity.status),
-        tone: EpStatusPillTone.neutral,
+        tone: EpBadgeTone.neutral,
       ),
     ],
     _RequestGroup.active => [
       switch (opportunity.status) {
-        OpportunityStatus.draft => const StatusPill(
+        OpportunityStatus.draft => const EpBadge(
           label: 'Draft',
-          tone: EpStatusPillTone.neutral,
+          tone: EpBadgeTone.neutral,
         ),
-        OpportunityStatus.applicationsClosed => const StatusPill(
+        OpportunityStatus.applicationsClosed => const EpBadge(
           label: 'Closed',
-          tone: EpStatusPillTone.neutral,
+          tone: EpBadgeTone.neutral,
         ),
-        OpportunityStatus.booking => const StatusPill(
+        OpportunityStatus.booking => const EpBadge(
           label: 'Booking',
-          tone: EpStatusPillTone.neutral,
+          tone: EpBadgeTone.neutral,
         ),
         _ => null,
       },
-      StatusPill(
+      EpBadge(
         key: Key('org-opp-applied-${opportunity.id}'),
         label: '${opportunity.applicationCount} applied',
         tone: opportunity.applicationCount > 0
-            ? EpStatusPillTone.selected
-            : EpStatusPillTone.neutral,
+            ? EpBadgeTone.selected
+            : EpBadgeTone.neutral,
       ),
     ].nonNulls.toList(),
   };
 }
 
-List<OpportunitySlot> _orderedSlots(Opportunity opportunity) =>
-    [...opportunity.slots]..sort((a, b) => a.order.compareTo(b.order));
-
 /// "Headliner, Support · 2 slots · closes Sep 21".
 String _activeSlotLine(Opportunity opportunity) {
-  final slots = _orderedSlots(opportunity);
+  final slots = opportunity.orderedSlots;
   final roles = <String>{for (final slot in slots) slotRoleLabel(slot.role)};
   final count = slots.length;
   final closing =
@@ -530,44 +522,20 @@ String _activeSlotLine(Opportunity opportunity) {
   ].join(' · ');
 }
 
-/// "Headliner · $300.00 + 1 more · 2/2 slots booked".
-String _bookedSlotLine(Opportunity opportunity) {
-  final slots = _orderedSlots(opportunity);
-  final booked = slots.where((slot) => slot.status == SlotStatus.booked).length;
-  final lead = slots.firstOrNull;
-  final roles = <SlotRole>{for (final slot in slots) slot.role};
-  return [
-    if (lead != null)
-      '${slotRoleLabel(lead.role)} · '
-          '${Money(lead.guaranteeMinor, opportunity.currency).label}'
-          '${roles.length > 1 ? ' + ${roles.length - 1} more' : ''}',
-    '$booked/${slots.length} slots booked',
-  ].join(' · ');
-}
-
-({String label, EpStatusPillTone tone})? _venueApprovalStatus(
+({String label, EpBadgeTone tone})? _venueApprovalStatus(
   VenueConsentStatus? status,
 ) => switch (status) {
   VenueConsentStatus.pending => (
     label: 'Pending approval',
-    tone: EpStatusPillTone.warning,
+    tone: EpBadgeTone.warning,
   ),
-  VenueConsentStatus.granted => (
-    label: 'Approved',
-    tone: EpStatusPillTone.success,
-  ),
-  VenueConsentStatus.declined => (
-    label: 'Declined',
-    tone: EpStatusPillTone.warning,
-  ),
+  VenueConsentStatus.granted => (label: 'Approved', tone: EpBadgeTone.success),
+  VenueConsentStatus.declined => (label: 'Declined', tone: EpBadgeTone.warning),
   VenueConsentStatus.withdrawn => (
     label: 'Withdrawn',
-    tone: EpStatusPillTone.neutral,
+    tone: EpBadgeTone.neutral,
   ),
-  VenueConsentStatus.revoked => (
-    label: 'Revoked',
-    tone: EpStatusPillTone.warning,
-  ),
+  VenueConsentStatus.revoked => (label: 'Revoked', tone: EpBadgeTone.warning),
   null || VenueConsentStatus.unknown => null,
 };
 

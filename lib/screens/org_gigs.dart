@@ -10,6 +10,7 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
+import '../widgets/ep_states.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/opportunity_labels.dart';
@@ -88,16 +89,11 @@ class _OrgGigsScreenState extends State<OrgGigsScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (status == DataStatus.error)
-            Column(
-              children: [
-                const SizedBox(height: 16),
-                const Text('Could not load opportunities. Please retry.'),
-                TextButton(
-                  key: const Key('org-gigs-retry'),
-                  onPressed: () => app.refreshOpportunities(organizationId),
-                  child: const Text('RETRY'),
-                ),
-              ],
+            EpInlineRetry(
+              message: 'Could not load opportunities. Please retry.',
+              retryKey: const Key('org-gigs-retry'),
+              topGap: 16,
+              onRetry: () => app.refreshOpportunities(organizationId),
             )
           else ...[
             _UpNext(
@@ -109,7 +105,11 @@ class _OrgGigsScreenState extends State<OrgGigsScreen> {
             if (canManage) ...[
               ReadinessModule(scopeKey: orgReadinessScope(organizationId)),
               if (readinessFailed)
-                _ReadinessRetry(app: app, organizationId: organizationId),
+                ReadinessRetry(
+                  retryKey: const Key('org-gigs-readiness-retry'),
+                  onRetry: () =>
+                      app.refreshOrganizationDashboard(organizationId),
+                ),
             ],
             EpSectionHeader(
               label: 'OPPORTUNITIES · ${listed.length}',
@@ -151,9 +151,9 @@ class _OrgGigsScreenState extends State<OrgGigsScreen> {
                       key: ValueKey('org-gigs-past-${opportunity.id}'),
                       title: opportunity.title,
                       sub: _dateAndVenue(opportunity),
-                      trailing: StatusPill(
+                      trailing: EpBadge(
                         label: opportunityStatusLabel(opportunity.status),
-                        tone: EpStatusPillTone.neutral,
+                        tone: EpBadgeTone.neutral,
                       ),
                       onTap: () => app.openOrgOpportunity(opportunity.id),
                     ),
@@ -283,10 +283,7 @@ class _UpNext extends StatelessWidget {
           const SizedBox(height: 12),
           const Align(
             alignment: Alignment.centerLeft,
-            child: StatusPill(
-              label: 'Confirmed',
-              tone: EpStatusPillTone.success,
-            ),
+            child: EpBadge(label: 'Confirmed', tone: EpBadgeTone.success),
           ),
           const SizedBox(height: 20),
           Align(
@@ -355,22 +352,22 @@ class _OpportunityCard extends StatelessWidget {
                   runSpacing: 7,
                   children: [
                     if (confirmed)
-                      const StatusPill(
+                      const EpBadge(
                         label: 'Confirmed',
-                        tone: EpStatusPillTone.success,
+                        tone: EpBadgeTone.success,
                       )
                     else ...[
                       if (isDraft)
-                        const StatusPill(
+                        const EpBadge(
                           label: 'Draft',
-                          tone: EpStatusPillTone.neutral,
+                          tone: EpBadgeTone.neutral,
                         ),
-                      StatusPill(
+                      EpBadge(
                         key: Key('org-opp-applied-${opportunity.id}'),
                         label: '${opportunity.applicationCount} applied',
                         tone: opportunity.applicationCount > 0
-                            ? EpStatusPillTone.selected
-                            : EpStatusPillTone.neutral,
+                            ? EpBadgeTone.selected
+                            : EpBadgeTone.neutral,
                       ),
                     ],
                   ],
@@ -382,32 +379,6 @@ class _OpportunityCard extends StatelessWidget {
       ),
     );
   }
-}
-
-class _ReadinessRetry extends StatelessWidget {
-  const _ReadinessRetry({required this.app, required this.organizationId});
-
-  final AppState app;
-  final String organizationId;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Expanded(
-        child: EpMonoText(
-          'Readiness unavailable',
-          color: context.epColors.contentSecondary,
-        ),
-      ),
-      const SizedBox(width: 12),
-      EpPill(
-        key: const Key('org-gigs-readiness-retry'),
-        label: 'Retry',
-        size: EpPillSize.chip,
-        onPressed: () => app.refreshOrganizationDashboard(organizationId),
-      ),
-    ],
-  );
 }
 
 /// "The Foghorn Club · Mission"; private events name no venue.
@@ -422,20 +393,18 @@ String _venueAndArea(Opportunity opportunity) {
 
 /// "Oct 31 · The Foghorn Club".
 String _dateAndVenue(Opportunity opportunity) {
-  final local = opportunity.startsAt.toLocal();
   final isPrivate =
       opportunity.privateEvent ||
       opportunity.mode == OpportunityMode.privateBooking;
   final place = isPrivate
       ? 'Private event'
       : opportunity.venue?.name ?? 'Venue TBD';
-  return '${monthNames[local.month - 1]} ${local.day} · $place';
+  return '${shortDateLabel(opportunity.startsAt)} · $place';
 }
 
 /// "Headliner + Support · 1/2 slots booked".
 String _fillLine(Opportunity opportunity) {
-  final slots = [...opportunity.slots]
-    ..sort((a, b) => a.order.compareTo(b.order));
+  final slots = opportunity.orderedSlots;
   final roles = <String>{for (final slot in slots) slotRoleLabel(slot.role)};
   final booked = slots.where((slot) => slot.status == SlotStatus.booked).length;
   return [

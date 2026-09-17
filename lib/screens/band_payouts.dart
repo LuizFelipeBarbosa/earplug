@@ -7,6 +7,8 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
 
@@ -113,9 +115,9 @@ class _BandPayoutsScreenState extends State<BandPayoutsScreen> {
         if (status.canSellTickets)
           const Align(
             alignment: Alignment.centerLeft,
-            child: StatusPill(
+            child: EpBadge(
               label: 'TICKET SALES ENABLED',
-              tone: EpStatusPillTone.success,
+              tone: EpBadgeTone.success,
             ),
           )
         else
@@ -150,10 +152,7 @@ class _BandPayoutsScreenState extends State<BandPayoutsScreen> {
         Row(
           children: [
             if (needsTaxInformation)
-              const StatusPill(
-                label: 'ACTION NEEDED',
-                tone: EpStatusPillTone.warning,
-              )
+              const EpBadge(label: 'ACTION NEEDED', tone: EpBadgeTone.warning)
             else
               Icon(
                 Icons.check,
@@ -224,9 +223,9 @@ class _BandPayoutsScreenState extends State<BandPayoutsScreen> {
               if (enabled)
                 const Align(
                   alignment: Alignment.centerLeft,
-                  child: StatusPill(
+                  child: EpBadge(
                     label: 'Payouts enabled',
-                    tone: EpStatusPillTone.success,
+                    tone: EpBadgeTone.success,
                   ),
                 )
               else
@@ -291,7 +290,7 @@ class _BandPayoutsScreenState extends State<BandPayoutsScreen> {
           'Statements are for your records. Stripe issues your tax forms.',
           style: Theme.of(context).textTheme.epCaption,
         ),
-        const SectionBar(label: 'PAYOUT HISTORY'),
+        const EpSectionHeader(label: 'PAYOUT HISTORY'),
         const SizedBox(height: 8),
         Column(
           key: const Key('band-payouts-history'),
@@ -321,11 +320,11 @@ class _PayoutRow extends StatelessWidget {
         ? 'Completion payout'
         : 'Forfeited payout';
     final tone = switch (payout.status) {
-      PayoutStatus.paid => EpStatusPillTone.success,
+      PayoutStatus.paid => EpBadgeTone.success,
       PayoutStatus.held ||
       PayoutStatus.failed ||
-      PayoutStatus.reversed => EpStatusPillTone.warning,
-      _ => EpStatusPillTone.neutral,
+      PayoutStatus.reversed => EpBadgeTone.warning,
+      _ => EpBadgeTone.neutral,
     };
 
     return Padding(
@@ -352,7 +351,7 @@ class _PayoutRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              StatusPill(label: payout.status.name, tone: tone),
+              EpBadge(label: payout.status.name, tone: tone),
             ],
           ),
           if (payout.holdReason != null) ...[

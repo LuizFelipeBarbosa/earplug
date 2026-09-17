@@ -7,6 +7,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/ep_states.dart';
 import '../widgets/ep_text.dart';
@@ -217,10 +218,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                     const SizedBox(height: 8),
                     const Align(
                       alignment: Alignment.centerLeft,
-                      child: StatusPill(
-                        label: 'stale',
-                        tone: EpStatusPillTone.warning,
-                      ),
+                      child: EpBadge(label: 'stale', tone: EpBadgeTone.warning),
                     ),
                   ],
                 ] else
@@ -229,7 +227,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                   ),
               ],
             ),
-            const SectionBar(label: 'BOOKINGS'),
+            const EpSectionHeader(label: 'BOOKINGS'),
             _FinanceStats(
               key: const Key('org-finance-bookings'),
               values: [
@@ -239,7 +237,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                 ('DISPUTED', overview.disputedAmount.label, null),
               ],
             ),
-            const SectionBar(label: 'PENDING PAYMENTS'),
+            const EpSectionHeader(label: 'PENDING PAYMENTS'),
             Column(
               key: const Key('org-finance-pending'),
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -251,7 +249,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                     _PendingPaymentRow(payment: payment),
               ],
             ),
-            const SectionBar(label: 'TICKETS'),
+            const EpSectionHeader(label: 'TICKETS'),
             Column(
               key: const Key('org-finance-tickets'),
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -313,22 +311,22 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
     final (badgeLabel, badgeTone, sentence) = switch (state) {
       StripeAccountState.enabled => (
         'Connected',
-        EpStatusPillTone.success,
+        EpBadgeTone.success,
         'Connected. Payouts go to your Stripe account.',
       ),
       StripeAccountState.onboarding => (
         'Setup in progress — finish in Stripe',
-        EpStatusPillTone.attention,
+        EpBadgeTone.attention,
         'Setup in progress. Finish onboarding in Stripe to receive payouts.',
       ),
       StripeAccountState.restricted => (
         'Setup in progress — finish in Stripe',
-        EpStatusPillTone.attention,
+        EpBadgeTone.attention,
         'Stripe needs more information before payouts can continue.',
       ),
       _ => (
         'Set up',
-        EpStatusPillTone.attention,
+        EpBadgeTone.attention,
         'Not connected. Connect Stripe to sell tickets and receive payouts.',
       ),
     };
@@ -350,7 +348,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
             Flexible(
               child: Align(
                 alignment: Alignment.centerRight,
-                child: StatusPill(
+                child: EpBadge(
                   key: const Key('org-finance-stripe-badge'),
                   label: badgeLabel,
                   tone: badgeTone,
@@ -414,13 +412,13 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
             Flexible(
               child: Align(
                 alignment: Alignment.centerRight,
-                child: StatusPill(
+                child: EpBadge(
                   label: taxCollected
                       ? '✓ Collected via Stripe'
                       : 'Action needed',
                   tone: taxCollected
-                      ? EpStatusPillTone.success
-                      : EpStatusPillTone.attention,
+                      ? EpBadgeTone.success
+                      : EpBadgeTone.attention,
                 ),
               ),
             ),

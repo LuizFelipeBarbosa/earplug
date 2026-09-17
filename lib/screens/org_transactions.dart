@@ -7,6 +7,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 
 class OrgTransactionsScreen extends StatefulWidget {
@@ -155,11 +156,11 @@ class _TransactionRow extends StatelessWidget {
     };
     final amount = transaction.amount.label.replaceFirst(RegExp(r'^-'), '');
     final tone = switch (transaction.fundsState) {
-      FundsState.available || FundsState.paid => EpStatusPillTone.success,
-      FundsState.refunded || FundsState.disputed => EpStatusPillTone.warning,
+      FundsState.available || FundsState.paid => EpBadgeTone.success,
+      FundsState.refunded || FundsState.disputed => EpBadgeTone.warning,
       FundsState.pending ||
       FundsState.reserved ||
-      FundsState.unknown => EpStatusPillTone.neutral,
+      FundsState.unknown => EpBadgeTone.neutral,
     };
     return LedgerRow(
       title: transaction.label,
@@ -175,7 +176,7 @@ class _TransactionRow extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          StatusPill(
+          EpBadge(
             label: switch (transaction.fundsState) {
               FundsState.pending => 'PENDING',
               FundsState.available => 'AVAILABLE',

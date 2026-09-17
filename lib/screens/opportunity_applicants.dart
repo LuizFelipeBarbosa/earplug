@@ -9,6 +9,8 @@ import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_states.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/opportunity_labels.dart';
 import '../widgets/send_offer_sheet.dart';
@@ -147,8 +149,7 @@ class _OpportunityApplicantsScreenState
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final opportunity = _opportunity;
-    final slots = [...?opportunity?.slots]
-      ..sort((a, b) => a.order.compareTo(b.order));
+    final slots = opportunity?.orderedSlots ?? const [];
     final applicants = _applicants
         .where(
           (row) =>
@@ -177,7 +178,7 @@ class _OpportunityApplicantsScreenState
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              StatusPill(
+              EpBadge(
                 label: opportunityStatusLabel(opportunity.status),
                 tone: opportunityStatusTone(opportunity.status),
               ),
@@ -215,14 +216,9 @@ class _OpportunityApplicantsScreenState
             child: Center(child: CircularProgressIndicator()),
           )
         else if (_loadFailed)
-          Column(
-            children: [
-              const Text('Could not load applicants. Please retry.'),
-              TextButton(
-                onPressed: () => unawaited(_load(refresh: true)),
-                child: const Text('RETRY'),
-              ),
-            ],
+          EpInlineRetry(
+            message: 'Could not load applicants. Please retry.',
+            onRetry: () => unawaited(_load(refresh: true)),
           )
         else if (applicants.isEmpty)
           EmptyNote(
@@ -320,7 +316,7 @@ class _ApplicantCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(application.message, style: textTheme.epBody),
           const SizedBox(height: 10),
-          StatusPill(
+          EpBadge(
             label: applicationStatusLabel(application.status),
             tone: applicationStatusTone(application.status),
           ),
@@ -461,14 +457,16 @@ class _ApplicantInsightsSectionState extends State<_ApplicantInsightsSection> {
               dimension: 20,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
-          else if (_failed) ...[
-            const Text('Could not load insights. Please retry.'),
-            TextButton(
-              key: ValueKey('applicant-${widget.applicationId}-insights-retry'),
-              onPressed: () => unawaited(_load(refresh: true)),
-              child: const Text('RETRY'),
-            ),
-          ] else if (insights != null)
+          else if (_failed)
+            EpInlineRetry(
+              message: 'Could not load insights. Please retry.',
+              retryKey: ValueKey(
+                'applicant-${widget.applicationId}-insights-retry',
+              ),
+              onRetry: () => unawaited(_load(refresh: true)),
+              crossAxisAlignment: CrossAxisAlignment.start,
+            )
+          else if (insights != null)
             Column(
               key: ValueKey('applicant-${widget.applicationId}-insights-panel'),
               crossAxisAlignment: CrossAxisAlignment.stretch,
