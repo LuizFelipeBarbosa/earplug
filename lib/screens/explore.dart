@@ -20,6 +20,11 @@ const _bandRailLimit = 16;
 /// Gap between compact band tiles; tighter than the feed rails' 12.
 const _bandRailGap = 8.0;
 
+/// Space between the search field and the first body section. The BANDS rail
+/// skips it: its header row is already 44 tall (the See-all target), which
+/// centres the eyebrow 15px below the field on its own.
+const _bodyTopInset = 12.0;
+
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
 
@@ -91,7 +96,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
               EpLayout.gutter,
               EpLayout.isDesktop(context) ? 0 : 22,
               EpLayout.gutter,
-              12,
+              0,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -138,7 +143,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
     final bandIds = _bandRailIds(app);
     return ListView(
       key: const ValueKey('explore-default'),
-      padding: EdgeInsets.zero,
+      padding: EdgeInsets.only(top: bandIds.isEmpty ? _bodyTopInset : 0),
       children: [
         if (bandIds.isNotEmpty) ...[
           epGutter(
@@ -147,9 +152,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
               action: 'See all',
               actionKey: const Key('explore-bands-see-all'),
               onAction: () => app.go(Screen.exploreCollection, 'bands'),
-              // The search field's own 12px bottom inset completes the
-              // section gap above this header.
-              padding: const EdgeInsets.only(top: 12, bottom: kFeedHeaderGap),
+              padding: EdgeInsets.zero,
             ),
           ),
           EpCarousel(
@@ -238,7 +241,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
     final bands = app.bandSearchResults;
     return ListView(
       key: const ValueKey('explore-results'),
-      padding: EdgeInsets.zero,
+      padding: const EdgeInsets.only(top: _bodyTopInset),
       children: [
         if (bands.isNotEmpty) ...[
           epGutter(

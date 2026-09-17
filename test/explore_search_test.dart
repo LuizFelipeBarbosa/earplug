@@ -1,7 +1,10 @@
 import 'package:earplug/app_state.dart';
+import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/search_query.dart';
+import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
@@ -56,11 +59,16 @@ void main() {
       expect(rail, findsOne);
       final railRect = tester.getRect(rail);
       final heading = find.text('BANDS');
+      // The header row keeps its 44px See-all target, which centres the
+      // eyebrow 15px under the field; the rail follows at the same distance.
       expect(
         tester.getRect(heading).top,
-        greaterThan(tester.getRect(_searchField).bottom),
+        closeTo(tester.getRect(_searchField).bottom + 15, 1),
       );
-      expect(tester.getRect(heading).bottom, lessThan(railRect.top));
+      expect(
+        railRect.top,
+        lessThanOrEqualTo(tester.getRect(heading).bottom + 15),
+      );
       expect(
         railRect.bottom,
         lessThan(tester.getTopLeft(find.text('RECENT SEARCHES')).dy),
@@ -102,6 +110,33 @@ void main() {
       await tester.tap(find.byKey(const Key('explore-bands-see-all')));
       expect(harness.app.current.screen, Screen.exploreCollection);
       expect(harness.app.current.param, 'bands');
+    },
+  );
+
+  testWidgets(
+    'bodies without the bands rail keep their distance from the search field',
+    (tester) async {
+      final auth = FakeAuthService();
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: ExploreScreen()),
+        auth: auth,
+        repository: _NoBandsRepository(auth: auth),
+        recentSearchesStore: MemoryRecentSearchesStore(['free']),
+      );
+      expect(find.byKey(const Key('explore-bands')), findsNothing);
+      final fieldBottom = tester.getRect(_searchField).bottom;
+      expect(
+        tester.getRect(find.text('RECENT SEARCHES')).top,
+        closeTo(fieldBottom + 37, 1),
+      );
+
+      harness.app.setQuery('free');
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.byKey(const Key('explore-results-meta'))).top,
+        closeTo(fieldBottom + 29, 1),
+      );
     },
   );
 
@@ -633,6 +668,23 @@ void main() {
 }
 
 Finder get _searchField => find.byKey(const Key('explore-search-field'));
+
+/// Demo data with no bands anywhere: nothing in the feed, the directory or
+/// the signed-in user's memberships, so Explore shows no bands rail.
+class _NoBandsRepository extends DemoRepository {
+  _NoBandsRepository({required super.auth});
+
+  @override
+  Stream<FeedSnapshot> feed() =>
+      Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {}));
+
+  @override
+  Stream<List<BandMembership>> myBands() => Stream.value(const []);
+
+  @override
+  Future<BandPage> listBands({String? cursor, int numItems = 50}) async =>
+      const BandPage(items: [], continueCursor: null, isDone: true);
+}
 
 String _recentLabel(WidgetTester tester, int index) =>
     tester.widget<EpMenuRow>(find.byKey(Key('explore-recent-$index'))).label;
