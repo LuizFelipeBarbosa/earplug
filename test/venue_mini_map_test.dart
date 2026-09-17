@@ -1,12 +1,14 @@
 import 'package:earplug/models.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_map.dart';
+import 'package:earplug/widgets/map_view.dart';
 import 'package:earplug/widgets/venue_mini_map.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'support/harness.dart';
 import 'support/pump.dart';
 
 void main() {
@@ -130,5 +132,17 @@ void main() {
       expect(find.byKey(const Key('venue-map-overlay')), findsNothing);
       expect(tester.takeException(), isNull);
     }
+  });
+
+  testWidgets('venue mini-map supports an approximate area', (tester) async {
+    final harness = await pumpApp(
+      tester,
+      home: Scaffold(body: VenueMiniMap(approximate: true, venue: venue)),
+    );
+
+    expect(find.byType(VenueMiniMap), findsOneWidget);
+    expect(find.byType(CircleLayer), findsOneWidget);
+    expect(find.byType(MarkerLayer), findsNothing);
+    harness.app.dispose();
   });
 }

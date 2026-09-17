@@ -69,6 +69,11 @@ void main() {
     }
   });
 
+  test('money JSON defaults missing values to zero US dollars', () {
+    expect(Money.fromJson(null), Money.zero);
+    expect(Money.fromJson(const {}), Money.zero);
+  });
+
   group('dispute and admin booking models', () {
     test('Booking admin viewer marker is optional and strictly boolean', () {
       expect(Booking.fromJson({}).viewerIsPlatformAdmin, isFalse);
