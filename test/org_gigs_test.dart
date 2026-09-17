@@ -5,7 +5,6 @@ import 'package:earplug/navigation.dart';
 import 'package:earplug/screens/org_gigs.dart';
 import 'package:earplug/screens/org_opportunities.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -63,20 +62,20 @@ void main() {
       tester.getTopLeft(quietCard).dy,
       lessThan(tester.getTopLeft(draftCard).dy),
     );
-    final applied = tester.widget<StatusPill>(
+    final applied = tester.widget<EpBadge>(
       find.byKey(const Key('org-opp-applied-opp1')),
     );
     expect(applied.label, '2 applied');
-    expect(applied.tone, EpStatusPillTone.selected);
+    expect(applied.tone, EpBadgeTone.selected);
     expect(
       find.descendant(of: openCard, matching: find.text('2 APPLIED')),
       findsOneWidget,
     );
-    final none = tester.widget<StatusPill>(
+    final none = tester.widget<EpBadge>(
       find.byKey(const Key('org-opp-applied-opp3')),
     );
     expect(none.label, '0 applied');
-    expect(none.tone, EpStatusPillTone.neutral);
+    expect(none.tone, EpBadgeTone.neutral);
     expect(
       find.descendant(of: draftCard, matching: find.text('DRAFT')),
       findsOneWidget,
@@ -171,7 +170,7 @@ void main() {
       find.descendant(
         of: hero,
         matching: find.byWidgetPredicate(
-          (widget) => widget is StatusPill && widget.label == 'Confirmed',
+          (widget) => widget is EpBadge && widget.label == 'Confirmed',
         ),
       ),
       findsOneWidget,

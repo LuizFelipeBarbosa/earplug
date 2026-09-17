@@ -1,7 +1,6 @@
 import 'dart:ui' show Tristate;
 
 import 'package:earplug/theme.dart';
-import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
@@ -196,41 +195,6 @@ void main() {
         tester.widget<Text>(find.text('NEEDS SETUP')).style!.color,
         palette.contentDisabled,
       );
-    }
-  });
-
-  testWidgets('status pill tones colour the label only', (tester) async {
-    for (final brightness in Brightness.values) {
-      final palette = buildEpTheme(brightness).extension<EpPalette>()!;
-      for (final tone in EpStatusPillTone.values) {
-        await _pump(
-          tester,
-          StatusPill(label: 'Attention', tone: tone),
-          brightness: brightness,
-        );
-        final expected = switch (tone) {
-          EpStatusPillTone.success => palette.success,
-          EpStatusPillTone.selected => palette.accent,
-          EpStatusPillTone.warning => palette.ink,
-          EpStatusPillTone.attention => palette.attention,
-          EpStatusPillTone.neutral => palette.muted,
-        };
-        expect(
-          tester.widget<Text>(find.text('ATTENTION')).style!.color,
-          expected,
-        );
-        final decoration =
-            tester
-                    .widget<Container>(
-                      find.descendant(
-                        of: find.byType(StatusPill),
-                        matching: find.byType(Container),
-                      ),
-                    )
-                    .decoration!
-                as BoxDecoration;
-        expect(decoration.border!.top.color, palette.line);
-      }
     }
   });
 

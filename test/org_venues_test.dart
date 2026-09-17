@@ -337,7 +337,7 @@ void main() {
       expect(find.byKey(const Key('org-venue-default-v-annex')), findsNothing);
       expect(
         find.byWidgetPredicate(
-          (widget) => widget is StatusPill && widget.label == 'Default',
+          (widget) => widget is EpBadge && widget.label == 'Default',
         ),
         findsOneWidget,
       );
