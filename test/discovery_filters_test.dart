@@ -1,9 +1,20 @@
 import 'package:earplug/app_state.dart';
 import 'package:earplug/demo_data.dart';
+import 'package:earplug/models.dart';
 import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/discovery_app.dart';
+
+/// Ids of the gigs in [feed] that start on the local calendar day of [day],
+/// in the order the feed lists them.
+List<String> gigsOn(Iterable<Gig> feed, DateTime day) => [
+  for (final gig in feed)
+    if (gig.startsAt.year == day.year &&
+        gig.startsAt.month == day.month &&
+        gig.startsAt.day == day.day)
+      gig.id,
+];
 
 void main() {
   group('discovery filters', () {
@@ -46,9 +57,11 @@ void main() {
     test('homeFeed applies date, price and distance filters', () async {
       final app = await discoveryApp();
       final selected = DemoData.gigs[1].startsAt;
+      final expectedIds = gigsOn(app.homeFeed, selected);
+      expect(expectedIds, contains('g2'));
 
       app.setDateRange(DateTimeRange(start: selected, end: selected));
-      expect(app.homeFeed.map((gig) => gig.id), ['g2']);
+      expect(app.homeFeed.map((gig) => gig.id), expectedIds);
 
       app.clearDateFilter();
       app.setPriceFilter(PriceFilter.free);
@@ -68,11 +81,13 @@ void main() {
     test('custom date ranges include the whole selected end date', () async {
       final app = await discoveryApp();
       final selected = DemoData.gigs[1].startsAt;
+      final expectedIds = gigsOn(app.feed, selected);
+      expect(expectedIds, contains('g2'));
 
       app.setDateRange(DateTimeRange(start: selected, end: selected));
 
       expect(app.fDate, DateFilter.custom);
-      expect(app.feed.map((gig) => gig.id), ['g2']);
+      expect(app.feed.map((gig) => gig.id), expectedIds);
     });
 
     test('custom dates stop before a partially loaded calendar day', () async {
