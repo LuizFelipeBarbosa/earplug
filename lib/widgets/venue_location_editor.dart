@@ -324,9 +324,7 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
                     Text(
                       _draft.areaLabel,
                       key: Key('${widget.keyPrefix}-area-caption'),
-                      style: Theme.of(
-                        context,
-                      ).textTheme.epBody.copyWith(fontWeight: FontWeight.w700),
+                      style: Theme.of(context).textTheme.epBodyStrong,
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -485,7 +483,7 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
           Text(
             pinHint,
             style: Theme.of(context).textTheme.epCaption.copyWith(
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
               color: _draft.pin == null
                   ? context.epColors.warning
                   : context.epColors.accent,

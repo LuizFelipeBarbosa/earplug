@@ -430,10 +430,9 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
                     widget.media.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.epBody.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epBodyStrong.copyWith(color: Colors.white),
                   ),
                   const SizedBox(height: 5),
                   Text(

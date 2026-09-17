@@ -81,10 +81,9 @@ class VenueMapPreview extends StatelessWidget {
                   color: context.epColors.accent,
                   child: Text(
                     overlayLabel!,
-                    style: Theme.of(context).textTheme.epLabel.copyWith(
-                      fontSize: 12,
-                      color: Ep.ink,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epLabel.copyWith(color: Ep.ink),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

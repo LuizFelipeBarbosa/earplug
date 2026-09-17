@@ -212,6 +212,42 @@ class _GigWhenBody extends StatelessWidget {
       ),
     );
 
+    Widget wheel(
+      String label,
+      Key key,
+      TimeOfDay time,
+      ValueChanged<TimeOfDay> onChanged,
+    ) => Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          EpEyebrow(label),
+          SizedBox(
+            height: 140,
+            child: CupertinoDatePicker(
+              key: key,
+              mode: CupertinoDatePickerMode.time,
+              minuteInterval: 5,
+              use24hFormat: false,
+              initialDateTime: _roundDownToMinuteInterval(
+                DateTime(
+                  date.year,
+                  date.month,
+                  date.day,
+                  time.hour,
+                  time.minute,
+                ),
+                5,
+              ),
+              onDateTimeChanged: (dt) =>
+                  onChanged(TimeOfDay(hour: dt.hour, minute: dt.minute)),
+              selectionOverlayBuilder: selectionOverlay,
+            ),
+          ),
+        ],
+      ),
+    );
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -242,67 +278,17 @@ class _GigWhenBody extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const EpEyebrow('DOORS'),
-                      SizedBox(
-                        height: 140,
-                        child: CupertinoDatePicker(
-                          key: const Key('gig-doors-wheel'),
-                          mode: CupertinoDatePickerMode.time,
-                          minuteInterval: 5,
-                          use24hFormat: false,
-                          initialDateTime: _roundDownToMinuteInterval(
-                            DateTime(
-                              date.year,
-                              date.month,
-                              date.day,
-                              app.gfDoors.hour,
-                              app.gfDoors.minute,
-                            ),
-                            5,
-                          ),
-                          onDateTimeChanged: (dt) => app.setGfDoors(
-                            TimeOfDay(hour: dt.hour, minute: dt.minute),
-                          ),
-                          selectionOverlayBuilder: selectionOverlay,
-                        ),
-                      ),
-                    ],
-                  ),
+                wheel(
+                  'DOORS',
+                  const Key('gig-doors-wheel'),
+                  app.gfDoors,
+                  app.setGfDoors,
                 ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const EpEyebrow('START'),
-                      SizedBox(
-                        height: 140,
-                        child: CupertinoDatePicker(
-                          key: const Key('gig-start-wheel'),
-                          mode: CupertinoDatePickerMode.time,
-                          minuteInterval: 5,
-                          use24hFormat: false,
-                          initialDateTime: _roundDownToMinuteInterval(
-                            DateTime(
-                              date.year,
-                              date.month,
-                              date.day,
-                              app.gfStart.hour,
-                              app.gfStart.minute,
-                            ),
-                            5,
-                          ),
-                          onDateTimeChanged: (dt) => app.setGfStart(
-                            TimeOfDay(hour: dt.hour, minute: dt.minute),
-                          ),
-                          selectionOverlayBuilder: selectionOverlay,
-                        ),
-                      ),
-                    ],
-                  ),
+                wheel(
+                  'START',
+                  const Key('gig-start-wheel'),
+                  app.gfStart,
+                  app.setGfStart,
                 ),
               ],
             ),
@@ -606,9 +592,7 @@ class _TicketsBodyState extends State<_TicketsBody> {
             children: [
               Text(
                 'Paid tickets',
-                style: Theme.of(
-                  context,
-                ).textTheme.epBody.copyWith(fontWeight: FontWeight.w800),
+                style: Theme.of(context).textTheme.epBodyStrong,
               ),
               const SizedBox(height: 2),
               Text(
