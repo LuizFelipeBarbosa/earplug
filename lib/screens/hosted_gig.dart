@@ -12,6 +12,7 @@ import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/gig_project_actions.dart';
+import '../widgets/opportunity_labels.dart';
 import 'door_mode.dart';
 
 class HostedGigScreen extends StatefulWidget {
@@ -94,7 +95,6 @@ class _HostedGigScreenState extends State<HostedGigScreen> {
 
     final cancelled = project.status == GigProjectStatus.cancelled;
     final canWrite = !cancelled && app.isAdminOf(project.bandId);
-    final title = project.title?.trim();
     final venue = project.venueId == null ? null : app.venue(project.venueId!);
     final startsAt = project.startsAt?.toLocal();
     final meta = [
@@ -115,10 +115,10 @@ class _HostedGigScreenState extends State<HostedGigScreen> {
         ? 'UNPUBLISHED CHANGES'
         : project.status.name.toUpperCase();
     final statusTone = project.hasUnpublishedChanges
-        ? EpStatusPillTone.warning
+        ? EpBadgeTone.warning
         : project.status == GigProjectStatus.published
-        ? EpStatusPillTone.success
-        : EpStatusPillTone.neutral;
+        ? EpBadgeTone.success
+        : EpBadgeTone.neutral;
     final access = switch (project.ticketing) {
       Ticketing.rsvp => 'Free · RSVP',
       Ticketing.external => 'External tickets',
@@ -156,11 +156,7 @@ class _HostedGigScreenState extends State<HostedGigScreen> {
               const SizedBox(width: 16),
             ],
             Expanded(
-              child: EpDisplay(
-                title == null || title.isEmpty ? 'Untitled gig' : title,
-                size: 28,
-                maxLines: 3,
-              ),
+              child: EpDisplay(projectTitle(project), size: 28, maxLines: 3),
             ),
           ],
         ),
@@ -171,7 +167,7 @@ class _HostedGigScreenState extends State<HostedGigScreen> {
         const SizedBox(height: 16),
         Align(
           alignment: Alignment.centerLeft,
-          child: StatusPill(
+          child: EpBadge(
             key: const Key('hosted-gig-status'),
             label: statusLabel,
             tone: statusTone,

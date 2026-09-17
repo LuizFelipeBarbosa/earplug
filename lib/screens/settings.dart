@@ -7,6 +7,7 @@ import '../services/appearance_controller.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_text.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, this.launch});
@@ -79,14 +80,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onPressed: matches
                       ? () => Navigator.pop(dialogContext, true)
                       : null,
-                  style: ButtonStyle(
-                    backgroundColor: WidgetStatePropertyAll(
-                      context.epColors.destructive,
-                    ),
-                    foregroundColor: WidgetStatePropertyAll(
-                      context.epColors.onAccent,
-                    ),
-                  ),
+                  style: _destructiveStyle(context),
                   child: Text('DELETE ACCOUNT'),
                 ),
               ],
@@ -110,46 +104,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
-  Widget _buildLegalLink({
+  Widget _linkCard({
     required Key key,
     required IconData icon,
     required String title,
-    required String url,
     String? caption,
-  }) {
-    final displayCaption = legalEffective
-        ? caption
-        : 'Draft — not yet effective';
-    return EpCard(
-      key: key,
-      onTap: _deleting
-          ? null
-          : () => openExternalForUser(context, url, launch: widget.launch),
-      padding: const EdgeInsets.all(14),
-      child: Row(
-        children: [
-          Icon(icon, color: context.epColors.accent),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: Theme.of(context).textTheme.epLabel),
-                if (displayCaption != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    displayCaption,
-                    style: Theme.of(context).textTheme.epCaption,
-                  ),
-                ],
+    required VoidCallback? onTap,
+  }) => EpCard(
+    key: key,
+    onTap: onTap,
+    padding: const EdgeInsets.all(14),
+    child: Row(
+      children: [
+        Icon(icon, color: context.epColors.accent),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.epLabel),
+              if (caption != null) ...[
+                const SizedBox(height: 2),
+                Text(caption, style: Theme.of(context).textTheme.epCaption),
               ],
-            ),
+            ],
           ),
-          Icon(Icons.chevron_right, color: context.epColors.contentSecondary),
-        ],
-      ),
-    );
-  }
+        ),
+        Icon(Icons.chevron_right, color: context.epColors.contentSecondary),
+      ],
+    ),
+  );
+
+  void _openLegal(String url) =>
+      openExternalForUser(context, url, launch: widget.launch);
 
   @override
   Widget build(BuildContext context) {
@@ -180,7 +167,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
         const SizedBox(height: 20),
-        const SectionLabel('APPEARANCE'),
+        const EpEyebrow('APPEARANCE'),
         const SizedBox(height: 8),
         SegmentedButton<ThemeMode>(
           key: const Key('appearance-mode'),
@@ -199,66 +186,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        const SectionLabel('PRIVACY'),
+        const EpEyebrow('PRIVACY'),
         const SizedBox(height: 8),
-        EpCard(
+        _linkCard(
           key: const Key('privacy-settings-entry'),
+          icon: Icons.lock_outline,
+          title: 'PROFILE PREFERENCES',
+          caption:
+              'Your fan profile stays private. Choose how location and followed bands personalize it.',
           onTap: _deleting ? null : app.openEditProfile,
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Icon(Icons.lock_outline, color: context.epColors.accent),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'PROFILE PREFERENCES',
-                      style: Theme.of(context).textTheme.epLabel,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Your fan profile stays private. Choose how location and followed bands personalize it.',
-                      style: Theme.of(context).textTheme.epCaption,
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.chevron_right,
-                color: context.epColors.contentSecondary,
-              ),
-            ],
-          ),
         ),
         const SizedBox(height: 18),
-        const SectionLabel('LEGAL'),
+        const EpEyebrow('LEGAL'),
         const SizedBox(height: 8),
-        _buildLegalLink(
+        _linkCard(
           key: const Key('legal-terms'),
           icon: Icons.description_outlined,
           title: 'TERMS OF SERVICE',
-          url: legalTermsUrl,
+          caption: legalEffective ? null : 'Draft — not yet effective',
+          onTap: _deleting ? null : () => _openLegal(legalTermsUrl),
         ),
         const SizedBox(height: 10),
-        _buildLegalLink(
+        _linkCard(
           key: const Key('legal-privacy'),
           icon: Icons.privacy_tip_outlined,
           title: 'PRIVACY POLICY',
-          url: legalPrivacyUrl,
+          caption: legalEffective ? null : 'Draft — not yet effective',
+          onTap: _deleting ? null : () => _openLegal(legalPrivacyUrl),
         ),
         const SizedBox(height: 10),
-        _buildLegalLink(
+        _linkCard(
           key: const Key('legal-agreements'),
           icon: Icons.handshake_outlined,
           title: 'AGREEMENTS',
+          caption: legalEffective
+              ? 'Organizer, artist and host agreements'
+              : 'Draft — not yet effective',
           // The organizer agreement is the entry point for the agreements group.
-          url: legalOrganizerAgreementUrl,
-          caption: 'Organizer, artist and host agreements',
+          onTap: _deleting
+              ? null
+              : () => _openLegal(legalOrganizerAgreementUrl),
         ),
         const SizedBox(height: 18),
-        const SectionLabel('SESSION'),
+        const EpEyebrow('SESSION'),
         const SizedBox(height: 8),
         OutlinedButton.icon(
           key: const Key('settings-sign-out'),
@@ -305,14 +275,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               FilledButton(
                 key: const Key('delete-account'),
                 onPressed: _deleting ? null : () => _confirmDelete(app),
-                style: ButtonStyle(
-                  backgroundColor: WidgetStatePropertyAll(
-                    context.epColors.destructive,
-                  ),
-                  foregroundColor: WidgetStatePropertyAll(
-                    context.epColors.onAccent,
-                  ),
-                ),
+                style: _destructiveStyle(context),
                 child: Text(_deleting ? 'DELETING…' : 'DELETE ACCOUNT'),
               ),
               if (_deleteError case final error?) ...[
@@ -335,3 +298,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
+
+ButtonStyle _destructiveStyle(BuildContext context) => ButtonStyle(
+  backgroundColor: WidgetStatePropertyAll(context.epColors.destructive),
+  foregroundColor: WidgetStatePropertyAll(context.epColors.onAccent),
+);

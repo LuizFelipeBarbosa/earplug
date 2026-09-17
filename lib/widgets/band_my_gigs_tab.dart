@@ -117,7 +117,7 @@ class _BandMyGigsTabState extends State<BandMyGigsTab> {
                 trailing: _statusTrailing(
                   context,
                   'DRAFT',
-                  EpStatusPillTone.neutral,
+                  EpBadgeTone.neutral,
                   canOpen: app.isAdminOf(project.bandId),
                 ),
                 onTap: app.isAdminOf(project.bandId)
@@ -151,7 +151,7 @@ class _BandMyGigsTabState extends State<BandMyGigsTab> {
                           app,
                           booking,
                           label: cancelled ? 'CANCELLED' : 'DONE',
-                          tone: EpStatusPillTone.neutral,
+                          tone: EpBadgeTone.neutral,
                         ),
                       BandPastProject(:final project) => _projectRow(
                         context,
@@ -175,10 +175,10 @@ class _BandMyGigsTabState extends State<BandMyGigsTab> {
               icon: Icons.confirmation_number_outlined,
               label: 'Payouts',
               trailing: _payoutsNeedSetup(app.bandPayoutStatus)
-                  ? const StatusPill(
+                  ? const EpBadge(
                       key: Key('band-dash-payouts-badge'),
                       label: 'Set up',
-                      tone: EpStatusPillTone.attention,
+                      tone: EpBadgeTone.attention,
                     )
                   : null,
               onTap: () => app.resetTo(Screen.bandPayouts),
@@ -207,7 +207,7 @@ Widget _bookingRow(
   AppState app,
   Booking booking, {
   required String label,
-  EpStatusPillTone tone = EpStatusPillTone.success,
+  EpBadgeTone tone = EpBadgeTone.success,
 }) => EpGigRow(
   key: Key('band-booking-${booking.id}'),
   date: booking.startsAt,
@@ -225,10 +225,10 @@ Widget _projectRow(BuildContext context, AppState app, GigProject project) {
       ? 'UNPUBLISHED CHANGES'
       : 'PUBLISHED';
   final tone = cancelled
-      ? EpStatusPillTone.neutral
+      ? EpBadgeTone.neutral
       : project.hasUnpublishedChanges
-      ? EpStatusPillTone.warning
-      : EpStatusPillTone.success;
+      ? EpBadgeTone.warning
+      : EpBadgeTone.success;
   final venue = project.venueId == null
       ? null
       : app.venue(project.venueId!).name;
@@ -257,7 +257,7 @@ Widget _projectRow(BuildContext context, AppState app, GigProject project) {
 Widget _statusTrailing(
   BuildContext context,
   String label,
-  EpStatusPillTone tone, {
+  EpBadgeTone tone, {
   bool canOpen = true,
 }) => ConstrainedBox(
   // Long status labels wrap so the date and title retain space on phones.
@@ -266,7 +266,7 @@ Widget _statusTrailing(
     mainAxisSize: MainAxisSize.min,
     children: [
       Flexible(
-        child: StatusPill(label: label, tone: tone),
+        child: EpBadge(label: label, tone: tone),
       ),
       if (canOpen) ...[
         const SizedBox(width: 4),

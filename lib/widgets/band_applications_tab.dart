@@ -62,7 +62,19 @@ class _BandApplicationsTabState extends State<BandApplicationsTab> {
           tabBarClearance,
         ),
         children: [
-          _ApplicationsSummary(groups: groups),
+          EpStatGrid(
+            key: const Key('applications-summary'),
+            topLine: false,
+            bottomLine: false,
+            dividers: true,
+            wrap: false,
+            fitLabels: true,
+            stats: [
+              EpStat('${groups.active}', 'ACTIVE'),
+              EpStat('${groups.shortlisted}', 'SHORTLISTED'),
+              EpStat('${groups.booked}', 'BOOKED'),
+            ],
+          ),
           const EpHairline(),
           EpSectionHeader(label: 'IN PROGRESS · ${groups.inProgress.length}'),
           const SizedBox(height: 12),
@@ -100,58 +112,6 @@ class _BandApplicationsTabState extends State<BandApplicationsTab> {
   }
 }
 
-class _ApplicationsSummary extends StatelessWidget {
-  const _ApplicationsSummary({required this.groups});
-
-  final BandApplicationGroups groups;
-
-  @override
-  Widget build(BuildContext context) {
-    final stats = [
-      EpStat('${groups.active}', 'ACTIVE'),
-      EpStat('${groups.shortlisted}', 'SHORTLISTED'),
-      EpStat('${groups.booked}', 'BOOKED'),
-    ];
-    // EpStatGrid wraps narrow layouts and has no vertical cell dividers.
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: IntrinsicHeight(
-        child: Row(
-          key: const Key('applications-summary'),
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var index = 0; index < stats.length; index++) ...[
-              if (index > 0)
-                SizedBox(
-                  width: 1,
-                  child: ColoredBox(color: context.epColors.border),
-                ),
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(left: index == 0 ? 0 : 16, right: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      EpDisplay(stats[index].value, size: 32),
-                      const SizedBox(height: 4),
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: EpEyebrow(stats[index].label),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _ApplicationCard extends StatelessWidget {
   const _ApplicationCard({
     required this.row,
@@ -172,28 +132,19 @@ class _ApplicationCard extends StatelessWidget {
     final status = application.status;
     final (label, tone) = switch (status) {
       ArtistApplicationStatus.submitted ||
-      ArtistApplicationStatus.underReview => (
-        'IN REVIEW',
-        EpStatusPillTone.neutral,
-      ),
+      ArtistApplicationStatus.underReview => ('IN REVIEW', EpBadgeTone.neutral),
       ArtistApplicationStatus.shortlisted => (
         'SHORTLISTED',
-        EpStatusPillTone.success,
+        EpBadgeTone.success,
       ),
       ArtistApplicationStatus.offered => (
         'OFFER RECEIVED',
-        EpStatusPillTone.success,
+        EpBadgeTone.success,
       ),
-      ArtistApplicationStatus.booked => ('BOOKED', EpStatusPillTone.success),
-      ArtistApplicationStatus.declined => (
-        'DECLINED',
-        EpStatusPillTone.neutral,
-      ),
-      ArtistApplicationStatus.withdrawn => (
-        'WITHDRAWN',
-        EpStatusPillTone.neutral,
-      ),
-      ArtistApplicationStatus.expired => ('EXPIRED', EpStatusPillTone.neutral),
+      ArtistApplicationStatus.booked => ('BOOKED', EpBadgeTone.success),
+      ArtistApplicationStatus.declined => ('DECLINED', EpBadgeTone.neutral),
+      ArtistApplicationStatus.withdrawn => ('WITHDRAWN', EpBadgeTone.neutral),
+      ArtistApplicationStatus.expired => ('EXPIRED', EpBadgeTone.neutral),
     };
     final tracker = ApplicationTracker.of(application);
     final closesAt = opportunity.applicationsCloseAt;
@@ -226,7 +177,7 @@ class _ApplicationCard extends StatelessWidget {
           const SizedBox(height: 8),
           EpMonoText('APPLIED ${shortDateLabel(application.createdAt)}'),
           const SizedBox(height: 12),
-          StatusPill(label: label, tone: tone),
+          EpBadge(label: label, tone: tone),
           const SizedBox(height: 20),
           ApplicationTrackerBar(
             key: ValueKey('band-app-${application.id}-tracker'),
@@ -269,7 +220,6 @@ class _ApplicationCard extends StatelessWidget {
                         key: ValueKey('band-app-${application.id}-respond'),
                         label: 'Respond',
                         variant: EpPillVariant.primary,
-                        size: EpPillSize.chip,
                         onPressed: () => app.openBooking(
                           booking.id,
                           viewAs: BookingSide.artist,
@@ -278,8 +228,6 @@ class _ApplicationCard extends StatelessWidget {
                     : EpPill(
                         key: ValueKey('band-app-${application.id}-withdraw'),
                         label: 'Withdraw',
-                        variant: EpPillVariant.outline,
-                        size: EpPillSize.chip,
                         onPressed: onWithdraw,
                       ),
               ),

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../date_names.dart';
 import '../genres.dart';
 import '../models.dart';
 import '../money.dart';
@@ -366,7 +367,6 @@ class _DiscoverChip extends StatelessWidget {
     child: EpPill(
       key: chipKey,
       label: label,
-      size: EpPillSize.chip,
       selected: selected,
       variant: selected ? EpPillVariant.primary : EpPillVariant.outline,
       onPressed: onPressed,
@@ -439,9 +439,9 @@ class _DiscoverCard extends StatelessWidget {
                     ],
                     if (item.invited) ...[
                       const SizedBox(height: 8),
-                      const StatusPill(
+                      const EpBadge(
                         label: 'INVITED',
-                        tone: EpStatusPillTone.selected,
+                        tone: EpBadgeTone.selected,
                       ),
                     ],
                   ],
@@ -505,14 +505,12 @@ class _DiscoverCard extends StatelessWidget {
                         key: ValueKey('opp-card-${opportunity.id}-applied'),
                         label: 'Applied',
                         icon: Icons.check,
-                        variant: EpPillVariant.outline,
                         selected: true,
                       )
                     : EpPill(
                         key: ValueKey('opp-card-${opportunity.id}-apply'),
                         label: 'Apply',
                         variant: EpPillVariant.primary,
-                        size: EpPillSize.chip,
                         onPressed: openDetail,
                       ),
               ),
@@ -524,25 +522,7 @@ class _DiscoverCard extends StatelessWidget {
   }
 }
 
-String? _opportunityDate(DateTime? date) {
-  if (date == null) return null;
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-  final local = date.toLocal();
-  return '${months[local.month - 1]} ${local.day}';
-}
+String? _opportunityDate(DateTime? d) => d == null ? null : shortDateLabel(d);
 
 class _MoreFiltersSheet extends StatefulWidget {
   const _MoreFiltersSheet({required this.app});

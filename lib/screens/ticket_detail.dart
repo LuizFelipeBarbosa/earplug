@@ -6,6 +6,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 
 class TicketDetailScreen extends StatefulWidget {
@@ -73,11 +74,11 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
         }
 
         final (label, tone) = switch (ticket.status) {
-          TicketStatus.valid => ('VALID', EpStatusPillTone.success),
-          TicketStatus.used => ('CHECKED IN', EpStatusPillTone.selected),
-          TicketStatus.refunded => ('REFUNDED', EpStatusPillTone.warning),
-          TicketStatus.cancelled => ('CANCELLED', EpStatusPillTone.neutral),
-          TicketStatus.unknown => ('UNAVAILABLE', EpStatusPillTone.neutral),
+          TicketStatus.valid => ('VALID', EpBadgeTone.success),
+          TicketStatus.used => ('CHECKED IN', EpBadgeTone.selected),
+          TicketStatus.refunded => ('REFUNDED', EpBadgeTone.warning),
+          TicketStatus.cancelled => ('CANCELLED', EpBadgeTone.neutral),
+          TicketStatus.unknown => ('UNAVAILABLE', EpBadgeTone.neutral),
         };
         final startsAt = ticket.gig.startsAt;
         final doorsAt = ticket.gig.doorsAt;
@@ -118,7 +119,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerLeft,
-              child: StatusPill(label: label, tone: tone),
+              child: EpBadge(label: label, tone: tone),
             ),
             const SizedBox(height: 24),
             Text(
