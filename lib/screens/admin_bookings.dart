@@ -7,6 +7,7 @@ import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_states.dart';
 
 class AdminBookingsScreen extends StatefulWidget {
   const AdminBookingsScreen({super.key});
@@ -123,7 +124,10 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     if (!app.isPlatformAdmin) {
-      return _NotAuthorized(onBack: app.toFanView);
+      return EpNotAuthorized(
+        message: 'Only platform admins can view bookings.',
+        onBack: app.toFanView,
+      );
     }
 
     return Material(
@@ -305,41 +309,6 @@ class _BookingRow extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _NotAuthorized extends StatelessWidget {
-  const _NotAuthorized({required this.onBack});
-
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      key: const Key('admin-not-authorized'),
-      child: Material(
-        color: context.epColors.background,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Only platform admins can view bookings.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.epBody,
-              ),
-              const SizedBox(height: 16),
-              EpButton(
-                'BACK TO FAN VIEW',
-                kind: EpButtonKind.outline,
-                onTap: onBack,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

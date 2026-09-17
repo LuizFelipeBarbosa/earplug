@@ -9,20 +9,12 @@ import '../theme.dart';
 import '../widgets/approx_area_map.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_states.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/map_view.dart';
+import '../widgets/opportunity_labels.dart';
 import '../widgets/sheets.dart';
 import 'admin_queue.dart' show organizationTypeLabel;
-
-String venueTypeLabel(VenueType type) => switch (type) {
-  VenueType.bar => 'Bar',
-  VenueType.club => 'Club',
-  VenueType.hall => 'Hall',
-  VenueType.house => 'House',
-  VenueType.outdoor => 'Outdoor',
-  VenueType.private => 'Private',
-  VenueType.other => 'Other',
-};
 
 class AdminApplicationScreen extends StatefulWidget {
   const AdminApplicationScreen({super.key, required this.applicationId});
@@ -177,7 +169,10 @@ class _AdminApplicationScreenState extends State<AdminApplicationScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     if (!app.isPlatformAdmin) {
-      return _NotAuthorized(onBack: app.toFanView);
+      return EpNotAuthorized(
+        message: 'Only platform admins can review organizer applications.',
+        onBack: app.toFanView,
+      );
     }
 
     final application = _application;
@@ -452,10 +447,7 @@ class _DocumentsSection extends StatelessWidget {
     return _DetailSection(
       label: 'DOCUMENTS',
       child: documents.isEmpty
-          ? Text(
-              'No documents.',
-              style: Theme.of(context).textTheme.epCaption,
-            )
+          ? Text('No documents.', style: Theme.of(context).textTheme.epCaption)
           : Column(
               children: [
                 for (var index = 0; index < documents.length; index++)
@@ -542,7 +534,7 @@ class _ReviewSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           StatusPill(
-            label: _statusLabel(application.status),
+            label: organizationApplicationStatusLabel(application.status),
             tone: _statusTone(application.status),
           ),
           if (note != null && note.isNotEmpty) ...[
@@ -581,7 +573,10 @@ class _DetailSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SectionBar(label: label),
-        Padding(padding: const EdgeInsets.only(top: 4, bottom: 8), child: child),
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 8),
+          child: child,
+        ),
       ],
     );
   }
@@ -825,50 +820,9 @@ class _ApprovalSheetState extends State<_ApprovalSheet> {
   }
 }
 
-class _NotAuthorized extends StatelessWidget {
-  const _NotAuthorized({required this.onBack});
-
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      key: const Key('admin-not-authorized'),
-      child: Material(
-        color: context.epColors.background,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Only platform admins can review organizer applications.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.epBody,
-              ),
-              const SizedBox(height: 16),
-              EpButton(
-                'BACK TO FAN VIEW',
-                kind: EpButtonKind.outline,
-                onTap: onBack,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 bool _isActionable(OrganizationApplicationStatus status) =>
     status == OrganizationApplicationStatus.submitted ||
     status == OrganizationApplicationStatus.underReview;
-
-String _statusLabel(OrganizationApplicationStatus status) => status.wireValue
-    .replaceAll('_', ' ')
-    .split(' ')
-    .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
-    .join(' ');
 
 EpStatusPillTone _statusTone(OrganizationApplicationStatus status) =>
     switch (status) {

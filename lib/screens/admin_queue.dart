@@ -7,7 +7,9 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
+import '../widgets/ep_states.dart';
 import '../widgets/ep_text.dart';
+import '../widgets/opportunity_labels.dart';
 
 String organizationTypeLabel(OrganizationType type) => switch (type) {
   OrganizationType.venueOperator => 'Venue operator',
@@ -148,7 +150,15 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     if (!app.isPlatformAdmin) {
-      return _NotAuthorized(onBack: app.toFanView);
+      return EpNotAuthorized(
+        message: 'Only platform admins can review organizer applications.',
+        onBack: app.toFanView,
+        action: EpPill(
+          label: 'Back to fan view',
+          variant: EpPillVariant.outline,
+          onPressed: app.toFanView,
+        ),
+      );
     }
 
     return Material(
@@ -216,7 +226,8 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
                   ],
                   EpSegmentTabs(
                     labels: [
-                      for (final filter in _filters) _statusLabel(filter),
+                      for (final filter in _filters)
+                        organizationApplicationStatusLabel(filter),
                     ],
                     selected: _filters.indexOf(_filter),
                     onSelect: (index) => _selectFilter(app, _filters[index]),
@@ -258,7 +269,7 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 30),
                       child: Text(
-                        'No ${_statusLabel(_filter).toLowerCase()} applications.',
+                        'No ${organizationApplicationStatusLabel(_filter).toLowerCase()} applications.',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.epBody.copyWith(
                           color: context.epColors.muted,
@@ -440,44 +451,3 @@ class _OtherQueueRow extends StatelessWidget {
     ),
   );
 }
-
-class _NotAuthorized extends StatelessWidget {
-  const _NotAuthorized({required this.onBack});
-
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      key: const Key('admin-not-authorized'),
-      child: Material(
-        color: context.epColors.background,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Only platform admins can review organizer applications.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.epBody,
-              ),
-              const SizedBox(height: 16),
-              EpPill(
-                label: 'Back to fan view',
-                variant: EpPillVariant.outline,
-                onPressed: onBack,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-String _statusLabel(OrganizationApplicationStatus status) => status.wireValue
-    .replaceAll('_', ' ')
-    .split(' ')
-    .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
-    .join(' ');
