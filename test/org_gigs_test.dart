@@ -9,6 +9,7 @@ import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
@@ -116,7 +117,7 @@ void main() {
   testWidgets('the UP NEXT hero shows the fully booked event and opens it', (
     tester,
   ) async {
-    final booked = _fullyBooked(DemoData.opportunities['opp1']!);
+    final booked = fullyBooked(DemoData.opportunities['opp1']!);
     final harness = await _pumpGigs(
       tester,
       size: const Size(390, 844),
@@ -381,23 +382,6 @@ Future<AppHarness> _pumpGigs(
   await enterOrganizer(tester, harness, 'org1');
   return harness;
 }
-
-/// Every slot filled by the demo band, so the opportunity counts as confirmed.
-Opportunity _fullyBooked(Opportunity opportunity) => opportunity.copyWith(
-  slots: [
-    for (final slot in opportunity.slots)
-      OpportunitySlot(
-        id: slot.id,
-        order: slot.order,
-        role: slot.role,
-        setLengthMin: slot.setLengthMin,
-        guaranteeMinor: slot.guaranteeMinor,
-        required: slot.required,
-        status: SlotStatus.booked,
-        bandId: 'b1',
-      ),
-  ],
-);
 
 const _enabledStripe = StripeAccountStatus(
   state: StripeAccountState.enabled,

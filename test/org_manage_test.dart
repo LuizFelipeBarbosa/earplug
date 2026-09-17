@@ -14,6 +14,7 @@ import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
@@ -79,7 +80,7 @@ void main() {
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final booked = _fullyBooked(DemoData.opportunities['opp1']!);
+    final booked = fullyBooked(DemoData.opportunities['opp1']!);
     final repository = StubRepository(auth: auth)
       ..returnsStream<List<Opportunity>>(
         'watchOrganizationOpportunities',
@@ -976,25 +977,6 @@ void main() {
     expect(harness.app.currentOrganization, isNotNull);
   });
 }
-
-/// The stat cells render their value as display type and their label as a mono
-/// eyebrow, so both read back uppercased.
-/// Every slot filled by the demo band, so the request counts as confirmed.
-Opportunity _fullyBooked(Opportunity opportunity) => opportunity.copyWith(
-  slots: [
-    for (final slot in opportunity.slots)
-      OpportunitySlot(
-        id: slot.id,
-        order: slot.order,
-        role: slot.role,
-        setLengthMin: slot.setLengthMin,
-        guaranteeMinor: slot.guaranteeMinor,
-        required: slot.required,
-        status: SlotStatus.booked,
-        bandId: 'b1',
-      ),
-  ],
-);
 
 const _enabledStripe = StripeAccountStatus(
   state: StripeAccountState.enabled,

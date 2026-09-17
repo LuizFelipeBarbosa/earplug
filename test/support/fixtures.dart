@@ -37,6 +37,23 @@ PickedMedia videoFixture({String filename = 'riptide_live.mp4'}) => PickedMedia(
   sizeBytes: 3,
 );
 
+/// Every slot filled by the demo band, so the opportunity counts as confirmed.
+Opportunity fullyBooked(Opportunity opportunity) => opportunity.copyWith(
+  slots: [
+    for (final slot in opportunity.slots)
+      OpportunitySlot(
+        id: slot.id,
+        order: slot.order,
+        role: slot.role,
+        setLengthMin: slot.setLengthMin,
+        guaranteeMinor: slot.guaranteeMinor,
+        required: slot.required,
+        status: SlotStatus.booked,
+        bandId: 'b1',
+      ),
+  ],
+);
+
 /// A published RSVP gig at `v1`. Date strings derive from [startsAt] unless
 /// a test needs specific copy.
 Gig gigFixture({

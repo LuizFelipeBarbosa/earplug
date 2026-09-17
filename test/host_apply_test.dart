@@ -1,18 +1,16 @@
-import 'dart:typed_data';
-
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/host_apply.dart';
 import 'package:earplug/screens/org_application_status.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/services/media_picker.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fakes.dart';
+import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
@@ -704,12 +702,7 @@ const _hostFields = {
   'host-apply-email': 'jordan@example.com',
 };
 
-final _idPhoto = PickedMedia(
-  bytes: Uint8List.fromList([1, 2, 3]),
-  filename: 'id.jpg',
-  contentType: 'image/jpeg',
-  sizeBytes: 3,
-);
+final _idPhoto = stubPhotoFixture(filename: 'id.jpg');
 
 Future<OrganizationApplication> _seedHostDraft(
   DemoRepository repository, {

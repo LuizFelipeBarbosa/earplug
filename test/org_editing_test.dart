@@ -1,17 +1,15 @@
-import 'dart:convert';
-
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/org_settings.dart';
 import 'package:earplug/screens/org_venue_edit.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/services/media_picker.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fakes.dart';
+import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
@@ -338,12 +336,4 @@ Future<void> _scrollTo(WidgetTester tester, Finder target) async {
   await tester.pumpAndSettle();
 }
 
-final _photo = PickedMedia(
-  bytes: base64Decode(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk'
-    '+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-  ),
-  filename: 'organization.png',
-  contentType: 'image/png',
-  sizeBytes: 68,
-);
+final _photo = photoFixture(filename: 'organization.png');
