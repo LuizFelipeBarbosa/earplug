@@ -8,6 +8,7 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_states.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
@@ -56,7 +57,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
       await action();
     } catch (error) {
       if (!mounted || app.organizationId != organizationId) return;
-      setState(() => _stripeError = _errorMessage(error));
+      setState(() => _stripeError = stripStateErrorPrefix(error));
     }
   }
 
@@ -72,7 +73,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(_errorMessage(error))));
+      ).showSnackBar(SnackBar(content: Text(stripStateErrorPrefix(error))));
     }
   }
 
@@ -188,7 +189,13 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (app.financeError != null && overview == null)
-            _LoadError(onRetry: () => app.loadFinance(refresh: true)),
+            EpLoadError(
+              message: 'Could not load finance.',
+              onRetry: () => app.loadFinance(refresh: true),
+              topPadding: 0,
+              gap: 8,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+            ),
           if (overview != null) ...[
             Column(
               key: const Key('org-finance-funds'),
@@ -541,25 +548,3 @@ class _PendingPaymentRow extends StatelessWidget {
     ),
   );
 }
-
-class _LoadError extends StatelessWidget {
-  const _LoadError({required this.onRetry});
-
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text(
-        'Could not load finance.',
-        style: Theme.of(context).textTheme.epBody,
-      ),
-      const SizedBox(height: 8),
-      EpButton('RETRY', kind: EpButtonKind.outline, onTap: onRetry),
-    ],
-  );
-}
-
-String _errorMessage(Object error) =>
-    error.toString().replaceFirst(RegExp(r'^(Bad state: |Exception: )'), '');

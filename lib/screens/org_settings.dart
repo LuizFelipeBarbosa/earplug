@@ -12,6 +12,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_states.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/org_team_panel.dart';
@@ -392,7 +393,10 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
             child: Center(child: CircularProgressIndicator()),
           )
         else if (_loadError != null)
-          _LoadError(onRetry: _load)
+          EpLoadError(
+            message: 'Could not load the organization.',
+            onRetry: _load,
+          )
         else if (dashboard != null) ...[
           _buildProfileSection(dashboard.organization, canManage: canManage),
           const SizedBox(height: 32),
@@ -972,26 +976,6 @@ class _DeactivateOrganizationDialogState
       setState(() => _working = false);
       app.say('Could not deactivate. Please retry.');
     }
-  }
-}
-
-class _LoadError extends StatelessWidget {
-  const _LoadError({required this.onRetry});
-
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 56),
-      child: Column(
-        children: [
-          const Text('Could not load the organization.'),
-          const SizedBox(height: 12),
-          EpButton('RETRY', kind: EpButtonKind.outline, onTap: onRetry),
-        ],
-      ),
-    );
   }
 }
 

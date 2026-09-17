@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../host_request_groups.dart';
+import '../initials.dart';
 import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
@@ -72,7 +73,10 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
       if (canManage) ...[
         ReadinessModule(scopeKey: orgReadinessScope(organizationId)),
         if (readinessFailed)
-          _ReadinessRetry(app: app, organizationId: organizationId),
+          ReadinessRetry(
+            retryKey: const Key('org-dash-readiness-retry'),
+            onRetry: () => app.refreshOrganizationDashboard(organizationId),
+          ),
       ],
     ];
     final hero = _NextEvent(
@@ -176,7 +180,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = organization?.name ?? 'Organizer';
-    final roleText = role == null ? 'Member' : _roleLabel(role!);
+    final roleText = role == null ? 'Member' : organizationRoleLabel(role!);
     return Row(
       key: const Key('org-dash-header'),
       children: [
@@ -192,7 +196,13 @@ class _Header extends StatelessWidget {
                     url: organization?.photoUrls.firstOrNull,
                     cacheWidth: 40,
                     cacheHeight: 40,
-                    fallback: EpAvatarTile(initials: _initials(name)),
+                    fallback: EpAvatarTile(
+                      initials: initialsFirstWords(
+                        name,
+                        stripPunctuation: true,
+                        fallback: '',
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -444,47 +454,3 @@ class _MenuRows extends StatelessWidget {
     );
   }
 }
-
-class _ReadinessRetry extends StatelessWidget {
-  const _ReadinessRetry({required this.app, required this.organizationId});
-
-  final AppState app;
-  final String organizationId;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Expanded(
-        child: EpMonoText(
-          'Readiness unavailable',
-          color: context.epColors.contentSecondary,
-        ),
-      ),
-      const SizedBox(width: 12),
-      EpPill(
-        key: const Key('org-dash-readiness-retry'),
-        label: 'Retry',
-        size: EpPillSize.chip,
-        onPressed: () => app.refreshOrganizationDashboard(organizationId),
-      ),
-    ],
-  );
-}
-
-/// Up to two letters from the name's first words; "Jordan (host)" gives "JH".
-String _initials(String name) {
-  final words = name
-      .split(RegExp(r'\s+'))
-      .map(
-        (word) => word.replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), ''),
-      )
-      .where((word) => word.isNotEmpty);
-  return words.take(2).map((word) => word[0].toUpperCase()).join();
-}
-
-String _roleLabel(OrganizationRole role) => switch (role) {
-  OrganizationRole.owner => 'Owner',
-  OrganizationRole.manager => 'Manager',
-  OrganizationRole.finance => 'Finance',
-  OrganizationRole.door => 'Door',
-};
