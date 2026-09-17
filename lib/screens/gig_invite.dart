@@ -5,6 +5,8 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_text.dart';
+import '../widgets/join_flow.dart';
 
 class GigInviteScreen extends StatelessWidget {
   const GigInviteScreen({super.key});
@@ -35,7 +37,7 @@ class GigInviteScreen extends StatelessWidget {
                 ],
               ),
             ),
-            Divider(height: 1, color: context.epColors.border),
+            const EpHairline(),
             Expanded(
               child: Center(
                 child: SingleChildScrollView(
@@ -82,12 +84,13 @@ class GigInviteScreen extends StatelessWidget {
         invite: invite,
       );
     }
-    return _Unavailable(
+    return JoinError(
       key: const ValueKey('performer-invite-unavailable'),
       message:
           app.performerInviteError ??
           'This invitation is invalid, expired, or revoked.',
-      onRetry: app.performerInviteToken == null
+      actionLabel: 'TRY AGAIN',
+      onAction: app.performerInviteToken == null
           ? null
           : () => app.openPerformerInvite(app.performerInviteToken!),
     );
@@ -230,44 +233,6 @@ class _Claimed extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 15),
           onTap: onManager,
         ),
-      ],
-    );
-  }
-}
-
-class _Unavailable extends StatelessWidget {
-  const _Unavailable({super.key, required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback? onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Icon(
-          Icons.link_off,
-          size: 54,
-          color: context.epColors.contentSecondary,
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'Invitation unavailable',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.epDisplayAt(22),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          message,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.epCaption.copyWith(fontSize: 12.5),
-        ),
-        if (onRetry != null) ...[
-          const SizedBox(height: 20),
-          EpButton('TRY AGAIN', kind: EpButtonKind.outline, onTap: onRetry),
-        ],
       ],
     );
   }

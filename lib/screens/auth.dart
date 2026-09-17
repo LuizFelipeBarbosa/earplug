@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../app_links.dart' show legalEffective, legalPrivacyUrl, legalTermsUrl;
 import '../app_state.dart';
+import '../date_names.dart';
 import '../services/auth_service.dart';
 import '../services/user_actions.dart' show openExternalForUser;
 import '../theme.dart';
@@ -25,24 +26,10 @@ const _stepMaxWidth = 420.0;
 
 /// "29 JUL 26" — the date pressed into the door stamp.
 String _stampDate() {
-  const months = [
-    'JAN',
-    'FEB',
-    'MAR',
-    'APR',
-    'MAY',
-    'JUN',
-    'JUL',
-    'AUG',
-    'SEP',
-    'OCT',
-    'NOV',
-    'DEC',
-  ];
   final now = DateTime.now();
   final day = now.day.toString().padLeft(2, '0');
   final year = (now.year % 100).toString().padLeft(2, '0');
-  return '$day ${months[now.month - 1]} $year';
+  return '$day ${monthNamesUpper[now.month - 1]} $year';
 }
 
 /// "21:00" — the door time shown next to the mark.

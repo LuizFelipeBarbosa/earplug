@@ -5,6 +5,8 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_text.dart';
+import '../widgets/join_flow.dart';
 
 class BandJoinScreen extends StatelessWidget {
   const BandJoinScreen({super.key});
@@ -36,7 +38,7 @@ class BandJoinScreen extends StatelessWidget {
                 ],
               ),
             ),
-            Divider(height: 1, color: context.epColors.border),
+            const EpHairline(),
             Expanded(
               child: Center(
                 child: SingleChildScrollView(
@@ -59,30 +61,41 @@ class BandJoinScreen extends StatelessWidget {
 
   Widget _body(AppState app) {
     if (app.joinInviteLoading) {
-      return const _JoinLoading(key: ValueKey('join-loading'));
+      return const JoinLoading(key: ValueKey('join-loading'));
     }
     if (app.joinInviteAccepted) {
-      return _JoinAccepted(
+      final invite = app.joinInvite;
+      return JoinAccepted(
         key: const ValueKey('join-accepted'),
-        invite: app.joinInvite,
+        title: invite == null
+            ? 'You joined the band.'
+            : 'You joined ${invite.bandName}.',
+        buttonLabel: 'OPEN BAND DASHBOARD',
         onDashboard: app.returnToBandDashboard,
       );
     }
     if (app.joinInviteError case final error?) {
-      return _JoinError(
+      return JoinError(
         key: const ValueKey('join-error'),
         message: error,
-        onRetry: app.joinToken == null
+        actionLabel: 'TRY AGAIN',
+        onAction: app.joinToken == null
             ? null
             : () => app.openJoinInvite(app.joinToken!),
       );
     }
     if (app.joinInvite case final invite?) {
-      return _JoinConfirmation(
+      return JoinConfirmation(
         key: const ValueKey('join-confirmation'),
-        invite: invite,
+        leading: Center(child: _InviteAvatar(invite: invite)),
+        title: 'Join ${invite.bandName}?',
+        titleSize: 24,
+        body:
+            'You were invited to become a band member. Members can return to the '
+            'band dashboard and help manage gigs and media.',
         signedIn: app.authed,
         accepting: app.joinInviteAccepting,
+        confirmLabel: 'JOIN BAND',
         onConfirm: () async {
           try {
             await app.confirmJoinInvite();
@@ -92,173 +105,9 @@ class BandJoinScreen extends StatelessWidget {
         },
       );
     }
-    return _JoinError(
-      key: const ValueKey('join-empty'),
+    return const JoinError(
+      key: ValueKey('join-empty'),
       message: 'This invitation is invalid, expired, or revoked.',
-      onRetry: null,
-    );
-  }
-}
-
-class _JoinLoading extends StatelessWidget {
-  const _JoinLoading({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const CircularProgressIndicator(),
-        const SizedBox(height: 16),
-        Text(
-          'CHECKING INVITATION…',
-          style: Theme.of(context).textTheme.epMeta,
-        ),
-      ],
-    );
-  }
-}
-
-class _JoinConfirmation extends StatelessWidget {
-  const _JoinConfirmation({
-    super.key,
-    required this.invite,
-    required this.signedIn,
-    required this.accepting,
-    required this.onConfirm,
-  });
-
-  final BandInviteResolution invite;
-  final bool signedIn;
-  final bool accepting;
-  final Future<void> Function() onConfirm;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Center(child: _InviteAvatar(invite: invite)),
-        const SizedBox(height: 18),
-        Text(
-          'Join ${invite.bandName}?',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.epDisplayAt(24),
-        ),
-        const SizedBox(height: 9),
-        Text(
-          'You were invited to become a band member. Members can return to the '
-          'band dashboard and help manage gigs and media.',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.epBody.copyWith(
-            fontSize: 13,
-            color: context.epColors.contentSecondary,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          signedIn
-              ? 'You will only join after you confirm below.'
-              : 'Sign in first, then return here to confirm. You will not join automatically.',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.epCaption.copyWith(
-            fontSize: 11,
-            color: context.epColors.contentDisabled,
-          ),
-        ),
-        const SizedBox(height: 22),
-        EpButton(
-          accepting
-              ? 'JOINING…'
-              : signedIn
-              ? 'JOIN BAND'
-              : 'SIGN IN TO JOIN',
-          kind: accepting ? EpButtonKind.disabled : EpButtonKind.filled,
-          padding: const EdgeInsets.symmetric(vertical: 15),
-          onTap: accepting ? null : onConfirm,
-        ),
-      ],
-    );
-  }
-}
-
-class _JoinAccepted extends StatelessWidget {
-  const _JoinAccepted({
-    super.key,
-    required this.invite,
-    required this.onDashboard,
-  });
-
-  final BandInviteResolution? invite;
-  final VoidCallback onDashboard;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Icon(Icons.check_circle, size: 62, color: context.epColors.accent),
-        const SizedBox(height: 18),
-        Text(
-          invite == null
-              ? 'You joined the band.'
-              : 'You joined ${invite!.bandName}.',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.epDisplayAt(23),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Your membership is active.',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.epCaption.copyWith(fontSize: 12.5),
-        ),
-        const SizedBox(height: 22),
-        EpButton(
-          'OPEN BAND DASHBOARD',
-          padding: const EdgeInsets.symmetric(vertical: 15),
-          onTap: onDashboard,
-        ),
-      ],
-    );
-  }
-}
-
-class _JoinError extends StatelessWidget {
-  const _JoinError({super.key, required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback? onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Icon(
-          Icons.link_off,
-          size: 54,
-          color: context.epColors.contentSecondary,
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'Invitation unavailable',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.epDisplayAt(22),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          message,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.epCaption.copyWith(fontSize: 12.5),
-        ),
-        if (onRetry != null) ...[
-          const SizedBox(height: 20),
-          EpButton('TRY AGAIN', kind: EpButtonKind.outline, onTap: onRetry),
-        ],
-      ],
     );
   }
 }
@@ -281,9 +130,9 @@ class _InviteAvatar extends StatelessWidget {
       ),
       child: Text(
         invite.initials,
-        style: Theme.of(
-          context,
-        ).textTheme.epDisplayAt(27).copyWith(color: context.epColors.background),
+        style: Theme.of(context).textTheme
+            .epDisplayAt(27)
+            .copyWith(color: context.epColors.background),
       ),
     );
   }
