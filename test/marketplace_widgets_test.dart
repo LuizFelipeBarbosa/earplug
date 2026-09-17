@@ -4,7 +4,6 @@ import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/approx_area_map.dart';
 import 'package:earplug/widgets/ep_map.dart';
 import 'package:earplug/widgets/map_view.dart';
-import 'package:earplug/widgets/money_text.dart';
 import 'package:earplug/widgets/status_timeline.dart';
 import 'package:earplug/widgets/venue_location_editor.dart';
 import 'package:flutter/material.dart';
@@ -43,27 +42,6 @@ void main() {
     expect(find.bySemanticsLabel('In review, current'), findsOneWidget);
     expect(find.bySemanticsLabel('Confirmed, pending'), findsOneWidget);
     semantics.dispose();
-  });
-
-  testWidgets('money text formats positive, negative, and signed amounts', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _host(
-        const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            MoneyText(Money(125000)),
-            MoneyText(Money(-500)),
-            MoneyText(Money(500), signed: true),
-          ],
-        ),
-      ),
-    );
-
-    expect(find.text(r'$1,250.00'), findsOneWidget);
-    expect(find.text(r'-$5.00'), findsOneWidget);
-    expect(find.text(r'+$5.00'), findsOneWidget);
   });
 
   test('money JSON defaults missing values to zero US dollars', () {

@@ -149,13 +149,8 @@ void main() {
     });
 
     test('refresh tokens preserve old names and expose semantic aliases', () {
-      expect(Ep.volt, Ep.accent);
-      expect(Ep.brand, Ep.accent);
       expect(Ep.warning, Ep.ink);
       expect(Ep.ink, Ep.contentPrimary);
-      expect(Ep.raised, Ep.surfaceRaised);
-      expect(Ep.selected, Ep.surfaceSelected);
-      expect(Ep.dark, Ep.background);
 
       final text = buildEpTheme().textTheme;
       expect(text.epPosterTitle.fontFamily, 'PP Telegraf');
@@ -397,13 +392,11 @@ void main() {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const SectionBar(label: 'Upcoming', count: 2),
-                const DateBlock(
-                  day: '10',
-                  month: 'Sep',
+                DateBlock.forDate(
+                  DateTime(2025, 9, 10),
                   semanticLabel: 'Wednesday September 10',
                 ),
                 const StatusPill(label: 'Going ✓'),
-                const ProfileCompleteBadge(),
                 LedgerRow(
                   title: 'Riptide',
                   details: const ['Foghorn Club', 'SEP 10', '56 going'],
@@ -421,10 +414,6 @@ void main() {
         expect(find.text('GOING ✓'), findsOne);
         expect(
           tester.widget<Text>(find.text('GOING ✓')).style!.fontSize,
-          greaterThanOrEqualTo(11),
-        );
-        expect(
-          tester.widget<Text>(find.text('PROFILE COMPLETE')).style!.fontSize,
           greaterThanOrEqualTo(11),
         );
         expect(
@@ -550,7 +539,6 @@ void main() {
     ) async {
       final semantics = tester.ensureSemantics();
       var enabled = false;
-      var resumed = false;
       var previewed = false;
       var saved = false;
       var archived = false;
@@ -564,11 +552,6 @@ void main() {
                 value: enabled,
                 caption: 'Send an update when a followed band publishes a gig.',
                 onChanged: (value) => enabled = value,
-              ),
-              GhostDraftRow(
-                title: 'Halloween show',
-                missing: 'finish lineup to publish',
-                onResume: () => resumed = true,
               ),
               StickyActionBar(
                 secondaryLabel: 'Preview',
@@ -595,12 +578,10 @@ void main() {
         greaterThanOrEqualTo(48),
       );
       await tester.tap(find.byType(SwitchRow));
-      await tester.tap(find.text('RESUME →'));
       await tester.tap(find.text('PREVIEW'));
       await tester.tap(find.text('SAVE CHANGES'));
       await tester.tap(find.text('ARCHIVE BAND'));
       expect(enabled, isTrue);
-      expect(resumed, isTrue);
       expect(previewed, isTrue);
       expect(saved, isTrue);
       expect(archived, isTrue);

@@ -50,20 +50,16 @@ abstract final class Ep {
   static const warningTint = panel;
   static const destructiveTint = Color(0xFF3B1C20);
 
-  /// deprecated, use accent
-  static const brand = accent;
-
-  /// deprecated, use accent; the old volt-yellow is gone
-  static const volt = accent;
-
-  // Short semantic aliases retained for existing screens.
-  static const mute = contentDisabled;
-  static const raised = surfaceRaised;
-  static const selected = surfaceSelected;
-  static const dark = background;
-
   /// Intended for artwork and scrims, not ordinary text or component states.
   static Color whiteA(double a) => Colors.white.withValues(alpha: a);
+  static Color blackA(double a) => Colors.black.withValues(alpha: a);
+
+  /// Readability scrim laid over banner artwork behind light text.
+  static const bannerScrim = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [Color(0xA8000000), Color(0xBD000000)],
+  );
 }
 
 /// A stable, case-insensitive tint for a genre, independent of the theme.
@@ -100,9 +96,7 @@ abstract final class EpLayout {
 @immutable
 class EpPalette extends ThemeExtension<EpPalette> {
   const EpPalette({
-    required this.brand,
     required this.accent,
-    required this.volt,
     required this.accentDeep,
     required this.onAccent,
     required this.background,
@@ -127,9 +121,7 @@ class EpPalette extends ThemeExtension<EpPalette> {
   });
 
   static const darkMode = EpPalette(
-    brand: Ep.accent,
     accent: Ep.accent,
-    volt: Ep.accent,
     accentDeep: Ep.accentDeep,
     onAccent: Ep.onAccent,
     background: Ep.background,
@@ -154,9 +146,7 @@ class EpPalette extends ThemeExtension<EpPalette> {
   );
 
   static const lightMode = EpPalette(
-    brand: Color(0xFF6D3EF0),
     accent: Color(0xFF6D3EF0),
-    volt: Color(0xFF6D3EF0),
     accentDeep: Color(0xFF5A2FD6),
     onAccent: Color(0xFFFFFFFF),
     background: Color(0xFFF4F3F0),
@@ -180,9 +170,7 @@ class EpPalette extends ThemeExtension<EpPalette> {
     destructiveTint: Color(0xFFFAE6E8),
   );
 
-  final Color brand;
   final Color accent;
-  final Color volt;
   final Color accentDeep;
   final Color onAccent;
   final Color background;
@@ -208,23 +196,14 @@ class EpPalette extends ThemeExtension<EpPalette> {
   Color get ink => contentPrimary;
   Color get mute => contentDisabled;
   Color get raised => surfaceRaised;
-  Color get selected => surfaceSelected;
   Color get dark => background;
   Color get panel => surface;
   Color get line => border;
   Color get muted => contentSecondary;
 
-  /// Highlight surfaces follow the active theme's accent token.
-  Color get highlight => accent;
-
-  /// Highlight content follows the foreground paired with the accent token.
-  Color get onHighlight => onAccent;
-
   @override
   EpPalette copyWith({
-    Color? brand,
     Color? accent,
-    Color? volt,
     Color? accentDeep,
     Color? onAccent,
     Color? background,
@@ -247,9 +226,7 @@ class EpPalette extends ThemeExtension<EpPalette> {
     Color? warningTint,
     Color? destructiveTint,
   }) => EpPalette(
-    brand: brand ?? this.brand,
     accent: accent ?? this.accent,
-    volt: volt ?? this.volt,
     accentDeep: accentDeep ?? this.accentDeep,
     onAccent: onAccent ?? this.onAccent,
     background: background ?? this.background,
@@ -277,9 +254,7 @@ class EpPalette extends ThemeExtension<EpPalette> {
   EpPalette lerp(covariant EpPalette? other, double t) {
     if (other == null) return this;
     return EpPalette(
-      brand: Color.lerp(brand, other.brand, t)!,
       accent: Color.lerp(accent, other.accent, t)!,
-      volt: Color.lerp(volt, other.volt, t)!,
       accentDeep: Color.lerp(accentDeep, other.accentDeep, t)!,
       onAccent: Color.lerp(onAccent, other.onAccent, t)!,
       background: Color.lerp(background, other.background, t)!,
@@ -334,6 +309,8 @@ extension EpTextTheme on TextTheme {
   TextStyle get epChipLabel => labelMedium!;
   TextStyle get epMeta => labelSmall!;
   TextStyle get epCaption => bodySmall!;
+  TextStyle get epBodyStrong => epBody.copyWith(fontWeight: FontWeight.w800);
+  TextStyle get epInviteUrl => epBody.copyWith(fontSize: 11.5);
 
   TextStyle epDisplayAt(double size) =>
       epDisplay.copyWith(fontSize: size, letterSpacing: -size * .01);

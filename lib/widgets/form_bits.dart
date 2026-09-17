@@ -355,6 +355,26 @@ String? serverErrorMessage(Object error) {
   return null;
 }
 
+/// The message after the last `Uncaught Error:` wrapper, or the text with a
+/// local `Bad state: ` / `Exception: ` / `ConvexError: ` prefix removed.
+String stripErrorPrefix(Object error) {
+  final text = error.toString();
+  const uncaughtErrorPrefix = 'Uncaught Error:';
+  final uncaughtErrorIndex = text.lastIndexOf(uncaughtErrorPrefix);
+  if (uncaughtErrorIndex >= 0) {
+    return text
+        .substring(uncaughtErrorIndex + uncaughtErrorPrefix.length)
+        .trim();
+  }
+  return text
+      .replaceFirst(RegExp(r'^(Bad state: |Exception: |ConvexError: )'), '')
+      .trim();
+}
+
+/// The error text with a leading `Bad state: ` or `Exception: ` removed.
+String stripStateErrorPrefix(Object error) =>
+    error.toString().replaceFirst(RegExp(r'^(Bad state: |Exception: )'), '');
+
 class InlineFormFeedback extends StatelessWidget {
   const InlineFormFeedback({
     super.key,
@@ -398,6 +418,8 @@ class EmptyNote extends StatelessWidget {
     this.onAction,
     this.padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
     this.style,
+    this.maxLines,
+    this.overflow,
   });
 
   final String message;
@@ -407,6 +429,8 @@ class EmptyNote extends StatelessWidget {
 
   /// Defaults to body text in the secondary colour.
   final TextStyle? style;
+  final int? maxLines;
+  final TextOverflow? overflow;
 
   @override
   Widget build(BuildContext context) {
@@ -421,6 +445,8 @@ class EmptyNote extends StatelessWidget {
         children: [
           Text(
             message,
+            maxLines: maxLines,
+            overflow: overflow,
             style:
                 style ??
                 Theme.of(
@@ -599,69 +625,6 @@ class _CompactSwitch extends StatelessWidget {
                 ? context.epColors.onAccent
                 : context.epColors.contentDisabled,
             shape: BoxShape.circle,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// A hairline row for an unfinished draft with one resume action.
-class GhostDraftRow extends StatelessWidget {
-  const GhostDraftRow({
-    super.key,
-    required this.title,
-    required this.missing,
-    required this.onResume,
-    this.actionLabel = 'RESUME →',
-  });
-
-  final String title;
-  final String missing;
-  final VoidCallback? onResume;
-  final String actionLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final description = 'Draft — $title · $missing';
-    return Semantics(
-      button: true,
-      enabled: onResume != null,
-      label: '$description. $actionLabel',
-      excludeSemantics: true,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onResume,
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 48),
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: context.epColors.line)),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'DRAFT · $title · $missing'.toUpperCase(),
-                      semanticsLabel: description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.epMeta,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    actionLabel.toUpperCase(),
-                    semanticsLabel: actionLabel,
-                    style: Theme.of(context).textTheme.epChipLabel.copyWith(
-                      color: context.epColors.accent,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
         ),
       ),

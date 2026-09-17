@@ -8,6 +8,7 @@ import '../date_names.dart';
 import '../models.dart';
 import '../services/image_url.dart';
 import '../theme.dart';
+import 'ep_text.dart';
 
 /// Top padding for screen headers: status bar / notch plus breathing room.
 double headerTopPad(BuildContext context) =>
@@ -57,69 +58,70 @@ class ScreenHeader extends StatelessWidget {
   }
 }
 
-/// A consistent page title with room for longer labels and larger text.
-/// On compact pages, actions sit below the title instead of squeezing it.
-class EpPageHeading extends StatelessWidget {
-  const EpPageHeading({
+/// A pushed screen's title row: the back pill, the page heading and an
+/// optional trailing control placed directly after the title.
+class EpBackHeading extends StatelessWidget {
+  const EpBackHeading({
     super.key,
     required this.title,
-    this.description,
-    this.leading,
-    this.action,
+    required this.backKey,
+    required this.onBack,
+    this.backLabel = 'Back',
+    this.trailing,
   });
 
   final String title;
-  final String? description;
-  final Widget? leading;
-  final Widget? action;
+  final Key backKey;
+  final VoidCallback? onBack;
+  final String backLabel;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final textScale = MediaQuery.textScalerOf(context).scale(1);
-        final stackAction = constraints.maxWidth < 560 || textScale > 1.2;
-        final titleStyle = Theme.of(context).textTheme.epDisplayAt(
-          constraints.maxWidth < 360 || textScale > 1.3 ? 36 : 44,
-        );
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                if (leading != null) ...[leading!, const SizedBox(width: 10)],
-                Expanded(
-                  child: Semantics(
-                    header: true,
-                    child: Text(
-                      title.toUpperCase(),
-                      semanticsLabel: title,
-                      style: titleStyle,
-                    ),
-                  ),
-                ),
-                if (action != null && !stackAction) ...[
-                  const SizedBox(width: 16),
-                  action!,
-                ],
-              ],
-            ),
-            if (description != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                description!,
-                style: Theme.of(
-                  context,
-                ).textTheme.epBody.copyWith(color: context.epColors.muted),
-              ),
-            ],
-            if (action != null && stackAction) ...[
-              const SizedBox(height: 12),
-              Align(alignment: Alignment.centerLeft, child: action!),
-            ],
-          ],
-        );
-      },
+    return Row(
+      children: [
+        EpIconPill(
+          key: backKey,
+          icon: Icons.arrow_back,
+          semanticLabel: backLabel,
+          onPressed: onBack,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(title, style: Theme.of(context).textTheme.epPageHeading),
+        ),
+        ?trailing,
+      ],
+    );
+  }
+}
+
+/// A lone back pill under the status bar, inset by the page gutters.
+class EpBackBar extends StatelessWidget {
+  const EpBackBar({super.key, required this.controlKey, required this.onBack});
+
+  final Key controlKey;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        EpLayout.gutter,
+        EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
+        EpLayout.gutter,
+        0,
+      ),
+      child: Row(
+        children: [
+          EpIconPill(
+            key: controlKey,
+            icon: Icons.arrow_back,
+            semanticLabel: 'Back',
+            onPressed: onBack,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -282,27 +284,14 @@ class SectionActionButton extends StatelessWidget {
 
 /// A date-first visual anchor for event and history rows.
 class DateBlock extends StatelessWidget {
-  const DateBlock({
-    super.key,
-    required this.day,
-    required this.month,
-    this.semanticLabel,
-    this.size = 40,
-  });
-
   /// Zero-padded day over the three-letter month, e.g. "07" / "SEP".
-  DateBlock.forDate(
-    DateTime date, {
-    super.key,
-    this.semanticLabel,
-    this.size = 40,
-  }) : day = date.day.toString().padLeft(2, '0'),
-       month = monthNamesUpper[date.month - 1];
+  DateBlock.forDate(DateTime date, {super.key, this.semanticLabel})
+    : day = date.day.toString().padLeft(2, '0'),
+      month = monthNamesUpper[date.month - 1];
 
   final String day;
   final String month;
   final String? semanticLabel;
-  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -311,7 +300,7 @@ class DateBlock extends StatelessWidget {
       image: true,
       child: ExcludeSemantics(
         child: SizedBox(
-          width: size,
+          width: 40,
           child: MediaQuery.withNoTextScaling(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -601,8 +590,6 @@ class VoltStrip extends StatelessWidget {
   }
 }
 
-typedef EpAccentHero = VoltStrip;
-
 /// Compact, unchromed history line with an optional action.
 class LedgerRow extends StatelessWidget {
   const LedgerRow({
@@ -675,29 +662,11 @@ class LedgerRow extends StatelessWidget {
   }
 }
 
-/// FREE / $n price tag (the spec's badgeStyle).
-class PriceBadge extends StatelessWidget {
-  final Gig gig;
-
-  const PriceBadge(this.gig, {super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      gig.priceLabel.toUpperCase(),
-      semanticsLabel: gig.priceLabel,
-      style: Theme.of(
-        context,
-      ).textTheme.epChipLabel.copyWith(color: context.epColors.ink),
-    );
-  }
-}
-
-class FlyerPatternPainter extends CustomPainter {
+class _FlyerPatternPainter extends CustomPainter {
   final FlyerStyle style;
   final double scale;
 
-  const FlyerPatternPainter(this.style, this.scale);
+  const _FlyerPatternPainter(this.style, this.scale);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -754,7 +723,7 @@ class FlyerPatternPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(FlyerPatternPainter old) =>
+  bool shouldRepaint(_FlyerPatternPainter old) =>
       old.style != style || old.scale != scale;
 }
 
@@ -811,7 +780,7 @@ class FlyerBox extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: imageUrl == null || imageUrl!.isEmpty
           ? CustomPaint(
-              painter: FlyerPatternPainter(style, patternScale),
+              painter: _FlyerPatternPainter(style, patternScale),
               child: Padding(padding: padding, child: child),
             )
           : RepaintBoundary(
@@ -824,19 +793,13 @@ class FlyerBox extends StatelessWidget {
                     cacheWidth: (width ?? 448).round(),
                     cacheHeight: height?.round(),
                     fallback: CustomPaint(
-                      painter: FlyerPatternPainter(style, patternScale),
+                      painter: _FlyerPatternPainter(style, patternScale),
                     ),
                   ),
                   if (scrim)
                     const DecoratedBox(
                       key: ValueKey('flyer-image-scrim'),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Color(0xA8000000), Color(0xBD000000)],
-                        ),
-                      ),
+                      decoration: BoxDecoration(gradient: Ep.bannerScrim),
                     ),
                   Padding(padding: padding, child: child),
                 ],
@@ -899,15 +862,11 @@ class EpFanAvatar extends StatelessWidget {
     required this.name,
     this.imageUrl,
     this.size = 40,
-    this.radius = 0,
-    this.fontSize,
   });
 
   final String? name;
   final String? imageUrl;
   final double size;
-  final double radius;
-  final double? fontSize;
 
   @override
   Widget build(BuildContext context) {
@@ -925,7 +884,7 @@ class EpFanAvatar extends StatelessWidget {
                 initials.toUpperCase(),
                 semanticsLabel: initials,
                 style: Theme.of(context).textTheme
-                    .epDisplayAt(fontSize ?? size * .45)
+                    .epDisplayAt(size * .45)
                     .copyWith(color: context.epColors.ink),
               ),
       ),
@@ -937,8 +896,8 @@ class EpFanAvatar extends StatelessWidget {
           ? 'Profile avatar'
           : '${name!.trim()} avatar',
       child: ExcludeSemantics(
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(radius),
+        child: ClipRect(
+          clipBehavior: Clip.antiAlias,
           child: SizedBox.square(
             dimension: size,
             child: EpNetworkImage(
@@ -954,25 +913,74 @@ class EpFanAvatar extends StatelessWidget {
   }
 }
 
-class ProfileCompleteBadge extends StatelessWidget {
-  const ProfileCompleteBadge({super.key});
+/// Name over the optional scene and member-since captions, as on the fan
+/// profile header and its edit-screen preview.
+class FanIdentityLines extends StatelessWidget {
+  const FanIdentityLines({
+    super.key,
+    required this.name,
+    required this.homeLocation,
+    required this.createdAt,
+    required this.nameKey,
+    required this.sceneKey,
+    required this.sinceKey,
+    this.showUnknownScene = false,
+  });
+
+  final String name;
+  final FanCity? homeLocation;
+  final DateTime? createdAt;
+  final Key nameKey;
+  final Key sceneKey;
+  final Key sinceKey;
+
+  /// Renders a muted "Scene unknown" line when [homeLocation] is null.
+  final bool showUnknownScene;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const Key('profile-complete-badge'),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        border: Border.all(color: context.epColors.line),
-        borderRadius: BorderRadius.circular(2),
-      ),
-      child: Text(
-        'PROFILE COMPLETE',
-        semanticsLabel: 'PROFILE COMPLETE',
-        style: Theme.of(
-          context,
-        ).textTheme.epChipLabel.copyWith(color: context.epColors.success),
-      ),
+    final caption = Theme.of(context).textTheme.epCaption;
+    final palette = context.epColors;
+    final Widget? scene;
+    if (homeLocation case final FanCity city) {
+      scene = Text(
+        '${city.label} scene',
+        key: sceneKey,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: caption.copyWith(color: palette.ink),
+      );
+    } else if (showUnknownScene) {
+      scene = Text(
+        'Scene unknown',
+        key: sceneKey,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: caption.copyWith(color: palette.muted),
+      );
+    } else {
+      scene = null;
+    }
+    final Widget? since;
+    if (createdAt case final date?) {
+      since = Text(
+        'Since ${monthNames[date.month - 1]} ${date.year}',
+        key: sinceKey,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: caption.copyWith(color: palette.muted),
+      );
+    } else {
+      since = null;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        EpDisplay(name, key: nameKey, size: 20, keepCase: true),
+        if (scene != null || since != null) const SizedBox(height: 2),
+        ?scene,
+        ?since,
+      ],
     );
   }
 }
@@ -981,16 +989,8 @@ class ProfileCompleteBadge extends StatelessWidget {
 class BandAvatar extends StatelessWidget {
   final Band band;
   final double size;
-  final double radius;
-  final double fontSize;
 
-  const BandAvatar(
-    this.band, {
-    super.key,
-    this.size = 40,
-    this.radius = 0,
-    double? fontSize,
-  }) : fontSize = fontSize ?? size * .45;
+  const BandAvatar(this.band, {super.key, this.size = 40});
 
   @override
   Widget build(BuildContext context) {
@@ -998,8 +998,6 @@ class BandAvatar extends StatelessWidget {
       name: band.name,
       imageUrl: band.profileImageUrl,
       size: size,
-      radius: radius,
-      fontSize: fontSize,
     );
   }
 }
@@ -1007,16 +1005,12 @@ class BandAvatar extends StatelessWidget {
 class CircleIconButton extends StatelessWidget {
   final VoidCallback? onTap;
   final IconData icon;
-  final Color? background;
-  final bool bordered;
   final String? tooltip;
 
   const CircleIconButton({
     super.key,
     required this.onTap,
     this.icon = Icons.arrow_back,
-    this.background,
-    this.bordered = true,
     this.tooltip,
   });
 
@@ -1055,9 +1049,8 @@ class CircleIconButton extends StatelessWidget {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: background,
           shape: BoxShape.circle,
-          border: bordered ? Border.all(color: context.epColors.outline) : null,
+          border: Border.all(color: context.epColors.outline),
         ),
         alignment: Alignment.center,
         child: Icon(icon, size: 16),
