@@ -124,32 +124,7 @@ class EpFormSheet extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title.toUpperCase(),
-                      semanticsLabel: title,
-                      style: Theme.of(context).textTheme.epSheetTitle,
-                    ),
-                  ),
-                  trailing ??
-                      Tooltip(
-                        message: 'Close',
-                        excludeFromSemantics: true,
-                        child: TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: Text(
-                            'Close'.toUpperCase(),
-                            semanticsLabel: 'Close',
-                            style: Theme.of(context).textTheme.epLabel.copyWith(
-                              color: context.epColors.ink,
-                            ),
-                          ),
-                        ),
-                      ),
-                ],
-              ),
+              child: EpSheetTitleRow(title: title, trailing: trailing),
             ),
             if (padBody)
               Flexible(
@@ -168,6 +143,112 @@ class EpFormSheet extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The bare title row of a form sheet: uppercase [title] with a Close button
+/// (or [trailing]) at the end. Callers supply their own padding.
+class EpSheetTitleRow extends StatelessWidget {
+  const EpSheetTitleRow({super.key, required this.title, this.trailing});
+
+  final String title;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title.toUpperCase(),
+            semanticsLabel: title,
+            style: Theme.of(context).textTheme.epSheetTitle,
+          ),
+        ),
+        trailing ??
+            Tooltip(
+              message: 'Close',
+              excludeFromSemantics: true,
+              child: TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  'Close'.toUpperCase(),
+                  semanticsLabel: 'Close',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.epLabel.copyWith(color: context.epColors.ink),
+                ),
+              ),
+            ),
+      ],
+    );
+  }
+}
+
+/// A raised confirmation sheet: uppercase [header], optional [caption], a
+/// destructive outlined [confirmLabel] button that awaits [onConfirm] before
+/// closing, and a KEEP button that just closes.
+class EpConfirmSheet extends StatelessWidget {
+  const EpConfirmSheet({
+    super.key,
+    required this.header,
+    this.caption,
+    required this.confirmLabel,
+    this.confirmKey,
+    required this.onConfirm,
+  });
+
+  final String header;
+  final String? caption;
+  final String confirmLabel;
+  final Key? confirmKey;
+  final Future<void> Function() onConfirm;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.epColors;
+    final textTheme = Theme.of(context).textTheme;
+    return EpSheetShell(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+      backgroundColor: colors.surfaceRaised,
+      borderColor: colors.border,
+      topRadius: EpLayout.cardRadius,
+      handleColor: colors.contentDisabled,
+      handleBottomSpacing: 14,
+      mainAxisSize: MainAxisSize.min,
+      header: Text(
+        header.toUpperCase(),
+        semanticsLabel: header,
+        style: textTheme.epSectionHeading,
+      ),
+      children: [
+        if (caption != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            caption!,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: textTheme.epCaption,
+          ),
+        ],
+        const SizedBox(height: 16),
+        OutlinedButton(
+          key: confirmKey,
+          style: OutlinedButton.styleFrom(foregroundColor: colors.destructive),
+          onPressed: () async {
+            await onConfirm();
+            if (!context.mounted) return;
+            Navigator.pop(context);
+          },
+          child: Text(confirmLabel),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('KEEP'),
+        ),
+      ],
     );
   }
 }
