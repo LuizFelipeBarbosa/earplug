@@ -7,6 +7,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'support/pump.dart';
+
 void main() {
   const venue = Venue(
     id: 'venue-map-test',
@@ -17,10 +19,7 @@ void main() {
   );
 
   Widget plain(Widget child, {Brightness brightness = Brightness.dark}) =>
-      MaterialApp(
-        theme: buildEpTheme(brightness),
-        home: Scaffold(body: child),
-      );
+      epApp(child, brightness: brightness);
 
   testWidgets('renders one map and one marker at the venue point', (
     tester,

@@ -17,6 +17,7 @@ import 'package:provider/provider.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
+import 'support/pump.dart';
 
 class _GigLinesApp extends Fake implements AppState {
   _GigLinesApp(this.venueValue, {this.distance = '11.2 mi'});
@@ -36,15 +37,14 @@ void main() {
     Widget child, {
     TextScaler? textScaler,
     Brightness brightness = Brightness.dark,
-  }) => MaterialApp(
-    theme: buildEpTheme(brightness),
-    home: MediaQuery(
-      data: MediaQueryData(
-        size: const Size(400, 800),
-        textScaler: textScaler ?? TextScaler.noScaling,
-      ),
-      child: Scaffold(body: child),
+  }) => epApp(
+    child,
+    brightness: brightness,
+    media: MediaQueryData(
+      size: const Size(400, 800),
+      textScaler: textScaler ?? TextScaler.noScaling,
     ),
+    mediaOutsideScaffold: true,
   );
 
   test('gig card lines use the start date, doors time, and exact distance', () {
