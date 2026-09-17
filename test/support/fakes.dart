@@ -6,6 +6,8 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/geocoding_service.dart';
 import 'package:earplug/services/media_picker.dart';
+import 'package:earplug/services/readiness_memory.dart';
+import 'package:earplug/services/recent_searches.dart';
 import 'package:earplug/services/video_thumbnail_generator_contract.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -125,4 +127,34 @@ class HttpUploadDemoRepository extends DemoRepository {
   @override
   Future<String> generateAvatarUploadUrl() async =>
       'https://fake.upload/avatar';
+}
+
+class MemoryReadinessMemoryStore implements ReadinessMemoryStore {
+  MemoryReadinessMemoryStore([Map<String, ReadinessMemory> initial = const {}])
+    : _memories = Map.of(initial);
+
+  final Map<String, ReadinessMemory> _memories;
+
+  @override
+  Future<ReadinessMemory?> read(String scopeKey) async => _memories[scopeKey];
+
+  @override
+  Future<void> write(String scopeKey, ReadinessMemory memory) async {
+    _memories[scopeKey] = memory;
+  }
+}
+
+class MemoryRecentSearchesStore implements RecentSearchesStore {
+  MemoryRecentSearchesStore([List<String> initial = const []])
+    : _queries = List.of(initial);
+
+  List<String> _queries;
+
+  @override
+  Future<List<String>> load() async => List.of(_queries);
+
+  @override
+  Future<void> save(List<String> queries) async {
+    _queries = List.of(queries);
+  }
 }

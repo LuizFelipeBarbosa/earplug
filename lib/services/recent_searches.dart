@@ -5,21 +5,6 @@ abstract class RecentSearchesStore {
   Future<void> save(List<String> queries);
 }
 
-class MemoryRecentSearchesStore implements RecentSearchesStore {
-  MemoryRecentSearchesStore([List<String> initial = const []])
-    : _queries = List.of(initial);
-
-  List<String> _queries;
-
-  @override
-  Future<List<String>> load() async => List.of(_queries);
-
-  @override
-  Future<void> save(List<String> queries) async {
-    _queries = List.of(queries);
-  }
-}
-
 class PrefsRecentSearchesStore implements RecentSearchesStore {
   PrefsRecentSearchesStore({this._preferences});
 

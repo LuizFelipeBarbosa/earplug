@@ -97,21 +97,6 @@ abstract class ReadinessMemoryStore {
   Future<void> write(String scopeKey, ReadinessMemory memory);
 }
 
-class MemoryReadinessMemoryStore implements ReadinessMemoryStore {
-  MemoryReadinessMemoryStore([Map<String, ReadinessMemory> initial = const {}])
-    : _memories = Map.of(initial);
-
-  final Map<String, ReadinessMemory> _memories;
-
-  @override
-  Future<ReadinessMemory?> read(String scopeKey) async => _memories[scopeKey];
-
-  @override
-  Future<void> write(String scopeKey, ReadinessMemory memory) async {
-    _memories[scopeKey] = memory;
-  }
-}
-
 class PrefsReadinessMemoryStore implements ReadinessMemoryStore {
   PrefsReadinessMemoryStore({this._preferences});
 

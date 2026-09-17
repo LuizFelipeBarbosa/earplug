@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
+import 'support/fakes.dart';
+
 final _seenAt = DateTime.utc(2026, 9, 15, 12);
 final _regressedAt = DateTime.utc(2026, 9, 16, 8, 30);
 

@@ -7,6 +7,7 @@ import 'package:earplug/services/readiness_memory.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/fakes.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 

@@ -1,7 +1,6 @@
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/search_query.dart';
-import 'package:earplug/services/recent_searches.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
@@ -10,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/accessibility.dart';
+import 'support/fakes.dart';
 import 'support/harness.dart';
 
 void main() {

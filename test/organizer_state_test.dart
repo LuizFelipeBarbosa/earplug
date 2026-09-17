@@ -5,11 +5,11 @@ import 'package:earplug/demo_data.dart';
 import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/services/readiness_memory.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'support/fakes.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 

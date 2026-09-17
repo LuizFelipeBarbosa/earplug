@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+import 'support/fakes.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
