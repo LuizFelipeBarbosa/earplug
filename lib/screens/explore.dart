@@ -5,11 +5,20 @@ import '../app_state.dart';
 import '../search_query.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_carousel.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_search_field.dart';
 import '../widgets/ep_text.dart';
+import '../widgets/explore_tiles.dart';
 import '../widgets/fan_event_card.dart';
 import '../widgets/feed_spacing.dart';
+
+/// The most bands the Explore rail shows: recommendations first, then the
+/// directory fills the remaining slots.
+const _bandRailLimit = 16;
+
+/// Gap between compact band tiles; tighter than the feed rails' 12.
+const _bandRailGap = 8.0;
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -29,6 +38,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
     _lastQuery = app.query;
     _controller = TextEditingController(text: _lastQuery);
     app.ensureSocial();
+    // The directory fetch notifies synchronously, so ask after the first
+    // frame, as the bands collection does.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) app.ensureExploreBands();
+    });
   }
 
   @override
@@ -106,12 +120,55 @@ class _ExploreScreenState extends State<ExploreScreen> {
     );
   }
 
+  /// Recommended bands first, then the directory, without repeats.
+  List<String> _bandRailIds(AppState app) {
+    final ids = <String>[];
+    for (final id in [
+      ...app.exploreHome.recommendedBandIds,
+      ...app.exploreBandIds,
+    ]) {
+      if (!ids.contains(id) && app.band(id) != null) ids.add(id);
+      if (ids.length == _bandRailLimit) break;
+    }
+    return ids;
+  }
+
   Widget _defaultBody(BuildContext context, AppState app) {
     final recents = app.recentSearches;
+    final bandIds = _bandRailIds(app);
     return ListView(
       key: const ValueKey('explore-default'),
       padding: EdgeInsets.zero,
       children: [
+        if (bandIds.isNotEmpty) ...[
+          epGutter(
+            EpSectionHeader(
+              label: 'BANDS',
+              action: 'See all',
+              actionKey: const Key('explore-bands-see-all'),
+              onAction: () => app.go(Screen.exploreCollection, 'bands'),
+              // The search field's own 12px bottom inset completes the
+              // section gap above this header.
+              padding: const EdgeInsets.only(top: 12, bottom: kFeedHeaderGap),
+            ),
+          ),
+          EpCarousel(
+            key: const Key('explore-bands'),
+            itemExtent: exploreCompactBandTileWidth,
+            height: exploreCompactBandRailHeight(context),
+            gap: _bandRailGap,
+            wrapWhenScaled: true,
+            itemCount: bandIds.length,
+            itemBuilder: (_, i) {
+              final id = bandIds[i];
+              return ExploreBandTile.compact(
+                key: Key('explore-band-$id'),
+                band: app.band(id)!,
+                onTap: () => app.openBand(id),
+              );
+            },
+          ),
+        ],
         if (recents.isNotEmpty) ...[
           epGutter(
             const EpSectionHeader(
@@ -178,10 +235,38 @@ class _ExploreScreenState extends State<ExploreScreen> {
   Widget _resultsBody(BuildContext context, AppState app) {
     final hits = app.searchResults;
     final meta = searchMetaLine(app.parsedSearch, hits.length);
+    final bands = app.bandSearchResults;
     return ListView(
       key: const ValueKey('explore-results'),
       padding: EdgeInsets.zero,
       children: [
+        if (bands.isNotEmpty) ...[
+          epGutter(
+            EpSectionHeader(
+              key: const Key('explore-band-results'),
+              label: 'BANDS',
+              count: bands.length,
+              padding: const EdgeInsets.only(top: 16, bottom: 4),
+            ),
+          ),
+          for (final band in bands)
+            epGutter(
+              EpEntityRow(
+                key: Key('explore-band-result-${band.id}'),
+                leading: EpAvatarTile(
+                  initials: band.initials,
+                  image: switch (band.profileImageUrl) {
+                    final url? when url.isNotEmpty => NetworkImage(url),
+                    _ => null,
+                  },
+                ),
+                title: band.name,
+                sub: band.genres.isEmpty ? null : band.genres.join(' · '),
+                subMaxLinesOne: true,
+                onTap: () => app.openBand(band.id),
+              ),
+            ),
+        ],
         epGutter(
           Padding(
             padding: const EdgeInsets.only(top: 16, bottom: 12),

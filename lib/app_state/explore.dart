@@ -355,6 +355,16 @@ mixin _ExploreState on _AppStateCore {
       );
     });
   }
+
+  final Memo<({String query, Map<String, Band> bands}), List<Band>>
+  _bandSearchResultsMemo = Memo();
+
+  /// Bands whose name or genres match [query], best first; empty while the
+  /// query is blank.
+  List<Band> get bandSearchResults => _bandSearchResultsMemo((
+    query: query,
+    bands: _bands,
+  ), () => rankBandResults(query, _bands.values));
 }
 
 /// Everything the Explore browse page renders, computed once per input

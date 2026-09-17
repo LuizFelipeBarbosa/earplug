@@ -652,6 +652,25 @@ double exploreBandRailHeight(BuildContext context) {
   return _bandTileAvatarSize + _bandTileAvatarGap + _bandTileGenreGap + text;
 }
 
+/// Layout constants for [ExploreBandTile.compact] and
+/// [exploreCompactBandRailHeight]: a 56px avatar over a single name line.
+const exploreCompactBandTileWidth = 88.0;
+const exploreCompactBandTileAvatarSize = 56.0;
+const _compactBandTileAvatarGap = 4.0;
+const _compactBandTileNameSize = 11.0;
+
+/// The height a rail of [ExploreBandTile.compact] tiles needs at the current
+/// text scale: the avatar, its gap, and one line of the name.
+double exploreCompactBandRailHeight(BuildContext context) {
+  final nameStyle = Theme.of(context).textTheme.epLabel;
+  final scale = MediaQuery.textScalerOf(context).scale(1);
+  final nameLine = (_compactBandTileNameSize * nameStyle.height! * scale)
+      .ceilToDouble();
+  return exploreCompactBandTileAvatarSize +
+      _compactBandTileAvatarGap +
+      nameLine;
+}
+
 /// Square avatar + name + genre line, for RECOMMENDED / BANDS rails.
 /// Total width 120 wrapping a 72px avatar column by default; content is
 /// left-aligned so the first avatar lines up with the section heading.
@@ -662,17 +681,28 @@ class ExploreBandTile extends StatelessWidget {
     required this.onTap,
     this.width = 120,
     this.avatarSize = _bandTileAvatarSize,
-  });
+  }) : compact = false;
+
+  /// The scaled-down tile for the Explore rail: 56px avatar and the name on
+  /// one line, no genres.
+  const ExploreBandTile.compact({
+    super.key,
+    required this.band,
+    required this.onTap,
+  }) : width = exploreCompactBandTileWidth,
+       avatarSize = exploreCompactBandTileAvatarSize,
+       compact = true;
 
   final Band band;
   final VoidCallback onTap;
   final double width;
   final double avatarSize;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final imageUrl = band.profileImageUrl;
-    final genres = band.genres.join(' · ');
+    final genres = compact ? '' : band.genres.join(' · ');
     return SizedBox(
       width: width,
       child: Semantics(
@@ -693,15 +723,27 @@ class ExploreBandTile extends StatelessWidget {
                     ? null
                     : NetworkImage(imageUrl),
               ),
-              const SizedBox(height: _bandTileAvatarGap),
-              Text(
-                band.name,
-                maxLines: _bandTileNameMaxLines,
-                softWrap: true,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.left,
-                style: Theme.of(context).textTheme.epLabel,
-              ),
+              if (compact) ...[
+                const SizedBox(height: _compactBandTileAvatarGap),
+                EpMonoText(
+                  band.name,
+                  size: _compactBandTileNameSize,
+                  weight: FontWeight.w500,
+                  keepCase: true,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ] else ...[
+                const SizedBox(height: _bandTileAvatarGap),
+                Text(
+                  band.name,
+                  maxLines: _bandTileNameMaxLines,
+                  softWrap: true,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.left,
+                  style: Theme.of(context).textTheme.epLabel,
+                ),
+              ],
               if (genres.isNotEmpty) ...[
                 const SizedBox(height: _bandTileGenreGap),
                 Text(

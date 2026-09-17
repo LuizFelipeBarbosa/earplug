@@ -1,9 +1,11 @@
+import 'package:earplug/app_state.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/search_query.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
+import 'package:earplug/widgets/explore_tiles.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,6 +42,171 @@ void main() {
       tester.getTopLeft(find.text('RECENT SEARCHES')).dy,
       lessThan(tester.getTopLeft(find.text('SUGGESTIONS')).dy),
     );
+  });
+
+  testWidgets(
+    'default view shows a compact bands rail under the search field',
+    (tester) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: ExploreScreen()),
+        recentSearchesStore: MemoryRecentSearchesStore(['free']),
+      );
+      final rail = find.byKey(const Key('explore-bands'));
+      expect(rail, findsOne);
+      final railRect = tester.getRect(rail);
+      final heading = find.text('BANDS');
+      expect(
+        tester.getRect(heading).top,
+        greaterThan(tester.getRect(_searchField).bottom),
+      );
+      expect(tester.getRect(heading).bottom, lessThan(railRect.top));
+      expect(
+        railRect.bottom,
+        lessThan(tester.getTopLeft(find.text('RECENT SEARCHES')).dy),
+      );
+      expect(
+        railRect.height,
+        exploreCompactBandRailHeight(tester.element(rail)),
+      );
+      expect(railRect.height, lessThan(100));
+
+      final ids = harness.app.exploreHome.recommendedBandIds;
+      expect(ids, isNotEmpty);
+      final band = harness.app.band(ids.first)!;
+      final tile = find.byKey(Key('explore-band-${band.id}'));
+      expect(tile, findsOne);
+      expect(tester.getSize(tile).width, exploreCompactBandTileWidth);
+      expect(tester.getSize(tile).width, lessThan(100));
+      // The first avatar sits on the gutter, under the heading's left edge.
+      expect(tester.getTopLeft(tile).dx, tester.getTopLeft(heading).dx);
+      final avatar = find.descendant(
+        of: tile,
+        matching: find.byType(EpAvatarTile),
+      );
+      expect(tester.getSize(avatar), const Size(56, 56));
+      final name = tester.widget<Text>(
+        find.descendant(of: tile, matching: find.text(band.name)),
+      );
+      expect(name.maxLines, 1);
+      expect(name.overflow, TextOverflow.ellipsis);
+      expect(
+        find.descendant(of: tile, matching: find.text(band.genres.join(' · '))),
+        findsNothing,
+      );
+
+      await tester.tap(tile);
+      expect(harness.app.current.screen, Screen.band);
+      expect(harness.app.current.param, band.id);
+
+      await tester.tap(find.byKey(const Key('explore-bands-see-all')));
+      expect(harness.app.current.screen, Screen.exploreCollection);
+      expect(harness.app.current.param, 'bands');
+    },
+  );
+
+  testWidgets(
+    'searching a band name lists matching bands above the gig results',
+    (tester) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: ExploreScreen()),
+      );
+      harness.app.setQuery('Foghorn');
+      await tester.pumpAndSettle();
+
+      expect(harness.app.bandSearchResults.map((band) => band.id), ['b1']);
+      final header = find.byKey(const Key('explore-band-results'));
+      expect(header, findsOne);
+      expect(
+        find.descendant(of: header, matching: find.text('BANDS · 1')),
+        findsOne,
+      );
+      final row = find.byKey(const Key('explore-band-result-b1'));
+      expect(row, findsOne);
+      expect(tester.widget<EpEntityRow>(row).title, 'Foghorn Diet');
+      expect(tester.widget<EpEntityRow>(row).sub, 'garage · surf punk');
+      expect(
+        tester.getSize(
+          find.descendant(of: row, matching: find.byType(EpAvatarTile)),
+        ),
+        const Size(40, 40),
+      );
+      final meta = find.byKey(const Key('explore-results-meta'));
+      expect(tester.getRect(header).top, lessThan(tester.getRect(row).top));
+      expect(
+        tester.getRect(row).bottom,
+        lessThanOrEqualTo(tester.getRect(meta).top),
+      );
+      // The gig results are unchanged by the band group.
+      expect(
+        tester.widget<Text>(meta).data,
+        searchMetaLine(
+          harness.app.parsedSearch,
+          harness.app.searchResults.length,
+        ),
+      );
+      expect(
+        harness.app.searchResults.map((hit) => hit.gig.id),
+        containsAll(['g2', 'g7', 'g8']),
+      );
+      expect(_eventCard('explore-hero'), findsOne);
+
+      await tester.tap(row);
+      expect(harness.app.current.screen, Screen.band);
+      expect(harness.app.current.param, 'b1');
+    },
+  );
+
+  testWidgets('a genre query lists bands playing that genre by name', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: ExploreScreen()),
+    );
+    harness.app.setQuery('shoegaze tonight');
+    await tester.pumpAndSettle();
+
+    expect(harness.app.bandSearchResults.map((band) => band.id), ['b4', 'b6']);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('explore-band-results')),
+        matching: find.text('BANDS · 2'),
+      ),
+      findsOne,
+    );
+    final first = find.byKey(const Key('explore-band-result-b4'));
+    final second = find.byKey(const Key('explore-band-result-b6'));
+    expect(
+      tester.getRect(first).bottom,
+      lessThanOrEqualTo(tester.getRect(second).top),
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const Key('explore-results-meta'))).data,
+      contains('TONIGHT · SHOEGAZE'),
+    );
+  });
+
+  testWidgets('band results are hidden when no band matches', (tester) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: ExploreScreen()),
+    );
+    for (final query in ['Casa Quake', 'free', 'zzzz-no-such-band']) {
+      harness.app.setQuery(query);
+      await tester.pumpAndSettle();
+      expect(harness.app.bandSearchResults, isEmpty, reason: query);
+      expect(
+        find.byKey(const Key('explore-band-results')),
+        findsNothing,
+        reason: query,
+      );
+      expect(find.byType(EpEntityRow), findsNothing, reason: query);
+      expect(find.byKey(const Key('explore-results-meta')), findsOne);
+    }
+    expect(harness.app.searchResults, isEmpty);
+    expect(find.byKey(const Key('explore-no-results')), findsOne);
   });
 
   testWidgets(
@@ -474,10 +641,13 @@ Finder _eventCard(String key) => find.byWidgetPredicate(
   (widget) => widget is FanEventCard && widget.key == Key(key),
 );
 
-Finder _scrollable(String mode) => find.descendant(
-  of: find.byKey(ValueKey('explore-$mode')),
-  matching: find.byType(Scrollable),
-);
+/// The page's vertical list; the bands rail nests its own horizontal one.
+Finder _scrollable(String mode) => find
+    .descendant(
+      of: find.byKey(ValueKey('explore-$mode')),
+      matching: find.byType(Scrollable),
+    )
+    .first;
 
 void _expectSearchContentCentered(
   WidgetTester tester, {

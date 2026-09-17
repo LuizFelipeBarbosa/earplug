@@ -235,57 +235,6 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
             ),
           ),
         );
-        slivers.add(
-          SliverToBoxAdapter(
-            child: epGutter(
-              const SizedBox(
-                key: Key('feed-venues-bands-divider'),
-                height: kFeedSectionGap,
-                child: Center(child: EpHairline()),
-              ),
-            ),
-          ),
-        );
-      }
-      final bandIds = <String>[];
-      for (final id in [...home.recommendedBandIds, ...app.exploreBandIds]) {
-        if (!bandIds.contains(id) && app.band(id) != null) bandIds.add(id);
-        if (bandIds.length == 16) break;
-      }
-      slivers.add(
-        SliverToBoxAdapter(
-          child: epGutter(
-            EpSectionHeader(
-              label: 'BANDS',
-              action: 'See more',
-              actionKey: const Key('feed-toggle-bands'),
-              onAction: () => app.go(Screen.exploreCollection, 'bands'),
-              padding: const EdgeInsets.only(top: 0, bottom: kFeedHeaderGap),
-            ),
-          ),
-        ),
-      );
-      if (bandIds.isNotEmpty) {
-        slivers.add(
-          SliverToBoxAdapter(
-            child: EpCarousel(
-              key: const Key('feed-bands'),
-              itemExtent: 120,
-              height: exploreBandRailHeight(context),
-              wrapWhenScaled: true,
-              itemCount: bandIds.length,
-              itemBuilder: (_, i) {
-                final id = bandIds[i];
-                return ExploreBandTile(
-                  key: Key('explore-band-card-$id'),
-                  band: app.band(id)!,
-                  width: 120,
-                  onTap: () => app.openBand(id),
-                );
-              },
-            ),
-          ),
-        );
       }
       slivers.add(
         SliverToBoxAdapter(

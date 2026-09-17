@@ -494,4 +494,57 @@ void main() {
       '9 RESULTS · TONIGHT · FREE',
     );
   });
+
+  group('rankBandResults', () {
+    final bands = [
+      bandFixture(id: 'genre', name: 'Static Bloom', genres: ['shoegaze']),
+      bandFixture(id: 'sub', name: 'The Foghorn Club Band', genres: ['garage']),
+      bandFixture(id: 'prefix', name: 'Foghorn Diet', genres: ['surf punk']),
+      bandFixture(id: 'both', name: 'Fog Machine', genres: ['fog pop']),
+      bandFixture(id: 'other', name: 'Pigeon Court', genres: ['post-punk']),
+    ];
+    List<String> ids(String query, {int limit = 8}) => [
+      for (final band in rankBandResults(query, bands, limit: limit)) band.id,
+    ];
+
+    test('is empty for a blank query or one made only of stripped tokens', () {
+      expect(ids(''), isEmpty);
+      expect(ids('   '), isEmpty);
+      expect(ids('tonight free near me'), isEmpty);
+      expect(ids('the events in'), isEmpty);
+    });
+
+    test('ranks name prefixes before other name hits, then by name', () {
+      expect(ids('fog'), ['both', 'prefix', 'sub']);
+      expect(ids('FOG'), ['both', 'prefix', 'sub']);
+    });
+
+    test('genre matches follow name matches', () {
+      expect(ids('shoegaze'), ['genre']);
+      final punk = [
+        bandFixture(id: 'named', name: 'Punk Cellar', genres: ['metal']),
+        bandFixture(id: 'genre-only', name: 'Aardvark', genres: ['punk']),
+      ];
+      expect(
+        [for (final band in rankBandResults('punk', punk)) band.id],
+        ['named', 'genre-only'],
+      );
+    });
+
+    test('requires every term to match the name or a genre', () {
+      expect(ids('foghorn diet'), ['prefix']);
+      expect(ids('foghorn shoegaze'), isEmpty);
+      expect(ids('static shoegaze'), ['genre']);
+    });
+
+    test('ignores the time, free and near-me tokens', () {
+      expect(ids('fog tonight'), ids('fog'));
+      expect(ids('free foghorn near me this week'), ids('foghorn'));
+    });
+
+    test('caps the list at the limit', () {
+      expect(ids('fog', limit: 2), ['both', 'prefix']);
+      expect(ids('fog', limit: 1), ['both']);
+    });
+  });
 }

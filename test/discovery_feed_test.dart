@@ -380,85 +380,52 @@ void main() {
     expect(h.app.current.param, 'v1');
   });
 
-  testWidgets('bands rail shows recommended bands and opens a band', (
-    tester,
-  ) async {
-    // Recommendations exclude followed bands, so the fan's genre affinity is
-    // what ranks the punk band first.
-    final h = await _pumpExplore(
-      tester,
-      signedIn: true,
-      gigs: _gigs,
-      bands: _bands,
-      genres: const ['punk'],
-    );
-    expect(h.app.exploreHome.recommendedBandIds.first, 'bFollow');
-    await _scrollTo(tester, find.byKey(const Key('feed-bands')));
-    final band = find.byKey(const Key('explore-band-card-bFollow'));
-    expect(band, findsOneWidget);
-    expect(
-      find.descendant(of: band, matching: find.text('punk')),
-      findsOneWidget,
-    );
-    await tester.tap(band);
-    expect(h.app.current.screen, Screen.band);
-    expect(h.app.current.param, 'bFollow');
-  });
-
   testWidgets(
-    'bands rail hugs its tiles and preserves actions and Find people spacing',
+    'venues rail keeps its action and runs straight into Find people',
     (tester) async {
       await _pumpExplore(tester, signedIn: true, gigs: _gigs, bands: _bands);
-      final rail = find.byKey(const Key('feed-bands'));
-      final allBands = find.byKey(const Key('feed-toggle-bands'));
+      final rail = find.byKey(const Key('feed-venues'));
       final findPeople = find.byKey(const Key('feed-find-people'));
       await _scrollTo(tester, findPeople);
       expect(rail, findsOneWidget);
-      final railRect = tester.getRect(rail);
-      expect(railRect.height, exploreBandRailHeight(tester.element(rail)));
-      // The first avatar starts on the gutter, under the heading's left edge.
-      final heading = find.text('BANDS');
-      expect(
-        tester
-            .getTopLeft(find.byKey(const Key('explore-band-card-bFollow')))
-            .dx,
-        tester.getTopLeft(heading).dx,
-      );
+      // The bands rail now lives on Explore, under the search field.
+      expect(find.byKey(const Key('feed-bands')), findsNothing);
+      expect(find.byKey(const Key('feed-toggle-bands')), findsNothing);
+      expect(find.text('BANDS'), findsNothing);
+      expect(find.byType(ExploreBandTile), findsNothing);
       expect(find.widgetWithText(EpMenuRow, 'All venues'), findsNothing);
       expect(find.widgetWithText(EpMenuRow, 'All bands'), findsNothing);
       expect(find.text('VENUES'), findsOneWidget);
-      expect(heading, findsOneWidget);
 
       final allVenues = find.byKey(const Key('feed-toggle-venues'));
-      for (final action in [allVenues, allBands]) {
-        expect(tester.widget(action), isA<TextButton>());
-        expect(
-          find.descendant(of: action, matching: find.text('SEE MORE')),
-          findsOneWidget,
-        );
-        final header = find.ancestor(
-          of: action,
-          matching: find.byType(EpSectionHeader),
-        );
-        final label = find.descendant(
-          of: header,
-          matching: find.byType(EpEyebrow),
-        );
-        expect(
-          (tester.getCenter(action).dy - tester.getCenter(label).dy).abs(),
-          lessThan(4),
-        );
-        final headerRect = tester.getRect(header);
-        expect(
-          tester.getRect(action).right,
-          inInclusiveRange(headerRect.right - 4, headerRect.right),
-        );
-        expect(
-          headerRect.right,
-          tester.getRect(find.byType(HomeScreen)).right - EpLayout.gutter,
-        );
-      }
+      expect(tester.widget(allVenues), isA<TextButton>());
+      expect(
+        find.descendant(of: allVenues, matching: find.text('SEE MORE')),
+        findsOneWidget,
+      );
+      final header = find.ancestor(
+        of: allVenues,
+        matching: find.byType(EpSectionHeader),
+      );
+      final label = find.descendant(
+        of: header,
+        matching: find.byType(EpEyebrow),
+      );
+      expect(
+        (tester.getCenter(allVenues).dy - tester.getCenter(label).dy).abs(),
+        lessThan(4),
+      );
+      final headerRect = tester.getRect(header);
+      expect(
+        tester.getRect(allVenues).right,
+        inInclusiveRange(headerRect.right - 4, headerRect.right),
+      );
+      expect(
+        headerRect.right,
+        tester.getRect(find.byType(HomeScreen)).right - EpLayout.gutter,
+      );
 
+      final railRect = tester.getRect(rail);
       expect(
         tester.getTopLeft(findPeople).dy - railRect.bottom,
         EpLayout.formSectionGap,
@@ -491,7 +458,7 @@ void main() {
   );
 
   testWidgets(
-    'feed sections share gaps with a centered venues and bands divider',
+    'feed sections share gaps and only Find people follows the venues rail',
     (tester) async {
       final h = await _pumpExplore(
         tester,
@@ -514,7 +481,6 @@ void main() {
       );
       final forYou = h.app.exploreHome.forYou;
       final venues = find.byKey(const Key('feed-venues'));
-      final bands = find.byKey(const Key('feed-bands'));
       final sections = [
         // The pinned controls no longer precede FEATURED after scrolling.
         (
@@ -542,13 +508,6 @@ void main() {
           ),
           content: venues,
           previousIsRowList: true,
-          contentIsRowList: false,
-        ),
-        (
-          label: 'BANDS',
-          previous: venues,
-          content: bands,
-          previousIsRowList: false,
           contentIsRowList: false,
         ),
       ];
@@ -616,21 +575,32 @@ void main() {
         );
       }
 
-      final divider = find.byKey(const Key('feed-venues-bands-divider'));
-      final hairline = find.descendant(
-        of: divider,
-        matching: find.byType(EpHairline),
-      );
-      expect(divider, findsOneWidget);
-      expect(hairline, findsOneWidget);
+      // No section sits between the venues rail and the Find people block,
+      // so the old venues/bands divider is gone and the block's own hairline
+      // is centred in the form-section gap under the rail.
+      expect(find.byKey(const Key('feed-venues-bands-divider')), findsNothing);
+      expect(find.byKey(const Key('feed-bands')), findsNothing);
+      final findPeople = find.byKey(const Key('feed-find-people'));
+      final hairline = find
+          .descendant(
+            of: find.ancestor(
+              of: findPeople,
+              matching: find.byType(SliverToBoxAdapter),
+            ),
+            matching: find.byType(EpHairline),
+          )
+          .first;
       final venuesBottom = tester.getRect(venues).bottom;
-      final dividerRect = tester.getRect(divider);
       final hairlineRect = tester.getRect(hairline);
-      expect(dividerRect.top, closeTo(venuesBottom, 1));
-      expect(dividerRect.height, closeTo(kFeedSectionGap, 1));
       expect(hairlineRect.height, 1);
-      expect(hairlineRect.top - venuesBottom, closeTo(kFeedSectionGap / 2, 2));
-      expect(hairlineRect.center.dy, closeTo(dividerRect.center.dy, 1));
+      expect(
+        hairlineRect.top - venuesBottom,
+        closeTo(EpLayout.formSectionGap / 2, 2),
+      );
+      expect(
+        tester.getTopLeft(findPeople).dy - venuesBottom,
+        EpLayout.formSectionGap,
+      );
     },
   );
 
@@ -660,16 +630,8 @@ void main() {
     expect(h.app.pending?.kind, PendingKind.myGigs);
   });
 
-  testWidgets('all bands and all venues rows open their collections', (
-    tester,
-  ) async {
+  testWidgets('the venues action opens the venues collection', (tester) async {
     final h = await _pumpExplore(tester, gigs: _gigs, bands: _bands);
-    await _scrollTo(tester, find.byKey(const Key('feed-toggle-bands')));
-    await tester.tap(find.byKey(const Key('feed-toggle-bands')));
-    expect(h.app.current.screen, Screen.exploreCollection);
-    expect(h.app.current.param, 'bands');
-    h.app.go(Screen.home);
-    await tester.pumpAndSettle();
     await _scrollTo(tester, find.byKey(const Key('feed-toggle-venues')));
     await tester.tap(find.byKey(const Key('feed-toggle-venues')));
     expect(h.app.current.screen, Screen.exploreCollection);

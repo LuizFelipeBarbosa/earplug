@@ -260,3 +260,53 @@ String searchMetaLine(ParsedSearch parsed, int count) {
   final labels = parsed.labels;
   return labels.isEmpty ? countLabel : '$countLabel · ${labels.join(' · ')}';
 }
+
+/// How strongly a band matches one query term: the name beginning with the
+/// term outranks the term appearing elsewhere in the name, which outranks a
+/// genre-only match. Zero means no match.
+const _bandNamePrefixScore = 3;
+const _bandNameSubstringScore = 2;
+const _bandGenreScore = 1;
+
+int _bandTermScore(Band band, String term) {
+  final name = band.name.toLowerCase();
+  if (name.startsWith(term)) return _bandNamePrefixScore;
+  if (_fieldMatches(name, term)) return _bandNameSubstringScore;
+  if (band.genres.any((genre) => _fieldMatches(genre, term))) {
+    return _bandGenreScore;
+  }
+  return 0;
+}
+
+/// Bands whose name or genres match every term of [query], best matches
+/// first: name-prefix hits, then other name hits, then genre-only hits.
+/// The time / free / near-me tokens that [parseSearchQuery] strips do not
+/// take part, so `punk tonight` matches the same bands as `punk`.
+List<Band> rankBandResults(
+  String query,
+  Iterable<Band> bands, {
+  int limit = 8,
+}) {
+  final terms = parseSearchQuery(query).terms;
+  if (terms.isEmpty) return [];
+
+  final scored = <({Band band, int score})>[];
+  for (final band in bands) {
+    var score = 0;
+    for (final term in terms) {
+      final termScore = _bandTermScore(band, term);
+      if (termScore == 0) {
+        score = 0;
+        break;
+      }
+      score += termScore;
+    }
+    if (score > 0) scored.add((band: band, score: score));
+  }
+  scored.sort((a, b) {
+    final byScore = b.score.compareTo(a.score);
+    if (byScore != 0) return byScore;
+    return a.band.name.toLowerCase().compareTo(b.band.name.toLowerCase());
+  });
+  return [for (final entry in scored.take(limit)) entry.band];
+}
