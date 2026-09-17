@@ -5,7 +5,6 @@ import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/applicant_review.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,7 +23,7 @@ void main() {
       find.byKey(const ValueKey('band-profile-mini-header')),
       findsNothing,
     );
-    final status = tester.widget<StatusPill>(
+    final status = tester.widget<EpBadge>(
       find.byKey(const Key('applicant-review-status')),
     );
     expect(status.label, 'Submitted');
@@ -67,7 +66,7 @@ void main() {
     );
     expect(
       tester
-          .widget<StatusPill>(find.byKey(const Key('applicant-review-status')))
+          .widget<EpBadge>(find.byKey(const Key('applicant-review-status')))
           .label,
       'Shortlisted',
     );
@@ -116,7 +115,7 @@ void main() {
     (harness.app.repository as DemoRepository).demoPaymentsEnabled = true;
     expect(
       tester
-          .widget<StatusPill>(find.byKey(const Key('applicant-review-status')))
+          .widget<EpBadge>(find.byKey(const Key('applicant-review-status')))
           .label,
       'Shortlisted',
     );
@@ -156,7 +155,7 @@ void main() {
 
     expect(
       tester
-          .widget<StatusPill>(find.byKey(const Key('applicant-review-status')))
+          .widget<EpBadge>(find.byKey(const Key('applicant-review-status')))
           .label,
       'Offered',
     );

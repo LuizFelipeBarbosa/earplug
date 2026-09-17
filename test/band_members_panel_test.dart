@@ -66,8 +66,8 @@ void main() {
     expect(name.overflow, TextOverflow.ellipsis);
     expect(
       tester
-          .widget<StatusPill>(
-            find.descendant(of: row, matching: find.byType(StatusPill)),
+          .widget<EpBadge>(
+            find.descendant(of: row, matching: find.byType(EpBadge)),
           )
           .label,
       'ADMIN',
@@ -107,8 +107,8 @@ void main() {
     expect(added, findsOne);
     expect(
       tester
-          .widget<StatusPill>(
-            find.descendant(of: added, matching: find.byType(StatusPill)),
+          .widget<EpBadge>(
+            find.descendant(of: added, matching: find.byType(EpBadge)),
           )
           .label,
       'MEMBER',
@@ -272,8 +272,8 @@ void main() {
     final maya = _key('band-member-u-maya');
     expect(
       tester
-          .widget<StatusPill>(
-            find.descendant(of: maya, matching: find.byType(StatusPill)),
+          .widget<EpBadge>(
+            find.descendant(of: maya, matching: find.byType(EpBadge)),
           )
           .label,
       'ADMIN',

@@ -6,7 +6,6 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/org_opportunity_detail.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
-import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
@@ -406,10 +405,10 @@ Future<void> _pumpDetailAgain(WidgetTester tester, AppHarness harness) async {
   await tester.pumpAndSettle();
 }
 
-StatusPill _applicantPill(WidgetTester tester, String applicationId) =>
-    tester.widget<StatusPill>(
+EpBadge _applicantPill(WidgetTester tester, String applicationId) =>
+    tester.widget<EpBadge>(
       find.descendant(
         of: find.byKey(ValueKey('applicant-$applicationId')),
-        matching: find.byType(StatusPill),
+        matching: find.byType(EpBadge),
       ),
     );

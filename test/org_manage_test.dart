@@ -125,7 +125,7 @@ void main() {
     );
     expect(
       find.byWidgetPredicate(
-        (widget) => widget is StatusPill && widget.label == 'Confirmed',
+        (widget) => widget is EpBadge && widget.label == 'Confirmed',
       ),
       findsOneWidget,
     );
@@ -433,11 +433,11 @@ void main() {
       expect(find.textContaining('MARA KIM'), findsOneWidget);
       expect(
         tester
-            .widget<StatusPill>(
-              find.descendant(of: owner, matching: find.byType(StatusPill)),
+            .widget<EpBadge>(
+              find.descendant(of: owner, matching: find.byType(EpBadge)),
             )
             .tone,
-        EpStatusPillTone.selected,
+        EpBadgeTone.selected,
       );
 
       final invite = find.byKey(const Key('org-hub-invite'));

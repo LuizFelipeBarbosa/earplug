@@ -3,7 +3,7 @@ import 'package:earplug/models.dart';
 import 'package:earplug/navigation.dart';
 import 'package:earplug/screens/org_settings.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,18 +12,18 @@ import 'support/harness.dart';
 
 void main() {
   for (final (state, label, tone) in [
-    (StripeAccountState.none, 'SET UP', EpStatusPillTone.attention),
+    (StripeAccountState.none, 'SET UP', EpBadgeTone.attention),
     (
       StripeAccountState.onboarding,
       'SETUP IN PROGRESS — FINISH IN STRIPE',
-      EpStatusPillTone.attention,
+      EpBadgeTone.attention,
     ),
     (
       StripeAccountState.restricted,
       'SETUP IN PROGRESS — FINISH IN STRIPE',
-      EpStatusPillTone.attention,
+      EpBadgeTone.attention,
     ),
-    (StripeAccountState.enabled, 'CONNECTED', EpStatusPillTone.success),
+    (StripeAccountState.enabled, 'CONNECTED', EpBadgeTone.success),
   ]) {
     testWidgets('Stripe row pill reads $label when ${state.name}', (
       tester,
@@ -32,8 +32,8 @@ void main() {
 
       final row = find.byKey(const Key('org-hub-stripe'));
       await _reveal(tester, row);
-      final pill = tester.widget<StatusPill>(
-        find.descendant(of: row, matching: find.byType(StatusPill)),
+      final pill = tester.widget<EpBadge>(
+        find.descendant(of: row, matching: find.byType(EpBadge)),
       );
       expect(pill.label.toUpperCase(), label);
       expect(pill.tone, tone);
@@ -50,11 +50,11 @@ void main() {
 
     final tax = find.byKey(const Key('org-hub-tax'));
     await _reveal(tester, tax);
-    final taxPill = tester.widget<StatusPill>(
-      find.descendant(of: tax, matching: find.byType(StatusPill)),
+    final taxPill = tester.widget<EpBadge>(
+      find.descendant(of: tax, matching: find.byType(EpBadge)),
     );
     expect(taxPill.label.toUpperCase(), '✓ COLLECTED VIA STRIPE');
-    expect(taxPill.tone, EpStatusPillTone.success);
+    expect(taxPill.tone, EpBadgeTone.success);
 
     await tester.tap(find.byKey(const Key('org-hub-stripe')));
     await tester.pumpAndSettle();
@@ -73,11 +73,11 @@ void main() {
 
     final tax = find.byKey(const Key('org-hub-tax'));
     await _reveal(tester, tax);
-    final taxPill = tester.widget<StatusPill>(
-      find.descendant(of: tax, matching: find.byType(StatusPill)),
+    final taxPill = tester.widget<EpBadge>(
+      find.descendant(of: tax, matching: find.byType(EpBadge)),
     );
     expect(taxPill.label.toUpperCase(), 'ACTION NEEDED');
-    expect(taxPill.tone, EpStatusPillTone.attention);
+    expect(taxPill.tone, EpBadgeTone.attention);
 
     harness.app.hostedUrlLauncher = (_) async {
       throw StateError('Could not open Stripe');
