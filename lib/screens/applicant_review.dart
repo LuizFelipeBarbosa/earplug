@@ -8,6 +8,7 @@ import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_sheet.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/opportunity_labels.dart';
 import '../widgets/send_offer_sheet.dart';
@@ -135,7 +136,12 @@ class _ApplicantReviewScreenState extends State<ApplicantReviewScreen> {
     setState(() => _busy = true);
     try {
       if (action == ArtistApplicationReviewAction.declined) {
-        final confirmed = await _confirmDecline(context);
+        final confirmed = await epConfirm(
+          context,
+          title: 'Decline this applicant?',
+          body:
+              'The application will be declined and removed from the active applicant count.',
+        );
         if (!confirmed || !mounted) return;
       }
       if (widget.applicationId != applicationId) return;
@@ -450,25 +456,3 @@ class _DestructiveOutline extends StatelessWidget {
     );
   }
 }
-
-Future<bool> _confirmDecline(BuildContext context) async =>
-    await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Decline this applicant?'),
-        content: const Text(
-          'The application will be declined and removed from the active applicant count.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('KEEP'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('CONFIRM'),
-          ),
-        ],
-      ),
-    ) ??
-    false;

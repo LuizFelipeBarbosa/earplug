@@ -8,6 +8,7 @@ import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/opportunity_labels.dart';
 import '../widgets/send_offer_sheet.dart';
@@ -102,10 +103,11 @@ class _OpportunityApplicantsScreenState
     setState(() => _reviewing = true);
     try {
       if (action == ArtistApplicationReviewAction.declined) {
-        final confirmed = await _confirm(
+        final confirmed = await epConfirm(
           context,
-          'Decline this applicant?',
-          'The application will be declined and removed from the active applicant count.',
+          title: 'Decline this applicant?',
+          body:
+              'The application will be declined and removed from the active applicant count.',
         );
         if (!confirmed || !mounted) return;
       }
@@ -510,7 +512,7 @@ class _ApplicantInsightsSectionState extends State<_ApplicantInsightsSection> {
                       : 'Returning attendees: ${insights.returningAttendees}',
                 ),
                 const SizedBox(height: 10),
-                Text(_estimatedDrawLabel(insights.estimatedDraw)),
+                Text(estimatedDrawLabel(insights.estimatedDraw)),
                 const SizedBox(height: 10),
                 Text(
                   insights.byArea.suppressed
@@ -546,30 +548,3 @@ Widget _insightStat(BuildContext context, String label, int count) => Column(
     Text('$count', style: Theme.of(context).textTheme.epSectionHeading),
   ],
 );
-
-String _estimatedDrawLabel(EstimatedDraw? draw) {
-  if (draw == null) return 'Estimated draw: No history yet';
-  final basis = draw.basis == DrawBasis.checkIns ? 'check-ins' : 'RSVPs';
-  return 'Estimated draw: ${draw.low}–${draw.high} · '
-      '${draw.confidence.wireValue} confidence · based on $basis';
-}
-
-Future<bool> _confirm(BuildContext context, String title, String body) async =>
-    await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(body),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('KEEP'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text('CONFIRM'),
-          ),
-        ],
-      ),
-    ) ??
-    false;

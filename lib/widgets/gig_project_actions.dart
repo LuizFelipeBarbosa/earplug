@@ -6,6 +6,8 @@ import '../app_state.dart';
 import '../models.dart';
 import '../screens/door_mode.dart';
 import 'band_ticket_sales_sheet.dart';
+import 'ep_sheet.dart';
+import 'opportunity_labels.dart';
 import 'sheets.dart';
 
 enum _ProjectAction { duplicate, unpublish, cancel, delete }
@@ -31,7 +33,7 @@ Future<void> showGigProjectActions(
           showBandTicketSalesSheet(
             context,
             gigId: project.publicGigId!,
-            title: _projectTitle(project),
+            title: projectTitle(project),
           ),
         ),
       ),
@@ -68,11 +70,7 @@ Future<void> showGigProjectActions(
         ),
       ),
   ];
-  await showEpActionSheet(
-    context,
-    header: _projectTitle(project),
-    items: items,
-  );
+  await showEpActionSheet(context, header: projectTitle(project), items: items);
 }
 
 Future<void> _runProjectAction(
@@ -89,10 +87,10 @@ Future<void> _runProjectAction(
     case _ProjectAction.duplicate:
       await app.duplicateGigProject(project.id);
     case _ProjectAction.unpublish:
-      if (await _confirm(
+      if (await epConfirm(
         context,
-        'Unpublish gig?',
-        'Fans will no longer see it. The listing returns to Drafts.',
+        title: 'Unpublish gig?',
+        body: 'Fans will no longer see it. The listing returns to Drafts.',
       )) {
         await app.unpublishGigProject(project.id);
       }
@@ -103,14 +101,14 @@ Future<void> _runProjectAction(
               (app.salesFor(project.publicGigId!)?.sold ?? 0) > 0
           ? 'Sold tickets are refunded in full and buyers are emailed. The gig leaves discovery but its public page stays available as cancelled.'
           : 'The gig leaves discovery but its public page stays available as cancelled.';
-      if (await _confirm(context, 'Cancel gig?', body)) {
+      if (await epConfirm(context, title: 'Cancel gig?', body: body)) {
         await app.cancelGigProject(project.id);
       }
     case _ProjectAction.delete:
-      if (await _confirm(
+      if (await epConfirm(
         context,
-        'Delete gig permanently?',
-        'The listing, RSVPs, saves, and invite links will be removed.',
+        title: 'Delete gig permanently?',
+        body: 'The listing, RSVPs, saves, and invite links will be removed.',
       )) {
         await app.deleteGigProject(project.id);
       }
@@ -134,40 +132,15 @@ DoorModeLaunch? doorLaunchFor(AppState app, GigProject project) {
   if (project.publicGigId != null) {
     return DoorModeLaunch.organizer(
       gigId: project.publicGigId!,
-      gigTitle: _projectTitle(project),
+      gigTitle: projectTitle(project),
       venueName: venueName,
       doorsTime: doorsTime,
     );
   }
   return DoorModeLaunch(
     projectId: project.id,
-    gigTitle: _projectTitle(project),
+    gigTitle: projectTitle(project),
     venueName: venueName,
     doorsTime: doorsTime,
   );
 }
-
-String _projectTitle(GigProject project) {
-  final title = project.title?.trim();
-  return title == null || title.isEmpty ? 'Untitled gig' : title;
-}
-
-Future<bool> _confirm(BuildContext context, String title, String body) async =>
-    await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(body),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('KEEP'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text('CONFIRM'),
-          ),
-        ],
-      ),
-    ) ??
-    false;

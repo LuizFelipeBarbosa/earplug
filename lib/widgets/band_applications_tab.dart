@@ -10,6 +10,7 @@ import '../theme.dart';
 import 'application_tracker_bar.dart';
 import 'common.dart';
 import 'ep_rows.dart';
+import 'ep_sheet.dart';
 import 'ep_text.dart';
 import 'form_bits.dart';
 
@@ -27,7 +28,13 @@ class _BandApplicationsTabState extends State<BandApplicationsTab> {
     if (!_withdrawing.add(application.id)) return;
     setState(() {});
     try {
-      if (!await _confirmWithdrawal(context)) return;
+      if (!await epConfirm(
+        context,
+        title: 'Withdraw application?',
+        body: 'Your band will no longer be considered for this opportunity.',
+      )) {
+        return;
+      }
       await app.repository.withdrawApplication(application.id);
       await app.refreshMyApplications();
       await app.refreshBrowse();
@@ -191,7 +198,7 @@ class _ApplicationCard extends StatelessWidget {
     final tracker = ApplicationTracker.of(application);
     final closesAt = opportunity.applicationsCloseAt;
     final closing = closesAt.isAfter(now)
-        ? 'applications close ${_shortDate(closesAt)}'
+        ? 'applications close ${shortDateLabel(closesAt)}'
         : null;
     final booking = status == ArtistApplicationStatus.offered
         ? app.bandBookings
@@ -217,7 +224,7 @@ class _ApplicationCard extends StatelessWidget {
             color: context.epColors.contentSecondary,
           ),
           const SizedBox(height: 8),
-          EpMonoText('APPLIED ${_shortDate(application.createdAt)}'),
+          EpMonoText('APPLIED ${shortDateLabel(application.createdAt)}'),
           const SizedBox(height: 12),
           StatusPill(label: label, tone: tone),
           const SizedBox(height: 20),
@@ -284,11 +291,6 @@ class _ApplicationCard extends StatelessWidget {
   }
 }
 
-String _shortDate(DateTime date) {
-  final local = date.toLocal();
-  return '${monthNames[local.month - 1]} ${local.day}';
-}
-
 String _relativeTime(DateTime? timestamp, DateTime now) {
   if (timestamp == null) return 'recently';
   final elapsed = now.difference(timestamp);
@@ -314,25 +316,3 @@ String _decisionReason(ArtistApplication application) {
       'The host passed this time',
   ].join(' — ');
 }
-
-Future<bool> _confirmWithdrawal(BuildContext context) async =>
-    await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Withdraw application?'),
-        content: const Text(
-          'Your band will no longer be considered for this opportunity.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('KEEP'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('CONFIRM'),
-          ),
-        ],
-      ),
-    ) ??
-    false;

@@ -11,6 +11,7 @@ import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
+import '../widgets/ep_sheet.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/opportunity_labels.dart';
@@ -359,10 +360,11 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
           );
           message = 'Opportunity reopened.';
         case _OpportunityAction.cancel:
-          final confirmed = await _confirm(
+          final confirmed = await epConfirm(
             context,
-            'Cancel opportunity?',
-            'Active applications will be declined and the opportunity will be cancelled.',
+            title: 'Cancel opportunity?',
+            body:
+                'Active applications will be declined and the opportunity will be cancelled.',
           );
           if (!confirmed || !mounted) return;
           await app.repository.cancelOpportunity(opportunity.id);
@@ -519,7 +521,7 @@ String _activeSlotLine(Opportunity opportunity) {
   final closing =
       opportunity.status == OpportunityStatus.open ||
           opportunity.status == OpportunityStatus.draft
-      ? 'closes ${_shortDate(opportunity.applicationsCloseAt)}'
+      ? 'closes ${shortDateLabel(opportunity.applicationsCloseAt)}'
       : 'applications closed';
   return [
     if (roles.isNotEmpty) roles.join(', '),
@@ -541,11 +543,6 @@ String _bookedSlotLine(Opportunity opportunity) {
           '${roles.length > 1 ? ' + ${roles.length - 1} more' : ''}',
     '$booked/${slots.length} slots booked',
   ].join(' · ');
-}
-
-String _shortDate(DateTime date) {
-  final local = date.toLocal();
-  return '${monthNames[local.month - 1]} ${local.day}';
 }
 
 ({String label, EpStatusPillTone tone})? _venueApprovalStatus(
@@ -578,23 +575,3 @@ enum _OpportunityAction { duplicate, close, reopen, cancel, delete }
 
 Gig? _publishedGig(AppState app, Opportunity opportunity) =>
     app.allGigs.where((gig) => gig.opportunityId == opportunity.id).firstOrNull;
-
-Future<bool> _confirm(BuildContext context, String title, String body) async =>
-    await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(body),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('KEEP'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text('CONFIRM'),
-          ),
-        ],
-      ),
-    ) ??
-    false;
