@@ -12,6 +12,7 @@ import 'common.dart';
 import 'ep_rows.dart';
 import 'ep_text.dart';
 import 'form_bits.dart' show EmptyNote;
+import 'opportunity_labels.dart';
 
 class BandMyGigsTab extends StatefulWidget {
   const BandMyGigsTab({super.key, required this.onDiscover});
@@ -111,7 +112,7 @@ class _BandMyGigsTabState extends State<BandMyGigsTab> {
             for (final project in buckets.drafts)
               EpEntityRow(
                 key: Key('my-gigs-draft-${project.id}'),
-                title: _projectTitle(project, fallback: 'Untitled draft'),
+                title: projectTitle(project, fallback: 'Untitled draft'),
                 sub: _draftMissing(project),
                 trailing: _statusTrailing(
                   context,
@@ -237,7 +238,7 @@ Widget _projectRow(BuildContext context, AppState app, GigProject project) {
   if (date == null) {
     return EpEntityRow(
       key: Key('my-gigs-hosted-${project.id}'),
-      title: _projectTitle(project),
+      title: projectTitle(project),
       sub: [?venue, 'Date TBD'].join(' · '),
       trailing: trailing,
       onTap: () => app.openHostedGig(project.id),
@@ -246,7 +247,7 @@ Widget _projectRow(BuildContext context, AppState app, GigProject project) {
   return EpGigRow(
     key: Key('my-gigs-hosted-${project.id}'),
     date: date,
-    title: _projectTitle(project),
+    title: projectTitle(project),
     meta: venue,
     trailing: trailing,
     onTap: () => app.openHostedGig(project.id),
@@ -278,11 +279,6 @@ Widget _statusTrailing(
     ],
   ),
 );
-
-String _projectTitle(GigProject project, {String fallback = 'Untitled gig'}) {
-  final title = project.title?.trim();
-  return title == null || title.isEmpty ? fallback : title;
-}
 
 String _draftMissing(GigProject project) {
   final missing = <String>[

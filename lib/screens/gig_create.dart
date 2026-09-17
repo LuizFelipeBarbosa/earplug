@@ -8,6 +8,7 @@ import '../app_state.dart';
 import '../band_media_state.dart';
 import '../date_names.dart';
 import '../flyer_styles.dart';
+import '../initials.dart';
 import '../models.dart';
 import '../money.dart';
 import '../services/flyer_text_extractor.dart';
@@ -205,8 +206,7 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
               placeholder: 'Pick a date and time',
               value: date == null
                   ? null
-                  : '${weekdayNames[date.weekday - 1]}, '
-                        '${monthNames[date.month - 1]} ${date.day}',
+                  : '${weekdayNames[date.weekday - 1]}, ${shortDateLabel(date)}',
               display: true,
               sub: date == null
                   ? null
@@ -601,15 +601,6 @@ class _DraftPoster extends StatelessWidget {
   }
 }
 
-String _lineupInitials(String name) {
-  final trimmed = name.trim();
-  if (trimmed.isEmpty) return '?';
-  final words = trimmed.split(RegExp(r'\s+'));
-  return words.length == 1
-      ? words.first.characters.first
-      : '${words.first.characters.first}${words.last.characters.first}';
-}
-
 class _LineupField extends StatelessWidget {
   const _LineupField();
 
@@ -711,7 +702,7 @@ class _LineupField extends StatelessWidget {
                             key: ValueKey(
                               'gig-performer-avatar-${performer.id}',
                             ),
-                            initials: _lineupInitials(performer.name),
+                            initials: initialsFirstLast(performer.name),
                             size: 36,
                           ),
                         const SizedBox(width: 12),
