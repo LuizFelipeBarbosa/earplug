@@ -10,9 +10,19 @@ import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/band_identity_editor.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
+import '../widgets/sheets.dart';
 
-enum _CreateArtworkRole { avatar, banner }
+/// The pinned create bar's height above the safe area: EpBottomCta's 20/32
+/// vertical padding around one large pill, plus its readiness eyebrow.
+const double _actionZoneHeight = 20 + 12 + 12 + 52 + 32;
+
+/// Room the list keeps below its last control so it can scroll clear of the
+/// pinned create bar (the bar plus a 16pt gap; the safe inset is added
+/// separately).
+const double _footerClearance = _actionZoneHeight + 16;
 
 class BandCreateScreen extends StatefulWidget {
   const BandCreateScreen({super.key});
@@ -29,7 +39,6 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
   final _instagram = TextEditingController();
   final _bandcamp = TextEditingController();
   final _youtube = TextEditingController();
-  final _credits = TextEditingController();
 
   bool _loaded = false;
   bool _wasCreated = false;
@@ -52,7 +61,6 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
     _instagram.text = app.nbIg;
     _bandcamp.text = app.nbBc;
     _youtube.text = app.nbYt;
-    _credits.text = app.nbCredits;
   }
 
   @override
@@ -64,11 +72,12 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
     _instagram.dispose();
     _bandcamp.dispose();
     _youtube.dispose();
-    _credits.dispose();
     super.dispose();
   }
 
-  Future<void> _pickArtwork(_CreateArtworkRole role) async {
+  /// The picked banner is held on the draft; AppState uploads and assigns it
+  /// right after `createBand` succeeds (or on retry from the created view).
+  Future<void> _pickBanner() async {
     final app = context.read<AppState>();
     final media = context.read<BandMediaController>();
     final PickedMedia? picked;
@@ -79,11 +88,29 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
       return;
     }
     if (!mounted || picked == null) return;
-    if (role == _CreateArtworkRole.avatar) {
-      app.setNbPhoto(picked);
-    } else {
-      app.setNbBanner(picked);
-    }
+    app.setNbBanner(picked);
+  }
+
+  void _showArtworkSheet() {
+    final app = context.read<AppState>();
+    showEpActionSheet(
+      context,
+      header: 'Header image',
+      items: [
+        EpActionSheetItem(
+          label: 'Replace',
+          icon: Icons.photo_library_outlined,
+          onPressed: _pickBanner,
+        ),
+        if (app.nbBanner != null)
+          EpActionSheetItem(
+            label: 'Use initials instead',
+            icon: Icons.delete_outline,
+            destructive: true,
+            onPressed: () => app.setNbBanner(null),
+          ),
+      ],
+    );
   }
 
   void _addCustomGenre() {
@@ -107,101 +134,111 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
     _wasCreated = app.nbCreated;
     if (app.nbCreated) return const _CreatedView();
 
+    final saving = app.nbSaving;
+    // The public preview needs a band id, so the eye only works once the
+    // draft has landed and is being re-edited.
+    final canPreview = app.nbEditingCreated;
+
     return Stack(
       children: [
         Positioned.fill(
           child: ListView(
             padding: EdgeInsets.fromLTRB(
-              16,
+              EpLayout.gutter,
               headerTopPad(context),
-              16,
-              154 + MediaQuery.paddingOf(context).bottom,
+              EpLayout.gutter,
+              _footerClearance + MediaQuery.paddingOf(context).bottom,
             ),
             children: [
-              Row(
-                children: [
-                  CircleIconButton(icon: Icons.close, onTap: app.back),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'CREATE BAND',
-                      style: Theme.of(context).textTheme.epPageHeading,
-                    ),
-                  ),
-                  ReadyPill(ready: app.canCreateBand),
-                ],
-              ),
-              const SizedBox(height: 5),
-              Text(
-                'Build the profile fans will see. You can keep refining it after creation.',
-                style: Theme.of(context).textTheme.epCaption,
+              EpBackHeading(
+                title: 'CREATE BAND',
+                backKey: const ValueKey('band-create-back'),
+                onBack: app.back,
+                trailing: EpIconPill(
+                  key: const ValueKey('band-create-preview'),
+                  icon: Icons.visibility_outlined,
+                  semanticLabel: canPreview
+                      ? 'Preview public page'
+                      : 'Preview available after creating',
+                  onPressed: canPreview ? app.previewPublicProfile : null,
+                ),
               ),
               const SizedBox(height: 18),
               BandIdentityHeader(
+                showAvatar: false,
                 name: app.nbName,
                 area: app.nbArea ?? '',
                 initials: bandInitialsFor(app.nbName),
                 color: context.epColors.accent,
-                avatarBytes: app.nbPhoto?.bytes,
                 bannerBytes: app.nbBanner?.bytes,
-                onAvatarTap: () => _pickArtwork(_CreateArtworkRole.avatar),
-                onBannerTap: () => _pickArtwork(_CreateArtworkRole.banner),
+                bannerBusy: app.nbBannerUploading,
+                onBannerTap: saving ? null : _showArtworkSheet,
               ),
               const SizedBox(height: 9),
-              Text(
-                'Profile image and header image are separate. Changing one will not replace the other.',
-                style: Theme.of(context).textTheme.epCaption,
+              EpMonoText(
+                'Shown at the top of your public page.',
+                color: context.epColors.contentSecondary,
+                keepCase: true,
               ),
-              if (app.nbPhoto != null || app.nbBanner != null) ...[
-                const SizedBox(height: 2),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 2,
-                  children: [
-                    if (app.nbPhoto != null)
-                      TextAction(
-                        'REMOVE PHOTO',
-                        key: const ValueKey('clear-band-photo'),
-                        onTap: () => app.setNbPhoto(null),
-                        color: context.epColors.contentSecondary,
-                      ),
-                    if (app.nbBanner != null)
-                      TextAction(
-                        'REMOVE HEADER IMAGE',
-                        key: const ValueKey('clear-band-banner'),
-                        onTap: () => app.setNbBanner(null),
-                        color: context.epColors.contentSecondary,
-                      ),
-                  ],
-                ),
-              ],
               const SizedBox(height: 20),
-              EpLabeledField(
+              _IdentityField(
                 fieldKey: const ValueKey('create-band-name'),
                 label: 'BAND NAME',
                 hint: 'Your band name',
                 controller: _name,
-                required: true,
+                enabled: !saving,
                 onChanged: app.setNbName,
               ),
               const SizedBox(height: EpLayout.fieldGap),
-              EpLabeledField(
+              _IdentityField(
                 fieldKey: const ValueKey('create-home-base'),
                 label: 'HOME BASE',
                 hint: 'Neighborhood or city',
                 controller: _area,
-                required: true,
+                enabled: !saving,
                 onChanged: app.setNbArea,
               ),
               const SizedBox(height: EpLayout.fieldGap),
-              EpLabeledField(
-                fieldKey: const ValueKey('create-about'),
+              Row(
+                children: [
+                  const Expanded(
+                    child: ExcludeSemantics(child: FieldLabel('ABOUT')),
+                  ),
+                  ListenableBuilder(
+                    listenable: _bio,
+                    builder: (context, _) => EpMonoText(
+                      '${_bio.text.length} / 160',
+                      key: const ValueKey('create-short-bio-count'),
+                      color: context.epColors.contentSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              Semantics(
                 label: 'ABOUT',
-                hint: 'Tell fans about the band',
-                controller: _bio,
-                minLines: 4,
-                maxLines: 7,
-                onChanged: app.setNbBio,
+                child: TextField(
+                  key: const ValueKey('create-about'),
+                  controller: _bio,
+                  enabled: !saving,
+                  minLines: 3,
+                  maxLines: 6,
+                  maxLength: 160,
+                  onChanged: app.setNbBio,
+                  style: Theme.of(context).textTheme.epInput,
+                  decoration: InputDecoration(
+                    border: UnderlineInputBorder(
+                      borderSide: BorderSide(color: context.epColors.border),
+                    ),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: context.epColors.border),
+                    ),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: context.epColors.accent),
+                    ),
+                    counterText: '',
+                    hintText: 'Tell fans about the band',
+                  ),
+                ),
               ),
               const SizedBox(height: EpLayout.fieldGap),
               BandGenreEditor(
@@ -245,104 +282,70 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                   ],
                 ),
               ),
-              FormSection(
-                title: 'Credits',
-                description:
-                    'Acknowledge producers, artists, labels, and collaborators.',
-                // A lone field in a section otherwise merges its label into
-                // the section heading's semantics node.
-                child: MergeSemantics(
-                  child: EpLabeledField(
-                    fieldKey: const ValueKey('create-credits'),
-                    label: 'CREDITS',
-                    hint: 'Who helped make the work',
-                    controller: _credits,
-                    minLines: 3,
-                    maxLines: 6,
-                    onChanged: app.setNbCredits,
-                  ),
-                ),
-              ),
-              _PostCreateRow(
-                icon: Icons.group_outlined,
-                label: 'INVITE BAND MEMBERS',
-                enabled: app.nbEditingCreated,
-                onTap: app.openInvitationPanel,
-                disabledMessage:
-                    'Create your band first, then invite band members.',
-              ),
             ],
           ),
         ),
+        // No tab bar renders on this screen, so the bar sits on the
+        // viewport's bottom edge and pads the safe inset itself.
         const Positioned(left: 0, right: 0, bottom: 0, child: _CreateBar()),
       ],
     );
   }
 }
 
-class _PostCreateRow extends StatelessWidget {
-  const _PostCreateRow({
-    required this.icon,
+class _IdentityField extends StatelessWidget {
+  const _IdentityField({
+    required this.fieldKey,
     required this.label,
+    required this.hint,
+    required this.controller,
     required this.enabled,
-    required this.onTap,
-    required this.disabledMessage,
+    required this.onChanged,
   });
 
-  final IconData icon;
+  final Key fieldKey;
   final String label;
+  final String hint;
+  final TextEditingController controller;
   final bool enabled;
-  final VoidCallback onTap;
-  final String disabledMessage;
+  final ValueChanged<String> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final app = context.read<AppState>();
-    return Semantics(
-      button: true,
-      enabled: enabled,
-      child: Material(
-        color: context.epColors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(EpLayout.cardRadius),
-          side: BorderSide(color: context.epColors.border),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(EpLayout.cardRadius),
-          onTap: enabled ? onTap : () => app.say(disabledMessage),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 56),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Row(
-                children: [
-                  Icon(
-                    icon,
-                    color: enabled
-                        ? context.epColors.accent
-                        : context.epColors.contentDisabled,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: Theme.of(context).textTheme.epLabel.copyWith(
-                        color: enabled
-                            ? context.epColors.contentPrimary
-                            : context.epColors.contentDisabled,
-                      ),
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right,
-                    color: context.epColors.contentDisabled,
-                  ),
-                ],
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ExcludeSemantics(child: FieldLabel(label, required: true)),
+        const SizedBox(height: 8),
+        // EpUnderlineField uses ink for its idle rule. Scope the quieter rule
+        // to this field; its input text keeps the surrounding text theme.
+        Theme(
+          data: theme.copyWith(
+            extensions: [
+              ...theme.extensions.values.where((value) => value is! EpPalette),
+              context.epColors.copyWith(
+                contentPrimary: context.epColors.border,
+              ),
+            ],
+          ),
+          child: IgnorePointer(
+            ignoring: !enabled,
+            child: ExcludeFocus(
+              excluding: !enabled,
+              child: Semantics(
+                label: '$label · REQUIRED',
+                child: EpUnderlineField(
+                  fieldKey: fieldKey,
+                  controller: controller,
+                  hint: hint,
+                  onChanged: onChanged,
+                ),
               ),
             ),
           ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -355,53 +358,20 @@ class _CreateBar extends StatelessWidget {
     final app = context.watch<AppState>();
     final missing = app.bandMissing;
     final live = app.canCreateBand && !app.nbSaving;
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        30,
-        16,
-        32 + MediaQuery.paddingOf(context).bottom,
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            context.epColors.background.withValues(alpha: 0),
-            context.epColors.background,
-          ],
-          stops: const [0, .34],
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            missing.isNotEmpty
-                ? 'Still needs ${missing.join(' + ')}'
-                : app.nbEditingCreated
-                ? 'Your band is live. Save to publish these updates.'
-                : 'Ready. Images, about, and links can be added any time.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.epChipLabel.copyWith(
-              color: missing.isEmpty
-                  ? context.epColors.accent
-                  : context.epColors.contentSecondary,
-            ),
-          ),
-          const SizedBox(height: 9),
-          EpButton(
-            app.nbSaving
-                ? 'SAVING…'
-                : app.nbEditingCreated
-                ? 'SAVE CHANGES'
-                : 'CREATE BAND',
-            fontSize: 14,
-            kind: live ? EpButtonKind.filled : EpButtonKind.disabled,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            onTap: live ? app.createBand : null,
-          ),
-        ],
+    final label = app.nbSaving
+        ? (app.nbEditingCreated ? 'Saving…' : 'Creating…')
+        : app.nbEditingCreated
+        ? 'Save changes'
+        : 'Create band';
+    return EpBottomCta(
+      key: const ValueKey('create-band-submit'),
+      hint: missing.isEmpty ? null : 'Still needs ${missing.join(' + ')}',
+      child: EpPill(
+        label: label,
+        variant: EpPillVariant.primary,
+        size: EpPillSize.large,
+        expand: true,
+        onPressed: live ? app.createBand : null,
       ),
     );
   }
@@ -434,15 +404,8 @@ class _CreatedView extends StatelessWidget {
                 area: app.nbArea ?? '',
                 initials: bandInitialsFor(app.nbName),
                 color: context.epColors.accent,
-                avatarBytes: app.nbPhoto?.bytes,
                 bannerBytes: app.nbBanner?.bytes,
               ),
-              if (app.nbPhotoUploading || app.nbPhotoError != null)
-                _UploadRecovery(
-                  uploading: app.nbPhotoUploading,
-                  label: 'PROFILE IMAGE',
-                  onRetry: app.retryNbPhoto,
-                ),
               if (app.nbBannerUploading || app.nbBannerError != null)
                 _UploadRecovery(
                   uploading: app.nbBannerUploading,
