@@ -229,9 +229,7 @@ class _MetaLine extends StatelessWidget {
         '${dateLabel(startsAt)} · '
         '${TimeOfDay.fromDateTime(startsAt).format(context)} · '
         '$place · ';
-    final style = Theme.of(
-      context,
-    ).textTheme.epChipLabel.copyWith(fontSize: 11, color: context.epColors.ink);
+    final style = Theme.of(context).textTheme.epChipLabel;
     return Text.rich(
       key: const Key('org-opportunity-meta'),
       TextSpan(
@@ -375,9 +373,9 @@ class _ApplicantRow extends StatelessWidget {
 
     final actions = <Widget>[
       if (status == ArtistApplicationStatus.shortlisted)
-        const StatusPill(label: 'Shortlisted', tone: EpStatusPillTone.success),
+        const EpBadge(label: 'Shortlisted', tone: EpBadgeTone.success),
       if (status == ArtistApplicationStatus.offered)
-        const StatusPill(label: 'Offer sent', tone: EpStatusPillTone.selected),
+        const EpBadge(label: 'Offer sent', tone: EpBadgeTone.selected),
       if (declined) const _DeclinedPill(),
       if (canManage && !declined) ...[
         if (status == ArtistApplicationStatus.submitted ||
@@ -482,7 +480,7 @@ class _ApplicantRow extends StatelessWidget {
   }
 }
 
-/// [StatusPill] has no destructive tone; a declined applicant reads in the
+/// [EpBadge] has no destructive tone; a declined applicant reads in the
 /// destructive colour with the same chrome.
 class _DeclinedPill extends StatelessWidget {
   const _DeclinedPill();
@@ -564,9 +562,9 @@ class _Confirmed extends StatelessWidget {
                 sub:
                     '${slotRoleLabel(slot.role)} · '
                     '${Money(slot.guaranteeMinor, opportunity.currency).label}',
-                trailing: const StatusPill(
+                trailing: const EpBadge(
                   label: 'Booked',
-                  tone: EpStatusPillTone.success,
+                  tone: EpBadgeTone.success,
                 ),
                 onTap: () => app.openBand(bandId),
               );

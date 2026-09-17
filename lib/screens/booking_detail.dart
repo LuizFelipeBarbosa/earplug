@@ -13,7 +13,9 @@ import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/dispute_sheet.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/map_view.dart';
 import '../widgets/sheets.dart';
@@ -400,11 +402,11 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      StatusPill(
+                      EpBadge(
                         label: _statusLabel(booking),
                         tone: booking.status.isLive
-                            ? EpStatusPillTone.success
-                            : EpStatusPillTone.neutral,
+                            ? EpBadgeTone.success
+                            : EpBadgeTone.neutral,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -417,7 +419,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   ),
                   const SizedBox(height: 20),
                   StatusTimeline(steps: _timelineSteps(booking)),
-                  const SectionBar(label: 'WHEN & WHERE'),
+                  const EpSectionHeader(label: 'WHEN & WHERE'),
                   if (booking.privateEvent)
                     _PrivateBookingLocationCard(booking: booking)
                   else
@@ -475,7 +477,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                         ],
                       ),
                     ),
-                  const SectionBar(label: 'SLOT'),
+                  const EpSectionHeader(label: 'SLOT'),
                   EpCard(
                     child: LedgerRow(
                       title: booking.slotRole.name.toUpperCase(),
@@ -484,7 +486,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                       ),
                     ),
                   ),
-                  const SectionBar(label: 'FEE'),
+                  const EpSectionHeader(label: 'FEE'),
                   _FeeCard(fee: booking.fee, paidMinor: booking.paidMinor),
                   if (booking.fee.grossMinor > 0)
                     _BookingLedgerSection(
@@ -560,7 +562,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                           ),
                       ],
                     ),
-                  const SectionBar(label: 'TERMS'),
+                  const EpSectionHeader(label: 'TERMS'),
                   EpCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -592,11 +594,11 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                     ),
                   ),
                   if (offerMessage?.trim().isNotEmpty == true) ...[
-                    const SectionBar(label: 'OFFER MESSAGE'),
+                    const EpSectionHeader(label: 'OFFER MESSAGE'),
                     EpCard(child: Text(offerMessage!, style: textTheme.epBody)),
                   ],
                   if (booking.counterpartyEmail case final email?) ...[
-                    const SectionBar(label: 'CONTACT'),
+                    const EpSectionHeader(label: 'CONTACT'),
                     EpCard(
                       child: Text(
                         email,
@@ -605,7 +607,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                     ),
                   ],
                   if (booking.publicGigId case final gigId?) ...[
-                    const SectionBar(label: 'EVENT PAGE'),
+                    const EpSectionHeader(label: 'EVENT PAGE'),
                     EpButton(
                       'EVENT PAGE',
                       key: const Key('booking-view-gig'),
@@ -617,7 +619,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                     _BookingSafetySection(booking: booking),
                   if (booking.status == BookingStatus.completed ||
                       booking.status == BookingStatus.paid) ...[
-                    const SectionBar(label: 'REVIEWS'),
+                    const EpSectionHeader(label: 'REVIEWS'),
                     _BookingReviewsSection(
                       bookingId: booking.id,
                       future: _reviews,
@@ -632,12 +634,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               ),
             ),
             if (stickyBar != null)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: stickyBar,
-              ),
+              Positioned(left: 0, right: 0, bottom: 0, child: stickyBar),
           ],
         );
       },
@@ -756,7 +753,7 @@ class _BookingSafetySection extends StatelessWidget {
           ),
         ],
         if (app.safetyReportsFor(booking.id).isNotEmpty)
-          const SectionBar(label: 'SAFETY'),
+          const EpSectionHeader(label: 'SAFETY'),
         for (final report in app.safetyReportsFor(booking.id)) ...[
           const SizedBox(height: 12),
           EpCard(
@@ -777,11 +774,11 @@ class _BookingSafetySection extends StatelessWidget {
                 const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: StatusPill(
+                  child: EpBadge(
                     label: report.status.toUpperCase(),
                     tone: report.status == 'resolved'
-                        ? EpStatusPillTone.success
-                        : EpStatusPillTone.neutral,
+                        ? EpBadgeTone.success
+                        : EpBadgeTone.neutral,
                   ),
                 ),
                 if (report.status == 'resolved' &&
@@ -964,7 +961,7 @@ class _BookingLedgerSection extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      SectionBar(label: label),
+      EpSectionHeader(label: label),
       EpCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -990,25 +987,25 @@ class _PaymentRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, tone) = switch (payment.status) {
-      PaymentRecordStatus.pending => ('Pending', EpStatusPillTone.neutral),
+      PaymentRecordStatus.pending => ('Pending', EpBadgeTone.neutral),
       PaymentRecordStatus.checkoutOpen => (
         'Checkout open',
-        EpStatusPillTone.selected,
+        EpBadgeTone.selected,
       ),
       PaymentRecordStatus.paid => (
         payment.paidAt == null
             ? 'Paid'
             : 'Paid ${_fullDate(context, payment.paidAt!)}',
-        EpStatusPillTone.success,
+        EpBadgeTone.success,
       ),
-      PaymentRecordStatus.failed => ('Failed', EpStatusPillTone.warning),
-      PaymentRecordStatus.expired => ('Expired', EpStatusPillTone.warning),
-      PaymentRecordStatus.refunded => ('Refunded', EpStatusPillTone.neutral),
+      PaymentRecordStatus.failed => ('Failed', EpBadgeTone.warning),
+      PaymentRecordStatus.expired => ('Expired', EpBadgeTone.warning),
+      PaymentRecordStatus.refunded => ('Refunded', EpBadgeTone.neutral),
       PaymentRecordStatus.partiallyRefunded => (
         'Partially refunded',
-        EpStatusPillTone.neutral,
+        EpBadgeTone.neutral,
       ),
-      PaymentRecordStatus.unknown => ('Unknown', EpStatusPillTone.neutral),
+      PaymentRecordStatus.unknown => ('Unknown', EpBadgeTone.neutral),
     };
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1026,7 +1023,7 @@ class _PaymentRow extends StatelessWidget {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              StatusPill(label: label, tone: tone),
+              EpBadge(label: label, tone: tone),
               if (showPay)
                 TextButton(
                   key: Key('booking-pay-${payment.installmentIndex}'),
@@ -1051,22 +1048,22 @@ class _PayoutRow extends StatelessWidget {
     final (label, tone) = switch (payout.status) {
       PayoutStatus.scheduled => (
         'Scheduled ${_fullDate(context, payout.scheduledFor)}',
-        EpStatusPillTone.neutral,
+        EpBadgeTone.neutral,
       ),
       PayoutStatus.held => (
         payout.holdReason == null ? 'Held' : 'Held: ${payout.holdReason}',
-        EpStatusPillTone.warning,
+        EpBadgeTone.warning,
       ),
-      PayoutStatus.processing => ('Processing', EpStatusPillTone.selected),
+      PayoutStatus.processing => ('Processing', EpBadgeTone.selected),
       PayoutStatus.paid => (
         payout.paidAt == null
             ? 'Paid'
             : 'Paid ${_fullDate(context, payout.paidAt!)}',
-        EpStatusPillTone.success,
+        EpBadgeTone.success,
       ),
-      PayoutStatus.failed => ('Failed', EpStatusPillTone.warning),
-      PayoutStatus.reversed => ('Reversed', EpStatusPillTone.warning),
-      PayoutStatus.unknown => ('Unknown', EpStatusPillTone.neutral),
+      PayoutStatus.failed => ('Failed', EpBadgeTone.warning),
+      PayoutStatus.reversed => ('Reversed', EpBadgeTone.warning),
+      PayoutStatus.unknown => ('Unknown', EpBadgeTone.neutral),
     };
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1080,7 +1077,7 @@ class _PayoutRow extends StatelessWidget {
             },
             trailing: Text(payout.amount.label),
           ),
-          StatusPill(label: label, tone: tone),
+          EpBadge(label: label, tone: tone),
         ],
       ),
     );
@@ -1095,10 +1092,10 @@ class _RefundRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, tone) = switch (refund.status) {
-      RefundStatus.pending => ('Pending', EpStatusPillTone.neutral),
-      RefundStatus.succeeded => ('Succeeded', EpStatusPillTone.success),
-      RefundStatus.failed => ('Failed', EpStatusPillTone.warning),
-      RefundStatus.unknown => ('Unknown', EpStatusPillTone.neutral),
+      RefundStatus.pending => ('Pending', EpBadgeTone.neutral),
+      RefundStatus.succeeded => ('Succeeded', EpBadgeTone.success),
+      RefundStatus.failed => ('Failed', EpBadgeTone.warning),
+      RefundStatus.unknown => ('Unknown', EpBadgeTone.neutral),
     };
     final reason = switch (refund.reason) {
       RefundReason.organizerCancel => 'Organizer cancellation',
@@ -1115,7 +1112,7 @@ class _RefundRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           LedgerRow(title: reason, trailing: Text(refund.amount.label)),
-          StatusPill(label: label, tone: tone),
+          EpBadge(label: label, tone: tone),
         ],
       ),
     );
@@ -1152,13 +1149,11 @@ class _DisputeRow extends StatelessWidget {
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerLeft,
-            child: StatusPill(
+            child: EpBadge(
               label: dispute.status.wireValue
                   .replaceAll('_', ' ')
                   .toUpperCase(),
-              tone: resolved
-                  ? EpStatusPillTone.success
-                  : EpStatusPillTone.warning,
+              tone: resolved ? EpBadgeTone.success : EpBadgeTone.warning,
             ),
           ),
           if (resolved) ...[

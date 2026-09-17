@@ -6,7 +6,9 @@ import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/map_view.dart';
 import '../widgets/sheets.dart';
@@ -64,26 +66,12 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
     final bandId = app.bandId;
     setState(() => _withdrawing = true);
     try {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Withdraw application?'),
-          content: const Text(
-            'Your band will no longer be considered for this opportunity.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('KEEP'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('CONFIRM'),
-            ),
-          ],
-        ),
+      final confirmed = await epConfirm(
+        context,
+        title: 'Withdraw application?',
+        body: 'Your band will no longer be considered for this opportunity.',
       );
-      if (confirmed != true) return;
+      if (!confirmed) return;
       // BrowseItem carries a status, so fetch the current application id before withdrawing.
       final applications = await app.repository.myApplications(bandId);
       final application = applications
@@ -254,10 +242,10 @@ class OpportunityDetailPresentation extends StatelessWidget {
         if (preview) ...[
           const Align(
             alignment: Alignment.centerLeft,
-            child: StatusPill(
+            child: EpBadge(
               key: Key('opp-preview-badge'),
               label: 'PREVIEW',
-              tone: EpStatusPillTone.selected,
+              tone: EpBadgeTone.selected,
             ),
           ),
           const SizedBox(height: 8),
@@ -295,10 +283,7 @@ class OpportunityDetailPresentation extends StatelessWidget {
           const SizedBox(height: 8),
           const Align(
             alignment: Alignment.centerLeft,
-            child: StatusPill(
-              label: 'INVITED',
-              tone: EpStatusPillTone.selected,
-            ),
+            child: EpBadge(label: 'INVITED', tone: EpBadgeTone.selected),
           ),
         ],
         const SizedBox(height: 20),
@@ -331,7 +316,7 @@ class OpportunityDetailPresentation extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 20),
-        const SectionBar(label: 'SLOTS'),
+        const EpSectionHeader(label: 'SLOTS'),
         for (final slot in opportunity.slots)
           Padding(
             key: ValueKey('opp-detail-slot-${slot.id}'),
@@ -363,17 +348,17 @@ class OpportunityDetailPresentation extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                StatusPill(
+                EpBadge(
                   label: slot.status.name.toUpperCase(),
                   tone: slot.status == SlotStatus.open
-                      ? EpStatusPillTone.success
-                      : EpStatusPillTone.neutral,
+                      ? EpBadgeTone.success
+                      : EpBadgeTone.neutral,
                 ),
               ],
             ),
           ),
         const SizedBox(height: 20),
-        const SectionBar(label: 'STYLE'),
+        const EpSectionHeader(label: 'STYLE'),
         Wrap(
           spacing: 7,
           runSpacing: 7,
@@ -388,7 +373,7 @@ class OpportunityDetailPresentation extends StatelessWidget {
           style: Theme.of(context).textTheme.epMeta,
         ),
         const SizedBox(height: 20),
-        const SectionBar(label: 'DETAILS'),
+        const EpSectionHeader(label: 'DETAILS'),
         if (opportunity.desc.trim().isNotEmpty)
           Text(opportunity.desc, style: Theme.of(context).textTheme.epBody),
         if (opportunity.equipment?.trim().isNotEmpty == true)
@@ -415,7 +400,7 @@ class OpportunityDetailPresentation extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 20),
-        const SectionBar(label: 'ORGANIZER'),
+        const EpSectionHeader(label: 'ORGANIZER'),
         Text('Verified organizer', style: Theme.of(context).textTheme.epMeta),
         ...trailing,
       ],
@@ -539,7 +524,7 @@ class _ApplySheetState extends State<_ApplySheet> {
             child: ListView(
               children: [
                 if (_bands.length > 1) ...[
-                  const SectionBar(label: 'BAND'),
+                  const EpSectionHeader(label: 'BAND'),
                   Wrap(
                     spacing: 7,
                     runSpacing: 7,
@@ -557,7 +542,7 @@ class _ApplySheetState extends State<_ApplySheet> {
                   ),
                   const SizedBox(height: 18),
                 ],
-                const SectionBar(label: 'SLOT'),
+                const EpSectionHeader(label: 'SLOT'),
                 Wrap(
                   spacing: 7,
                   runSpacing: 7,

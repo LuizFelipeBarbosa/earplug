@@ -967,26 +967,12 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     if (_busy) return;
     final draft = _status == OpportunityStatus.draft;
     if (!draft) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Cancel opportunity?'),
-          content: const Text(
-            'This will cancel the opportunity and its applications.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('KEEP'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('CONFIRM'),
-            ),
-          ],
-        ),
+      final confirmed = await epConfirm(
+        context,
+        title: 'Cancel opportunity?',
+        body: 'This will cancel the opportunity and its applications.',
       );
-      if (!mounted || confirmed != true) return;
+      if (!mounted || !confirmed) return;
     }
     await _mutate((app) async {
       if (_savedId != null) {
@@ -1256,9 +1242,9 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                       const SizedBox(width: 8),
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
-                        child: StatusPill(
+                        child: EpBadge(
                           label: _status.wireValue.replaceAll('_', ' '),
-                          tone: EpStatusPillTone.success,
+                          tone: EpBadgeTone.success,
                         ),
                       ),
                     ],
@@ -1702,7 +1688,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
               children: [
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: StatusPill(
+                  child: EpBadge(
                     label: venueApproval.label,
                     tone: venueApproval.tone,
                   ),
@@ -2604,32 +2590,23 @@ class _CalendarMonth extends StatelessWidget {
 
 // ------------------------------------------------------------- helpers
 
-({String label, EpStatusPillTone tone}) _venueApprovalStatus(
+({String label, EpBadgeTone tone}) _venueApprovalStatus(
   VenueConsentStatus? status,
 ) => switch (status) {
   VenueConsentStatus.pending => (
     label: 'Pending approval',
-    tone: EpStatusPillTone.warning,
+    tone: EpBadgeTone.warning,
   ),
-  VenueConsentStatus.granted => (
-    label: 'Approved',
-    tone: EpStatusPillTone.success,
-  ),
-  VenueConsentStatus.declined => (
-    label: 'Declined',
-    tone: EpStatusPillTone.warning,
-  ),
+  VenueConsentStatus.granted => (label: 'Approved', tone: EpBadgeTone.success),
+  VenueConsentStatus.declined => (label: 'Declined', tone: EpBadgeTone.warning),
   VenueConsentStatus.withdrawn => (
     label: 'Withdrawn',
-    tone: EpStatusPillTone.neutral,
+    tone: EpBadgeTone.neutral,
   ),
-  VenueConsentStatus.revoked => (
-    label: 'Revoked',
-    tone: EpStatusPillTone.warning,
-  ),
+  VenueConsentStatus.revoked => (label: 'Revoked', tone: EpBadgeTone.warning),
   null || VenueConsentStatus.unknown => (
     label: 'Not requested',
-    tone: EpStatusPillTone.neutral,
+    tone: EpBadgeTone.neutral,
   ),
 };
 
