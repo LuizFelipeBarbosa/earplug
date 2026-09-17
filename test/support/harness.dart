@@ -193,6 +193,75 @@ Future<void> enterOrganizer(
   await tester.pumpAndSettle();
 }
 
+/// Pumps an organizer [screen] over a signed-in demo [AppState] switched to
+/// [organizationId], without the map, appearance and geocoding providers that
+/// [pumpApp] wires up.
+///
+/// Unlike [pumpApp], this leaves disposing the app to each test body.
+/// Providing the existing app by value keeps the provider from disposing it a
+/// second time.
+Future<AppHarness> pumpOrganizerScreen(
+  WidgetTester tester,
+  Widget screen, {
+  DemoRepository Function(FakeAuthService auth)? repositoryBuilder,
+  Size size = const Size(402, 900),
+  String organizationId = 'org1',
+}) async {
+  final auth = FakeAuthService();
+  await auth.signInDemo();
+  final repository =
+      repositoryBuilder?.call(auth) ?? DemoRepository(auth: auth);
+  final app = AppState(repository: repository, auth: auth);
+  final picker = FakeMediaPicker();
+  final media = BandMediaController(
+    repository: repository,
+    picker: picker,
+    uploader: app.mediaUploader,
+    say: app.say,
+  );
+  app.attachMediaController(media);
+  addTearDown(media.dispose);
+  final harness = AppHarness(
+    app: app,
+    auth: auth,
+    media: media,
+    picker: picker,
+    geocoding: FakeGeocodingService(),
+  );
+
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  app.switchToOrganization(organizationId);
+  await tester.pumpWidget(
+    ChangeNotifierProvider<AppState>.value(
+      value: app,
+      child: MaterialApp(
+        theme: buildEpTheme(),
+        home: Scaffold(body: screen),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await enterOrganizer(tester, harness, organizationId);
+  return harness;
+}
+
+/// Mounts [home] over an already wired-up [app], for tests that change the
+/// repository after the first pump and want the screen to load it fresh.
+Future<void> rehostApp(WidgetTester tester, AppState app, Widget home) async {
+  await tester.pumpWidget(
+    ChangeNotifierProvider<AppState>.value(
+      value: app,
+      child: MaterialApp(
+        theme: buildEpTheme(),
+        home: Scaffold(body: home),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 class _EmptyVectorTileProvider extends vt.VectorTileProvider {
   @override
   bool get cacheBytesToDisk => false;

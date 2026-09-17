@@ -1,5 +1,4 @@
 import 'package:earplug/app_state.dart';
-import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
@@ -10,9 +9,7 @@ import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
-import 'support/fakes.dart';
 import 'support/harness.dart';
 
 void main() {
@@ -344,66 +341,25 @@ Future<AppHarness> _pumpDetail(
   DemoRepository Function(FakeAuthService auth)? repositoryBuilder,
   Size size = const Size(402, 900),
 }) async {
-  final auth = FakeAuthService();
-  await auth.signInDemo();
-  final repository =
-      repositoryBuilder?.call(auth) ?? DemoRepository(auth: auth);
-  final app = AppState(repository: repository, auth: auth);
-  final picker = FakeMediaPicker();
-  final media = BandMediaController(
-    repository: repository,
-    picker: picker,
-    uploader: app.mediaUploader,
-    say: app.say,
+  final harness = await pumpOrganizerScreen(
+    tester,
+    screen,
+    repositoryBuilder: repositoryBuilder,
+    size: size,
   );
-  app.attachMediaController(media);
-  addTearDown(media.dispose);
-  final harness = AppHarness(
-    app: app,
-    auth: auth,
-    media: media,
-    picker: picker,
-    geocoding: FakeGeocodingService(),
-  );
-
-  // Disposal is left to each test body; providing the app by value keeps the
-  // provider from disposing it a second time.
-  tester.view.physicalSize = size;
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-  app.switchToOrganization('org1');
-  await tester.pumpWidget(
-    ChangeNotifierProvider<AppState>.value(
-      value: app,
-      child: MaterialApp(
-        theme: buildEpTheme(),
-        home: Scaffold(body: screen),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-  await enterOrganizer(tester, harness, 'org1');
-  app.openOrgOpportunity('opp1');
+  harness.app.openOrgOpportunity('opp1');
   await tester.pumpAndSettle();
   return harness;
 }
 
 /// Mounts the detail over an app whose repository was changed after the
 /// first pump, so the screen loads the changed data fresh.
-Future<void> _pumpDetailAgain(WidgetTester tester, AppHarness harness) async {
-  await tester.pumpWidget(
-    ChangeNotifierProvider<AppState>.value(
-      value: harness.app,
-      child: MaterialApp(
-        theme: buildEpTheme(),
-        home: const Scaffold(
-          body: OrgOpportunityDetailScreen(opportunityId: 'opp1'),
-        ),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-}
+Future<void> _pumpDetailAgain(WidgetTester tester, AppHarness harness) =>
+    rehostApp(
+      tester,
+      harness.app,
+      const OrgOpportunityDetailScreen(opportunityId: 'opp1'),
+    );
 
 EpBadge _applicantPill(WidgetTester tester, String applicationId) =>
     tester.widget<EpBadge>(

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:earplug/app_state.dart';
-import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
@@ -10,17 +9,14 @@ import 'package:earplug/screens/door_mode.dart';
 import 'package:earplug/screens/opportunity_applicants.dart';
 import 'package:earplug/screens/org_opportunities.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/design_rules.dart';
-import 'support/fakes.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
@@ -28,7 +24,7 @@ void main() {
   testWidgets('the requests list leads with segments and application chips', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
@@ -109,7 +105,7 @@ void main() {
   testWidgets('confirmed requests lead the Active view and fill Confirmed', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
       repositoryBuilder: (auth) =>
@@ -173,7 +169,7 @@ void main() {
   testWidgets('past requests collapse into one row and fill the Past view', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
       repositoryBuilder: (auth) => StubRepository(auth: auth)
@@ -229,7 +225,7 @@ void main() {
   testWidgets('promoter opportunities show their venue approval status', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
@@ -293,7 +289,7 @@ void main() {
   testWidgets(
     'published paid opportunities load sales and offer a door action',
     (tester) async {
-      final harness = await _pumpOrganizerScreen(
+      final harness = await pumpOrganizerScreen(
         tester,
         const SizedBox.shrink(),
         repositoryBuilder: (auth) =>
@@ -315,16 +311,7 @@ void main() {
       expect(expected.netMinor, greaterThan(0));
       expect(harness.app.salesFor('g8'), isNull);
 
-      await tester.pumpWidget(
-        ChangeNotifierProvider<AppState>.value(
-          value: harness.app,
-          child: MaterialApp(
-            theme: buildEpTheme(),
-            home: const Scaffold(body: OrgOpportunitiesScreen()),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
+      await rehostApp(tester, harness.app, const OrgOpportunitiesScreen());
       final caption = find.byKey(const Key('org-opp-sales-opp1'));
       await tester.ensureVisible(caption);
       expect(
@@ -358,7 +345,7 @@ void main() {
           ? 'published RSVP opportunities offer DOOR without loading sales'
           : 'paid opportunities without a published gig have no sales or DOOR',
       (tester) async {
-        final harness = await _pumpOrganizerScreen(
+        final harness = await pumpOrganizerScreen(
           tester,
           const OrgOpportunitiesScreen(),
           repositoryBuilder: (auth) => _PublishedOpportunityRepository(
@@ -383,7 +370,7 @@ void main() {
   testWidgets('new opportunity opens the editor with the new parameter', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
@@ -399,7 +386,7 @@ void main() {
   testWidgets('close applications keeps the opportunity active as CLOSED', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
@@ -440,7 +427,7 @@ void main() {
   testWidgets('delete draft removes the opportunity without another dialog', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
@@ -456,7 +443,7 @@ void main() {
   testWidgets('duplicate adds a draft with no active applications', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
@@ -476,7 +463,7 @@ void main() {
   });
 
   testWidgets('cancel opportunity requires confirmation', (tester) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
@@ -500,7 +487,7 @@ void main() {
   testWidgets('reopen uses a picked deadline and returns to OPEN', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
@@ -524,7 +511,7 @@ void main() {
   testWidgets('reopen is offered and works for a booking-status opportunity', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
       repositoryBuilder: (auth) =>
@@ -560,7 +547,7 @@ void main() {
   testWidgets('applicants show both bands and the matching slot guarantees', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -589,7 +576,7 @@ void main() {
   testWidgets('only shortlisted applicants have a primary send offer action', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -606,7 +593,7 @@ void main() {
   testWidgets('send offer starts with the slot guarantee in whole dollars', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -639,7 +626,7 @@ void main() {
   testWidgets('send offer discloses the configured booking commission', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -663,7 +650,7 @@ void main() {
       'send offer keeps its caption while fees load and ${fails ? 'fail' : 'are unconfigured'}',
       (tester) async {
         late _FeeRatesRepository repository;
-        final harness = await _pumpOrganizerScreen(
+        final harness = await pumpOrganizerScreen(
           tester,
           const OpportunityApplicantsScreen(opportunityId: 'opp1'),
           repositoryBuilder: (auth) =>
@@ -716,7 +703,7 @@ void main() {
   testWidgets('paid offer failure stays in the sheet with an inline error', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -749,7 +736,7 @@ void main() {
   testWidgets('wrapped paid offer failure shows only the server message', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
       repositoryBuilder: (auth) => StubRepository(auth: auth)
@@ -780,7 +767,7 @@ void main() {
   testWidgets('sending an offer updates the applicant and opens its booking', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -814,7 +801,7 @@ void main() {
   });
 
   testWidgets('send offer fields stay outside applicant cards', (tester) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -828,7 +815,7 @@ void main() {
   });
 
   testWidgets('invalid guarantees do not send offers', (tester) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -863,7 +850,7 @@ void main() {
   testWidgets('a zero guarantee sends selected terms and trimmed notes', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -912,7 +899,7 @@ void main() {
   testWidgets('closing the offer sheet leaves the applicant shortlisted', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -933,7 +920,7 @@ void main() {
     testWidgets(
       'loading ${accepted ? 'booked' : 'offered'} applicants shows their booking',
       (tester) async {
-        final harness = await _pumpOrganizerScreen(
+        final harness = await pumpOrganizerScreen(
           tester,
           const SizedBox.shrink(),
         );
@@ -951,18 +938,11 @@ void main() {
           );
         }
         harness.app.organizationBookings = [];
-        await tester.pumpWidget(
-          ChangeNotifierProvider<AppState>.value(
-            value: harness.app,
-            child: MaterialApp(
-              theme: buildEpTheme(),
-              home: const Scaffold(
-                body: OpportunityApplicantsScreen(opportunityId: 'opp1'),
-              ),
-            ),
-          ),
+        await rehostApp(
+          tester,
+          harness.app,
+          const OpportunityApplicantsScreen(opportunityId: 'opp1'),
         );
-        await tester.pumpAndSettle();
 
         expect(
           _applicantPill(tester, 'app2').label,
@@ -992,7 +972,7 @@ void main() {
   }
 
   testWidgets('shortlisting updates the applicant status pill', (tester) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -1012,7 +992,7 @@ void main() {
   testWidgets(
     'declining refreshes the status pill and active applicant count',
     (tester) async {
-      final harness = await _pumpOrganizerScreen(
+      final harness = await pumpOrganizerScreen(
         tester,
         const OpportunityApplicantsScreen(opportunityId: 'opp1'),
       );
@@ -1037,7 +1017,7 @@ void main() {
   );
 
   testWidgets('keeping an applicant cancels the decline', (tester) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -1055,7 +1035,7 @@ void main() {
   testWidgets('starting review preserves shortlist and decline actions', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -1079,7 +1059,7 @@ void main() {
   testWidgets('slot chips filter applicants and ALL restores both', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -1106,7 +1086,7 @@ void main() {
   });
 
   testWidgets('tapping the band name opens its profile', (tester) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -1122,7 +1102,7 @@ void main() {
   testWidgets('finance members can read applicants without actions', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -1145,7 +1125,7 @@ void main() {
   testWidgets(
     'applicant insights expander renders numbers for a non-suppressed band',
     (tester) async {
-      final harness = await _pumpOrganizerScreen(
+      final harness = await pumpOrganizerScreen(
         tester,
         const OpportunityApplicantsScreen(opportunityId: 'opp1'),
         repositoryBuilder: (auth) => _ApplicantInsightsRepository(auth: auth),
@@ -1184,7 +1164,7 @@ void main() {
   testWidgets(
     'applicant insights expander shows suppressed and no-history states',
     (tester) async {
-      final harness = await _pumpOrganizerScreen(
+      final harness = await pumpOrganizerScreen(
         tester,
         const OpportunityApplicantsScreen(opportunityId: 'opp1'),
         repositoryBuilder: (auth) => _ApplicantInsightsRepository(auth: auth),
@@ -1221,53 +1201,6 @@ void main() {
       harness.app.dispose();
     },
   );
-}
-
-Future<AppHarness> _pumpOrganizerScreen(
-  WidgetTester tester,
-  Widget screen, {
-  DemoRepository Function(FakeAuthService auth)? repositoryBuilder,
-}) async {
-  final auth = FakeAuthService();
-  await auth.signInDemo();
-  final repository =
-      repositoryBuilder?.call(auth) ?? DemoRepository(auth: auth);
-  final app = AppState(repository: repository, auth: auth);
-  final picker = FakeMediaPicker();
-  final media = BandMediaController(
-    repository: repository,
-    picker: picker,
-    uploader: app.mediaUploader,
-    say: app.say,
-  );
-  app.attachMediaController(media);
-  addTearDown(media.dispose);
-  final harness = AppHarness(
-    app: app,
-    auth: auth,
-    media: media,
-    picker: picker,
-    geocoding: FakeGeocodingService(),
-  );
-
-  // Unlike pumpApp, this wrapper leaves disposal to each test body. Providing
-  // the existing app by value prevents the provider from disposing it twice.
-  tester.view.physicalSize = const Size(402, 900);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-  app.switchToOrganization('org1');
-  await tester.pumpWidget(
-    ChangeNotifierProvider<AppState>.value(
-      value: app,
-      child: MaterialApp(
-        theme: buildEpTheme(),
-        home: Scaffold(body: screen),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-  await enterOrganizer(tester, harness, 'org1');
-  return harness;
 }
 
 class _FeeRatesRepository extends DemoRepository {

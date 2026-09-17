@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/pump.dart';
 
 void main() {
   testWidgets('submitted applications show summary, applied step, and footer', (
@@ -294,19 +295,14 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
         await tester.pumpWidget(
-          MaterialApp(
-            theme: buildEpTheme(),
-            home: MediaQuery(
-              data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
-              child: Scaffold(
-                body: Center(
-                  child: SizedBox(
-                    width: 350,
-                    child: ApplicationTrackerBar(tracker: tracker),
-                  ),
-                ),
-              ),
+          epApp(
+            SizedBox(
+              width: 350,
+              child: ApplicationTrackerBar(tracker: tracker),
             ),
+            media: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+            mediaOutsideScaffold: true,
+            center: true,
           ),
         );
 
