@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_states.dart';
 import '../widgets/form_bits.dart';
 
 class StripeReturnScreen extends StatefulWidget {
@@ -90,69 +91,43 @@ class _StripeReturnScreenState extends State<StripeReturnScreen> {
     final app = context.read<AppState>();
     final textTheme = Theme.of(context).textTheme;
     final link = _link;
-    return Material(
-      color: context.epColors.background,
-      child: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (link == null) ...[
-                    Text(
-                      "This link isn't valid.",
-                      style: textTheme.epPageHeading,
-                    ),
-                    const SizedBox(height: 24),
-                    EpButton(
-                      'BACK',
-                      key: const Key('stripe-return-back'),
-                      onTap: () => app.resetTo(Screen.home),
-                    ),
-                  ] else if (link.refresh) ...[
-                    Text(
-                      'Your Stripe link expired',
-                      style: textTheme.epPageHeading,
-                    ),
-                    const SizedBox(height: 24),
-                    EpButton(
-                      'CONTINUE SETUP',
-                      key: const Key('stripe-return-continue'),
-                      kind: _continuing
-                          ? EpButtonKind.disabled
-                          : EpButtonKind.filled,
-                      onTap: _continuing ? null : _continueSetup,
-                    ),
-                  ] else if (_error != null) ...[
-                    Text(
-                      serverErrorMessage(_error!) ??
-                          'Something went wrong finishing Stripe setup.',
-                      style: textTheme.epPageHeading,
-                    ),
-                    const SizedBox(height: 24),
-                    EpButton(
-                      'RETRY',
-                      key: const Key('stripe-return-retry'),
-                      onTap: _retrySetup,
-                    ),
-                  ] else ...[
-                    const Center(child: CircularProgressIndicator()),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Checking your Stripe setup…',
-                      style: textTheme.epPageHeading,
-                    ),
-                  ],
-                ],
-              ),
-            ),
+    return EpCenteredPage(
+      children: [
+        if (link == null) ...[
+          Text("This link isn't valid.", style: textTheme.epPageHeading),
+          const SizedBox(height: 24),
+          EpButton(
+            'BACK',
+            key: const Key('stripe-return-back'),
+            onTap: () => app.resetTo(Screen.home),
           ),
-        ),
-      ),
+        ] else if (link.refresh) ...[
+          Text('Your Stripe link expired', style: textTheme.epPageHeading),
+          const SizedBox(height: 24),
+          EpButton(
+            'CONTINUE SETUP',
+            key: const Key('stripe-return-continue'),
+            kind: _continuing ? EpButtonKind.disabled : EpButtonKind.filled,
+            onTap: _continuing ? null : _continueSetup,
+          ),
+        ] else if (_error != null) ...[
+          Text(
+            serverErrorMessage(_error!) ??
+                'Something went wrong finishing Stripe setup.',
+            style: textTheme.epPageHeading,
+          ),
+          const SizedBox(height: 24),
+          EpButton(
+            'RETRY',
+            key: const Key('stripe-return-retry'),
+            onTap: _retrySetup,
+          ),
+        ] else ...[
+          const Center(child: CircularProgressIndicator()),
+          const SizedBox(height: 24),
+          Text('Checking your Stripe setup…', style: textTheme.epPageHeading),
+        ],
+      ],
     );
   }
 }

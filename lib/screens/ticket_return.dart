@@ -5,6 +5,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_states.dart';
 
 class TicketCheckoutReturnScreen extends StatefulWidget {
   const TicketCheckoutReturnScreen({
@@ -54,7 +55,7 @@ class _TicketCheckoutReturnScreenState
       future: _checkout,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return _CheckoutPage(
+          return EpCenteredPage(
             children: [
               const Center(child: CircularProgressIndicator()),
               const SizedBox(height: 24),
@@ -69,7 +70,7 @@ class _TicketCheckoutReturnScreenState
         }
 
         if (snapshot.hasError) {
-          return _CheckoutPage(
+          return EpCenteredPage(
             children: [
               Text(
                 "We couldn't check your payment.",
@@ -90,7 +91,7 @@ class _TicketCheckoutReturnScreenState
           final quantity = status!.quantity;
           final ticketLabel = quantity == 1 ? 'ticket' : 'tickets';
           final event = app.gig(status.gigId)?.title ?? 'the show';
-          return _CheckoutPage(
+          return EpCenteredPage(
             children: [
               Text("You're in", style: textTheme.epPageHeading),
               const SizedBox(height: 12),
@@ -111,7 +112,7 @@ class _TicketCheckoutReturnScreenState
         if (status != null &&
             (status.status == TicketOrderStatus.expired ||
                 status.status == TicketOrderStatus.cancelled)) {
-          return _CheckoutPage(
+          return EpCenteredPage(
             children: [
               Text(
                 'This hold expired before payment finished',
@@ -127,7 +128,7 @@ class _TicketCheckoutReturnScreenState
           );
         }
 
-        return _CheckoutPage(
+        return EpCenteredPage(
           children: [
             Text(
               status?.status == TicketOrderStatus.refunded
@@ -156,7 +157,7 @@ class TicketCheckoutCancelScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    return _CheckoutPage(
+    return EpCenteredPage(
       children: [
         Text('Payment cancelled', style: textTheme.epPageHeading),
         const SizedBox(height: 12),
@@ -182,34 +183,6 @@ class TicketCheckoutCancelScreen extends StatelessWidget {
           },
         ),
       ],
-    );
-  }
-}
-
-class _CheckoutPage extends StatelessWidget {
-  const _CheckoutPage({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: context.epColors.background,
-      child: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: children,
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

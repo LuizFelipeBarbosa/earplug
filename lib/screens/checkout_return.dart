@@ -5,6 +5,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_states.dart';
 
 class CheckoutReturnScreen extends StatefulWidget {
   const CheckoutReturnScreen({
@@ -66,7 +67,7 @@ class _CheckoutReturnScreenState extends State<CheckoutReturnScreen> {
       future: _checkout,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return _CheckoutPage(
+          return EpCenteredPage(
             children: [
               const Center(child: CircularProgressIndicator()),
               const SizedBox(height: 24),
@@ -81,7 +82,7 @@ class _CheckoutReturnScreenState extends State<CheckoutReturnScreen> {
         }
 
         if (snapshot.hasError) {
-          return _CheckoutPage(
+          return EpCenteredPage(
             children: [
               Text(
                 "We couldn't check your payment.",
@@ -100,7 +101,7 @@ class _CheckoutReturnScreenState extends State<CheckoutReturnScreen> {
         final result = snapshot.requireData;
         final status = result.status;
         if (status == null) {
-          return _CheckoutPage(
+          return EpCenteredPage(
             children: [
               Text(
                 "This checkout isn't available.",
@@ -117,7 +118,7 @@ class _CheckoutReturnScreenState extends State<CheckoutReturnScreen> {
         }
 
         final paid = status.paymentStatus == PaymentRecordStatus.paid;
-        return _CheckoutPage(
+        return EpCenteredPage(
           children: [
             Text(
               paid ? 'Payment received' : "We haven't heard from Stripe yet",
@@ -166,7 +167,7 @@ class CheckoutCancelScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    return _CheckoutPage(
+    return EpCenteredPage(
       children: [
         Text('Payment not completed', style: textTheme.epPageHeading),
         const SizedBox(height: 12),
@@ -184,34 +185,6 @@ class CheckoutCancelScreen extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _CheckoutPage extends StatelessWidget {
-  const _CheckoutPage({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: context.epColors.background,
-      child: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: children,
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
