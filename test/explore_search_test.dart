@@ -3,6 +3,7 @@ import 'package:earplug/screens/explore.dart';
 import 'package:earplug/search_query.dart';
 import 'package:earplug/services/recent_searches.dart';
 import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:flutter/material.dart';
@@ -23,7 +24,7 @@ void main() {
     expect(find.byKey(const ValueKey('explore-default')), findsOne);
     expect(find.text('RECENT SEARCHES'), findsNothing);
     expect(find.text('SUGGESTIONS'), findsOne);
-    expect(find.byType(ExploreMenuRow), findsNWidgets(3));
+    expect(find.byType(EpMenuRow), findsNWidgets(3));
     for (final suffix in ['near-me', 'tonight', 'free']) {
       expect(find.byKey(Key('explore-suggest-$suffix')), findsOne);
     }
@@ -41,30 +42,31 @@ void main() {
     );
   });
 
-  testWidgets('recent and suggestion rows stay compact with accessible targets', (
-    tester,
-  ) async {
-    await pumpApp(
-      tester,
-      home: const Scaffold(body: ExploreScreen()),
-      recentSearchesStore: MemoryRecentSearchesStore(['free']),
-    );
+  testWidgets(
+    'recent and suggestion rows stay compact with accessible targets',
+    (tester) async {
+      await pumpApp(
+        tester,
+        home: const Scaffold(body: ExploreScreen()),
+        recentSearchesStore: MemoryRecentSearchesStore(['free']),
+      );
 
-    for (final key in [
-      'explore-recent-0',
-      'explore-suggest-near-me',
-      'explore-suggest-tonight',
-      'explore-suggest-free',
-    ]) {
-      final row = find.byKey(Key(key));
-      expect(tester.getSize(row).height, inInclusiveRange(44, 52));
-    }
-    expect(
-      tester.getRect(find.byKey(const Key('explore-suggest-near-me'))).top -
-          tester.getRect(find.text('SUGGESTIONS')).bottom,
-      lessThanOrEqualTo(8),
-    );
-  });
+      for (final key in [
+        'explore-recent-0',
+        'explore-suggest-near-me',
+        'explore-suggest-tonight',
+        'explore-suggest-free',
+      ]) {
+        final row = find.byKey(Key(key));
+        expect(tester.getSize(row).height, inInclusiveRange(44, 52));
+      }
+      expect(
+        tester.getRect(find.byKey(const Key('explore-suggest-near-me'))).top -
+            tester.getRect(find.text('SUGGESTIONS')).bottom,
+        lessThanOrEqualTo(8),
+      );
+    },
+  );
 
   testWidgets('recent searches keep the three newest entries in order', (
     tester,
@@ -466,7 +468,7 @@ void main() {
 Finder get _searchField => find.byKey(const Key('explore-search-field'));
 
 String _recentLabel(WidgetTester tester, int index) =>
-    tester.widget<ExploreMenuRow>(find.byKey(Key('explore-recent-$index'))).label;
+    tester.widget<EpMenuRow>(find.byKey(Key('explore-recent-$index'))).label;
 
 Finder _eventCard(String key) => find.byWidgetPredicate(
   (widget) => widget is FanEventCard && widget.key == Key(key),

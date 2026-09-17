@@ -112,7 +112,7 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
       if (home.featured.isNotEmpty) {
         slivers.add(
           SliverToBoxAdapter(
-            child: _gutter(
+            child: epGutter(
               EpSectionHeader(
                 label: 'FEATURED',
                 padding: feedSectionHeaderPadding(),
@@ -155,7 +155,7 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
       }
       slivers.add(
         SliverToBoxAdapter(
-          child: _gutter(
+          child: epGutter(
             EpSectionHeader(
               label: 'JUST FOR YOU · ${home.forYou.length}',
               padding: feedSectionHeaderPadding(
@@ -171,7 +171,7 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
             itemCount: home.forYou.length,
             itemBuilder: (_, i) {
               final gig = home.forYou[i];
-              return _gutter(
+              return epGutter(
                 FanEventCard(
                   gig: gig,
                   app: app,
@@ -185,7 +185,7 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
       } else if (home.featured.isEmpty) {
         slivers.add(
           SliverToBoxAdapter(
-            child: _gutter(
+            child: epGutter(
               Text(
                 'No upcoming events yet.',
                 key: const Key('feed-empty'),
@@ -201,7 +201,7 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
       if (venues.isNotEmpty) {
         slivers.add(
           SliverToBoxAdapter(
-            child: _gutter(
+            child: epGutter(
               EpSectionHeader(
                 label: 'VENUES',
                 action: 'See more',
@@ -237,7 +237,7 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
         );
         slivers.add(
           SliverToBoxAdapter(
-            child: _gutter(
+            child: epGutter(
               const SizedBox(
                 key: Key('feed-venues-bands-divider'),
                 height: kFeedSectionGap,
@@ -254,7 +254,7 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
       }
       slivers.add(
         SliverToBoxAdapter(
-          child: _gutter(
+          child: epGutter(
             EpSectionHeader(
               label: 'BANDS',
               action: 'See more',
@@ -289,7 +289,7 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
       }
       slivers.add(
         SliverToBoxAdapter(
-          child: _gutter(
+          child: epGutter(
             Column(
               children: [
                 const SizedBox(
@@ -324,11 +324,6 @@ class _DiscoveryFeedState extends State<DiscoveryFeed> {
     );
     return slivers;
   }
-
-  Widget _gutter(Widget child) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
-    child: child,
-  );
 }
 
 class _PinnedGenreRail extends SliverPersistentHeaderDelegate {

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../date_names.dart';
+import '../initials.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -14,6 +15,7 @@ import '../widgets/ep_text.dart';
 import '../widgets/explore_tiles.dart';
 import '../widgets/fan_event_card.dart';
 import '../widgets/form_bits.dart';
+import '../widgets/friend_row.dart';
 import '../widgets/sheets.dart';
 
 class MyGigsScreen extends StatefulWidget {
@@ -245,7 +247,11 @@ class _ProfileHeader extends StatelessWidget {
               excludeSemantics: true,
               child: EpAvatarTile(
                 key: const Key('fan-profile-avatar'),
-                initials: _initials(name),
+                initials: initialsFirstWords(
+                  name,
+                  upper: false,
+                  fallback: 'EF',
+                ),
                 size: 64,
                 image: profile?.avatarUrl == null
                     ? null
@@ -254,39 +260,21 @@ class _ProfileHeader extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  EpDisplay(
-                    displayName,
-                    key: const Key('fan-profile-name'),
-                    size: 20,
-                    keepCase: true,
-                  ),
-                  if (profile case final UserProfile profile) ...[
-                    const SizedBox(height: 2),
-                    if (profile.homeLocation case final FanCity city)
-                      Text(
-                        '${city.label} scene',
-                        key: const Key('fan-profile-scene'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.epCaption.copyWith(
-                          color: context.epColors.ink,
-                        ),
-                      ),
-                    Text(
-                      'Since ${monthNames[profile.createdAt.month - 1]} ${profile.createdAt.year}',
-                      key: const Key('fan-profile-since'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.epCaption.copyWith(
-                        color: context.epColors.muted,
-                      ),
+              child: profile == null
+                  ? EpDisplay(
+                      displayName,
+                      key: const Key('fan-profile-name'),
+                      size: 20,
+                      keepCase: true,
+                    )
+                  : FanIdentityLines(
+                      name: displayName,
+                      homeLocation: profile.homeLocation,
+                      createdAt: profile.createdAt,
+                      nameKey: const Key('fan-profile-name'),
+                      sceneKey: const Key('fan-profile-scene'),
+                      sinceKey: const Key('fan-profile-since'),
                     ),
-                  ],
-                ],
-              ),
             ),
             EpIconPill(
               key: const Key('edit-profile-action'),
@@ -315,12 +303,6 @@ class _ProfileHeader extends StatelessWidget {
       ],
     );
   }
-}
-
-String _initials(String? name) {
-  final parts = name?.trim().split(RegExp(r'\s+')) ?? const <String>[];
-  if (parts.isEmpty || parts.first.isEmpty) return 'EF';
-  return parts.take(2).map((part) => part.characters.first).join();
 }
 
 class _NextShow extends StatelessWidget {
@@ -783,48 +765,14 @@ class _FriendsSheet extends StatelessWidget {
               padding: const EdgeInsets.only(top: 8),
               itemCount: friendIds.length,
               separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, index) =>
-                  _FriendRow(userId: friendIds[index]),
+              itemBuilder: (context, index) => FriendRow(
+                userId: friendIds[index],
+                rowKey: ValueKey('friend-${friendIds[index]}'),
+                sub: 'Friend',
+              ),
             ),
     );
   }
-}
-
-class _FriendRow extends StatefulWidget {
-  const _FriendRow({required this.userId});
-
-  final String userId;
-
-  @override
-  State<_FriendRow> createState() => _FriendRowState();
-}
-
-class _FriendRowState extends State<_FriendRow> {
-  late final Future<SocialUserDetail?> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = context.read<AppState>().loadUserCard(widget.userId);
-  }
-
-  @override
-  Widget build(BuildContext context) => FutureBuilder<SocialUserDetail?>(
-    future: _future,
-    builder: (context, snapshot) {
-      final detail = snapshot.data;
-      return EpEntityRow(
-        key: ValueKey('friend-${widget.userId}'),
-        leading: EpFanAvatar(
-          name: detail?.name,
-          imageUrl: detail?.avatarUrl,
-          size: 40,
-        ),
-        title: detail?.name ?? '...',
-        sub: 'Friend',
-      );
-    },
-  );
 }
 
 class _ProfileDetailSheet extends StatelessWidget {

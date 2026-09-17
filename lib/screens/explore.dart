@@ -6,8 +6,10 @@ import '../search_query.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
+import '../widgets/ep_search_field.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/fan_event_card.dart';
+import '../widgets/feed_spacing.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -82,7 +84,15 @@ class _ExploreScreenState extends State<ExploreScreen> {
               children: [
                 const EpDisplay('Explore', size: 44),
                 const SizedBox(height: 16),
-                _searchField(context, app),
+                EpSearchField(
+                  fieldKey: const Key('explore-search-field'),
+                  clearKey: const Key('explore-search-clear'),
+                  controller: _controller,
+                  hint: 'Events, bands, venues, places, tonight, free…',
+                  onChanged: (text) => _updateQuery(app, text),
+                  onSubmitted: app.recordSearch,
+                  onClear: () => _clearSearch(app),
+                ),
               ],
             ),
           ),
@@ -96,67 +106,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
     );
   }
 
-  Widget _searchField(BuildContext context, AppState app) => Focus(
-    canRequestFocus: false,
-    skipTraversal: true,
-    child: Builder(
-      builder: (context) {
-        final focused = Focus.of(context).hasFocus;
-        return Container(
-          constraints: const BoxConstraints(minHeight: 44),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: focused ? context.epColors.accent : context.epColors.line,
-              width: focused ? 1.5 : 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.search, size: 16, color: context.epColors.muted),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  key: const Key('explore-search-field'),
-                  controller: _controller,
-                  onChanged: (text) => _updateQuery(app, text),
-                  onSubmitted: (text) => app.recordSearch(text),
-                  textInputAction: TextInputAction.search,
-                  textAlignVertical: TextAlignVertical.center,
-                  style: Theme.of(context).textTheme.epInput,
-                  decoration: InputDecoration(
-                    hintText: 'Events, bands, venues, places, tonight, free…',
-                    hintStyle: Theme.of(
-                      context,
-                    ).textTheme.epInput.copyWith(color: context.epColors.muted),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    disabledBorder: InputBorder.none,
-                  ),
-                ),
-              ),
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _controller,
-                builder: (context, value, _) => value.text.isEmpty
-                    ? const SizedBox.shrink()
-                    : IconButton(
-                        key: const Key('explore-search-clear'),
-                        tooltip: 'Clear search',
-                        onPressed: () => _clearSearch(app),
-                        color: context.epColors.muted,
-                        icon: const Icon(Icons.close, size: 18),
-                      ),
-              ),
-            ],
-          ),
-        );
-      },
-    ),
-  );
-
   Widget _defaultBody(BuildContext context, AppState app) {
     final recents = app.recentSearches;
     return ListView(
@@ -164,18 +113,19 @@ class _ExploreScreenState extends State<ExploreScreen> {
       padding: EdgeInsets.zero,
       children: [
         if (recents.isNotEmpty) ...[
-          _gutter(
+          epGutter(
             const EpSectionHeader(
               label: 'RECENT SEARCHES',
               padding: EdgeInsets.only(top: 24),
             ),
           ),
           for (var i = 0; i < recents.length; i++)
-            _gutter(
-              ExploreMenuRow(
+            epGutter(
+              EpMenuRow(
                 key: Key('explore-recent-$i'),
                 icon: Icons.history,
                 label: recents[i],
+                padding: EdgeInsets.zero,
                 trailing: IconButton(
                   key: Key('explore-recent-clear-$i'),
                   tooltip: 'Remove',
@@ -187,33 +137,36 @@ class _ExploreScreenState extends State<ExploreScreen> {
               ),
             ),
         ],
-        _gutter(
+        epGutter(
           const EpSectionHeader(
             label: 'SUGGESTIONS',
             padding: EdgeInsets.only(top: 24),
           ),
         ),
-        _gutter(
-          ExploreMenuRow(
+        epGutter(
+          EpMenuRow(
             key: const Key('explore-suggest-near-me'),
             icon: Icons.near_me_outlined,
             label: 'Near me',
+            padding: EdgeInsets.zero,
             onTap: () => _runSearch(app, 'near me'),
           ),
         ),
-        _gutter(
-          ExploreMenuRow(
+        epGutter(
+          EpMenuRow(
             key: const Key('explore-suggest-tonight'),
             icon: Icons.nightlight_outlined,
             label: 'Tonight',
+            padding: EdgeInsets.zero,
             onTap: () => _runSearch(app, 'tonight'),
           ),
         ),
-        _gutter(
-          ExploreMenuRow(
+        epGutter(
+          EpMenuRow(
             key: const Key('explore-suggest-free'),
             icon: Icons.money_off_outlined,
             label: 'Free',
+            padding: EdgeInsets.zero,
             onTap: () => _runSearch(app, 'free'),
           ),
         ),
@@ -229,7 +182,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
       key: const ValueKey('explore-results'),
       padding: EdgeInsets.zero,
       children: [
-        _gutter(
+        epGutter(
           Padding(
             padding: const EdgeInsets.only(top: 16, bottom: 12),
             child: Text(
@@ -242,7 +195,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
           ),
         ),
         if (hits.isEmpty)
-          _gutter(
+          epGutter(
             Text(
               'Nothing matches. Try a band, a venue, a place, or tonight / free.',
               key: const Key('explore-no-results'),
@@ -252,7 +205,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
             ),
           )
         else ...[
-          _gutter(
+          epGutter(
             FanEventCard(
               key: const Key('explore-hero'),
               rowKey: const Key('explore-hero'),
@@ -263,7 +216,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
             ),
           ),
           for (final hit in hits.skip(1))
-            _gutter(
+            epGutter(
               FanEventCard(
                 key: Key('explore-result-${hit.gig.id}'),
                 rowKey: Key('explore-result-${hit.gig.id}'),
@@ -278,65 +231,3 @@ class _ExploreScreenState extends State<ExploreScreen> {
     );
   }
 }
-
-class ExploreMenuRow extends StatelessWidget {
-  const ExploreMenuRow({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.trailing,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    enabled: true,
-    child: InkWell(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 44),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      children: [
-                        Icon(icon, size: 16, color: context.epColors.ink),
-                        const SizedBox(width: 12),
-                        Expanded(child: EpDisplay(label, size: 20)),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                // Keep the remove button's touch target outside the label padding.
-                trailing ??
-                    Icon(
-                      Icons.chevron_right,
-                      size: 16,
-                      color: context.epColors.muted,
-                    ),
-              ],
-            ),
-          ),
-          const EpHairline(),
-        ],
-      ),
-    ),
-  );
-}
-
-Widget _gutter(Widget child) => Padding(
-  padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
-  child: child,
-);

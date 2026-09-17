@@ -8,7 +8,9 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
+import '../widgets/ep_search_field.dart';
 import '../widgets/ep_text.dart';
+import '../widgets/friend_row.dart';
 
 class PeopleScreen extends StatefulWidget {
   const PeopleScreen({super.key});
@@ -81,7 +83,18 @@ class _PeopleScreenState extends State<PeopleScreen> {
                   const EpDisplay('Find people', size: 44),
                   if (app.authed) ...[
                     const SizedBox(height: 16),
-                    _searchField(context),
+                    EpSearchField(
+                      fieldKey: const Key('people-search-field'),
+                      clearKey: const Key('people-search-clear'),
+                      controller: _controller,
+                      hint: 'Search by name or email',
+                      onChanged: _onQueryChanged,
+                      onClear: () {
+                        _controller.clear();
+                        _onQueryChanged('');
+                      },
+                      radius: EpLayout.pillRadius,
+                    ),
                   ],
                 ],
               ),
@@ -151,7 +164,12 @@ class _PeopleScreenState extends State<PeopleScreen> {
                         ),
                       )
                     else
-                      for (final id in app.friendIds) _FriendRow(userId: id),
+                      for (final id in app.friendIds)
+                        FriendRow(
+                          userId: id,
+                          rowKey: Key('people-result-$id'),
+                          sub: 'Friends',
+                        ),
                   ] else if (app.peopleSearching)
                     Text(
                       'Searching…',
@@ -189,72 +207,6 @@ class _PeopleScreenState extends State<PeopleScreen> {
       ),
     );
   }
-
-  Widget _searchField(BuildContext context) => Focus(
-    canRequestFocus: false,
-    skipTraversal: true,
-    child: Builder(
-      builder: (context) {
-        final focused = Focus.of(context).hasFocus;
-        return Container(
-          constraints: const BoxConstraints(minHeight: 44),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(EpLayout.pillRadius),
-            border: Border.all(
-              color: focused ? context.epColors.accent : context.epColors.line,
-              width: focused ? 1.5 : 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.search, size: 16, color: context.epColors.muted),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  key: const Key('people-search-field'),
-                  controller: _controller,
-                  onChanged: _onQueryChanged,
-                  textInputAction: TextInputAction.search,
-                  textAlignVertical: TextAlignVertical.center,
-                  style: Theme.of(context).textTheme.epInput,
-                  decoration: InputDecoration(
-                    hintText: 'Search by name or email',
-                    hintStyle: Theme.of(
-                      context,
-                    ).textTheme.epInput.copyWith(color: context.epColors.muted),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    disabledBorder: InputBorder.none,
-                    errorBorder: InputBorder.none,
-                    focusedErrorBorder: InputBorder.none,
-                  ),
-                ),
-              ),
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _controller,
-                builder: (context, value, _) => value.text.isEmpty
-                    ? const SizedBox.shrink()
-                    : IconButton(
-                        key: const Key('people-search-clear'),
-                        tooltip: 'Clear search',
-                        onPressed: () {
-                          _controller.clear();
-                          _onQueryChanged('');
-                        },
-                        color: context.epColors.muted,
-                        icon: const Icon(Icons.close, size: 18),
-                      ),
-              ),
-            ],
-          ),
-        );
-      },
-    ),
-  );
 }
 
 String? _suggestedSub(SuggestedPerson person) {
@@ -266,38 +218,4 @@ String? _suggestedSub(SuggestedPerson person) {
       : null;
   if (shows != null && friends != null) return '$shows · $friends';
   return shows ?? friends;
-}
-
-class _FriendRow extends StatefulWidget {
-  const _FriendRow({required this.userId});
-  final String userId;
-  @override
-  State<_FriendRow> createState() => _FriendRowState();
-}
-
-class _FriendRowState extends State<_FriendRow> {
-  late final Future<SocialUserDetail?> _future;
-  @override
-  void initState() {
-    super.initState();
-    _future = context.read<AppState>().loadUserCard(widget.userId);
-  }
-
-  @override
-  Widget build(BuildContext context) => FutureBuilder<SocialUserDetail?>(
-    future: _future,
-    builder: (context, snapshot) {
-      final detail = snapshot.data;
-      return EpEntityRow(
-        key: Key('people-result-${widget.userId}'),
-        leading: EpFanAvatar(
-          name: detail?.name,
-          imageUrl: detail?.avatarUrl,
-          size: 40,
-        ),
-        title: detail?.name ?? '...',
-        sub: 'Friends',
-      );
-    },
-  );
 }
