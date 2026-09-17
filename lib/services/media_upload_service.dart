@@ -11,6 +11,33 @@ import 'video_thumbnail_generator.dart';
 
 enum MediaUploadPhase { preparing, uploading, saving, done, failed }
 
+/// Uploads an application verification document (organization or host
+/// application) and returns its storage id.
+///
+/// Kept separate from [MediaUploadService]: the demo id and error text differ
+/// and the application forms depend on both.
+Future<String> uploadApplicationDocument(
+  EarplugRepository repository,
+  PickedMedia media,
+) async {
+  final uploadUri = Uri.parse(
+    await repository.generateApplicationDocumentUploadUrl(),
+  );
+  if (uploadUri.scheme == 'demo') {
+    return 'demo-application-doc-${DateTime.now().microsecondsSinceEpoch}';
+  }
+  final response = await http.post(
+    uploadUri,
+    headers: {'Content-Type': media.contentType},
+    body: media.bytes,
+  );
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception('Upload failed with status ${response.statusCode}');
+  }
+  return (jsonDecode(response.body) as Map<String, dynamic>)['storageId']
+      as String;
+}
+
 typedef HttpPoster =
     Future<String> Function(Uri url, Uint8List bytes, String contentType);
 

@@ -1258,6 +1258,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                         padding: const EdgeInsets.only(top: 8),
                         child: StatusPill(
                           label: _status.wireValue.replaceAll('_', ' '),
+                          tone: EpStatusPillTone.success,
                         ),
                       ),
                     ],
