@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme.dart';
+
 /// Vertical space from the previous section's last content to the header top.
 const double kFeedSectionGap = 28;
 
@@ -10,12 +12,12 @@ const double kFeedHeaderGap = 12;
 /// See ExploreEventRow/_ExploreHairlineRow in explore_tiles.dart. Callers use
 /// this inset to keep the painted gap equal to [kFeedHeaderGap]; it is not
 /// independently tunable.
-const double kFeedRowLeadingInset = 12;
+const double _kFeedRowLeadingInset = 12;
 
 /// Fixed bottom padding (12px) plus trailing hairline (1px) in ExploreEventRow.
 /// Callers compensate for this inset to keep the painted gap equal to
 /// [kFeedSectionGap]; it is not independently tunable.
-const double kFeedRowTrailingInset = 13;
+const double _kFeedRowTrailingInset = 13;
 
 /// Section-header padding that compensates for adjacent compact row lists.
 /// Set [afterRowList] when the previous content is a row list, and
@@ -25,6 +27,12 @@ EdgeInsets feedSectionHeaderPadding({
   bool afterRowList = false,
   bool beforeRowList = false,
 }) => EdgeInsets.only(
-  top: kFeedSectionGap - (afterRowList ? kFeedRowTrailingInset : 0),
-  bottom: kFeedHeaderGap - (beforeRowList ? kFeedRowLeadingInset : 0),
+  top: kFeedSectionGap - (afterRowList ? _kFeedRowTrailingInset : 0),
+  bottom: kFeedHeaderGap - (beforeRowList ? _kFeedRowLeadingInset : 0),
+);
+
+/// Wraps [child] in the page's horizontal gutter.
+Widget epGutter(Widget child) => Padding(
+  padding: const EdgeInsets.symmetric(horizontal: EpLayout.gutter),
+  child: child,
 );
