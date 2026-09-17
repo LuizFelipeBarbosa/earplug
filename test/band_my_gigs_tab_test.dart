@@ -609,38 +609,13 @@ Booking _booking(
   String id, {
   required int days,
   BookingStatus status = BookingStatus.confirmed,
-}) => Booking(
+}) => bookingFixture(
   id: id,
-  opportunityId: 'opp1',
+  status: status,
+  startsAt: DateTime.now().add(Duration(days: days)),
   opportunityTitle: '$id show',
   opportunitySlug: '$id-show',
-  slotId: 'opp1-headliner',
-  slotRole: SlotRole.headliner,
-  slotRequired: true,
-  organizationId: 'org1',
-  organizationName: 'The Foghorn Club',
-  bandId: 'b1',
-  bandName: 'Foghorn Diet',
-  bandSlug: 'foghorn-diet',
   applicationId: 'app-$id',
-  status: status,
-  revision: 3,
-  startsAt: DateTime.now().add(Duration(days: days)),
-  fee: const FeeBreakdown(
-    grossMinor: 10000,
-    commissionBps: 1000,
-    commissionMinor: 1000,
-    artistNetMinor: 9000,
-    currency: 'usd',
-  ),
-  cancellationTemplate: CancellationTemplate.standard,
-  organizerAcceptedTermsAt: DateTime.now(),
-  viewerSide: BookingSide.artist,
-  venue: const BookingVenue(
-    id: 'v1',
-    name: 'The Foghorn Club',
-    approxLabel: 'Oakland',
-  ),
 );
 
 GigProject _project(

@@ -145,21 +145,87 @@ Band bandFixture({
 
 /// A pinned 30-second clip on `b1`.
 BandMedia videoMediaFixture({
+  String id = 'm1',
+  String bandId = 'b1',
+  MediaKind kind = MediaKind.video,
+  String? url = 'https://example.com/video.mp4',
   String title = 'Clip',
   String? thumbnailUrl,
-  int views = 2,
+  int? sizeBytes = 10,
+  int? views = 2,
+  int? lengthSec = 30,
+  bool pinned = true,
+  int order = 0,
+  bool isHero = false,
 }) => BandMedia(
-  id: 'm1',
-  bandId: 'b1',
-  kind: MediaKind.video,
-  url: 'https://example.com/video.mp4',
+  id: id,
+  bandId: bandId,
+  kind: kind,
+  url: url,
   thumbnailUrl: thumbnailUrl,
   title: title,
   caption: null,
-  sizeBytes: 10,
+  sizeBytes: sizeBytes,
   views: views,
-  lengthSec: 30,
-  pinned: true,
-  order: 0,
-  isHero: false,
+  lengthSec: lengthSec,
+  pinned: pinned,
+  order: order,
+  isHero: isHero,
+);
+
+/// A confirmed headliner booking of `b1` at The Foghorn Club, two days out.
+/// Title, slug and application id derive from [id] unless a test needs
+/// specific copy.
+Booking bookingFixture({
+  String id = 'booking1',
+  BookingStatus status = BookingStatus.confirmed,
+  BookingSide viewerSide = BookingSide.artist,
+  int revision = 1,
+  DateTime? startsAt,
+  String opportunityId = 'opp1',
+  String? opportunityTitle,
+  String? opportunitySlug,
+  String? applicationId,
+  String organizationId = 'org1',
+  String organizationName = 'The Foghorn Club',
+  String bandName = 'Foghorn Diet',
+  FeeBreakdown? fee,
+  BookingVenue? venue,
+  DateTime? organizerAcceptedTermsAt,
+}) => Booking(
+  id: id,
+  opportunityId: opportunityId,
+  opportunityTitle: opportunityTitle ?? '$id show',
+  opportunitySlug: opportunitySlug ?? '$id-show',
+  slotId: '$opportunityId-headliner',
+  slotRole: SlotRole.headliner,
+  slotRequired: true,
+  organizationId: organizationId,
+  organizationName: organizationName,
+  bandId: 'b1',
+  bandName: bandName,
+  bandSlug: 'foghorn-diet',
+  applicationId: applicationId ?? 'app-$id',
+  status: status,
+  revision: revision,
+  startsAt: startsAt ?? DateTime.now().add(const Duration(days: 2)),
+  fee:
+      fee ??
+      const FeeBreakdown(
+        grossMinor: 10000,
+        commissionBps: 1000,
+        commissionMinor: 1000,
+        artistNetMinor: 9000,
+        currency: 'usd',
+      ),
+  cancellationTemplate: CancellationTemplate.standard,
+  organizerAcceptedTermsAt: organizerAcceptedTermsAt ?? DateTime.now(),
+  viewerSide: viewerSide,
+  venue:
+      venue ??
+      const BookingVenue(
+        id: 'v1',
+        name: 'The Foghorn Club',
+        approxLabel: 'Oakland',
+      ),
 );

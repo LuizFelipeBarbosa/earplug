@@ -650,17 +650,14 @@ class _GlobalOrderDemoRepository extends DemoRepository {
   }
 }
 
-BandMedia _media(String id, MediaKind kind, int order) => BandMedia(
+BandMedia _media(String id, MediaKind kind, int order) => videoMediaFixture(
   id: id,
-  bandId: 'b1',
   kind: kind,
   url: null,
   title: id,
-  caption: null,
   sizeBytes: null,
   views: null,
   lengthSec: null,
   pinned: id == 'video-1',
   order: order,
-  isHero: false,
 );

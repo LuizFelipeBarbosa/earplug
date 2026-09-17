@@ -139,19 +139,13 @@ void main() {
     tester,
   ) async {
     final auth = FakeAuthService();
-    const video = BandMedia(
+    final video = videoMediaFixture(
       id: 'no-duration',
-      bandId: 'b1',
-      kind: MediaKind.video,
-      url: '',
       title: 'Untimed clip',
-      caption: null,
+      url: '',
+      lengthSec: null,
       sizeBytes: null,
       views: null,
-      lengthSec: null,
-      pinned: true,
-      order: 0,
-      isHero: false,
     );
     await _pumpBandMedia(
       tester,
