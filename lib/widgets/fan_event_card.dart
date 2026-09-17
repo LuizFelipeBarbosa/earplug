@@ -93,7 +93,7 @@ class FanEventCard extends StatelessWidget {
             gig: gig,
             venueName: venue.name,
             lines: lines,
-            actions: gigCardActions(context, gig, app, ring: false),
+            actions: _gigCardActions(context, gig, app, ring: false),
             onTap: () => app.openGig(gig.id),
             width: width,
             height: height,
@@ -159,7 +159,7 @@ class FanEventSnapshotCard extends StatelessWidget {
   );
 }
 
-List<Widget> gigCardActions(
+List<Widget> _gigCardActions(
   BuildContext context,
   Gig gig,
   AppState app, {

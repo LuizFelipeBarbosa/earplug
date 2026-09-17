@@ -156,11 +156,6 @@ void main() {
     expect(page.bandIds, contains('band'));
   });
 
-  test('fnv1a is deterministic and non-negative', () {
-    expect(fnv1a('hello'), fnv1a('hello'));
-    expect(fnv1a('hello'), greaterThanOrEqualTo(0));
-  });
-
   test('gigRelevance rewards fan signals, genres, timing, and free gigs', () {
     final gig = _gig('saved', _now.add(const Duration(days: 1)), genres: ['Post Punk'], lineup: ['band'], price: 0);
     final bands = {'band': bandFixture(id: 'band', genres: ['noise'])};

@@ -395,7 +395,7 @@ List<ExploreCollection> buildCollections({
   final userGenres = signals.userGenres.map(canonicalGenre).where((g) => g.isNotEmpty).toSet();
   if (userGenres.isNotEmpty) {
     for (final genre in userGenres) {
-      add('genre:$genre', ExploreCollectionKind.genre, '${genreLabel(genre)} night',
+      add('genre:$genre', ExploreCollectionKind.genre, '${_genreLabel(genre)} night',
           feed.where((gig) => gig.genres.any((g) => canonicalGenre(g) == genre)).toList(),
           affinity: 4);
     }
@@ -408,10 +408,10 @@ List<ExploreCollection> buildCollections({
     }
     final trending = counts.keys.toList()
       ..sort((a, b) => counts[b]!.compareTo(counts[a]!) == 0
-          ? genreLabel(a).compareTo(genreLabel(b))
+          ? _genreLabel(a).compareTo(_genreLabel(b))
           : counts[b]!.compareTo(counts[a]!));
     for (final genre in trending.take(2)) {
-      add('genre:$genre', ExploreCollectionKind.genre, 'Trending: ${genreLabel(genre)}',
+      add('genre:$genre', ExploreCollectionKind.genre, 'Trending: ${_genreLabel(genre)}',
           feed.where((gig) => gig.genres.any((g) => canonicalGenre(g) == genre)).toList(),
           affinity: 4);
     }
@@ -439,7 +439,7 @@ List<ExploreCollection> buildCollections({
   final fixed = candidates.take(fixedCount).toList();
   final tail = candidates.skip(fixedCount).toList();
   if (tail.isNotEmpty) {
-    final shift = fnv1a('${signals.seed}:${dayKey(signals.now)}') % tail.length;
+    final shift = _fnv1a('${signals.seed}:${dayKey(signals.now)}') % tail.length;
     final rotated = [...tail.skip(shift), ...tail.take(shift)];
     fixed.addAll(rotated);
   }
@@ -502,7 +502,7 @@ List<GenreChip> rankGenres({
           band.genres.any((g) => canonicalGenre(g) == genre)).length * 2;
       if (signals.userGenres.map(canonicalGenre).contains(genre)) score++;
     }
-    chips.add(_ScoredGenre(GenreChip(genre: genre, label: genreLabel(genre), feedCount: feedCount), score));
+    chips.add(_ScoredGenre(GenreChip(genre: genre, label: _genreLabel(genre), feedCount: feedCount), score));
   }
   chips.sort((a, b) {
     if (signals.signedIn) {
@@ -561,7 +561,7 @@ ExploreGenrePage buildGenrePage({
   final rankedIds = _rankBandIds(ids, bands: bands, feed: feed, signals: signals);
   return ExploreGenrePage(
     genre: canonical,
-    label: genreLabel(canonical),
+    label: _genreLabel(canonical),
     tonight: tonight,
     week: week,
     later: later,
@@ -571,7 +571,7 @@ ExploreGenrePage buildGenrePage({
 
 String canonicalGenre(String raw) => raw.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
-String genreLabel(String canonical) {
+String _genreLabel(String canonical) {
   final value = canonicalGenre(canonical);
   return value.splitMapJoin(RegExp(r'([ -])'), onMatch: (m) => m.group(1)!,
       onNonMatch: (chunk) => chunk.isEmpty ? chunk : '${chunk[0].toUpperCase()}${chunk.substring(1)}');
@@ -579,7 +579,7 @@ String genreLabel(String canonical) {
 
 String dayKey(DateTime t) => '${t.year.toString().padLeft(4, '0')}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
 
-int fnv1a(String s) {
+int _fnv1a(String s) {
   var hash = 0x811c9dc5;
   for (final rune in s.runes) {
     final bytes = rune <= 0x7f

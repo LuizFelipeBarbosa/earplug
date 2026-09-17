@@ -105,3 +105,35 @@ class _ReadinessModuleState extends State<ReadinessModule> {
     );
   }
 }
+
+/// The dash's fallback row when a readiness snapshot fails to load: a short
+/// notice with a chip-sized Retry pill carrying [retryKey].
+class ReadinessRetry extends StatelessWidget {
+  const ReadinessRetry({
+    super.key,
+    required this.retryKey,
+    required this.onRetry,
+  });
+
+  final Key retryKey;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(
+        child: EpMonoText(
+          'Readiness unavailable',
+          color: context.epColors.contentSecondary,
+        ),
+      ),
+      const SizedBox(width: 12),
+      EpPill(
+        key: retryKey,
+        label: 'Retry',
+        size: EpPillSize.chip,
+        onPressed: onRetry,
+      ),
+    ],
+  );
+}
