@@ -456,12 +456,12 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
   Widget _buildFinanceSection(AppState app) {
     final status = app.organizationStripeStatusFor(app.organizationId);
     final (stripeLabel, stripeTone) = switch (status?.state) {
-      StripeAccountState.enabled => ('Connected', EpStatusPillTone.success),
+      StripeAccountState.enabled => ('Connected', EpBadgeTone.success),
       StripeAccountState.onboarding || StripeAccountState.restricted => (
         'Setup in progress — finish in Stripe',
-        EpStatusPillTone.attention,
+        EpBadgeTone.attention,
       ),
-      _ => ('Set up', EpStatusPillTone.attention),
+      _ => ('Set up', EpBadgeTone.attention),
     };
     final needsTaxInformation =
         status?.requirementsDue.any(
@@ -482,7 +482,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
           icon: Icons.account_balance_outlined,
           label: 'Stripe',
           trailing: Flexible(
-            child: StatusPill(label: stripeLabel, tone: stripeTone),
+            child: EpBadge(label: stripeLabel, tone: stripeTone),
           ),
           onTap: app.openFinance,
         ),
@@ -491,11 +491,9 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
           icon: Icons.receipt_long_outlined,
           label: 'Tax details',
           trailing: Flexible(
-            child: StatusPill(
+            child: EpBadge(
               label: taxCollected ? '✓ Collected via Stripe' : 'Action needed',
-              tone: taxCollected
-                  ? EpStatusPillTone.success
-                  : EpStatusPillTone.attention,
+              tone: taxCollected ? EpBadgeTone.success : EpBadgeTone.attention,
             ),
           ),
           // Stripe collects tax details during onboarding; until details are

@@ -8,6 +8,7 @@ import '../host_request_groups.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/ep_states.dart';
 import '../widgets/ep_text.dart';
@@ -95,7 +96,7 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerLeft,
-            child: StatusPill(
+            child: EpBadge(
               label: switch (consent.status) {
                 VenueConsentStatus.pending => 'PENDING APPROVAL',
                 VenueConsentStatus.granted => 'APPROVED',
@@ -105,9 +106,9 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
                 VenueConsentStatus.unknown => 'UNKNOWN',
               },
               tone: switch (consent.status) {
-                VenueConsentStatus.granted => EpStatusPillTone.success,
-                VenueConsentStatus.pending => EpStatusPillTone.warning,
-                _ => EpStatusPillTone.neutral,
+                VenueConsentStatus.granted => EpBadgeTone.success,
+                VenueConsentStatus.pending => EpBadgeTone.warning,
+                _ => EpBadgeTone.neutral,
               },
             ),
           ),
@@ -226,7 +227,7 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
           EpLoadError(message: 'Could not load venues.', onRetry: _refresh)
         else ...[
           if (_consents.isNotEmpty) ...[
-            const SectionBar(label: 'VENUE REQUESTS'),
+            const EpSectionHeader(label: 'VENUE REQUESTS'),
             for (final consent in _consents) ...[
               _venueRequestCard(app, consent),
               const SizedBox(height: 12),
@@ -297,15 +298,15 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
                     runSpacing: 7,
                     children: [
                       if (isDefault)
-                        StatusPill(
+                        EpBadge(
                           key: Key('org-venue-default-${venue.id}'),
                           label: 'Default',
-                          tone: EpStatusPillTone.selected,
+                          tone: EpBadgeTone.selected,
                         ),
                       if (!venue.verified)
-                        const StatusPill(
+                        const EpBadge(
                           label: 'Suspended',
-                          tone: EpStatusPillTone.attention,
+                          tone: EpBadgeTone.attention,
                         ),
                     ],
                   ),
