@@ -2,12 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../host_request_groups.dart';
+import '../initials.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
-import '../widgets/readiness_segments.dart';
+import '../widgets/ep_rows.dart';
+import '../widgets/ep_text.dart';
+import '../widgets/opportunity_labels.dart';
+import '../widgets/readiness_module.dart';
 import '../widgets/sheets.dart';
 
+const _sectionGap = 28.0;
+
+/// The organizer dash: identity header, the readiness module while something
+/// is still to do, the next confirmed event as the hero, the MANAGE menu and,
+/// for hosts, a note on where requests go.
 class OrgDashScreen extends StatefulWidget {
   const OrgDashScreen({super.key});
 
@@ -16,10 +26,6 @@ class OrgDashScreen extends StatefulWidget {
 }
 
 class _OrgDashScreenState extends State<OrgDashScreen> {
-  OrganizationDashboard? _dashboard;
-  List<PublicReview> _reviews = const [];
-  Object? _error;
-  bool _loading = true;
   String? _loadedOrganizationId;
 
   @override
@@ -29,279 +35,196 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
     final organizationId = app.organizationId;
     if (_loadedOrganizationId == organizationId) return;
     _loadedOrganizationId = organizationId;
-    _refresh();
-    _loadReviews(organizationId);
+    if (organizationId.isEmpty) return;
+    app.refreshOrganizationDashboard(organizationId);
+    app.refreshOrganizationStripeStatus();
     app.refreshOpportunities(organizationId);
-  }
-
-  Future<void> _loadReviews(String organizationId) async {
-    final app = context.read<AppState>();
-    _reviews = const [];
-    try {
-      final reviews = await app.repository.reviewsForOrganization(
-        organizationId,
-        limit: 3,
-      );
-      if (!mounted || app.organizationId != organizationId) return;
-      setState(() => _reviews = reviews);
-    } catch (_) {
-      // Reviews are optional; a failed load must not hide the dashboard.
-    }
-  }
-
-  Future<void> _refresh() async {
-    final app = context.read<AppState>();
-    final organizationId = app.organizationId;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final dashboard = await app.repository.organizationDashboard(
-        organizationId,
-      );
-      if (!mounted || app.organizationId != organizationId) return;
-      setState(() {
-        _dashboard = dashboard;
-        _loading = false;
-      });
-    } catch (error) {
-      if (!mounted || app.organizationId != organizationId) return;
-      setState(() {
-        _error = error;
-        _loading = false;
-      });
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final dashboard = _dashboard;
-    final reviewSummary = dashboard?.organization.reviewSummary;
-    final membership = app.currentOrganization;
-    final organizationName =
-        dashboard?.organization.name ??
-        membership?.organization.name ??
-        'Organizer';
-    final role = app.organizerRoleFor(app.organizationId) ?? dashboard?.role;
-    final openOpportunities = app
-        .opportunitiesFor(app.organizationId)
-        .where((opportunity) => opportunity.status == OpportunityStatus.open)
-        .length;
+    final organizationId = app.organizationId;
+    final dashboard = app.organizationDashboardFor(organizationId);
+    final organization =
+        dashboard?.organization ?? app.currentOrganization?.organization;
+    final canManage = app.canManageOrganization(organizationId);
+    final isHost = app.currentIsHost;
+    final nextEvent = HostRequestGroups.from(
+      app.opportunitiesFor(organizationId),
+      now: DateTime.now(),
+    ).nextEvent;
+
+    // Only managers can act on readiness; the module renders nothing while
+    // its sources load or once every step is done, so the gap follows it.
+    final showReadiness =
+        canManage &&
+        !(app
+                .readinessSnapshotFor(orgReadinessScope(organizationId))
+                ?.complete ??
+            true);
+    final readinessFailed =
+        canManage &&
+        dashboard == null &&
+        !app.organizationDashboardLoadingFor(organizationId);
+
+    final readiness = [
+      if (canManage) ...[
+        ReadinessModule(scopeKey: orgReadinessScope(organizationId)),
+        if (readinessFailed)
+          ReadinessRetry(
+            retryKey: const Key('org-dash-readiness-retry'),
+            onRetry: () => app.refreshOrganizationDashboard(organizationId),
+          ),
+      ],
+    ];
+    final hero = _NextEvent(
+      app: app,
+      opportunity: nextEvent,
+      isHost: isHost,
+      canManage: canManage,
+    );
+    final manage = [
+      const EpEyebrow('Manage'),
+      const SizedBox(height: 4),
+      _MenuRows(app: app, canManage: canManage, isHost: isHost),
+      if (isHost) ...[
+        const SizedBox(height: 20),
+        EpMonoText(
+          'Requests reach artists directly — they never appear on the public '
+          "map, and there's no ticketing.",
+          key: const Key('org-dash-footer-note'),
+          color: context.epColors.muted,
+          keepCase: true,
+        ),
+      ],
+    ];
+
+    if (EpLayout.isDesktop(context)) {
+      // The rail carries the identity, the switcher and "back to discover",
+      // so the content column starts at the hero.
+      return ListView(
+        padding: const EdgeInsets.only(bottom: 40),
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 12,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [hero, const SizedBox(height: 40), ...manage],
+                ),
+              ),
+              if (canManage) ...[
+                const SizedBox(width: 40),
+                Expanded(
+                  flex: 10,
+                  child: Container(
+                    padding: const EdgeInsets.only(left: 40),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        left: BorderSide(color: context.epColors.line),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: readiness,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      );
+    }
 
     return ListView(
       padding: EdgeInsets.fromLTRB(
-        16,
+        EpLayout.gutter,
         headerTopPad(context),
-        16,
+        EpLayout.gutter,
         tabBarClearance,
       ),
       children: [
-        _DashboardHeader(
-          organizationName: organizationName,
-          role: role,
-          onTap: () => showSwitcherSheet(context),
-          onDiscover: app.toFanView,
+        _Header(
+          app: app,
+          organization: organization,
+          role: app.organizerRoleFor(organizationId) ?? dashboard?.role,
         ),
-        const SizedBox(height: 18),
-        if (_loading)
-          const Padding(
-            padding: EdgeInsets.only(top: 80),
-            child: Center(child: CircularProgressIndicator()),
-          )
-        else if (_error != null)
-          _LoadError(onRetry: _refresh)
-        else if (dashboard != null) ...[
-          _VerificationCard(
-            verification: dashboard.verification,
-            isHost: app.currentIsHost,
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              if (app.currentIsVenueOperator) ...[
-                EpStatCard(
-                  key: const Key('org-dash-venue-requests'),
-                  label: 'VENUES',
-                  value: '${dashboard.venues.length}',
-                  caption: dashboard.pendingVenueConsents > 0
-                      ? '${dashboard.pendingVenueConsents} venue '
-                            '${dashboard.pendingVenueConsents == 1 ? 'request' : 'requests'}'
-                      : 'managed profiles',
-                ),
-                const SizedBox(width: 8),
-              ],
-              if (!app.currentIsHost) ...[
-                EpStatCard(
-                  label: 'MEMBERS',
-                  value: '${dashboard.memberCount}',
-                  caption: 'on the team',
-                ),
-                const SizedBox(width: 8),
-              ],
-              Expanded(
-                child: GestureDetector(
-                  key: const Key('org-dash-stat-opportunities'),
-                  onTap: () => app.resetTo(Screen.orgOpportunities),
-                  child: EpStatCard(
-                    expand: false,
-                    label: 'OPPORTUNITIES',
-                    value: '$openOpportunities',
-                    caption: openOpportunities > 0
-                        ? 'open right now'
-                        : 'none open',
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          SectionBar(label: app.currentIsHost ? 'HOST' : 'COMMAND CENTER'),
-          const SizedBox(height: 10),
-          _CommandGrid(
-            isHost: app.currentIsHost,
-            isVenueOperator: app.currentIsVenueOperator,
-            canManage: app.canManageOrganization(app.organizationId),
-            canSeeFinance: app.canSeeFinance(app.organizationId),
-            financeCaption: app.financeOverview == null
-                ? 'Set up'
-                : '${app.financeOverview!.ticketNetAmount.label} ticket net',
-            onFinance: app.openFinance,
-            onOpportunity: app.openOpportunityEditor,
-            onVenues: () => app.go(Screen.orgVenues),
-            onLocations: () => app.go(Screen.privateLocations),
-            onTeam: () => app.go(Screen.orgTeam),
-            onSettings: () => app.go(Screen.orgSettings),
-          ),
-          const SizedBox(height: 12),
-          EpStatCard(
-            key: const ValueKey('org-dash-stat-rating'),
-            expand: false,
-            label: 'RATING',
-            value: reviewSummary != null && reviewSummary.count > 0
-                ? reviewSummary.mean.toStringAsFixed(1)
-                : '—',
-            caption: reviewSummary != null && reviewSummary.count > 0
-                ? '${reviewSummary.count} reviews'
-                : 'no reviews yet',
-          ),
-          if (_reviews.isNotEmpty)
-            Column(
-              key: const ValueKey('org-dash-reviews'),
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SectionBar(label: 'REVIEWS'),
-                for (final review in _reviews) ...[
-                  EpCard(
-                    key: ValueKey('org-dash-review-${review.reviewId}'),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          review.counterpartyName,
-                          style: Theme.of(context).textTheme.epBody,
-                        ),
-                        const SizedBox(height: 6),
-                        Semantics(
-                          label: '${review.rating} out of 5 stars',
-                          excludeSemantics: true,
-                          child: Row(
-                            children: [
-                              for (var rating = 1; rating <= 5; rating++)
-                                Icon(
-                                  rating <= review.rating
-                                      ? Icons.star
-                                      : Icons.star_border,
-                                  size: 18,
-                                  color: context.epColors.accent,
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          review.monthLabel,
-                          style: Theme.of(context).textTheme.epCaption,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          review.text,
-                          style: Theme.of(context).textTheme.epBody,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-              ],
-            ),
-        ],
+        const SizedBox(height: _sectionGap),
+        ...readiness,
+        if (showReadiness || readinessFailed)
+          const SizedBox(height: _sectionGap),
+        hero,
+        const SizedBox(height: _sectionGap),
+        ...manage,
       ],
     );
   }
 }
 
-class _DashboardHeader extends StatelessWidget {
-  const _DashboardHeader({
-    required this.organizationName,
+class _Header extends StatelessWidget {
+  const _Header({
+    required this.app,
+    required this.organization,
     required this.role,
-    required this.onTap,
-    required this.onDiscover,
   });
 
-  final String organizationName;
+  final AppState app;
+  final Organization? organization;
   final OrganizationRole? role;
-  final VoidCallback onTap;
-  final VoidCallback onDiscover;
 
   @override
   Widget build(BuildContext context) {
-    final currentRole = role;
-    final roleText = currentRole == null
-        ? 'MEMBER'
-        : _roleLabel(currentRole).toUpperCase();
+    final name = organization?.name ?? 'Organizer';
+    final roleText = role == null ? 'Member' : organizationRoleLabel(role!);
     return Row(
+      key: const Key('org-dash-header'),
       children: [
         Expanded(
-          child: TextButton(
-            onPressed: onTap,
-            style: TextButton.styleFrom(
-              alignment: Alignment.centerLeft,
-              padding: EdgeInsets.zero,
-            ),
+          child: InkWell(
+            onTap: () => showSwitcherSheet(context),
             child: Row(
               children: [
-                const Icon(Icons.storefront_outlined, size: 34),
-                const SizedBox(width: 9),
-                Flexible(
+                SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: EpNetworkImage(
+                    url: organization?.photoUrls.firstOrNull,
+                    cacheWidth: 40,
+                    cacheHeight: 40,
+                    fallback: EpAvatarTile(
+                      initials: initialsFirstWords(
+                        name,
+                        stripPunctuation: true,
+                        fallback: '',
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
-                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Flexible(
-                            child: Text(
-                              organizationName.toUpperCase(),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: epDisplay(size: 16, height: 1),
-                            ),
+                            child: EpDisplay(name, size: 20, maxLines: 2),
                           ),
-                          const Icon(Icons.arrow_drop_down, size: 18),
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.expand_more,
+                            size: 16,
+                            color: context.epColors.muted,
+                          ),
                         ],
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        'ORGANIZER · $roleText',
-                        style: epText(
-                          size: 11,
-                          weight: FontWeight.w800,
-                          letterSpacing: 1,
-                          color: context.epColors.accent,
-                        ),
-                      ),
+                      const SizedBox(height: 4),
+                      EpEyebrow('Organizer · $roleText'),
                     ],
                   ),
                 ),
@@ -309,291 +232,208 @@ class _DashboardHeader extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: 8),
-        OutlinedButton(onPressed: onDiscover, child: const Text('DISCOVER')),
+        const SizedBox(width: 12),
+        EpPill(
+          key: const Key('org-dash-discover'),
+          label: 'Discover',
+          variant: EpPillVariant.accentOutline,
+          size: EpPillSize.chip,
+          onPressed: app.toFanView,
+        ),
       ],
     );
   }
 }
 
-class _VerificationCard extends StatelessWidget {
-  const _VerificationCard({required this.verification, required this.isHost});
+/// The hero: the next fully booked request or opportunity, or a prompt to
+/// post one.
+class _NextEvent extends StatelessWidget {
+  const _NextEvent({
+    required this.app,
+    required this.opportunity,
+    required this.isHost,
+    required this.canManage,
+  });
 
-  final OrganizationVerification verification;
+  final AppState app;
+  final Opportunity? opportunity;
   final bool isHost;
+  final bool canManage;
 
   @override
   Widget build(BuildContext context) {
-    final steps = <(String, bool, String?)>[
-      ('Verified', verification.verified, null),
-      if (!isHost) ...[
-        ('Stripe details', verification.stripeDetailsSubmitted, null),
-        ('Payouts enabled', verification.stripePayoutsEnabled, null),
-      ],
-      ('Profile complete', verification.profileComplete, null),
-      if (!isHost) ('Team invited', verification.teamInvited, null),
-    ];
-    return EpCard(
-      key: const Key('org-dash-verification'),
-      variant: EpCardVariant.raised,
-      padding: const EdgeInsets.all(15),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            isHost ? 'HOST READINESS' : 'ORGANIZATION READINESS',
-            style: epDisplay(size: 15),
-          ),
-          const SizedBox(height: 11),
-          ReadinessSegments(steps: [for (final step in steps) step.$2]),
-          const SizedBox(height: 10),
-          ...steps.map((step) {
-            final row = Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    step.$2 ? Icons.check_circle : Icons.radio_button_unchecked,
-                    size: 16,
-                    color: step.$2
-                        ? context.epColors.success
-                        : context.epColors.contentDisabled,
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          step.$1,
-                          style: Theme.of(context).textTheme.epBody,
-                        ),
-                        if (step.$3 case final caption?)
-                          Text(
-                            caption,
-                            style: Theme.of(context).textTheme.epCaption,
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
+    final event = opportunity;
+    if (event == null) {
+      return EpCard(
+        key: const Key('org-dash-next-event-empty'),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const EpEyebrow('Nothing confirmed'),
+            const SizedBox(height: 12),
+            EpDisplay(
+              isHost
+                  ? 'No event coming up — post a request'
+                  : 'No event coming up — post an opportunity',
+              size: 24,
+              maxLines: 3,
+            ),
+            if (canManage) ...[
+              const SizedBox(height: 20),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: EpPill(
+                  key: const Key('org-dash-post-request'),
+                  label: isHost ? 'Post a request' : 'Post an opportunity',
+                  variant: EpPillVariant.primary,
+                  size: EpPillSize.chip,
+                  onPressed: app.openOpportunityEditor,
+                ),
               ),
-            );
-            final key = switch (step.$1) {
-              'Stripe details' => const Key('org-dash-readiness-stripe'),
-              'Payouts enabled' => const Key('org-dash-readiness-payouts'),
-              _ => null,
-            };
-            if (step.$2 || key == null) return row;
-            return InkWell(
-              key: key,
-              onTap: () => context.read<AppState>().go(Screen.orgSettings),
-              child: row,
-            );
-          }),
-        ],
-      ),
-    );
-  }
-}
+            ],
+          ],
+        ),
+      );
+    }
 
-class _LoadError extends StatelessWidget {
-  const _LoadError({required this.onRetry});
+    final secondary = context.epColors.contentSecondary;
+    final startsAt = event.startsAt.toLocal();
+    final when =
+        '${dateLabel(startsAt)} · '
+        '${TimeOfDay.fromDateTime(startsAt).format(context)}';
+    final isPrivate =
+        event.privateEvent || event.mode == OpportunityMode.privateBooking;
+    final location = isPrivate
+        ? 'Private event · ${event.venue?.neighborhood ?? event.area}'
+        : '${event.venue?.name ?? 'Venue TBD'} · '
+              '${event.venue?.area ?? event.area}';
 
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 56),
+    return EpCard(
+      key: const Key('org-dash-next-event'),
+      padding: const EdgeInsets.all(20),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Could not load the organizer dashboard.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.epBody,
+          Row(
+            children: [
+              const Expanded(child: EpEyebrow.accent('Next event')),
+              const SizedBox(width: 12),
+              Flexible(
+                child: EpMonoText(
+                  when,
+                  key: const Key('org-dash-next-event-when'),
+                  color: secondary,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
-          EpButton('RETRY', kind: EpButtonKind.outline, onTap: onRetry),
+          EpDisplay(event.title, size: 32, maxLines: 3),
+          const SizedBox(height: 12),
+          EpMonoText(location, keepCase: true, color: secondary),
+          const SizedBox(height: 4),
+          EpMonoText(bookedSlotLine(event), keepCase: true, color: secondary),
+          const SizedBox(height: 12),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: EpBadge(label: 'Confirmed', tone: EpBadgeTone.success),
+          ),
+          const SizedBox(height: 20),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: EpPill(
+              key: const Key('org-dash-next-event-view'),
+              label: isHost ? 'View request' : 'View opportunity',
+              variant: EpPillVariant.outline,
+              size: EpPillSize.chip,
+              onPressed: () => app.openOpportunityApplicants(event.id),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _CommandGrid extends StatelessWidget {
-  const _CommandGrid({
-    required this.isHost,
-    required this.isVenueOperator,
+class _MenuRows extends StatelessWidget {
+  const _MenuRows({
+    required this.app,
     required this.canManage,
-    required this.canSeeFinance,
-    required this.financeCaption,
-    required this.onFinance,
-    required this.onOpportunity,
-    required this.onVenues,
-    required this.onLocations,
-    required this.onTeam,
-    required this.onSettings,
+    required this.isHost,
   });
 
-  final bool isHost;
-  final bool isVenueOperator;
+  final AppState app;
   final bool canManage;
-  final bool canSeeFinance;
-  final String financeCaption;
-  final VoidCallback onFinance;
-  final VoidCallback onOpportunity;
-  final VoidCallback onVenues;
-  final VoidCallback onLocations;
-  final VoidCallback onTeam;
-  final VoidCallback onSettings;
+  final bool isHost;
 
   @override
   Widget build(BuildContext context) {
-    final settings = _Command(
-      key: const Key('org-dash-command-settings'),
-      label: 'SETTINGS',
-      icon: Icons.settings_outlined,
-      onTap: onSettings,
-    );
-    final commands = [
-      _Command(
-        key: const Key('org-dash-command-opportunity'),
-        label: isHost ? 'NEW REQUEST' : 'NEW OPPORTUNITY',
-        caption: canManage
-            ? 'Post a slot for artists'
-            : 'Managers post opportunities',
-        icon: Icons.campaign_outlined,
-        onTap: canManage ? onOpportunity : null,
-      ),
-      if (isHost || isVenueOperator)
-        _Command(
-          key: Key(isHost ? 'org-dash-locations' : 'org-dash-command-venues'),
-          label: isHost ? 'LOCATIONS' : 'VENUES',
-          icon: Icons.location_on_outlined,
-          onTap: isHost ? onLocations : onVenues,
-        ),
-      if (canManage && !isHost)
-        _Command(
-          key: const Key('org-dash-command-team'),
-          label: 'TEAM',
-          icon: Icons.group_outlined,
-          onTap: onTeam,
-        ),
-      if (canManage && !isHost) settings,
-      if (canSeeFinance)
-        _Command(
-          key: const Key('org-dash-command-finance'),
-          label: 'FINANCE',
-          caption: financeCaption,
-          icon: Icons.account_balance_outlined,
-          onTap: onFinance,
-        ),
-      if (canManage && isHost) settings,
-    ];
-    final singleColumn =
-        MediaQuery.sizeOf(context).width < 340 ||
-        MediaQuery.textScalerOf(context).scale(1) > 1.35;
-    final columns = singleColumn ? 1 : 2;
+    final organizationId = app.organizationId;
+    final financeEnabled =
+        app.organizationStripeStatusFor(organizationId)?.state ==
+        StripeAccountState.enabled;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var start = 0; start < commands.length; start += columns) ...[
-          if (start > 0) const SizedBox(height: 10),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var column = 0; column < columns; column++) ...[
-                  if (column > 0) const SizedBox(width: 10),
-                  Expanded(
-                    child: start + column < commands.length
-                        ? ConstrainedBox(
-                            constraints: const BoxConstraints(minHeight: 124),
-                            child: commands[start + column],
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                ],
-              ],
+        if (canManage)
+          EpMenuRow(
+            key: const Key('org-dash-command-opportunity'),
+            icon: Icons.add,
+            label: isHost ? 'New request' : 'New opportunity',
+            trailing: Flexible(
+              child: EpMonoText(
+                'Post a slot for artists',
+                color: context.epColors.muted,
+              ),
             ),
+            onTap: app.openOpportunityEditor,
           ),
-        ],
+        if (isHost)
+          EpMenuRow(
+            key: const Key('org-dash-locations'),
+            icon: Icons.place_outlined,
+            label: 'Locations',
+            onTap: () => app.go(Screen.privateLocations),
+          )
+        else if (app.currentIsVenueOperator)
+          EpMenuRow(
+            key: const Key('org-dash-command-venues'),
+            icon: Icons.place_outlined,
+            label: 'Venues',
+            onTap: () => app.go(Screen.orgVenues),
+          ),
+        if (canManage && !isHost)
+          EpMenuRow(
+            key: const Key('org-dash-command-team'),
+            icon: Icons.people_outline,
+            label: 'Team',
+            onTap: () => app.go(Screen.orgTeam),
+          ),
+        if (app.canSeeFinance(organizationId))
+          EpMenuRow(
+            key: const Key('org-dash-command-finance'),
+            icon: Icons.confirmation_number_outlined,
+            label: 'Finance',
+            trailing: financeEnabled
+                ? null
+                : const EpBadge(
+                    key: Key('org-dash-finance-badge'),
+                    label: 'Set up',
+                    tone: EpBadgeTone.attention,
+                  ),
+            onTap: app.openFinance,
+          ),
+        if (canManage)
+          EpMenuRow(
+            key: const Key('org-dash-command-settings'),
+            icon: Icons.settings_outlined,
+            label: 'Settings',
+            onTap: () => app.go(Screen.orgSettings),
+          ),
       ],
     );
   }
 }
-
-class _Command extends StatelessWidget {
-  const _Command({
-    super.key,
-    required this.label,
-    required this.icon,
-    this.caption,
-    this.onTap,
-  });
-
-  final String label;
-  final String? caption;
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onTap != null;
-    final foreground = enabled
-        ? context.epColors.ink
-        : context.epColors.contentDisabled;
-    return Semantics(
-      button: true,
-      enabled: enabled,
-      label: label,
-      child: Material(
-        color: enabled
-            ? context.epColors.surface
-            : context.epColors.surfaceDisabled,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: context.epColors.border),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(icon, color: foreground, size: 22),
-                const SizedBox(height: 7),
-                Text(
-                  label,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.epLabel.copyWith(color: foreground),
-                ),
-                if (caption != null) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    caption!,
-                    style: Theme.of(context).textTheme.epCaption.copyWith(
-                      color: context.epColors.contentDisabled,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-String _roleLabel(OrganizationRole role) => switch (role) {
-  OrganizationRole.owner => 'Owner',
-  OrganizationRole.manager => 'Manager',
-  OrganizationRole.finance => 'Finance',
-  OrganizationRole.door => 'Door',
-};

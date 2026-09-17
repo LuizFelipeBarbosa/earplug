@@ -8,6 +8,7 @@ import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
 import 'common.dart';
+import 'ep_rows.dart';
 import 'ep_sheet.dart';
 import 'form_bits.dart';
 import 'opportunity_labels.dart';
@@ -144,18 +145,7 @@ class _SendOfferSheetState extends State<_SendOfferSheet> {
       child: EpSheetShell(
         heightFactor: .88,
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
-        header: Row(
-          children: [
-            Expanded(
-              child: Text('SEND OFFER', style: textTheme.epSectionHeading),
-            ),
-            IconButton(
-              tooltip: 'Close',
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.close),
-            ),
-          ],
-        ),
+        header: const EpSheetTitleRow(title: 'Send offer'),
         children: [
           Expanded(
             child: ListView(
@@ -186,7 +176,7 @@ class _SendOfferSheetState extends State<_SendOfferSheet> {
                 const SizedBox(height: 12),
                 Text(_bookingCommissionCaption, style: textTheme.epCaption),
                 const SizedBox(height: 18),
-                const SectionBar(label: 'CANCELLATION TERMS'),
+                const EpSectionHeader(label: 'CANCELLATION TERMS'),
                 Wrap(
                   spacing: 7,
                   runSpacing: 7,

@@ -8,21 +8,15 @@ import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/approx_area_map.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_states.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/map_view.dart';
+import '../widgets/opportunity_labels.dart';
 import '../widgets/sheets.dart';
 import 'admin_queue.dart' show organizationTypeLabel;
-
-String venueTypeLabel(VenueType type) => switch (type) {
-  VenueType.bar => 'Bar',
-  VenueType.club => 'Club',
-  VenueType.hall => 'Hall',
-  VenueType.house => 'House',
-  VenueType.outdoor => 'Outdoor',
-  VenueType.private => 'Private',
-  VenueType.other => 'Other',
-};
 
 class AdminApplicationScreen extends StatefulWidget {
   const AdminApplicationScreen({super.key, required this.applicationId});
@@ -177,7 +171,10 @@ class _AdminApplicationScreenState extends State<AdminApplicationScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     if (!app.isPlatformAdmin) {
-      return _NotAuthorized(onBack: app.toFanView);
+      return EpNotAuthorized(
+        message: 'Only platform admins can review organizer applications.',
+        onBack: app.toFanView,
+      );
     }
 
     final application = _application;
@@ -286,30 +283,12 @@ class _OrganizationSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _DetailValue(label: 'Name', value: application.orgName),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 9),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 96,
-                  child: Text(
-                    'TYPE',
-                    style: Theme.of(context).textTheme.epCaption.copyWith(
-                      color: context.epColors.contentSecondary,
-                    ),
-                  ),
-                ),
-                Flexible(
-                  child: StatusPill(
-                    key: const Key('admin-application-type'),
-                    label: organizationTypeLabel(
-                      application.orgType,
-                    ).toUpperCase(),
-                    tone: EpStatusPillTone.neutral,
-                  ),
-                ),
-              ],
+          _DetailValue(
+            label: 'Type',
+            child: EpBadge(
+              key: const Key('admin-application-type'),
+              label: organizationTypeLabel(application.orgType).toUpperCase(),
+              tone: EpBadgeTone.neutral,
             ),
           ),
           if (website != null && website.isNotEmpty)
@@ -429,14 +408,17 @@ class _VenueSection extends StatelessWidget {
           if (draft.venueType case final type?)
             _DetailValue(label: 'Venue type', value: venueTypeLabel(type)),
           const SizedBox(height: 12),
-          const _MapCaption(text: 'Exact address — admin only'),
-          const SizedBox(height: 7),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: VenueMiniMap(venue: exactVenue, approximate: false),
+          Text(
+            'Exact address — admin only',
+            style: Theme.of(context).textTheme.epCaption,
           ),
+          const SizedBox(height: 7),
+          VenueMiniMap(venue: exactVenue, approximate: false),
           const SizedBox(height: 16),
-          const _MapCaption(text: 'What fans will see'),
+          Text(
+            'What fans will see',
+            style: Theme.of(context).textTheme.epCaption,
+          ),
           const SizedBox(height: 7),
           ApproxAreaMap(centroid: draft.point, label: draft.area),
         ],
@@ -455,15 +437,11 @@ class _DocumentsSection extends StatelessWidget {
     return _DetailSection(
       label: 'DOCUMENTS',
       child: documents.isEmpty
-          ? const DashedBox(
-              child: Text('No documents.', textAlign: TextAlign.center),
-            )
+          ? Text('No documents.', style: Theme.of(context).textTheme.epCaption)
           : Column(
               children: [
-                for (var index = 0; index < documents.length; index++) ...[
+                for (var index = 0; index < documents.length; index++)
                   _DocumentRow(document: documents[index], index: index),
-                  if (index < documents.length - 1) const SizedBox(height: 10),
-                ],
               ],
             ),
     );
@@ -481,34 +459,36 @@ class _DocumentRow extends StatelessWidget {
     final isImage = document.contentType?.startsWith('image/') == true;
     final url = document.url;
     if (isImage) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: SizedBox(
-          height: 150,
-          width: double.infinity,
-          child: EpNetworkImage(
-            url: url,
-            cacheWidth: 360,
-            cacheHeight: 150,
-            fallback: const ColoredBox(
-              color: Colors.black12,
-              child: Center(child: Icon(Icons.image_not_supported_outlined)),
+      return SizedBox(
+        height: 150,
+        width: double.infinity,
+        child: EpNetworkImage(
+          url: url,
+          cacheWidth: 360,
+          cacheHeight: 150,
+          fallback: ColoredBox(
+            color: context.epColors.panel,
+            child: const Center(
+              child: Icon(Icons.image_not_supported_outlined),
             ),
           ),
         ),
       );
     }
 
-    return EpCard(
+    return EpRow(
+      minHeight: 0,
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         children: [
-          const Icon(Icons.description_outlined),
-          const SizedBox(width: 10),
+          const Icon(Icons.description_outlined, size: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               document.contentType ?? 'Document ${index + 1}',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.epBody,
             ),
           ),
           if (url != null && url.isNotEmpty)
@@ -541,8 +521,8 @@ class _ReviewSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          StatusPill(
-            label: _statusLabel(application.status),
+          EpBadge(
+            label: organizationApplicationStatusLabel(application.status),
             tone: _statusTone(application.status),
           ),
           if (note != null && note.isNotEmpty) ...[
@@ -580,18 +560,28 @@ class _DetailSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionBar(label: label),
-        EpCard(child: child),
+        EpSectionHeader(label: label),
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 8),
+          child: child,
+        ),
       ],
     );
   }
 }
 
+/// A labelled detail row: the label in a fixed column, then either [value]
+/// as text or a custom [child].
 class _DetailValue extends StatelessWidget {
-  const _DetailValue({super.key, required this.label, required this.value});
+  const _DetailValue({super.key, required this.label, this.value, this.child})
+    : assert(
+        (value == null) != (child == null),
+        'Provide exactly one of value or child',
+      );
 
   final String label;
-  final String value;
+  final String? value;
+  final Widget? child;
 
   @override
   Widget build(BuildContext context) {
@@ -604,30 +594,15 @@ class _DetailValue extends StatelessWidget {
             width: 96,
             child: Text(
               label.toUpperCase(),
-              style: Theme.of(context).textTheme.epCaption.copyWith(
-                color: context.epColors.contentSecondary,
-              ),
+              style: Theme.of(context).textTheme.epCaption,
             ),
           ),
-          Expanded(child: Text(value)),
+          if (child case final child?)
+            Flexible(child: child)
+          else
+            Expanded(child: Text(value ?? '')),
         ],
       ),
-    );
-  }
-}
-
-class _MapCaption extends StatelessWidget {
-  const _MapCaption({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: Theme.of(
-        context,
-      ).textTheme.epCaption.copyWith(color: context.epColors.contentSecondary),
     );
   }
 }
@@ -825,58 +800,17 @@ class _ApprovalSheetState extends State<_ApprovalSheet> {
   }
 }
 
-class _NotAuthorized extends StatelessWidget {
-  const _NotAuthorized({required this.onBack});
-
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      key: const Key('admin-not-authorized'),
-      child: Material(
-        color: context.epColors.background,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Only platform admins can review organizer applications.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.epBody,
-              ),
-              const SizedBox(height: 16),
-              EpButton(
-                'BACK TO FAN VIEW',
-                kind: EpButtonKind.outline,
-                onTap: onBack,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 bool _isActionable(OrganizationApplicationStatus status) =>
     status == OrganizationApplicationStatus.submitted ||
     status == OrganizationApplicationStatus.underReview;
 
-String _statusLabel(OrganizationApplicationStatus status) => status.wireValue
-    .replaceAll('_', ' ')
-    .split(' ')
-    .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
-    .join(' ');
-
-EpStatusPillTone _statusTone(OrganizationApplicationStatus status) =>
+EpBadgeTone _statusTone(OrganizationApplicationStatus status) =>
     switch (status) {
-      OrganizationApplicationStatus.approved => EpStatusPillTone.success,
-      OrganizationApplicationStatus.submitted => EpStatusPillTone.selected,
+      OrganizationApplicationStatus.approved => EpBadgeTone.success,
+      OrganizationApplicationStatus.submitted => EpBadgeTone.selected,
       OrganizationApplicationStatus.underReview ||
-      OrganizationApplicationStatus.needsInfo => EpStatusPillTone.warning,
+      OrganizationApplicationStatus.needsInfo => EpBadgeTone.warning,
       OrganizationApplicationStatus.draft ||
       OrganizationApplicationStatus.rejected ||
-      OrganizationApplicationStatus.withdrawn => EpStatusPillTone.neutral,
+      OrganizationApplicationStatus.withdrawn => EpBadgeTone.neutral,
     };

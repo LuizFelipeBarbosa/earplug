@@ -316,24 +316,22 @@ void main() {
         tester,
         auth: auth,
         repository: repository,
-        home: const OrgDashScreen(),
+        home: const Scaffold(body: OrgDashScreen()),
         beforePump: (app) => app.switchToOrganization('org2'),
       );
 
-      final readiness = find.byKey(const Key('org-dash-verification'));
+      // The demo host's profile is complete; finance is not set up: 1 of 2.
+      expect(find.byKey(const Key('org-dash-verification')), findsNothing);
+      final readiness = find.byKey(const Key('band-readiness'));
+      expect(readiness, findsOneWidget);
       expect(
-        tester
-            .widgetList<Text>(
-              find.descendant(of: readiness, matching: find.byType(Text)),
-            )
-            .map((text) => text.data),
-        ['HOST READINESS', 'Verified', 'Profile complete'],
+        find.descendant(of: readiness, matching: find.text('1 OF 2')),
+        findsOneWidget,
       );
-      expect(find.text('ORGANIZATION READINESS'), findsNothing);
-      expect(find.text('Stripe details'), findsNothing);
-      expect(find.text('Payouts enabled'), findsNothing);
-      expect(find.text('Team invited'), findsNothing);
-      expect(find.text('VENUES'), findsNothing);
+      expect(find.text('Add Stripe details'), findsNothing);
+      expect(find.text('Enable payouts'), findsNothing);
+      expect(find.text('Invite your team'), findsNothing);
+      expect(find.textContaining('VENUES'), findsNothing);
       expect(find.text('MEMBERS'), findsNothing);
       await _reveal(tester, find.byKey(const Key('org-dash-locations')));
       expect(find.text('NEW REQUEST'), findsOneWidget);
@@ -349,6 +347,8 @@ void main() {
       );
       expect(find.byKey(const Key('org-dash-command-venues')), findsNothing);
       expect(find.byKey(const Key('org-dash-command-team')), findsNothing);
+      await _reveal(tester, find.byKey(const Key('org-dash-footer-note')));
+      expect(find.byKey(const Key('org-dash-footer-note')), findsOneWidget);
       await _tap(tester, 'org-dash-locations');
       expect(harness.app.current.screen, Screen.privateLocations);
       await _tap(tester, 'org-dash-command-opportunity');
@@ -366,28 +366,20 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      home: const OrgDashScreen(),
+      home: const Scaffold(body: OrgDashScreen()),
       beforePump: (app) => app.switchToOrganization('org1'),
     );
 
-    final readiness = find.byKey(const Key('org-dash-verification'));
+    // The same two-step host checklist; org1's Stripe account is not set up.
+    expect(find.byKey(const Key('org-dash-verification')), findsNothing);
+    final readiness = find.byKey(const Key('band-readiness'));
+    expect(readiness, findsOneWidget);
     expect(
-      tester
-          .widgetList<Text>(
-            find.descendant(of: readiness, matching: find.byType(Text)),
-          )
-          .map((text) => text.data),
-      [
-        'ORGANIZATION READINESS',
-        'Verified',
-        'Stripe details',
-        'Payouts enabled',
-        'Profile complete',
-        'Team invited',
-      ],
+      find.descendant(of: readiness, matching: find.text('1 OF 2')),
+      findsOneWidget,
     );
-    expect(find.text('HOST READINESS'), findsNothing);
-    expect(find.text('MEMBERS'), findsOneWidget);
+    expect(find.text('MEMBERS'), findsNothing);
+    expect(find.byKey(const Key('org-dash-footer-note')), findsNothing);
     await _reveal(tester, find.byKey(const Key('org-dash-command-venues')));
     expect(find.text('NEW OPPORTUNITY'), findsOneWidget);
     expect(find.byKey(const Key('org-dash-command-venues')), findsOneWidget);

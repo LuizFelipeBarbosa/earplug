@@ -4,18 +4,24 @@ import 'package:latlong2/latlong.dart';
 
 import '../theme.dart';
 import 'ep_map.dart';
+import 'ep_text.dart';
 
-/// Builds the area ring shared by approximate venue maps.
-Widget approxAreaRingLayer(LatLng centroid, double radiusMeters) {
+/// Builds the area ring shared by approximate venue maps: an accent fill at
+/// 18% behind a 1.5px accent ring.
+Widget approxAreaRingLayer(
+  LatLng centroid,
+  double radiusMeters, {
+  Color accent = Ep.accent,
+}) {
   return CircleLayer(
     circles: [
       CircleMarker(
         point: centroid,
         radius: radiusMeters,
         useRadiusInMeter: true,
-        color: Ep.brand.withValues(alpha: .18),
+        color: accent.withValues(alpha: .18),
         borderStrokeWidth: 1.5,
-        borderColor: Ep.brand,
+        borderColor: accent,
       ),
     ],
   );
@@ -40,28 +46,28 @@ class ApproxAreaMap extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
+        EpPanel(
           height: height,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: EpMap(
-              options: MapOptions(
-                initialCenter: centroid,
-                initialZoom: 13,
-                backgroundColor: context.epColors.background,
-                interactionOptions: const InteractionOptions(
-                  flags: InteractiveFlag.none,
-                ),
+          child: EpMap(
+            options: MapOptions(
+              initialCenter: centroid,
+              initialZoom: 13,
+              backgroundColor: context.epColors.background,
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.none,
               ),
-              layers: [approxAreaRingLayer(centroid, radiusMeters)],
             ),
+            layers: [
+              approxAreaRingLayer(
+                centroid,
+                radiusMeters,
+                accent: context.epColors.accent,
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          label ?? 'Approximate area',
-          style: epText(size: 11, color: context.epColors.contentDisabled),
-        ),
+        const SizedBox(height: 8),
+        EpEyebrow(label ?? 'Approximate area'),
       ],
     );
   }

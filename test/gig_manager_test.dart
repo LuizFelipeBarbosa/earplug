@@ -2,251 +2,375 @@ import 'dart:async';
 
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/door_mode.dart';
 import 'package:earplug/screens/gig_manager.dart';
+import 'package:earplug/screens/hosted_gig.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/band_applications_tab.dart';
+import 'package:earplug/widgets/band_discover_tab.dart';
+import 'package:earplug/widgets/band_my_gigs_tab.dart';
 import 'package:earplug/widgets/band_ticket_sales_sheet.dart';
-import 'package:earplug/widgets/common.dart';
-import 'package:earplug/widgets/form_bits.dart';
-import 'package:earplug/widgets/sheets.dart';
+import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/ep_text.dart';
+import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
-  testWidgets('manager groups every lifecycle and uses refreshed row grammar', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await pumpApp(
+  for (final empty in [false, true]) {
+    testWidgets('GIGS lands on MY GIGS at 390x844 (empty: $empty)', (
       tester,
-      auth: auth,
-      repository: _ManagerRepository(auth: auth),
-      home: const Scaffold(body: GigManagerScreen()),
-    );
-
-    expect(find.text('GIGS'), findsOne);
-
-    await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('gig-project-published-rsvp')), findsOne);
-    expect(find.byType(DateBlock), findsWidgets);
-    expect(find.text('PUBLISHED'), findsWidgets);
-    expect(find.textContaining('going'), findsOne);
-    expect(find.byKey(const Key('gig-door-published-rsvp')), findsOne);
-    expect(find.byKey(const Key('gig-door-published-external')), findsOne);
-
-    await tester.scrollUntilVisible(
-      find.byType(GhostDraftRow),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.byType(GhostDraftRow), findsOne);
-    expect(
-      find.textContaining('finish name, date and times, venue, lineup'),
-      findsOne,
-    );
-
-    final pastSegment = find.byKey(const Key('band-gigs-seg-past'));
-    await tester.scrollUntilVisible(
-      pastSegment,
-      -180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(pastSegment);
-    await tester.pumpAndSettle();
-
-    await tester.scrollUntilVisible(
-      find.text('CANCELLED'),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.byKey(const Key('gig-project-cancelled')), findsOne);
-
-    for (
-      var index = 0;
-      index < 4 && find.textContaining('PAST ·').evaluate().isEmpty;
-      index++
-    ) {
-      await tester.drag(find.byType(Scrollable).first, const Offset(0, -400));
-      await tester.pump();
-    }
-    expect(find.textContaining('PAST ·'), findsOne);
-    expect(find.byType(LedgerRow), findsWidgets);
-  });
-
-  testWidgets('published overflow keeps lifecycle actions with only delete red', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await pumpApp(
-      tester,
-      auth: auth,
-      repository: _ManagerRepository(auth: auth),
-      home: const Scaffold(body: GigManagerScreen()),
-    );
-
-    await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('gig-actions-published-rsvp')));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(EpActionSheet), findsOne);
-    expect(find.text('Duplicate'), findsOne);
-    expect(find.text('Unpublish…'), findsOne);
-    expect(find.text('Cancel gig…'), findsOne);
-    expect(find.text('Delete'), findsOne);
-    expect(
-      tester.widget<Text>(find.text('Delete')).style?.color,
-      Ep.destructive,
-    );
-    expect(
-      tester.widget<Text>(find.text('Cancel gig…')).style?.color,
-      isNot(Ep.destructive),
-    );
-
-    await tester.tap(find.text('Cancel gig…'));
-    await tester.pumpAndSettle();
-    expect(find.text('Cancel gig?'), findsOne);
-    expect(
-      find.text(
-        'The gig leaves discovery but its public page stays available as cancelled.',
-      ),
-      findsOne,
-    );
-  });
-
-  testWidgets('paid gig cancellation explains refunds when tickets are sold', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await pumpApp(
-      tester,
-      auth: auth,
-      repository: _ManagerRepository(
+    ) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = StubRepository(auth: auth);
+      if (empty) repository.returns('bandBookings', <Booking>[]);
+      await pumpApp(
+        tester,
         auth: auth,
-        salesResponse: Future.value(_ManagerRepository.paidSales),
-      ),
+        repository: repository,
+        size: const Size(390, 844),
+        home: const RootShell(),
+        beforePump: (app) {
+          app.switchToBand('b1');
+          app.resetTo(Screen.gigMgr);
+        },
+      );
+
+      final tabs = tester.widget<EpSegmentTabs>(
+        find.byKey(const Key('band-gigs-tabs')),
+      );
+      expect(tabs.labels, ['My gigs', 'Discover', 'Applications']);
+      expect(tabs.selected, 0);
+      expect(tabs.scrollable, isFalse);
+      expect(find.byType(BandMyGigsTab), findsOneWidget);
+      expect(find.byType(BandDiscoverTab), findsNothing);
+      expect(find.byType(BandApplicationsTab), findsNothing);
+      final panel = find.byKey(
+        Key(empty ? 'my-gigs-empty-next' : 'band-booking-bk2'),
+      );
+      expect(panel.hitTestable(), findsOneWidget);
+      final bounds = tester.getRect(panel);
+      expect(
+        bounds.top,
+        greaterThanOrEqualTo(
+          tester.getRect(find.byKey(const Key('band-gigs-tabs'))).bottom,
+        ),
+      );
+      expect(
+        bounds.bottom,
+        lessThanOrEqualTo(tester.getRect(find.byType(BandTabBar)).top),
+      );
+      expect(
+        tester
+            .state<ScrollableState>(
+              find.descendant(
+                of: find.byType(BandMyGigsTab),
+                matching: find.byType(Scrollable),
+              ),
+            )
+            .position
+            .pixels,
+        0,
+      );
+      expect(find.byType(RefreshIndicator), findsOneWidget);
+      expect(find.byType(ListView), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final (size, scale) in [
+    (const Size(390, 844), 1.0),
+    (const Size(390, 844), 1.3),
+    (const Size(360, 780), 1.0),
+    (const Size(360, 780), 1.3),
+  ]) {
+    testWidgets(
+      'GIGS tab labels stay on one line at ${size.width}px, text scale $scale',
+      (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final auth = FakeAuthService();
+        await auth.signInDemo();
+        await pumpApp(
+          tester,
+          auth: auth,
+          size: size,
+          home: const RootShell(),
+          beforePump: (app) {
+            app.switchToBand('b1');
+            app.resetTo(Screen.gigMgr);
+          },
+        );
+
+        final tabs = find.byKey(const Key('band-gigs-tabs'));
+        final strip = tester.getRect(tabs);
+        final lineHeight = 11 * 1.2 * scale;
+        var previousRight = strip.left;
+        for (final label in ['MY GIGS', 'DISCOVER', 'APPLICATIONS']) {
+          final text = find.descendant(of: tabs, matching: find.text(label));
+          expect(tester.widget<Text>(text).maxLines, 1);
+          final paragraph = _paragraph(tester, text);
+          expect(paragraph.didExceedMaxLines, isFalse, reason: label);
+          expect(paragraph.textSize.height, paragraph.size.height);
+          final rendered = tester.getRect(text);
+          expect(
+            rendered.height,
+            lessThanOrEqualTo(lineHeight + 0.01),
+            reason: label,
+          );
+          expect(rendered.left, greaterThanOrEqualTo(previousRight - 0.01));
+          expect(rendered.right, lessThanOrEqualTo(strip.right + 0.01));
+          previousRight = rendered.right;
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('returning to GIGS resets DISCOVER to MY GIGS', (tester) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      home: const RootShell(),
+      beforePump: (app) {
+        app.switchToBand('b1');
+        app.resetTo(Screen.gigMgr);
+      },
+    );
+    await _selectTab(tester, 'DISCOVER');
+    expect(find.byType(BandDiscoverTab), findsOneWidget);
+    harness.app.resetTo(Screen.analytics);
+    await tester.pumpAndSettle();
+    expect(find.byType(GigManagerScreen), findsNothing);
+    harness.app.openGigManager();
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<EpSegmentTabs>(find.byKey(const Key('band-gigs-tabs')))
+          .selected,
+      0,
+    );
+    expect(find.byKey(const Key('band-booking-bk2')), findsOneWidget);
+    expect(find.byType(BandDiscoverTab), findsNothing);
+    expect(find.byKey(const Key('discover-search-field')), findsNothing);
+  });
+
+  testWidgets('admin New gig pill starts gig creation', (tester) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      home: const RootShell(),
+      beforePump: (app) {
+        app.switchToBand('b1');
+        app.resetTo(Screen.gigMgr);
+      },
+    );
+    expect(harness.app.isAdminOf(harness.app.bandId), isTrue);
+    final create = find.byKey(const Key('band-gigs-new'));
+    final pill = tester.widget<EpPill>(create);
+    expect(pill.label, '+ New gig');
+    expect(pill.variant, EpPillVariant.outline);
+    expect(pill.size, EpPillSize.chip);
+    await tester.tap(create);
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.gigCreate);
+  });
+
+  testWidgets('empty MY GIGS Discover affordance selects DISCOVER', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: StubRepository(auth: auth)
+        ..returns('bandBookings', <Booking>[]),
       home: const Scaffold(body: GigManagerScreen()),
+      beforePump: (app) => app.switchToBand('b1'),
     );
-
-    await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
+    await tester.tap(find.byKey(const Key('my-gigs-empty-discover')));
     await tester.pumpAndSettle();
-    final actions = find.byKey(const Key('gig-actions-published-paid'));
-    await tester.scrollUntilVisible(
-      actions,
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.ensureVisible(actions);
-    await tester.pumpAndSettle();
-    await tester.tap(actions);
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Cancel gig…'));
-    await tester.pumpAndSettle();
-    expect(find.text('Cancel gig?'), findsOne);
     expect(
-      find.text(
-        'Sold tickets are refunded in full and buyers are emailed. The gig leaves discovery but its public page stays available as cancelled.',
-      ),
-      findsOne,
+      tester
+          .widget<EpSegmentTabs>(find.byKey(const Key('band-gigs-tabs')))
+          .selected,
+      1,
     );
-    expect(
-      find.text(
-        'The gig leaves discovery but its public page stays available as cancelled.',
-      ),
-      findsNothing,
-    );
+    expect(find.byType(BandDiscoverTab), findsOneWidget);
+    expect(find.byType(BandMyGigsTab), findsNothing);
   });
 
   testWidgets(
-    'card-face actions preserve edit, preview, and Door launch data',
+    'mount refreshes applications once and leaves other loads to tabs',
     (tester) async {
       final auth = FakeAuthService();
-      final repository = _ManagerRepository(auth: auth);
+      await auth.signInDemo();
+      final repository = StubRepository(auth: auth)
+        ..returnsStream(
+          'watchMyApplications',
+          () => Stream.value(<BandApplication>[]),
+        );
+      final applications = await repository.myApplications('b1');
+      final screen = ValueNotifier<Widget>(const SizedBox.shrink());
+      addTearDown(screen.dispose);
       final harness = await pumpApp(
         tester,
         auth: auth,
         repository: repository,
-        home: const Scaffold(body: GigManagerScreen()),
+        home: Scaffold(
+          body: ValueListenableBuilder<Widget>(
+            valueListenable: screen,
+            builder: (_, child, _) => child,
+          ),
+        ),
+        beforePump: (app) => app.switchToBand('b1'),
       );
-
-      await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
+      expect(harness.app.myApplications, isEmpty);
+      final applicationCalls = repository.callsTo('watchMyApplications');
+      final browseCalls = repository.callsTo('browseOpportunities');
+      final invitationCalls = repository.callsTo('invitedOpportunities');
+      final bookingCalls = repository.callsTo('bandBookings');
+      final projectCalls = repository.callsTo('manageGigs');
+      repository.returnsStream(
+        'watchMyApplications',
+        () => Stream.value(applications),
+      );
+      screen.value = const GigManagerScreen();
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('gig-edit-published-rsvp')));
-      await tester.pump();
-      expect(harness.app.current.screen, Screen.gigCreate);
-
-      await tester.tap(find.byKey(const Key('gig-door-published-rsvp')));
+      expect(repository.callsTo('watchMyApplications'), applicationCalls + 1);
+      expect(repository.callsTo('browseOpportunities'), browseCalls);
+      expect(repository.callsTo('bandBookings'), bookingCalls + 1);
+      expect(repository.callsTo('manageGigs'), projectCalls + 1);
+      expect(harness.app.myApplications, applications);
+      await _selectTab(tester, 'APPLICATIONS');
+      expect(find.byKey(const Key('band-app-app1')), findsOneWidget);
+      harness.app.say('State changed');
       await tester.pumpAndSettle();
-      expect(find.byType(DoorModeScreen), findsOne);
-      expect(find.text('Riptide Release Show'), findsOne);
-      expect(find.text('DOOR MODE · THE FOGHORN CLUB'), findsOne);
-      expect(repository.organizerRosterRequests, ['g2']);
-      expect(repository.projectRosterRequests, isEmpty);
+      await _selectTab(tester, 'DISCOVER');
+      expect(repository.callsTo('invitedOpportunities'), invitationCalls + 1);
+      expect(
+        repository.callsTo('browseOpportunities'),
+        greaterThan(browseCalls),
+      );
+      await _selectTab(tester, 'APPLICATIONS');
+      expect(repository.callsTo('watchMyApplications'), applicationCalls + 1);
+
+      screen.value = const SizedBox.shrink();
+      await tester.pumpAndSettle();
+      screen.value = const GigManagerScreen();
+      await tester.pumpAndSettle();
+      expect(repository.callsTo('watchMyApplications'), applicationCalls + 2);
     },
   );
 
-  testWidgets('paid sales load once and open a breakdown without Delete', (
+  testWidgets(
+    'MY GIGS groups hosting, drafts, and collapsed past without list tools',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      await pumpApp(
+        tester,
+        auth: auth,
+        repository: _ManagerRepository(auth: auth),
+        home: const Scaffold(body: GigManagerScreen()),
+        beforePump: (app) => app.switchToBand('b1'),
+      );
+      expect(find.text('GIGS'), findsOneWidget);
+      final hosted = find.byKey(const Key('my-gigs-hosted-published-rsvp'));
+      await _reveal(tester, hosted);
+      expect(
+        find.descendant(of: hosted, matching: find.text('PUBLISHED')),
+        findsOneWidget,
+      );
+      final draft = find.byKey(const Key('my-gigs-draft-draft'));
+      await _reveal(tester, draft);
+      expect(
+        find.descendant(
+          of: draft,
+          matching: find.text('finish name, date and times, venue, lineup'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('my-gigs-hosted-cancelled')), findsNothing);
+      expect(find.byKey(const Key('my-gigs-past-body')), findsNothing);
+
+      await _tapControl(tester, 'my-gigs-past-toggle');
+      expect(find.textContaining('PAST ·'), findsOneWidget);
+      final cancelled = find.byKey(const Key('my-gigs-hosted-cancelled'));
+      await _reveal(tester, cancelled);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('my-gigs-past-body')),
+          matching: cancelled,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: cancelled, matching: find.text('CANCELLED')),
+        findsOneWidget,
+      );
+      for (final label in ['MY GIGS', 'DISCOVER', 'APPLICATIONS']) {
+        await _selectTab(tester, label);
+        expect(find.text('FILTERS'), findsNothing);
+        expect(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget.key is ValueKey<String> &&
+                RegExp(
+                  r'^(band-gigs-seg-|band-gigs-filters$|gig-actions-|gig-door-|gig-preview-|gig-edit-|gig-project-|gig-sales-|band-app-.*-booking$)',
+                ).hasMatch((widget.key! as ValueKey<String>).value),
+          ),
+          findsNothing,
+        );
+      }
+    },
+  );
+
+  testWidgets('hosted paid gig without sales offers Delete from MY GIGS', (
     tester,
   ) async {
     final auth = FakeAuthService();
-    final response = Completer<TicketSales>();
-    final repository = _ManagerRepository(
-      auth: auth,
-      salesResponse: response.future,
-    );
-    final harness = await pumpApp(
+    await _pumpManager(
       tester,
-      auth: auth,
-      repository: repository,
-      home: const Scaffold(body: GigManagerScreen()),
+      auth,
+      _ManagerRepository(
+        auth: auth,
+        salesResponse: Future.value(_ManagerRepository.zeroSales),
+      ),
     );
+    await _tapControl(tester, 'my-gigs-hosted-published-paid');
+    expect(find.byType(HostedGigScreen), findsOneWidget);
+    expect(find.text('SALES · 0/50'), findsOneWidget);
+    await _tapControl(tester, 'hosted-gig-actions');
+    expect(find.text('Sales'), findsOneWidget);
+    expect(find.text('Delete'), findsOneWidget);
+  });
 
-    await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
-    await tester.pumpAndSettle();
-    final actions = find.byKey(const Key('gig-actions-published-paid'));
-    await tester.scrollUntilVisible(
-      actions,
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    final sales = find.byKey(const Key('gig-sales-published-paid'));
-    expect(sales, findsNothing);
-    expect(repository.salesRequests, ['g-paid']);
-
-    await harness.app.refreshManagedGigs();
-    await tester.pumpAndSettle();
-    expect(repository.salesRequests, ['g-paid']);
-
-    response.complete(_ManagerRepository.paidSales);
-    await tester.pumpAndSettle();
-    expect(tester.widget<Text>(sales).data, 'SALES · 12/50');
-    await harness.app.refreshManagedGigs();
-    await tester.pumpAndSettle();
-    expect(repository.salesRequests, ['g-paid']);
-
-    await tester.ensureVisible(actions);
-    await tester.tap(actions);
-    await tester.pumpAndSettle();
-    expect(find.text('Sales'), findsOne);
-    expect(find.text('Delete'), findsNothing);
-    expect(find.text('Duplicate'), findsOne);
-    expect(find.text('Unpublish…'), findsOne);
-    expect(find.text('Cancel gig…'), findsOne);
-
+  testWidgets('MY GIGS opens the hosted ticket sales breakdown', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await _pumpManager(tester, auth, _ManagerRepository(auth: auth));
+    await _tapControl(tester, 'my-gigs-hosted-published-paid');
+    await _tapControl(tester, 'hosted-gig-actions');
     await tester.tap(find.text('Sales'));
     await tester.pumpAndSettle();
     final sheet = find.byKey(const Key('band-ticket-sales-sheet'));
-    expect(sheet, findsOne);
+    expect(sheet, findsOneWidget);
     for (final text in [
       'PAID TICKET SHOW',
       'Sold',
@@ -261,47 +385,58 @@ void main() {
       'Orders',
       '6',
     ]) {
-      expect(find.descendant(of: sheet, matching: find.text(text)), findsOne);
+      expect(
+        find.descendant(of: sheet, matching: find.text(text)),
+        findsOneWidget,
+      );
     }
     expect(
       tester.widget<Text>(find.byKey(const Key('band-ticket-sales-net'))).data,
       r'$216.00',
     );
-    expect(repository.salesRequests, ['g-paid']);
-
     await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
     expect(sheet, findsNothing);
   });
 
-  testWidgets('paid projects with no sales still offer Delete', (tester) async {
-    final auth = FakeAuthService();
-    await pumpApp(
-      tester,
-      auth: auth,
-      repository: _ManagerRepository(
-        auth: auth,
-        salesResponse: Future.value(_ManagerRepository.zeroSales),
-      ),
-      home: const Scaffold(body: GigManagerScreen()),
-    );
-
-    await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
-    await tester.pumpAndSettle();
-    final actions = find.byKey(const Key('gig-actions-published-paid'));
-    await tester.scrollUntilVisible(
-      actions,
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('SALES · 0/50'), findsOne);
-    await tester.ensureVisible(actions);
-    await tester.pumpAndSettle();
-    await tester.tap(actions);
-    await tester.pumpAndSettle();
-    expect(find.text('Sales'), findsOne);
-    expect(find.text('Delete'), findsOne);
-  });
+  testWidgets(
+    'hosted door uses public rosters and falls back for legacy projects',
+    (tester) async {
+      final auth = FakeAuthService();
+      final repository = _ManagerRepository(auth: auth);
+      repository.projects.add(
+        _project(
+          id: 'legacy',
+          title: 'Legacy Show',
+          status: GigProjectStatus.published,
+          ticketing: Ticketing.paid,
+        ),
+      );
+      final harness = await _pumpManager(tester, auth, repository);
+      for (final (projectId, gigId) in [
+        ('published-external', 'not-loaded'),
+        ('published-paid', 'g-paid'),
+        ('legacy', null),
+      ]) {
+        await _tapControl(tester, 'my-gigs-hosted-$projectId');
+        expect(find.byType(HostedGigScreen), findsOneWidget);
+        await _tapControl(tester, 'hosted-gig-door');
+        expect(find.byType(DoorModeScreen), findsOneWidget);
+        expect(find.text('DOOR MODE · THE FOGHORN CLUB'), findsOneWidget);
+        if (gigId == null) {
+          expect(repository.projectRosterRequests, ['legacy']);
+        } else {
+          expect(repository.organizerRosterRequests.last, gigId);
+          expect(repository.projectRosterRequests, isEmpty);
+        }
+        Navigator.of(tester.element(find.byType(DoorModeScreen))).pop();
+        await tester.pumpAndSettle();
+        harness.app.back();
+        await tester.pumpAndSettle();
+      }
+      expect(repository.organizerRosterRequests, ['not-loaded', 'g-paid']);
+    },
+  );
 
   testWidgets('sales sheet loads an empty cache and hides zero refunds', (
     tester,
@@ -354,72 +489,54 @@ void main() {
       r'$0.00',
     );
   });
+}
 
-  for (final (projectId, gigId) in [
-    ('published-external', 'not-loaded'),
-    ('published-paid', 'g-paid'),
-  ]) {
-    testWidgets('$projectId launches the public gig door roster', (
-      tester,
-    ) async {
-      final auth = FakeAuthService();
-      final repository = _ManagerRepository(auth: auth);
-      await pumpApp(
-        tester,
-        auth: auth,
-        repository: repository,
-        home: const Scaffold(body: GigManagerScreen()),
-      );
+RenderParagraph _paragraph(WidgetTester tester, Finder text) => tester
+    .renderObject(find.descendant(of: text, matching: find.byType(RichText)));
 
-      await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
-      await tester.pumpAndSettle();
-      final door = find.byKey(ValueKey('gig-door-$projectId'));
-      await tester.scrollUntilVisible(
-        door,
-        180,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.ensureVisible(door);
-      await tester.pumpAndSettle();
-      await tester.tap(door);
-      await tester.pumpAndSettle();
-      expect(find.byType(DoorModeScreen), findsOne);
-      expect(repository.organizerRosterRequests, [gigId]);
-      expect(repository.projectRosterRequests, isEmpty);
-    });
-  }
-
-  testWidgets(
-    'published projects without a public id keep the project roster',
-    (tester) async {
-      final auth = FakeAuthService();
-      final repository = _ManagerRepository(auth: auth);
-      repository.projects
-        ..clear()
-        ..add(
-          _project(
-            id: 'legacy',
-            title: 'Legacy Show',
-            status: GigProjectStatus.published,
-            ticketing: Ticketing.paid,
-          ),
-        );
-      await pumpApp(
-        tester,
-        auth: auth,
-        repository: repository,
-        home: const Scaffold(body: GigManagerScreen()),
-      );
-
-      await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('gig-door-legacy')));
-      await tester.pumpAndSettle();
-      expect(find.byType(DoorModeScreen), findsOne);
-      expect(repository.projectRosterRequests, ['legacy']);
-      expect(repository.organizerRosterRequests, isEmpty);
+Future<AppHarness> _pumpManager(
+  WidgetTester tester,
+  FakeAuthService auth,
+  _ManagerRepository repository,
+) async {
+  await auth.signInDemo();
+  return pumpApp(
+    tester,
+    auth: auth,
+    repository: repository,
+    home: const RootShell(),
+    beforePump: (app) {
+      app.switchToBand('b1');
+      app.resetTo(Screen.gigMgr);
     },
   );
+}
+
+Future<void> _selectTab(WidgetTester tester, String label) async {
+  await tester.tap(
+    find.descendant(
+      of: find.byKey(const Key('band-gigs-tabs')),
+      matching: find.text(label),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _reveal(WidgetTester tester, Finder control) async {
+  await tester.scrollUntilVisible(
+    control,
+    180,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.ensureVisible(control);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _tapControl(WidgetTester tester, String key) async {
+  final control = find.byKey(Key(key));
+  await _reveal(tester, control);
+  await tester.tap(control);
+  await tester.pumpAndSettle();
 }
 
 class _ManagerRepository extends DemoRepository {

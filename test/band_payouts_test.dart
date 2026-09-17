@@ -6,12 +6,15 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
-import 'package:earplug/screens/band_dash.dart';
 import 'package:earplug/screens/band_payouts.dart';
+import 'package:earplug/screens/gig_manager.dart';
 import 'package:earplug/screens/org_dash.dart';
+import 'package:earplug/screens/org_finance.dart';
 import 'package:earplug/screens/org_settings.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/band_my_gigs_tab.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -301,13 +304,13 @@ void main() {
     expect(harness.app.bandPayoutStatus?.canSellTickets, isTrue);
     expect(find.text('TICKET SALES'), findsOneWidget);
     expect(find.text('TICKET SALES ENABLED'), findsOneWidget);
-    final pill = tester.widget<StatusPill>(
+    final pill = tester.widget<EpBadge>(
       find.ancestor(
         of: find.text('TICKET SALES ENABLED'),
-        matching: find.byType(StatusPill),
+        matching: find.byType(EpBadge),
       ),
     );
-    expect(pill.tone, EpStatusPillTone.success);
+    expect(pill.tone, EpBadgeTone.success);
     expect(find.byKey(const Key('band-payouts-enable-tickets')), findsNothing);
     expect(find.text(_ticketSalesCaption), findsOneWidget);
   });
@@ -421,11 +424,11 @@ void main() {
         ),
         findsOneWidget,
       );
-      final paidPill = tester.widget<StatusPill>(
-        find.descendant(of: paidRow, matching: find.byType(StatusPill)),
+      final paidPill = tester.widget<EpBadge>(
+        find.descendant(of: paidRow, matching: find.byType(EpBadge)),
       );
       expect(paidPill.label, 'paid');
-      expect(paidPill.tone, EpStatusPillTone.success);
+      expect(paidPill.tone, EpBadgeTone.success);
 
       final heldRow = find.byKey(const ValueKey('band-payout-p2'));
       expect(
@@ -445,11 +448,11 @@ void main() {
       );
       expect(
         tester
-            .widget<StatusPill>(
-              find.descendant(of: heldRow, matching: find.byType(StatusPill)),
+            .widget<EpBadge>(
+              find.descendant(of: heldRow, matching: find.byType(EpBadge)),
             )
             .tone,
-        EpStatusPillTone.warning,
+        EpBadgeTone.warning,
       );
     },
   );
@@ -542,10 +545,10 @@ void main() {
         ),
         findsOneWidget,
       );
-      final pill = find.descendant(of: row, matching: find.byType(StatusPill));
+      final pill = find.descendant(of: row, matching: find.byType(EpBadge));
       if (needsTaxInformation) {
-        expect(tester.widget<StatusPill>(pill).label, 'ACTION NEEDED');
-        expect(tester.widget<StatusPill>(pill).tone, EpStatusPillTone.warning);
+        expect(tester.widget<EpBadge>(pill).label, 'ACTION NEEDED');
+        expect(tester.widget<EpBadge>(pill).tone, EpBadgeTone.warning);
       } else {
         expect(pill, findsNothing);
       }
@@ -635,17 +638,26 @@ void main() {
         tester,
         auth: auth,
         repository: repository,
-        home: const Scaffold(body: OrgSettingsScreen()),
+        home: const Scaffold(body: OrgFinanceScreen()),
         beforePump: (app) => app.switchToOrganization('org1'),
       );
       await enterOrganizer(tester, harness, 'org1');
 
-      final button = find.byKey(const Key('org-settings-tax-dashboard'));
-      await tester.scrollUntilVisible(
-        button,
-        250,
-        scrollable: find.byType(Scrollable).first,
+      final section = find.byKey(const Key('org-finance-stripe-section'));
+      final badge = tester.widget<EpBadge>(
+        find.byKey(const Key('org-finance-stripe-badge')),
       );
+      expect(badge.label.toUpperCase(), 'SETUP IN PROGRESS — FINISH IN STRIPE');
+      expect(badge.tone, EpBadgeTone.attention);
+      expect(find.text('CONTINUE SETUP'), findsOneWidget);
+      expect(find.text('NEEDS INFORMATION'), findsOneWidget);
+      expect(find.text('individual.id_number'), findsOneWidget);
+      expect(
+        find.descendant(of: section, matching: find.text('ACTION NEEDED')),
+        findsOneWidget,
+      );
+
+      final button = find.byKey(const Key('org-finance-tax-dashboard'));
       expect(
         find.descendant(of: button, matching: find.text('MANAGE IN STRIPE')),
         findsOneWidget,
@@ -657,12 +669,9 @@ void main() {
       await tester.pump();
       await tester.tap(button);
       await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('org-settings-stripe-error')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('org-finance-stripe-error')), findsOneWidget);
       expect(find.textContaining('Could not open Stripe'), findsOneWidget);
-      expect(find.byKey(const Key('org-settings-save-error')), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
 
       final launched = <String>[];
       harness.app.hostedUrlLauncher = (url) async => launched.add(url);
@@ -671,13 +680,16 @@ void main() {
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(launched, ['https://demo.stripe/dashboard/org1']);
-      expect(find.byKey(const Key('org-settings-stripe-error')), findsNothing);
-      expect(find.byKey(const Key('org-settings-save-error')), findsNothing);
+      expect(find.byKey(const Key('org-finance-stripe-error')), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
     },
   );
 
-  for (final (state, caption) in [(StripeAccountState.enabled, 'Enabled')]) {
-    testWidgets('band payouts tile shows ${state.name} and opens payouts', (
+  for (final (state, flagged) in [
+    (StripeAccountState.restricted, true),
+    (StripeAccountState.enabled, false),
+  ]) {
+    testWidgets('band payouts tile flags ${state.name} and opens payouts', (
       tester,
     ) async {
       final auth = FakeAuthService();
@@ -691,21 +703,27 @@ void main() {
               ? 'active'
               : null,
         ),
-        home: const Scaffold(body: BandDashScreen()),
-        beforePump: (app) => app.switchToBand('b1'),
+        home: const Scaffold(body: GigManagerScreen()),
+        beforePump: (app) {
+          app.switchToBand('b1');
+          app.resetTo(Screen.gigMgr);
+        },
       );
 
       final tile = find.byKey(const Key('band-dash-payouts'));
-      await tester.scrollUntilVisible(
-        tile,
-        180,
-        scrollable: find.byType(Scrollable).first,
-      );
+      await tester.scrollUntilVisible(tile, 180, scrollable: _myGigsList());
       expect(tile, findsOneWidget);
-      expect(
-        find.descendant(of: tile, matching: find.text(caption)),
-        findsOneWidget,
+      final badge = find.descendant(
+        of: tile,
+        matching: find.byKey(const Key('band-dash-payouts-badge')),
       );
+      expect(badge, flagged ? findsOneWidget : findsNothing);
+      expect(
+        find.descendant(of: tile, matching: find.text('SET UP')),
+        flagged ? findsOneWidget : findsNothing,
+      );
+      await tester.ensureVisible(tile);
+      await tester.pump();
       await tester.tap(tile);
       await tester.pumpAndSettle();
       expect(harness.app.current.screen, Screen.bandPayouts);
@@ -733,11 +751,17 @@ void main() {
             ),
           ]),
         ),
-      home: const Scaffold(body: BandDashScreen()),
-      beforePump: (app) => app.switchToBand('b1'),
+      home: const Scaffold(body: GigManagerScreen()),
+      beforePump: (app) {
+        app.switchToBand('b1');
+        app.resetTo(Screen.gigMgr);
+      },
     );
 
-    expect(find.text('MANAGING · MEMBER'), findsOneWidget);
+    // Scroll past everything so an absent row is not merely off screen.
+    await tester.drag(_myGigsList(), const Offset(0, -2000));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('PAST · '), findsOneWidget);
     expect(find.byKey(const Key('band-dash-payouts')), findsNothing);
   });
 
@@ -746,32 +770,41 @@ void main() {
   ) async {
     final harness = await pumpApp(
       tester,
-      home: const Scaffold(body: OrgSettingsScreen()),
+      home: const Scaffold(body: OrgFinanceScreen()),
       beforePump: (app) => app.switchToOrganization('org1'),
     );
     await enterOrganizer(tester, harness, 'org1');
     final launched = <String>[];
     harness.app.hostedUrlLauncher = (url) async => launched.add(url);
 
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('org-settings-stripe-refresh')),
-      250,
-      scrollable: find.byType(Scrollable).first,
+    final badge = find.byKey(const Key('org-finance-stripe-badge'));
+    expect(tester.widget<EpBadge>(badge).label.toUpperCase(), 'SET UP');
+    expect(
+      find.text(
+        'Not connected. Connect Stripe to sell tickets and receive payouts.',
+      ),
+      findsOneWidget,
     );
-    expect(find.byKey(const Key('org-settings-stripe')), findsOneWidget);
-    expect(find.text('Not connected'), findsOneWidget);
+    final setup = find.byKey(const Key('org-finance-connect-stripe'));
+    expect(
+      find.descendant(of: setup, matching: find.text('CONNECT STRIPE')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('org-finance-stripe')), findsNothing);
 
-    await tester.ensureVisible(
-      find.byKey(const Key('org-settings-stripe-setup')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('org-settings-stripe-setup')));
+    await tester.tap(setup);
     await tester.pumpAndSettle();
     expect(launched, ['https://demo.stripe/onboard/org1']);
-    expect(find.text('Setup in progress'), findsOneWidget);
+    expect(
+      tester.widget<EpBadge>(badge).label.toUpperCase(),
+      'SETUP IN PROGRESS — FINISH IN STRIPE',
+    );
+    expect(find.textContaining('Setup in progress.'), findsOneWidget);
     expect(find.text('CONTINUE SETUP'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('org-settings-stripe-refresh')));
+    // Refresh fetches the status from the repository again.
+    harness.app.organizationStripeStatus = null;
+    await tester.tap(find.byKey(const Key('org-finance-stripe-refresh')));
     await tester.pumpAndSettle();
     expect(
       harness.app.organizationStripeStatus?.state,
@@ -780,8 +813,13 @@ void main() {
 
     await harness.app.handleStripeReturn(band: false, id: 'org1');
     await tester.pumpAndSettle();
-    expect(find.text('Connected'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('org-settings-stripe-dashboard')));
+    expect(tester.widget<EpBadge>(badge).label.toUpperCase(), 'CONNECTED');
+    expect(
+      find.text('Connected. Payouts go to your Stripe account.'),
+      findsOneWidget,
+    );
+    expect(setup, findsNothing);
+    await tester.tap(find.byKey(const Key('org-finance-stripe')));
     await tester.pumpAndSettle();
     expect(launched.last, 'https://demo.stripe/dashboard/org1');
   });
@@ -828,33 +866,28 @@ void main() {
   ) async {
     final harness = await pumpApp(
       tester,
-      home: const Scaffold(body: OrgSettingsScreen()),
+      home: const Scaffold(body: OrgFinanceScreen()),
       beforePump: (app) => app.switchToOrganization('org1'),
     );
     await enterOrganizer(tester, harness, 'org1');
     harness.app.hostedUrlLauncher = (_) async {
       throw StateError('Could not open Stripe');
     };
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('org-settings-stripe-refresh')),
-      250,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.ensureVisible(
-      find.byKey(const Key('org-settings-stripe-setup')),
-    );
+    final setup = find.byKey(const Key('org-finance-connect-stripe'));
+    await tester.tap(setup);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('org-settings-stripe-setup')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('org-settings-stripe-error')), findsOneWidget);
+    expect(find.byKey(const Key('org-finance-stripe-error')), findsOneWidget);
     expect(find.textContaining('Could not open Stripe'), findsOneWidget);
+    // Inline next to the controls, not in the finance snackbar.
+    expect(find.byType(SnackBar), findsNothing);
     expect(find.byKey(const Key('org-settings-save-error')), findsNothing);
 
     harness.app.hostedUrlLauncher = (_) async {};
-    await tester.tap(find.byKey(const Key('org-settings-stripe-setup')));
+    await tester.tap(setup);
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('org-settings-stripe-error')), findsNothing);
-    expect(find.text('Setup in progress'), findsOneWidget);
+    expect(find.byKey(const Key('org-finance-stripe-error')), findsNothing);
+    expect(find.textContaining('Setup in progress'), findsOneWidget);
+    expect(find.text('CONTINUE SETUP'), findsOneWidget);
   });
 
   for (final band in [true]) {
@@ -890,58 +923,51 @@ void main() {
     });
   }
 
-  for (final complete in [false]) {
-    testWidgets('organization Stripe readiness links when complete=$complete', (
+  for (final enabled in [false, true]) {
+    testWidgets('organization dash finance readiness when enabled=$enabled', (
       tester,
     ) async {
       final auth = FakeAuthService();
+      await auth.signInDemo();
       final harness = await pumpApp(
         tester,
         auth: auth,
-        repository: StubRepository(auth: auth)
-          ..wraps<OrganizationDashboard>(
-            'organizationDashboard',
-            (real) => OrganizationDashboard(
-              organization: real.organization,
-              role: real.role,
-              viaPlatformAdmin: real.viaPlatformAdmin,
-              verification: OrganizationVerification(
-                verified: real.verification.verified,
-                stripeDetailsSubmitted: complete,
-                stripeChargesEnabled: complete,
-                stripePayoutsEnabled: complete,
-                profileComplete: real.verification.profileComplete,
-                teamInvited: real.verification.teamInvited,
-              ),
-              venues: real.venues,
-              memberCount: real.memberCount,
-              privateDetails: real.privateDetails,
-            ),
-          ),
+        repository: _stripeStatusRepository(
+          auth: auth,
+          state: enabled
+              ? StripeAccountState.enabled
+              : StripeAccountState.onboarding,
+        ),
         home: const Scaffold(body: OrgDashScreen()),
         beforePump: (app) => app.switchToOrganization('org1'),
       );
       await enterOrganizer(tester, harness, 'org1');
 
       expect(find.text('Stripe setup arrives with bookings'), findsNothing);
-      for (final key in [
-        'org-dash-readiness-stripe',
-        'org-dash-readiness-payouts',
-      ]) {
-        final row = find.byKey(Key(key));
-        if (complete) {
-          expect(row, findsNothing);
-        } else {
-          expect(row, findsOneWidget);
-          await tester.tap(row);
-          await tester.pumpAndSettle();
-          expect(harness.app.current.screen, Screen.orgSettings);
-          harness.app.resetTo(Screen.orgDash);
-          await tester.pumpAndSettle();
-        }
+      expect(find.byKey(const Key('org-dash-readiness-stripe')), findsNothing);
+      expect(find.byKey(const Key('org-dash-readiness-payouts')), findsNothing);
+
+      final badge = find.byKey(const Key('org-dash-finance-badge'));
+      final financeStep = find.byKey(const Key('org-setup-finance'));
+      if (enabled) {
+        // Profile and finance are done, so no module and no badge.
+        expect(find.byKey(const Key('band-readiness')), findsNothing);
+        expect(financeStep, findsNothing);
+        expect(badge, findsNothing);
+        return;
       }
-      expect(find.text('Stripe details'), findsOneWidget);
-      expect(find.text('Payouts enabled'), findsOneWidget);
+      expect(find.byKey(const Key('band-readiness')), findsOneWidget);
+      expect(financeStep, findsOneWidget);
+      final finance = find.byKey(const Key('org-dash-command-finance'));
+      await tester.scrollUntilVisible(
+        finance,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.descendant(of: finance, matching: badge), findsOneWidget);
+      await tester.tap(finance);
+      await tester.pumpAndSettle();
+      expect(harness.app.current.screen, Screen.orgFinance);
     });
   }
 }
@@ -1038,6 +1064,14 @@ class _TruncatedPayoutRepository extends _PayoutRepository {
     );
   }
 }
+
+/// The MY GIGS list on the GIGS page, which now carries the payouts entry.
+Finder _myGigsList() => find
+    .descendant(
+      of: find.byType(BandMyGigsTab),
+      matching: find.byType(Scrollable),
+    )
+    .first;
 
 StubRepository _stripeStatusRepository({
   required AuthService auth,

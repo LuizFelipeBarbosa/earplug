@@ -7,7 +7,10 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_states.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
 
@@ -20,6 +23,7 @@ class OrgFinanceScreen extends StatefulWidget {
 
 class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
   String? _loadedOrganizationId;
+  String? _stripeError;
 
   @override
   void didChangeDependencies() {
@@ -32,6 +36,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
     }
     if (_loadedOrganizationId == organizationId) return;
     _loadedOrganizationId = organizationId;
+    _stripeError = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted ||
           app.organizationId != organizationId ||
@@ -39,8 +44,28 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
         return;
       }
       unawaited(app.loadFinance());
+      unawaited(app.refreshOrganizationStripeStatus());
     });
   }
+
+  /// Stripe failures stay inline next to the controls rather than in the
+  /// finance snackbar, so they read as account state, not a passing notice.
+  Future<void> _runStripeAction(Future<void> Function() action) async {
+    final app = context.read<AppState>();
+    final organizationId = app.organizationId;
+    setState(() => _stripeError = null);
+    try {
+      await action();
+    } catch (error) {
+      if (!mounted || app.organizationId != organizationId) return;
+      setState(() => _stripeError = stripStateErrorPrefix(error));
+    }
+  }
+
+  Future<void> _continueInStripe(AppState app) => _runStripeAction(() async {
+    await app.startOrganizationOnboarding();
+    await app.refreshOrganizationStripeStatus();
+  });
 
   Future<void> _runAction(Future<void> Function() action) async {
     try {
@@ -49,7 +74,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(_errorMessage(error))));
+      ).showSnackBar(SnackBar(content: Text(stripStateErrorPrefix(error))));
     }
   }
 
@@ -140,7 +165,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
           16,
           headerTopPad(context),
           16,
-          tabBarClearance,
+          MediaQuery.paddingOf(context).bottom + 24,
         ),
         children: [
           Row(
@@ -157,36 +182,30 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
           ),
           Text('FINANCE', style: textTheme.epPageHeading),
           const SizedBox(height: 16),
+          _buildStripeSection(app),
+          const SizedBox(height: 24),
           if (app.financeLoading && overview == null)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 80),
               child: Center(child: CircularProgressIndicator()),
             )
           else if (app.financeError != null && overview == null)
-            _LoadError(onRetry: () => app.loadFinance(refresh: true)),
+            EpLoadError(
+              message: 'Could not load finance.',
+              onRetry: () => app.loadFinance(refresh: true),
+              topPadding: 0,
+              gap: 8,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+            ),
           if (overview != null) ...[
             Column(
               key: const Key('org-finance-funds'),
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (!overview.stripeReady)
-                  EpCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          'Connect Stripe to see your balance.',
-                          style: textTheme.epBody,
-                        ),
-                        const SizedBox(height: 12),
-                        EpButton(
-                          'CONNECT STRIPE',
-                          key: const Key('org-finance-connect-stripe'),
-                          onTap: () =>
-                              _runAction(app.startOrganizationOnboarding),
-                        ),
-                      ],
-                    ),
+                  Text(
+                    'Connect Stripe to see your balance.',
+                    style: textTheme.epBody,
                   )
                 else if (overview.snapshot case final snapshot?) ...[
                   EpStatCard(
@@ -199,19 +218,16 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                     const SizedBox(height: 8),
                     const Align(
                       alignment: Alignment.centerLeft,
-                      child: StatusPill(
-                        label: 'stale',
-                        tone: EpStatusPillTone.warning,
-                      ),
+                      child: EpBadge(label: 'stale', tone: EpBadgeTone.warning),
                     ),
                   ],
                 ] else
-                  const EpCard(
-                    child: Text('Balance unavailable. Refresh to try again.'),
+                  const EmptyNote(
+                    message: 'Balance unavailable. Refresh to try again.',
                   ),
               ],
             ),
-            const SectionBar(label: 'BOOKINGS'),
+            const EpSectionHeader(label: 'BOOKINGS'),
             _FinanceStats(
               key: const Key('org-finance-bookings'),
               values: [
@@ -221,7 +237,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                 ('DISPUTED', overview.disputedAmount.label, null),
               ],
             ),
-            const SectionBar(label: 'PENDING PAYMENTS'),
+            const EpSectionHeader(label: 'PENDING PAYMENTS'),
             Column(
               key: const Key('org-finance-pending'),
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -229,25 +245,11 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                 if (overview.pendingPayments.isEmpty)
                   const EmptyNote(message: 'No pending payments.')
                 else
-                  EpCard(
-                    child: Column(
-                      children: [
-                        for (
-                          var i = 0;
-                          i < overview.pendingPayments.length;
-                          i++
-                        ) ...[
-                          if (i > 0) const Divider(height: 1),
-                          _PendingPaymentRow(
-                            payment: overview.pendingPayments[i],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
+                  for (final payment in overview.pendingPayments)
+                    _PendingPaymentRow(payment: payment),
               ],
             ),
-            const SectionBar(label: 'TICKETS'),
+            const EpSectionHeader(label: 'TICKETS'),
             Column(
               key: const Key('org-finance-tickets'),
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -294,18 +296,160 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
               key: const Key('org-finance-export'),
               onTap: _showExportSheet,
             ),
-            if (overview.stripeReady) ...[
-              const SizedBox(height: 10),
-              EpButton(
-                'MANAGE PAYOUTS IN STRIPE',
-                key: const Key('org-finance-stripe'),
-                kind: EpButtonKind.light,
-                onTap: () => _runAction(app.openOrganizationExpressDashboard),
-              ),
-            ],
           ],
         ],
       ),
+    );
+  }
+
+  /// The organization's Stripe account: state badge, the one action that
+  /// moves it forward, what Stripe still needs, and the tax-details row.
+  Widget _buildStripeSection(AppState app) {
+    final textTheme = Theme.of(context).textTheme;
+    final status = app.organizationStripeStatusFor(app.organizationId);
+    final state = status?.state ?? StripeAccountState.unknown;
+    final (badgeLabel, badgeTone, sentence) = switch (state) {
+      StripeAccountState.enabled => (
+        'Connected',
+        EpBadgeTone.success,
+        'Connected. Payouts go to your Stripe account.',
+      ),
+      StripeAccountState.onboarding => (
+        'Setup in progress — finish in Stripe',
+        EpBadgeTone.attention,
+        'Setup in progress. Finish onboarding in Stripe to receive payouts.',
+      ),
+      StripeAccountState.restricted => (
+        'Setup in progress — finish in Stripe',
+        EpBadgeTone.attention,
+        'Stripe needs more information before payouts can continue.',
+      ),
+      _ => (
+        'Set up',
+        EpBadgeTone.attention,
+        'Not connected. Connect Stripe to sell tickets and receive payouts.',
+      ),
+    };
+    final requirementsDue = status?.requirementsDue ?? const <String>[];
+    final needsTaxInformation = requirementsDue.any(
+      RegExp(r'tax|ssn|id_number|verification\.document').hasMatch,
+    );
+    final detailsSubmitted = status?.detailsSubmitted == true;
+    final taxCollected = detailsSubmitted && !needsTaxInformation;
+
+    return Column(
+      key: const Key('org-finance-stripe-section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const EpEyebrow('Stripe'),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: EpBadge(
+                  key: const Key('org-finance-stripe-badge'),
+                  label: badgeLabel,
+                  tone: badgeTone,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const EpHairline(),
+        const SizedBox(height: 12),
+        Text(sentence, style: textTheme.epBody),
+        if (requirementsDue.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const EpEyebrow('Needs information'),
+          const SizedBox(height: 4),
+          for (final requirement in requirementsDue)
+            EpMonoText(requirement, keepCase: true),
+        ],
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (state == StripeAccountState.enabled)
+              EpPill(
+                key: const Key('org-finance-stripe'),
+                label: 'Manage payouts in Stripe',
+                variant: EpPillVariant.primary,
+                size: EpPillSize.regular,
+                onPressed: () =>
+                    _runStripeAction(app.openOrganizationExpressDashboard),
+              )
+            else
+              EpPill(
+                key: const Key('org-finance-connect-stripe'),
+                label: switch (state) {
+                  StripeAccountState.onboarding ||
+                  StripeAccountState.restricted => 'Continue setup',
+                  _ => 'Connect Stripe',
+                },
+                variant: EpPillVariant.primary,
+                size: EpPillSize.regular,
+                onPressed: () => _continueInStripe(app),
+              ),
+            EpPill(
+              key: const Key('org-finance-stripe-refresh'),
+              label: 'Refresh status',
+              variant: EpPillVariant.ghost,
+              size: EpPillSize.regular,
+              onPressed: () =>
+                  _runStripeAction(app.refreshOrganizationStripeStatus),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            const EpMonoText('Tax details', size: 12, weight: FontWeight.w500),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: EpBadge(
+                  label: taxCollected
+                      ? '✓ Collected via Stripe'
+                      : 'Action needed',
+                  tone: taxCollected
+                      ? EpBadgeTone.success
+                      : EpBadgeTone.attention,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Stripe collects tax details (W-9 / 1099) during onboarding and '
+          'keeps them in your Stripe dashboard.',
+          style: textTheme.epCaption,
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          // Until details are submitted the fix is finishing onboarding.
+          child: EpPill(
+            key: const Key('org-finance-tax-dashboard'),
+            label: detailsSubmitted ? 'Manage in Stripe' : 'Add in Stripe',
+            onPressed: detailsSubmitted
+                ? () => _runStripeAction(app.openOrganizationExpressDashboard)
+                : () => _continueInStripe(app),
+          ),
+        ),
+        if (_stripeError != null) ...[
+          const SizedBox(height: 8),
+          InlineFormFeedback(
+            error: _stripeError,
+            errorKey: const Key('org-finance-stripe-error'),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -402,25 +546,3 @@ class _PendingPaymentRow extends StatelessWidget {
     ),
   );
 }
-
-class _LoadError extends StatelessWidget {
-  const _LoadError({required this.onRetry});
-
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text(
-        'Could not load finance.',
-        style: Theme.of(context).textTheme.epBody,
-      ),
-      const SizedBox(height: 8),
-      EpButton('RETRY', kind: EpButtonKind.outline, onTap: onRetry),
-    ],
-  );
-}
-
-String _errorMessage(Object error) =>
-    error.toString().replaceFirst(RegExp(r'^(Bad state: |Exception: )'), '');

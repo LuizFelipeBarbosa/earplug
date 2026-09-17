@@ -6,9 +6,37 @@ import 'package:http/http.dart' as http;
 import '../data/repository.dart';
 import '../models.dart';
 import 'media_picker.dart';
+import 'video_duration_probe.dart';
 import 'video_thumbnail_generator.dart';
 
 enum MediaUploadPhase { preparing, uploading, saving, done, failed }
+
+/// Uploads an application verification document (organization or host
+/// application) and returns its storage id.
+///
+/// Kept separate from [MediaUploadService]: the demo id and error text differ
+/// and the application forms depend on both.
+Future<String> uploadApplicationDocument(
+  EarplugRepository repository,
+  PickedMedia media,
+) async {
+  final uploadUri = Uri.parse(
+    await repository.generateApplicationDocumentUploadUrl(),
+  );
+  if (uploadUri.scheme == 'demo') {
+    return 'demo-application-doc-${DateTime.now().microsecondsSinceEpoch}';
+  }
+  final response = await http.post(
+    uploadUri,
+    headers: {'Content-Type': media.contentType},
+    body: media.bytes,
+  );
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception('Upload failed with status ${response.statusCode}');
+  }
+  return (jsonDecode(response.body) as Map<String, dynamic>)['storageId']
+      as String;
+}
 
 typedef HttpPoster =
     Future<String> Function(Uri url, Uint8List bytes, String contentType);
@@ -52,6 +80,18 @@ class MediaUploadService {
     var phase = MediaUploadPhase.preparing;
     try {
       onPhase?.call(phase);
+      // Probe alongside thumbnail generation and storage uploads, with a
+      // bounded fallback so metadata failure cannot fail the upload.
+      final duration = () async {
+        if (kind != MediaKind.video) return null;
+        try {
+          return await probeVideoDurationSec(
+            media,
+          ).timeout(const Duration(seconds: 5), onTimeout: () => null);
+        } catch (_) {
+          return null;
+        }
+      }();
       PickedMedia? thumbnail;
       if (kind == MediaKind.video) {
         final bytes = await _thumbnailGenerator.generate(media);
@@ -83,6 +123,7 @@ class MediaUploadService {
               },
             );
 
+      final lengthSec = await duration;
       phase = MediaUploadPhase.saving;
       onPhase?.call(phase);
       final mediaId = await repository.addBandMedia(
@@ -91,7 +132,7 @@ class MediaUploadService {
         storageId: storageId,
         thumbnailStorageId: thumbnailStorageId,
         title: media.titleFromFilename,
-        lengthSec: null,
+        lengthSec: lengthSec,
       );
 
       phase = MediaUploadPhase.done;

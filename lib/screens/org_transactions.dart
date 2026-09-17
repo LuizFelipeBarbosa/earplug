@@ -7,6 +7,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 
 class OrgTransactionsScreen extends StatefulWidget {
@@ -87,7 +88,7 @@ class _OrgTransactionsScreenState extends State<OrgTransactionsScreen> {
         16,
         headerTopPad(context),
         16,
-        tabBarClearance,
+        MediaQuery.paddingOf(context).bottom + 24,
       ),
       itemCount: app.transactions.length + 2,
       itemBuilder: (context, index) {
@@ -113,10 +114,9 @@ class _OrgTransactionsScreenState extends State<OrgTransactionsScreen> {
         }
         if (index <= app.transactions.length) {
           final transaction = app.transactions[index - 1];
-          return EpCard(
+          return _TransactionRow(
             key: Key('org-tx-${transaction.id}'),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: _TransactionRow(transaction: transaction),
+            transaction: transaction,
           );
         }
         if (app.transactionsLoading) {
@@ -142,7 +142,7 @@ class _OrgTransactionsScreenState extends State<OrgTransactionsScreen> {
 }
 
 class _TransactionRow extends StatelessWidget {
-  const _TransactionRow({required this.transaction});
+  const _TransactionRow({super.key, required this.transaction});
 
   final FinanceTransaction transaction;
 
@@ -156,17 +156,18 @@ class _TransactionRow extends StatelessWidget {
     };
     final amount = transaction.amount.label.replaceFirst(RegExp(r'^-'), '');
     final tone = switch (transaction.fundsState) {
-      FundsState.available || FundsState.paid => EpStatusPillTone.success,
-      FundsState.refunded || FundsState.disputed => EpStatusPillTone.warning,
+      FundsState.available || FundsState.paid => EpBadgeTone.success,
+      FundsState.refunded || FundsState.disputed => EpBadgeTone.warning,
       FundsState.pending ||
       FundsState.reserved ||
-      FundsState.unknown => EpStatusPillTone.neutral,
+      FundsState.unknown => EpBadgeTone.neutral,
     };
     return LedgerRow(
       title: transaction.label,
       details: [dateLabel(transaction.occurredAt.toLocal())],
-      trailing: Row(
+      trailing: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Text(
             '${credit ? '+' : '-'}$amount',
@@ -174,8 +175,8 @@ class _TransactionRow extends StatelessWidget {
               color: credit ? context.epColors.success : null,
             ),
           ),
-          const SizedBox(width: 8),
-          StatusPill(
+          const SizedBox(height: 4),
+          EpBadge(
             label: switch (transaction.fundsState) {
               FundsState.pending => 'PENDING',
               FundsState.available => 'AVAILABLE',

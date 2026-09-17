@@ -351,12 +351,12 @@ mixin _BandCreateState on _AppStateCore {
 
   /// The created view's headline action: straight into posting a gig.
   void postFirstGig() {
-    resetTo(Screen.bandDash);
+    resetTo(Screen.gigMgr);
     startGigCreate();
   }
 
   /// The created view's quiet exit, for people who just want to see the band
   /// they made. The header ✕ is gone on that screen, and web has no system
   /// back, so without this the only ways off are the three loud ones.
-  void openCreatedBand() => resetTo(Screen.bandDash);
+  void openCreatedBand() => resetTo(Screen.gigMgr);
 }

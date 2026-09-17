@@ -1,8 +1,11 @@
 import 'package:earplug/app_state.dart';
+import 'package:earplug/date_names.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/my_gigs.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/explore_tiles.dart';
+import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -41,25 +44,40 @@ void main() {
     expect(harness.app.myTicketsLoaded, isTrue);
     expect(repository.walletLoads, 1);
     expect(harness.app.myTickets, hasLength(2));
-    final section = find.byWidgetPredicate(
-      (widget) => widget is SectionBar && widget.label == 'TICKETS',
-    );
-    expect(tester.widget<SectionBar>(section).count, 2);
-    expect(
-      tester.getTopLeft(section).dy,
-      lessThan(tester.getTopLeft(find.textContaining('UPCOMING RSVPS')).dy),
-    );
+    await _selectTickets(tester, count: 2);
     for (final ticket in harness.app.myTickets) {
       final card = find.byKey(ValueKey('ticket-${ticket.id}'));
-      expect(tester.widget(card), isA<EpCard>());
-      for (final label in [ticket.gig.title, ticket.gig.venueName, 'VALID']) {
+      expect(tester.widget(card), isA<ExploreEventSnapshotRow>());
+      for (final label in [
+        ticket.gig.title.toUpperCase(),
+        ticket.gig.venueName,
+      ]) {
         expect(
           find.descendant(of: card, matching: find.text(label)),
           findsOneWidget,
         );
       }
       expect(
-        find.descendant(of: card, matching: find.byType(DateBlock)),
+        find.descendant(
+          of: card,
+          matching: find.text(
+            eventDateLine(
+              ticket.gig.startsAt,
+              doorsLabel: timeLabel(
+                TimeOfDay.fromDateTime(
+                  ticket.gig.doorsAt ?? ticket.gig.startsAt,
+                ),
+              ),
+            ),
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey('ticket-status-${ticket.id}')),
+          matching: find.text('TICKET · VALID'),
+        ),
         findsOneWidget,
       );
     }
@@ -74,7 +92,7 @@ void main() {
     expect(repository.walletLoads, 1);
   });
 
-  testWidgets('empty wallet explains where paid tickets will appear', (
+  testWidgets('empty wallet and saved list stay quiet with an upcoming RSVP', (
     tester,
   ) async {
     final harness = await pumpApp(
@@ -86,26 +104,43 @@ void main() {
 
     expect(harness.app.myTicketsLoaded, isTrue);
     expect(repository.walletLoads, 1);
+    expect(harness.app.upcomingRsvpGigs, isNotEmpty);
+    await _selectTickets(tester, count: 0);
+    expect(find.text('No tickets yet.'), findsOneWidget);
+    expect(find.text('FIND A SHOW'), findsNothing);
+
+    for (final id in harness.app.saved.toList()) {
+      harness.app.toggleSave(id);
+    }
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('SAVED · 0'));
+    await tester.pumpAndSettle();
+    expect(find.text('Nothing saved yet.'), findsOneWidget);
+    final savedNote = find
+        .ancestor(
+          of: find.text('Nothing saved yet.'),
+          matching: find.byType(Column),
+        )
+        .first;
     expect(
-      find.text('No tickets yet · paid shows list them here'),
-      findsOneWidget,
+      find.descendant(of: savedNote, matching: find.text('FIND A SHOW')),
+      findsNothing,
     );
-    final section = tester.widget<SectionBar>(
-      find.byWidgetPredicate(
-        (widget) => widget is SectionBar && widget.label == 'TICKETS',
-      ),
-    );
-    expect(section.count, 0);
   });
 
   testWidgets('wallet includes only upcoming valid and checked-in tickets', (
     tester,
   ) async {
     final now = DateTime.now();
-    final future = now.add(const Duration(days: 2));
+    final future = DateTime(now.year, now.month, now.day + 2, 21);
     final past = now.subtract(const Duration(days: 2));
     repository.tickets = [
-      _ticket('valid', TicketStatus.valid, future),
+      _ticket(
+        'valid',
+        TicketStatus.valid,
+        future,
+        doorsAt: future.subtract(const Duration(hours: 1, minutes: 30)),
+      ),
       _ticket('used', TicketStatus.used, future),
       _ticket('refunded', TicketStatus.refunded, future),
       _ticket('cancelled', TicketStatus.cancelled, future),
@@ -122,11 +157,30 @@ void main() {
     tester.view.physicalSize = const Size(402, 3000);
     await tester.pumpAndSettle();
 
+    await _selectTickets(tester, count: 2);
+
     expect(find.byKey(const ValueKey('ticket-valid')), findsOneWidget);
     final used = find.byKey(const ValueKey('ticket-used'));
     expect(used, findsOneWidget);
     expect(
-      find.descendant(of: used, matching: find.text('CHECKED IN')),
+      find.descendant(
+        of: find.byKey(const ValueKey('ticket-status-used')),
+        matching: find.text('TICKET · CHECKED IN'),
+      ),
+      findsOneWidget,
+    );
+    final datePrefix =
+        '${weekdayNamesUpper[future.weekday - 1]}, '
+        '${monthNamesUpper[future.month - 1]} ${future.day} AT';
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('ticket-valid')),
+        matching: find.text('$datePrefix 7:30PM'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: used, matching: find.text('$datePrefix 9PM')),
       findsOneWidget,
     );
     for (final id in [
@@ -138,31 +192,40 @@ void main() {
     ]) {
       expect(find.byKey(ValueKey('ticket-$id')), findsNothing);
     }
-    final section = tester.widget<SectionBar>(
-      find.byWidgetPredicate(
-        (widget) => widget is SectionBar && widget.label == 'TICKETS',
-      ),
-    );
-    expect(section.count, 2);
   });
 }
 
-TicketSummary _ticket(String id, TicketStatus status, DateTime startsAt) =>
-    TicketSummary(
-      id: id,
-      orderId: 'order-$id',
-      gigId: 'g8',
-      token: 'earplug:ticket:v2:$id',
-      status: status,
-      createdAt: startsAt.subtract(const Duration(days: 7)),
-      gig: TicketGigSummary(
-        id: 'g8',
-        title: 'Wallet test show',
-        startsAt: startsAt,
-        venueName: 'Test venue',
-        lifecycle: GigLifecycle.published,
-      ),
-    );
+Future<void> _selectTickets(WidgetTester tester, {required int count}) async {
+  final tabs = tester.widget<EpSegmentTabs>(find.byType(EpSegmentTabs));
+  expect(tabs.labels[1], 'Tickets · $count');
+  final segment = find.text('TICKETS · $count');
+  await tester.ensureVisible(segment);
+  await tester.tap(segment);
+  await tester.pumpAndSettle();
+  expect(tester.widget<EpSegmentTabs>(find.byType(EpSegmentTabs)).selected, 1);
+}
+
+TicketSummary _ticket(
+  String id,
+  TicketStatus status,
+  DateTime startsAt, {
+  DateTime? doorsAt,
+}) => TicketSummary(
+  id: id,
+  orderId: 'order-$id',
+  gigId: 'g8',
+  token: 'earplug:ticket:v2:$id',
+  status: status,
+  createdAt: startsAt.subtract(const Duration(days: 7)),
+  gig: TicketGigSummary(
+    id: 'g8',
+    title: 'Wallet test show',
+    startsAt: startsAt,
+    doorsAt: doorsAt,
+    venueName: 'Test venue',
+    lifecycle: GigLifecycle.published,
+  ),
+);
 
 class _WalletRepository extends StubRepository {
   _WalletRepository({required super.auth}) {

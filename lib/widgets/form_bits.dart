@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../theme.dart';
 import 'common.dart';
+import 'ep_rows.dart';
 
 /// Scrolls [controller] to its end after the next frame, so feedback that
 /// just appeared below a form comes into view. No-op once [state] is gone.
@@ -27,24 +28,18 @@ class ReadyPill extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: ready
-            ? context.epColors.surfaceSelected
-            : context.epColors.surfaceDisabled,
-        border: Border.all(
-          color: ready ? context.epColors.accent : context.epColors.border,
+      decoration: ShapeDecoration(
+        color: Colors.transparent,
+        shape: StadiumBorder(
+          side: BorderSide(
+            color: ready ? context.epColors.accent : context.epColors.outline,
+          ),
         ),
-        borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
         ready ? 'READY' : 'DRAFT',
-        style: Theme.of(context).textTheme.epCaption.copyWith(
-          fontSize: 9.5,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 1.2,
-          color: ready
-              ? context.epColors.contentPrimary
-              : context.epColors.contentDisabled,
+        style: Theme.of(context).textTheme.epChipLabel.copyWith(
+          color: ready ? context.epColors.accent : context.epColors.muted,
         ),
       ),
     );
@@ -71,29 +66,20 @@ class Swatch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final swatch = Container(
-      width: 30,
-      height: 30,
-      decoration: BoxDecoration(
-        color: dashed ? context.epColors.background : null,
-        shape: BoxShape.circle,
-        border: dashed
-            ? null
-            : Border.all(
-                color: selected
-                    ? context.epColors.accent
-                    : context.epColors.border,
-                width: 2,
-              ),
-      ),
+    final swatch = SizedBox.square(
+      dimension: 22,
       child: dashed
-          ? DashedBox(
-              padding: EdgeInsets.zero,
-              radius: 15,
-              color: selected
-                  ? context.epColors.accent
-                  : context.epColors.border,
-              child: child,
+          ? CustomPaint(
+              painter: _DashedSwatchPainter(context.epColors.outline),
+              child: Center(
+                child: Icon(
+                  Icons.arrow_upward,
+                  size: 12,
+                  color: selected
+                      ? context.epColors.accent
+                      : context.epColors.outline,
+                ),
+              ),
             )
           : child,
     );
@@ -107,11 +93,59 @@ class Swatch extends StatelessWidget {
           onTap: onTap,
           containedInkWell: true,
           customBorder: const CircleBorder(),
-          child: SizedBox.square(dimension: 48, child: Center(child: swatch)),
+          child: SizedBox.square(
+            dimension: 48,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                swatch,
+                if (selected)
+                  // Leave a 2px gap between the 22px swatch and this ring.
+                  Container(
+                    width: 29,
+                    height: 29,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: context.epColors.accent,
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
+}
+
+class _DashedSwatchPainter extends CustomPainter {
+  const _DashedSwatchPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    final path = Path()..addOval((Offset.zero & size).deflate(.5));
+    for (final metric in path.computeMetrics()) {
+      // Ten evenly spaced dashes keep the gap at the seam consistent.
+      final step = metric.length / 10;
+      for (var index = 0; index < 10; index++) {
+        final start = index * step;
+        canvas.drawPath(metric.extractPath(start, start + step / 2), paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedSwatchPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 /// The full-width button that dismisses a create-flow sheet.
@@ -120,11 +154,12 @@ class DoneButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return EpButton(
-      'DONE',
-      fontSize: 12.5,
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      onTap: () => Navigator.pop(context),
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('DONE'),
+      ),
     );
   }
 }
@@ -137,6 +172,7 @@ class EpLabeledField extends StatelessWidget {
     required this.controller,
     this.fieldKey,
     this.required = false,
+    this.showLabel = true,
     this.enabled = true,
     this.minLines = 1,
     this.maxLines = 1,
@@ -163,6 +199,7 @@ class EpLabeledField extends StatelessWidget {
   final TextEditingController controller;
   final Key? fieldKey;
   final bool required;
+  final bool showLabel;
   final bool enabled;
   final int minLines;
   final int maxLines;
@@ -185,46 +222,49 @@ class EpLabeledField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final field = TextField(
+      key: fieldKey,
+      controller: controller,
+      enabled: enabled,
+      minLines: minLines,
+      maxLines: maxLines,
+      maxLength: maxLength,
+      keyboardType: keyboardType,
+      textCapitalization: textCapitalization,
+      onChanged: onChanged,
+      onEditingComplete: onEditingComplete,
+      focusNode: focusNode,
+      autofillHints: autofillHints,
+      style: Theme.of(context).textTheme.epInput,
+      textInputAction:
+          textInputAction ??
+          (maxLines == 1 ? TextInputAction.next : TextInputAction.newline),
+      onSubmitted: onSubmitted,
+      inputFormatters: inputFormatters,
+      autocorrect:
+          autocorrect ??
+          (keyboardType != TextInputType.emailAddress &&
+              keyboardType != TextInputType.url),
+      decoration: epInputDecoration(context, hint).copyWith(
+        errorText: errorText,
+        suffixIcon: suffixIcon,
+        prefixText: prefixText,
+        prefixIcon: prefixIcon,
+      ),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ExcludeSemantics(child: FieldLabel(label, required: required)),
-        const SizedBox(height: 8),
-        Semantics(
-          label: required ? '$label · REQUIRED' : label,
-          child: TextField(
-            key: fieldKey,
-            controller: controller,
-            enabled: enabled,
-            minLines: minLines,
-            maxLines: maxLines,
-            maxLength: maxLength,
-            keyboardType: keyboardType,
-            textCapitalization: textCapitalization,
-            onChanged: onChanged,
-            onEditingComplete: onEditingComplete,
-            focusNode: focusNode,
-            autofillHints: autofillHints,
-            style: Theme.of(context).textTheme.epInput,
-            textInputAction:
-                textInputAction ??
-                (maxLines == 1
-                    ? TextInputAction.next
-                    : TextInputAction.newline),
-            onSubmitted: onSubmitted,
-            inputFormatters: inputFormatters,
-            autocorrect:
-                autocorrect ??
-                (keyboardType != TextInputType.emailAddress &&
-                    keyboardType != TextInputType.url),
-            decoration: epInputDecoration(context, hint).copyWith(
-              errorText: errorText,
-              suffixIcon: suffixIcon,
-              prefixText: prefixText,
-              prefixIcon: prefixIcon,
-            ),
+        if (showLabel) ...[
+          ExcludeSemantics(child: FieldLabel(label, required: required)),
+          const SizedBox(height: 8),
+          Semantics(
+            label: required ? '$label · REQUIRED' : label,
+            child: field,
           ),
-        ),
+        ] else
+          field,
         if (caption != null) ...[
           const SizedBox(height: 6),
           Text(caption!, style: Theme.of(context).textTheme.epCaption),
@@ -274,13 +314,11 @@ class FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final label = required ? '$text · REQUIRED' : text;
     return Text(
-      required ? '$text · REQUIRED' : text,
-      style: Theme.of(context).textTheme.epLabel.copyWith(
-        fontWeight: FontWeight.w600,
-        letterSpacing: .4,
-        color: context.epColors.contentSecondary,
-      ),
+      label.toUpperCase(),
+      semanticsLabel: label,
+      style: Theme.of(context).textTheme.epSection,
     );
   }
 }
@@ -318,6 +356,26 @@ String? serverErrorMessage(Object error) {
   return null;
 }
 
+/// The message after the last `Uncaught Error:` wrapper, or the text with a
+/// local `Bad state: ` / `Exception: ` / `ConvexError: ` prefix removed.
+String stripErrorPrefix(Object error) {
+  final text = error.toString();
+  const uncaughtErrorPrefix = 'Uncaught Error:';
+  final uncaughtErrorIndex = text.lastIndexOf(uncaughtErrorPrefix);
+  if (uncaughtErrorIndex >= 0) {
+    return text
+        .substring(uncaughtErrorIndex + uncaughtErrorPrefix.length)
+        .trim();
+  }
+  return text
+      .replaceFirst(RegExp(r'^(Bad state: |Exception: |ConvexError: )'), '')
+      .trim();
+}
+
+/// The error text with a leading `Bad state: ` or `Exception: ` removed.
+String stripStateErrorPrefix(Object error) =>
+    error.toString().replaceFirst(RegExp(r'^(Bad state: |Exception: )'), '');
+
 class InlineFormFeedback extends StatelessWidget {
   const InlineFormFeedback({
     super.key,
@@ -344,7 +402,7 @@ class InlineFormFeedback extends StatelessWidget {
         key: showingError ? errorKey : successKey,
         style: Theme.of(context).textTheme.epBody.copyWith(
           color: showingError
-              ? context.epColors.warning
+              ? context.epColors.destructive
               : context.epColors.success,
         ),
       ),
@@ -352,8 +410,7 @@ class InlineFormFeedback extends StatelessWidget {
   }
 }
 
-/// Dashed placeholder for an empty list: a centred [message] and, when
-/// [actionLabel] is given, a [TextAction] beneath it.
+/// Plain empty-list copy with an optional inline [TextAction].
 class EmptyNote extends StatelessWidget {
   const EmptyNote({
     super.key,
@@ -362,6 +419,8 @@ class EmptyNote extends StatelessWidget {
     this.onAction,
     this.padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
     this.style,
+    this.maxLines,
+    this.overflow,
   });
 
   final String message;
@@ -371,21 +430,29 @@ class EmptyNote extends StatelessWidget {
 
   /// Defaults to body text in the secondary colour.
   final TextStyle? style;
+  final int? maxLines;
+  final TextOverflow? overflow;
 
   @override
   Widget build(BuildContext context) {
-    return DashedBox(
-      padding: padding,
-      child: Column(
+    return Padding(
+      // Keep explicit caller spacing while replacing the old card inset default.
+      padding:
+          padding == const EdgeInsets.symmetric(horizontal: 14, vertical: 12)
+          ? const EdgeInsets.only(top: 20)
+          : padding,
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           Text(
             message,
-            textAlign: TextAlign.center,
+            maxLines: maxLines,
+            overflow: overflow,
             style:
                 style ??
-                Theme.of(context).textTheme.epBody.copyWith(
-                  color: context.epColors.contentSecondary,
-                ),
+                Theme.of(
+                  context,
+                ).textTheme.epBody.copyWith(color: context.epColors.muted),
           ),
           if (actionLabel case final actionLabel?)
             TextAction(actionLabel, onTap: onAction),
@@ -425,17 +492,20 @@ class TextAction extends StatelessWidget {
         foregroundColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.disabled)
               ? context.epColors.contentDisabled
-              : color ?? context.epColors.accent,
+              : color ?? context.epColors.ink,
         ),
         textStyle: WidgetStatePropertyAll(
-          Theme.of(context).textTheme.epLabel.copyWith(
+          Theme.of(context).textTheme.epChipLabel.copyWith(
             fontSize: size,
-            fontWeight: FontWeight.w800,
             letterSpacing: letterSpacing,
           ),
         ),
       ),
-      child: Text(label, textAlign: TextAlign.center),
+      child: Text(
+        label.toUpperCase(),
+        semanticsLabel: label,
+        textAlign: TextAlign.center,
+      ),
     );
   }
 }
@@ -471,34 +541,27 @@ class SwitchRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Material(
-            color: context.epColors.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-              side: BorderSide(color: context.epColors.border),
-            ),
-            clipBehavior: Clip.antiAlias,
+            color: Colors.transparent,
             child: InkWell(
               onTap: callback,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 48),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          label,
-                          style: Theme.of(context).textTheme.epBody.copyWith(
-                            color: enabled
-                                ? context.epColors.ink
-                                : context.epColors.contentDisabled,
-                          ),
+              child: EpRow(
+                minHeight: 47,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: Theme.of(context).textTheme.epBody.copyWith(
+                          color: enabled
+                              ? context.epColors.ink
+                              : context.epColors.contentDisabled,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      _CompactSwitch(value: value, enabled: enabled),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 12),
+                    _CompactSwitch(value: value, enabled: enabled),
+                  ],
                 ),
               ),
             ),
@@ -531,10 +594,14 @@ class _CompactSwitch extends StatelessWidget {
         color: !enabled
             ? context.epColors.surfaceDisabled
             : value
-            ? Ep.brand
-            : context.epColors.raised,
+            ? context.epColors.accent
+            : context.epColors.panel,
         border: Border.all(
-          color: value && enabled ? Ep.brand : context.epColors.border,
+          color: !enabled
+              ? context.epColors.contentDisabled
+              : value
+              ? context.epColors.accent
+              : context.epColors.outline,
         ),
         borderRadius: BorderRadius.circular(99),
       ),
@@ -547,75 +614,11 @@ class _CompactSwitch extends StatelessWidget {
           height: 12,
           decoration: BoxDecoration(
             color: !enabled
-                ? context.epColors.mute
+                ? context.epColors.contentDisabled
                 : value
-                ? Colors.white
-                : context.epColors.mute,
+                ? context.epColors.onAccent
+                : context.epColors.contentDisabled,
             shape: BoxShape.circle,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Dashed presentation for an unfinished draft with one resume action.
-class GhostDraftRow extends StatelessWidget {
-  const GhostDraftRow({
-    super.key,
-    required this.title,
-    required this.missing,
-    required this.onResume,
-    this.actionLabel = 'RESUME →',
-  });
-
-  final String title;
-  final String missing;
-  final VoidCallback? onResume;
-  final String actionLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final description = 'Draft — $title · $missing';
-    return Semantics(
-      button: true,
-      enabled: onResume != null,
-      label: '$description. $actionLabel',
-      excludeSemantics: true,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onResume,
-          customBorder: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: DashedBox(
-            radius: 14,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 28),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.epMeta.copyWith(
-                        color: context.epColors.contentSecondary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    actionLabel,
-                    style: Theme.of(context).textTheme.epChipLabel.copyWith(
-                      color: context.epColors.accent,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
         ),
       ),
@@ -645,12 +648,12 @@ class StickyActionBar extends StatelessWidget {
     return RepaintBoundary(
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: context.epColors.tabBarBackground,
-          border: Border(top: BorderSide(color: context.epColors.border)),
+          color: context.epColors.background,
+          border: Border(top: BorderSide(color: context.epColors.line)),
         ),
         child: SafeArea(
           top: false,
-          minimum: const EdgeInsets.all(12),
+          minimum: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
           child: LayoutBuilder(
             builder: (context, constraints) {
               final stacked = EpLayout.stackActions(context);
@@ -764,8 +767,13 @@ class FormSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionBar.form(label: title, count: count),
-        Text(description, style: Theme.of(context).textTheme.epCaption),
+        EpSectionHeader.form(label: title, count: count),
+        Text(
+          description,
+          style: Theme.of(
+            context,
+          ).textTheme.epBody.copyWith(color: context.epColors.muted),
+        ),
         const SizedBox(height: 16),
         child,
       ],

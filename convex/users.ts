@@ -67,6 +67,7 @@ export const updateProfile = mutation({
     genres: v.array(v.string()),
     locationPersonalizationEnabled: v.boolean(),
     followedBandUpdatesEnabled: v.boolean(),
+    shareRsvpsWithFriends: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -94,6 +95,9 @@ export const updateProfile = mutation({
       genres,
       locationPersonalizationEnabled: args.locationPersonalizationEnabled,
       followedBandUpdatesEnabled: args.followedBandUpdatesEnabled,
+      ...(args.shareRsvpsWithFriends === undefined
+        ? {}
+        : { shareRsvpsWithFriends: args.shareRsvpsWithFriends }),
     });
     return null;
   },

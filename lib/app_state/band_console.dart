@@ -17,6 +17,7 @@ mixin _BandConsoleState on _AppStateCore {
   void resetTo(Screen s);
   void needAuth(PendingAuth p);
   Future<void> refreshManagedGigs();
+  Future<void> reconcileReadiness(String scopeKey);
 
   int _membershipsGeneration = 0;
 
@@ -39,11 +40,19 @@ mixin _BandConsoleState on _AppStateCore {
 
   final Map<String, BandProfileDetails> _bandProfileDetails = {};
   final Set<String> _bandProfileDetailsLoading = {};
+  final Map<String, List<BandMember>> _bandMembers = {};
+  final Set<String> _bandMembersLoading = {};
   final Map<String, BandSetupStatus> _bandSetupStatuses = {};
   final Set<String> _bandSetupLoading = {};
   final Map<String, BandDiscoveryReadiness> _bandDiscoveryReadiness = {};
   final Set<String> _bandDiscoveryLoading = {};
   final Set<String> _bandDiscoveryBoundaryRefreshPending = {};
+
+  /// Bands whose last setup or discovery load failed. The lazy accessors
+  /// leave these alone so a persistent failure cannot refetch on every
+  /// rebuild; only the explicit refreshers retry.
+  final Set<String> _bandSetupFailed = {};
+  final Set<String> _bandDiscoveryFailed = {};
   final Map<String, BandInvite?> _bandInvites = {};
   final Set<String> _bandInviteLoading = {};
 
@@ -135,6 +144,9 @@ mixin _BandConsoleState on _AppStateCore {
     myBands = [];
     bandId = '';
     _bandRoles.clear();
+    _bandMembers.clear();
+    _bandSetupFailed.clear();
+    _bandDiscoveryFailed.clear();
   }
 
   /// A band's past gigs, or null until the first load lands. Kicks the load off
@@ -252,7 +264,7 @@ mixin _BandConsoleState on _AppStateCore {
 
   void switchToBand(String id) {
     bandId = id;
-    resetTo(Screen.bandDash);
+    resetTo(Screen.gigMgr);
     unawaited(refreshBandSetupStatus(id));
     unawaited(refreshBandDiscoveryReadiness(id));
   }
@@ -280,9 +292,94 @@ mixin _BandConsoleState on _AppStateCore {
     }
   }
 
+  /// A band's members with roles, or null until the first load lands. Kicks
+  /// the load off on first read.
+  List<BandMember>? bandMembersFor(String id) {
+    final members = _bandMembers[id];
+    if (members == null) unawaited(refreshBandMembers(id));
+    return members;
+  }
+
+  Future<void> refreshBandMembers(String id) async {
+    if (!_bandMembersLoading.add(id)) return;
+    try {
+      _bandMembers[id] = await repository.bandMembers(id);
+    } catch (error) {
+      logError('bandMembers', error);
+    } finally {
+      _bandMembersLoading.remove(id);
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  Future<void> setBandMemberRole(
+    String id,
+    String userId,
+    BandMemberRole role,
+  ) => _changeBandMembers(
+    id,
+    'setBandMemberRole',
+    () => repository.setBandMemberRole(bandId: id, userId: userId, role: role),
+  );
+
+  Future<void> removeBandMember(String id, String userId) {
+    final removingSelf =
+        _bandMembers[id]?.any(
+          (member) => member.userId == userId && member.isSelf,
+        ) ??
+        false;
+    return _changeBandMembers(
+      id,
+      'removeBandMember',
+      () => repository.removeBandMember(bandId: id, userId: userId),
+      restartMemberships: removingSelf,
+    );
+  }
+
+  Future<void> addBandMember(String id, String userId) => _changeBandMembers(
+    id,
+    'addBandMember',
+    () => repository.addBandMember(bandId: id, userId: userId),
+  );
+
+  /// Runs a member mutation, then refreshes the member list and the profile
+  /// details (the dash member count). Failures surface as a toast and leave
+  /// the cached list untouched; the server enforces admin and last-admin
+  /// rules. Removing oneself may drop the band, so memberships restart too.
+  Future<void> _changeBandMembers(
+    String id,
+    String operation,
+    Future<void> Function() change, {
+    bool restartMemberships = false,
+  }) async {
+    try {
+      await change();
+    } catch (error) {
+      logError(operation, error);
+      if (!_disposed) say(_bandMemberErrorMessage(error));
+      return;
+    }
+    if (_disposed) return;
+    if (restartMemberships) _restartMemberships();
+    await Future.wait([
+      refreshBandMembers(id),
+      loadBandProfileDetails(id, refresh: true),
+    ]);
+  }
+
+  static String _bandMemberErrorMessage(Object error) =>
+      error.toString().toLowerCase().contains('last admin')
+      ? 'Keep at least one admin.'
+      : genericErrorMessage;
+
+  /// A band's setup status, or null until the first load lands. Kicks the
+  /// load off on first read; a failed load waits for [refreshBandSetupStatus].
   BandSetupStatus? setupStatusFor(String id) {
     final status = _bandSetupStatuses[id];
-    if (status == null && isAdminOf(id)) {
+    if (status == null &&
+        isAdminOf(id) &&
+        !_bandSetupLoading.contains(id) &&
+        !_bandSetupFailed.contains(id)) {
       unawaited(refreshBandSetupStatus(id));
     }
     return status;
@@ -290,21 +387,37 @@ mixin _BandConsoleState on _AppStateCore {
 
   bool setupStatusLoadingFor(String id) => _bandSetupLoading.contains(id);
 
+  /// Whether the last setup or discovery load for [id] failed — the cue for
+  /// a RETRY affordance.
+  bool bandReadinessFailedFor(String id) =>
+      _bandSetupFailed.contains(id) || _bandDiscoveryFailed.contains(id);
+
   Future<void> refreshBandSetupStatus(String id) async {
     if (!isAdminOf(id) || !_bandSetupLoading.add(id)) return;
+    _bandSetupFailed.remove(id);
+    var loaded = false;
     try {
       _bandSetupStatuses[id] = await repository.bandSetupStatus(id);
+      loaded = true;
+      unawaited(reconcileReadiness(bandReadinessScope(id)));
     } catch (error) {
       logError('bandSetupStatus', error);
     } finally {
       _bandSetupLoading.remove(id);
+      if (!loaded) _bandSetupFailed.add(id);
       if (!_disposed) notifyListeners();
     }
   }
 
+  /// A band's discovery readiness, or null until the first load lands. Kicks
+  /// the load off on first read; a failed load waits for
+  /// [refreshBandDiscoveryReadiness].
   BandDiscoveryReadiness? discoveryReadinessFor(String id) {
     final readiness = _bandDiscoveryReadiness[id];
-    if (readiness == null && isAdminOf(id)) {
+    if (readiness == null &&
+        isAdminOf(id) &&
+        !_bandDiscoveryLoading.contains(id) &&
+        !_bandDiscoveryFailed.contains(id)) {
       unawaited(refreshBandDiscoveryReadiness(id));
     }
     return readiness;
@@ -315,15 +428,20 @@ mixin _BandConsoleState on _AppStateCore {
 
   Future<void> refreshBandDiscoveryReadiness(String id) async {
     if (!isAdminOf(id) || !_bandDiscoveryLoading.add(id)) return;
+    _bandDiscoveryFailed.remove(id);
+    var loaded = false;
     try {
       _bandDiscoveryReadiness[id] = await repository.bandDiscoveryReadiness(
         id,
         now: _now(),
       );
+      loaded = true;
+      unawaited(reconcileReadiness(bandReadinessScope(id)));
     } catch (error) {
       logError('bandDiscoveryReadiness', error);
     } finally {
       _bandDiscoveryLoading.remove(id);
+      if (!loaded) _bandDiscoveryFailed.add(id);
       final refreshAtBoundary =
           _bandDiscoveryBoundaryRefreshPending.remove(id) && isAdminOf(id);
       if (!_disposed) {

@@ -255,7 +255,9 @@ mixin _FinanceState on _AppStateCore {
     ticketCapacity: ticketCapacity,
   );
 
-  void openFinance() => resetTo(Screen.orgFinance);
+  /// Pushed, so the finance screen's back arrow returns to where it was
+  /// opened from (the hub or the dash).
+  void openFinance() => go(Screen.orgFinance);
 
   void openTransactions() => go(Screen.orgTransactions);
 

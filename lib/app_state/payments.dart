@@ -10,6 +10,7 @@ mixin _PaymentState on _AppStateCore {
   void switchToBand(String id);
   void switchToOrganization(String id);
   void resetTo(Screen s);
+  Future<void> reconcileReadiness(String scopeKey);
   Future<Booking?> loadBooking(
     String id, {
     bool refresh = false,
@@ -31,6 +32,26 @@ mixin _PaymentState on _AppStateCore {
   StripeAccountStatus? organizationStripeStatus;
   Object? _bandPayoutStatusLoadToken;
   Object? _organizationStripeStatusLoadToken;
+
+  /// The organization [organizationStripeStatus] was fetched for; the field
+  /// is only replaced on the next fetch, so after a switch it still describes
+  /// the previous organization until then.
+  String _organizationStripeStatusOrgId = '';
+
+  /// [organizationStripeStatus] when it describes [organizationId], else null.
+  StripeAccountStatus? organizationStripeStatusFor(String organizationId) =>
+      _organizationStripeStatusOrgId == organizationId
+      ? organizationStripeStatus
+      : null;
+
+  void _storeOrganizationStripeStatus(
+    String organizationId,
+    StripeAccountStatus status,
+  ) {
+    organizationStripeStatus = status;
+    _organizationStripeStatusOrgId = organizationId;
+    unawaited(reconcileReadiness(orgReadinessScope(organizationId)));
+  }
 
   Future<void> refreshBandPayoutStatus() async {
     if (_disposed) return;
@@ -73,7 +94,7 @@ mixin _PaymentState on _AppStateCore {
           !identical(_organizationStripeStatusLoadToken, token)) {
         return;
       }
-      organizationStripeStatus = status;
+      _storeOrganizationStripeStatus(target, status);
       notifyListeners();
     } catch (error) {
       logError('organizationStripeStatus', error);
@@ -143,7 +164,7 @@ mixin _PaymentState on _AppStateCore {
           !identical(_organizationStripeStatusLoadToken, token)) {
         return;
       }
-      organizationStripeStatus = status;
+      _storeOrganizationStripeStatus(id, status);
       resetTo(Screen.orgSettings);
     }
     notifyListeners();
@@ -335,6 +356,7 @@ mixin _PaymentState on _AppStateCore {
     _organizationStripeStatusLoadToken = null;
     bandPayoutStatus = null;
     organizationStripeStatus = null;
+    _organizationStripeStatusOrgId = '';
     _paymentsByBooking.clear();
     _payoutsByBooking.clear();
     _refundsByBooking.clear();

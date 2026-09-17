@@ -3,10 +3,28 @@ import 'package:latlong2/latlong.dart';
 
 import 'models.dart';
 
+class DemoPerson {
+  final String id;
+  final String name;
+  final String? avatarUrl;
+
+  const DemoPerson({required this.id, required this.name, this.avatarUrl});
+}
+
 /// Demo dataset lifted verbatim from the design spec. This is the seam where
 /// Convex queries will plug in later — screens only ever see these shapes.
 abstract final class DemoData {
   static const demoUserId = 'demo-user';
+
+  static const people = <String, DemoPerson>{
+    'u-maya': DemoPerson(id: 'u-maya', name: 'Maya Okafor'),
+    'u-dev': DemoPerson(id: 'u-dev', name: 'Dev Patel'),
+    'u-lina': DemoPerson(id: 'u-lina', name: 'Lina Costa'),
+    'u-theo': DemoPerson(id: 'u-theo', name: 'Theo Brandt'),
+  };
+
+  static const demoFollowing = {'u-maya', 'u-dev'};
+  static const demoFollowers = {'u-maya', 'u-lina', 'u-theo'};
 
   static const venues = <String, Venue>{
     'v1': Venue(
@@ -29,6 +47,10 @@ abstract final class DemoData {
       verified: true,
       managedByOrganizationId: 'org1',
       supportsApproxLocation: true,
+      photoUrls: [
+        'https://picsum.photos/seed/foghorn-1/800/600',
+        'https://picsum.photos/seed/foghorn-2/800/600',
+      ],
     ),
     'v2': Venue(
       id: 'v2',
@@ -36,6 +58,10 @@ abstract final class DemoData {
       area: 'Temescal, Oakland',
       addr: '486 40th St, Oakland',
       point: LatLng(37.8180, -122.2690),
+      photoUrls: [
+        'https://picsum.photos/seed/nightcrawler-1/800/600',
+        'https://picsum.photos/seed/nightcrawler-2/800/600',
+      ],
     ),
     'v3': Venue(
       id: 'v3',
@@ -193,6 +219,16 @@ abstract final class DemoData {
     final now = DateTime.now();
     return DateTime(now.year, now.month, now.day);
   }();
+
+  static final _demoDaysUntilSaturday =
+      (DateTime.saturday - _demoToday.weekday) % 7;
+
+  static final _demoComingSaturdayAt21 = DateTime(
+    _demoToday.year,
+    _demoToday.month,
+    _demoToday.day + _demoDaysUntilSaturday,
+    21,
+  );
 
   static DateTime _demoStartsAt(int daysFromToday, int hour) => DateTime(
     _demoToday.year,
@@ -442,8 +478,25 @@ abstract final class DemoData {
       bandId: 'b2',
       status: ArtistApplicationStatus.shortlisted,
       message: 'We have a full set ready and would love to headline.',
+      viewedAt: _demoToday.subtract(const Duration(days: 2, hours: 12)),
+      shortlistedAt: _demoToday.subtract(const Duration(days: 1, hours: 12)),
+      hostNote: 'Sound check is at 6 — can you make it?',
+      hostNoteAt: DateTime.now().subtract(const Duration(hours: 2)),
       createdAt: _demoToday.subtract(const Duration(days: 3)),
       updatedAt: _demoToday.subtract(const Duration(days: 2)),
+    ),
+    'app3': ArtistApplication(
+      id: 'app3',
+      opportunityId: 'opp3',
+      slotId: 'opp3-headliner',
+      bandId: 'b2',
+      status: ArtistApplicationStatus.declined,
+      message: 'We can play acoustic if that helps the lineup.',
+      viewedAt: _demoToday.subtract(const Duration(days: 1, hours: 6)),
+      decidedAt: _demoToday.subtract(const Duration(hours: 20)),
+      declineReason: ApplicationDeclineReason.slotFilled,
+      createdAt: _demoToday.subtract(const Duration(days: 2)),
+      updatedAt: _demoToday.subtract(const Duration(hours: 20)),
     ),
   };
 
@@ -756,7 +809,51 @@ abstract final class DemoData {
       cap: '40',
       ownerKind: GigOwnerKind.organization,
     ),
+    Gig(
+      id: 'g9',
+      title: 'Saturday Static',
+      venueId: 'v2',
+      price: 8,
+      startsAt: _demoComingSaturdayAt21,
+      dateShort: Gig.dateShortFor(
+        _demoComingSaturdayAt21.millisecondsSinceEpoch,
+      ),
+      dateLine: Gig.dateLineFor(
+        _demoComingSaturdayAt21.millisecondsSinceEpoch,
+        '8PM / 9PM',
+        now: _demoToday,
+      ),
+      time: '8PM / 9PM',
+      when: _demoDaysUntilSaturday == 0 ? GigWhen.tonight : GigWhen.week,
+      flyKey: 'black',
+      lineup: ['b2', 'b4'],
+      going: 24,
+      genres: ['post-punk', 'noise'],
+      desc: 'A Saturday night collision of sharp guitars and blown speakers.',
+      tix: Ticketing.rsvp,
+    ),
   ];
+
+  static const friendRsvps = <String, List<String>>{
+    'u-maya': ['g9', 'g2'],
+    'u-dev': ['g4'],
+    'u-lina': ['g5'],
+    'u-theo': ['g8'],
+  };
+
+  /// Gigs where a non-friend has crossed paths with the demo fan at two or
+  /// more past shows — the `social:knownAttendees` "seen" relation.
+  static const seenAttendees =
+      <String, List<({String userId, int sharedShows})>>{
+        'g9': [(userId: 'u-theo', sharedShows: 2)],
+      };
+
+  static const peopleBandFollows = <String, Set<String>>{
+    'u-maya': {'b2', 'b3'},
+    'u-dev': {'b1'},
+    'u-lina': {'b4'},
+    'u-theo': {'b6'},
+  };
 
   static const bands = <String, Band>{
     'b1': Band(

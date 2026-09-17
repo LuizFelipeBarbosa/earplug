@@ -1,12 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../host_request_groups.dart';
 import '../models.dart';
 import '../theme.dart';
-import '../widgets/approx_area_map.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_states.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
 
@@ -27,9 +32,11 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final organizationId = context.read<AppState>().organizationId;
+    final app = context.read<AppState>();
+    final organizationId = app.organizationId;
     if (_loadedOrganizationId == organizationId) return;
     _loadedOrganizationId = organizationId;
+    unawaited(app.refreshOpportunities(organizationId));
     _refresh();
   }
 
@@ -89,7 +96,7 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerLeft,
-            child: StatusPill(
+            child: EpBadge(
               label: switch (consent.status) {
                 VenueConsentStatus.pending => 'PENDING APPROVAL',
                 VenueConsentStatus.granted => 'APPROVED',
@@ -99,9 +106,9 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
                 VenueConsentStatus.unknown => 'UNKNOWN',
               },
               tone: switch (consent.status) {
-                VenueConsentStatus.granted => EpStatusPillTone.success,
-                VenueConsentStatus.pending => EpStatusPillTone.warning,
-                _ => EpStatusPillTone.neutral,
+                VenueConsentStatus.granted => EpBadgeTone.success,
+                VenueConsentStatus.pending => EpBadgeTone.warning,
+                _ => EpBadgeTone.neutral,
               },
             ),
           ),
@@ -165,101 +172,169 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
     );
   }
 
+  void _onAddVenue() =>
+      context.read<AppState>().go(Screen.orgVenueEdit, 'new');
+
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final venues = _dashboard?.venues ?? const <Venue>[];
+    final canManage = app.canManageOrganization(app.organizationId);
+    final upcomingByVenue = _upcomingByVenue(
+      app.opportunitiesFor(app.organizationId),
+    );
     return ListView(
       padding: EdgeInsets.fromLTRB(
-        16,
+        EpLayout.gutter,
         headerTopPad(context),
-        16,
+        EpLayout.gutter,
         tabBarClearance,
       ),
       children: [
-        Text('VENUES', style: Theme.of(context).textTheme.epPageHeading),
-        const SizedBox(height: 4),
-        Text(
-          app.canManageOrganization(app.organizationId)
-              ? 'Manage public venue profiles and private operational details.'
-              : 'View public venue profiles and private operational details.',
-          style: Theme.of(context).textTheme.epCaption,
+        Row(
+          children: [
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: const EpDisplay(
+                  'Venues',
+                  key: Key('org-venues-title'),
+                  size: 44,
+                  maxLines: 1,
+                ),
+              ),
+            ),
+            if (canManage) ...[
+              const SizedBox(width: 12),
+              EpPill(
+                key: const Key('org-venues-add'),
+                label: '+ Add venue',
+                variant: EpPillVariant.outline,
+                size: EpPillSize.chip,
+                onPressed: _onAddVenue,
+              ),
+            ],
+          ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 16),
         if (_loading)
           const Padding(
             padding: EdgeInsets.only(top: 80),
             child: Center(child: CircularProgressIndicator()),
           )
         else if (_error != null)
-          _LoadError(onRetry: _refresh)
+          EpLoadError(message: 'Could not load venues.', onRetry: _refresh)
         else ...[
           if (_consents.isNotEmpty) ...[
-            const SectionBar(label: 'VENUE REQUESTS'),
+            const EpSectionHeader(label: 'VENUE REQUESTS'),
             for (final consent in _consents) ...[
               _venueRequestCard(app, consent),
               const SizedBox(height: 12),
             ],
           ],
           if (venues.isEmpty)
-            const EpCard(
-              child: Text('No venues are connected to this organization.'),
+            EmptyNote(
+              message: 'No venues yet — add one.',
+              actionLabel: canManage ? 'Add venue' : null,
+              onAction: canManage ? _onAddVenue : null,
             )
           else
             for (final venue in venues) ...[
-              EpCard(
-                key: ValueKey('org-venue-${venue.id}'),
-                onTap: () =>
-                    context.read<AppState>().go(Screen.orgVenueEdit, venue.id),
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                venue.name,
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.epSectionHeading,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                venue.approx.label,
-                                style: Theme.of(context).textTheme.epCaption,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        StatusPill(
-                          label: venue.verified ? 'VERIFIED' : 'SUSPENDED',
-                          tone: venue.verified
-                              ? EpStatusPillTone.success
-                              : EpStatusPillTone.warning,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    ApproxAreaMap(
-                      centroid: venue.approx.centroid,
-                      label: venue.approx.label,
-                      height: 130,
-                    ),
-                  ],
-                ),
+              _venueCard(
+                venue,
+                upcoming: upcomingByVenue[venue.id] ?? 0,
+                // No default-venue concept exists yet; the first venue in the
+                // organization's ordered list stands in for it.
+                isDefault: identical(venue, venues.first),
               ),
               const SizedBox(height: 12),
             ],
+          const SizedBox(height: 8),
+          EpMonoText(
+            'Venues you run. Opportunities pick from this list.',
+            key: const Key('org-venues-hint'),
+            keepCase: true,
+            color: context.epColors.muted,
+          ),
         ],
       ],
     );
   }
+
+  Widget _venueCard(
+    Venue venue, {
+    required int upcoming,
+    required bool isDefault,
+  }) {
+    final secondary = context.epColors.contentSecondary;
+    final capacity = venue.capacityPublic;
+    return EpCard(
+      key: ValueKey('org-venue-${venue.id}'),
+      onTap: () => context.read<AppState>().go(Screen.orgVenueEdit, venue.id),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                EpDisplay(venue.name, size: 20, maxLines: 2),
+                const SizedBox(height: 4),
+                EpMonoText(
+                  venue.approx.label,
+                  keepCase: true,
+                  color: secondary,
+                ),
+                const SizedBox(height: 4),
+                EpMonoText(
+                  '${capacity == null ? '' : 'CAP $capacity · '}'
+                  '$upcoming UPCOMING',
+                  color: secondary,
+                ),
+                if (isDefault || !venue.verified) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    children: [
+                      if (isDefault)
+                        EpBadge(
+                          key: Key('org-venue-default-${venue.id}'),
+                          label: 'Default',
+                          tone: EpBadgeTone.selected,
+                        ),
+                      if (!venue.verified)
+                        const EpBadge(
+                          label: 'Suspended',
+                          tone: EpBadgeTone.attention,
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Icon(Icons.chevron_right, size: 16, color: context.epColors.muted),
+        ],
+      ),
+    );
+  }
+}
+
+/// Live, not-yet-started opportunities per venue: open, closed-to-applications,
+/// booking, or confirmed. Drafts and anything completed, cancelled, or started
+/// before today are left out.
+Map<String, int> _upcomingByVenue(List<Opportunity> opportunities) {
+  final groups = HostRequestGroups.from(opportunities, now: DateTime.now());
+  final counts = <String, int>{};
+  for (final opportunity in groups.confirmed.followedBy(groups.active)) {
+    if (opportunity.status == OpportunityStatus.draft) continue;
+    final venueId = opportunity.venueId;
+    if (venueId == null) continue;
+    counts[venueId] = (counts[venueId] ?? 0) + 1;
+  }
+  return counts;
 }
 
 class _VenueConsentNoteSheet extends StatefulWidget {
@@ -341,24 +416,6 @@ class _VenueConsentNoteSheetState extends State<_VenueConsentNoteSheet> {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _LoadError extends StatelessWidget {
-  const _LoadError({required this.onRetry});
-
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const SizedBox(height: 56),
-        const Text('Could not load venues.'),
-        const SizedBox(height: 12),
-        EpButton('RETRY', kind: EpButtonKind.outline, onTap: onRetry),
-      ],
     );
   }
 }

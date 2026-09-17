@@ -15,8 +15,20 @@ mixin _OrganizerState on _AppStateCore {
   void resetTo(Screen s);
   void needAuth(PendingAuth p);
   void openVenue(String id);
+  StripeAccountStatus? organizationStripeStatusFor(String organizationId);
+  Future<void> reconcileReadiness(String scopeKey);
 
   int _organizationsGeneration = 0;
+
+  /// The organizer dashboard payload per organization, lazily loaded on
+  /// first read and held until [refreshOrganizationDashboard] or sign-out.
+  final Map<String, OrganizationDashboard> _organizationDashboards = {};
+  final Set<String> _organizationDashboardLoading = {};
+
+  /// Organizations whose last dashboard load failed or was discarded. The
+  /// lazy accessor leaves these alone so a persistent failure cannot refetch
+  /// on every rebuild; only [refreshOrganizationDashboard] retries.
+  final Set<String> _organizationDashboardFailed = {};
 
   String organizationId = '';
   List<OrganizationMembership> myOrganizations = const [];
@@ -69,9 +81,105 @@ mixin _OrganizerState on _AppStateCore {
   bool get hasHostApplication =>
       myOrganizationApplication?.kind == ApplicationKind.host;
 
+  /// An organization's dashboard, or null until the first load lands. Kicks
+  /// the load off on first read; a failed load waits for
+  /// [refreshOrganizationDashboard].
+  OrganizationDashboard? organizationDashboardFor(String organizationId) {
+    final dashboard = _organizationDashboards[organizationId];
+    if (dashboard == null &&
+        organizationId.isNotEmpty &&
+        !_organizationDashboardLoading.contains(organizationId) &&
+        !_organizationDashboardFailed.contains(organizationId)) {
+      unawaited(refreshOrganizationDashboard(organizationId));
+    }
+    return dashboard;
+  }
+
+  bool organizationDashboardLoadingFor(String organizationId) =>
+      _organizationDashboardLoading.contains(organizationId);
+
+  /// Whether the last dashboard load for [organizationId] failed (or landed
+  /// after its session ended) — the cue for a RETRY affordance.
+  bool organizationDashboardFailedFor(String organizationId) =>
+      _organizationDashboardFailed.contains(organizationId);
+
+  Future<void> refreshOrganizationDashboard(String organizationId) async {
+    if (_disposed || !_organizationDashboardLoading.add(organizationId)) {
+      return;
+    }
+    _organizationDashboardFailed.remove(organizationId);
+    final requestedSession = _sessionGeneration;
+    var loaded = false;
+    try {
+      final dashboard = await repository.organizationDashboard(organizationId);
+      if (_isCurrentSession(requestedSession)) {
+        _organizationDashboards[organizationId] = dashboard;
+        loaded = true;
+        unawaited(reconcileReadiness(orgReadinessScope(organizationId)));
+      }
+    } catch (error) {
+      logError('organizationDashboard', error);
+    } finally {
+      // A replaced session already cleared the caches and this loading
+      // marker, so only a still-current session has something to record.
+      if (!_disposed && requestedSession == _sessionGeneration) {
+        _organizationDashboardLoading.remove(organizationId);
+        if (!loaded) _organizationDashboardFailed.add(organizationId);
+        notifyListeners();
+      }
+    }
+  }
+
+  /// The host checklist from live data: profile completeness from the
+  /// dashboard and finance readiness from the organization's Stripe status.
+  /// Null until both are in for [organizationId], mirroring the band snapshot,
+  /// so a reconcile never records a step as undone before its source loaded.
+  ReadinessSnapshot? hostReadinessSnapshotFor(String organizationId) {
+    final dashboard = organizationDashboardFor(organizationId);
+    final stripeStatus = organizationStripeStatusFor(organizationId);
+    if (dashboard == null || stripeStatus == null) return null;
+    return ReadinessSnapshot.host(
+      profileComplete: dashboard.verification.profileComplete,
+      financeReady: stripeStatus.state == StripeAccountState.enabled,
+    );
+  }
+
+  /// Hosts land on their dashboard; other organizers land on GIGS, which
+  /// is their home tab.
   void switchToOrganization(String id) {
     organizationId = id;
-    resetTo(Screen.orgDash);
+    resetTo(isHostOrganization(id) ? Screen.orgDash : Screen.orgOpportunities);
+  }
+
+  /// Adds a venue to [organizationId] and reloads its dashboard so the
+  /// VENUES list and host readiness see it. Throws on failure — the caller
+  /// shows the reason inline.
+  Future<String> createOrganizationVenue({
+    required String organizationId,
+    required String name,
+    required String addr,
+    required LatLng point,
+    String? area,
+    String? description,
+    VenueType? venueType,
+    int? capacityPublic,
+    String? loadInNotes,
+    int? capacity,
+  }) async {
+    final venueId = await repository.createOrganizationVenue(
+      organizationId: organizationId,
+      name: name,
+      addr: addr,
+      point: point,
+      area: area,
+      description: description,
+      venueType: venueType,
+      capacityPublic: capacityPublic,
+      loadInNotes: loadInNotes,
+      capacity: capacity,
+    );
+    await refreshOrganizationDashboard(organizationId);
+    return venueId;
   }
 
   Future<bool> requestVenueApproval(
@@ -169,6 +277,9 @@ mixin _OrganizerState on _AppStateCore {
     myOrganizations = const [];
     organizationId = '';
     myOrganizationApplication = null;
+    _organizationDashboards.clear();
+    _organizationDashboardLoading.clear();
+    _organizationDashboardFailed.clear();
   }
 
   Future<void> refreshOrganizationApplication() async {

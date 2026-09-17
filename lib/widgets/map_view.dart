@@ -11,6 +11,8 @@ import '../theme.dart';
 import 'approx_area_map.dart';
 import 'common.dart';
 import 'ep_map.dart';
+import 'ep_text.dart';
+import 'fan_event_card.dart';
 
 class _Pin extends StatelessWidget {
   final int count;
@@ -24,12 +26,12 @@ class _Pin extends StatelessWidget {
     final grouped = count > 1;
     return Container(
       decoration: BoxDecoration(
-        color: context.epColors.brand,
+        color: context.epColors.accent,
         shape: BoxShape.circle,
         border: Border.all(
           color: selected || emphasized
-              ? context.epColors.contentPrimary
-              : context.epColors.surface,
+              ? context.epColors.ink
+              : context.epColors.panel,
           width: selected ? 3 : 2,
         ),
       ),
@@ -37,9 +39,10 @@ class _Pin extends StatelessWidget {
           ? Center(
               child: Text(
                 '$count',
-                style: Theme.of(
-                  context,
-                ).textTheme.epLabel.copyWith(fontSize: 10, color: Colors.white),
+                style: Theme.of(context).textTheme.epLabel.copyWith(
+                  fontSize: 10,
+                  color: context.epColors.onAccent,
+                ),
               ),
             )
           : null,
@@ -127,16 +130,16 @@ class _UserPin extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: context.epColors.brand,
+        color: context.epColors.accent,
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 3),
+        border: Border.all(color: context.epColors.panel, width: 3),
       ),
       child: Center(
         child: SizedBox.square(
           dimension: 6,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: context.epColors.contentPrimary,
+              color: context.epColors.onAccent,
               shape: BoxShape.circle,
             ),
           ),
@@ -195,16 +198,16 @@ class _VenueMarkerLayer extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: context.epColors.brand,
+                  color: context.epColors.accent,
                   shape: BoxShape.circle,
-                  border: Border.all(color: context.epColors.surface, width: 2),
+                  border: Border.all(color: context.epColors.panel, width: 2),
                 ),
                 alignment: Alignment.center,
                 child: Text(
                   '${markers.length}',
                   style: Theme.of(context).textTheme.epLabel.copyWith(
                     fontSize: 10,
-                    color: Colors.white,
+                    color: context.epColors.onAccent,
                   ),
                 ),
               ),
@@ -335,7 +338,7 @@ class _GigMapViewState extends State<GigMapView> {
       _controller.fitCamera(
         CameraFit.coordinates(
           coordinates: points,
-          padding: const EdgeInsets.fromLTRB(46, 46, 46, 240),
+          padding: const EdgeInsets.fromLTRB(46, 46, 46, 264),
           maxZoom: 14,
         ),
       );
@@ -347,7 +350,7 @@ class _GigMapViewState extends State<GigMapView> {
     final app = context.read<AppState>();
     final view = context.select<AppState, _MapInputs>(
       (app) => (
-        feed: app.feed,
+        feed: app.homeFeed,
         center: app.discoveryCenter,
         position: app.currentPosition,
         location: app.discoveryLocation,
@@ -371,10 +374,17 @@ class _GigMapViewState extends State<GigMapView> {
     }
     _updateCamera(app, groups);
 
+    final tabBarClearance =
+        EpLayout.tabBarHeight + MediaQuery.paddingOf(context).bottom;
     return Stack(
       children: [
         EpMap(
           mapController: _controller,
+          attributionPadding: EdgeInsets.only(
+            bottom: tabBarClearance + 6,
+            right: 6,
+            left: 4,
+          ),
           options: MapOptions(
             initialCenter: view.center,
             initialZoom: 13,
@@ -422,12 +432,12 @@ class _GigMapViewState extends State<GigMapView> {
           Positioned(
             left: 12,
             right: 12,
-            bottom: tabBarClearance + 10,
+            bottom: tabBarClearance + 12,
             child: TapRegion(
               onTapOutside: (_) => setState(() => selected = null),
               child: _MapGigCard(
                 gig: g,
-                venue: selectedGroup.venue,
+                app: app,
                 position: selectedIndex,
                 total: selectedGroup.gigs.length,
                 onPrevious: selectedIndex > 0
@@ -440,10 +450,6 @@ class _GigMapViewState extends State<GigMapView> {
                         () => selected = selectedGroup!.gigs[selectedIndex + 1],
                       )
                     : null,
-                onOpen: () {
-                  setState(() => selected = null);
-                  app.openGig(g.id);
-                },
               ),
             ),
           ),
@@ -454,83 +460,68 @@ class _GigMapViewState extends State<GigMapView> {
 
 class _MapGigCard extends StatelessWidget {
   final Gig gig;
-  final Venue venue;
+  final AppState app;
   final int position;
   final int total;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
-  final VoidCallback onOpen;
 
   const _MapGigCard({
     required this.gig,
-    required this.venue,
+    required this.app,
     required this.position,
     required this.total,
     required this.onPrevious,
     required this.onNext,
-    required this.onOpen,
   });
 
   @override
   Widget build(BuildContext context) {
-    final areaLabel = venue.exactAddress == null ? 'Approx. area' : venue.area;
     return EpCard(
       key: ValueKey('map-gig-card-${gig.id}'),
       variant: EpCardVariant.raised,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      radius: 14,
-      onTap: onOpen,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (total > 1) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '${position + 1} OF $total GIGS AT THIS VENUE',
-                    key: const Key('map-gig-position'),
-                    style: Theme.of(context).textTheme.epCaption.copyWith(
-                      fontSize: 10,
-                      letterSpacing: .7,
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: DefaultTextStyle.merge(
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      child: EpEyebrow(
+                        '${position + 1} OF $total GIGS AT THIS VENUE',
+                        key: const Key('map-gig-position'),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                _CarouselButton(
-                  key: const Key('previous-map-gig'),
-                  icon: Icons.chevron_left,
-                  onTap: onPrevious,
-                ),
-                const SizedBox(width: 6),
-                _CarouselButton(
-                  key: const Key('next-map-gig'),
-                  icon: Icons.chevron_right,
-                  onTap: onNext,
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  _CarouselButton(
+                    key: const Key('previous-map-gig'),
+                    icon: Icons.chevron_left,
+                    onTap: onPrevious,
+                  ),
+                  const SizedBox(width: 4),
+                  _CarouselButton(
+                    key: const Key('next-map-gig'),
+                    icon: Icons.chevron_right,
+                    onTap: onNext,
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 7),
+            const SizedBox(height: 4),
           ],
-          Text(
-            gig.title.toUpperCase(),
-            style: Theme.of(context).textTheme.epSectionHeading.copyWith(
-              fontSize: 15,
-              letterSpacing: .2,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            '${venue.name} · $areaLabel · ${gig.dateLine}',
-            style: Theme.of(context).textTheme.epCaption,
-          ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              PriceBadge(gig),
-              FilledButton(onPressed: onOpen, child: Text('OPEN GIG →')),
-            ],
+          FanEventCard(
+            gig: gig,
+            app: app,
+            showDistance: true,
+            showHairline: false,
+            rowKey: ValueKey('map-gig-${gig.id}'),
           ),
         ],
       ),
@@ -548,10 +539,13 @@ class _CarouselButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final button = IconButton(
       onPressed: onTap,
+      padding: EdgeInsets.zero,
       style: const ButtonStyle(
-        fixedSize: WidgetStatePropertyAll(Size.square(48)),
+        minimumSize: WidgetStatePropertyAll(Size.square(28)),
+        fixedSize: WidgetStatePropertyAll(Size.square(28)),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
-      icon: Icon(icon, size: 20),
+      icon: Icon(icon, size: 18),
     );
     if (onTap != null) return button;
     return GestureDetector(

@@ -129,9 +129,7 @@ class BandRecap {
     shows: [
       for (final show in asMapList(json['shows'])) RecapShow.fromJson(show),
     ],
-    newReturningSuppressed: asBool(
-      asMap(json['newReturning'])['suppressed'],
-    ),
+    newReturningSuppressed: asBool(asMap(json['newReturning'])['suppressed']),
     leadTime: RecapLeadTime.fromJson(asMap(json['leadTime'])),
     venues: RecapVenues.fromJson(asMap(json['venues'])),
     weekdays: RecapWeekdays.fromJson(asMap(json['weekdays'])),
@@ -277,10 +275,8 @@ class RecapBucket {
 
   const RecapBucket({required this.key, required this.count});
 
-  factory RecapBucket.fromJson(Map<String, dynamic> json) => RecapBucket(
-    key: asString(json['key']),
-    count: asInt(json['count']),
-  );
+  factory RecapBucket.fromJson(Map<String, dynamic> json) =>
+      RecapBucket(key: asString(json['key']), count: asInt(json['count']));
 }
 
 class RecapVenue {
@@ -353,9 +349,7 @@ class RecapVenues {
   const RecapVenues({required this.rows, required this.suppressed});
 
   factory RecapVenues.fromJson(Map<String, dynamic> json) => RecapVenues(
-    rows: [
-      for (final row in asMapList(json['rows'])) RecapVenue.fromJson(row),
-    ],
+    rows: [for (final row in asMapList(json['rows'])) RecapVenue.fromJson(row)],
     suppressed: asBool(json['suppressed']),
   );
 }
@@ -519,6 +513,11 @@ abstract class EarplugRepository {
   Future<void> pinBandMedia(String mediaId);
   Future<void> moveBandMedia(String mediaId, String direction);
   Future<void> moveMediaWithinKind(String mediaId, String direction);
+  Future<void> reorderMedia({
+    required String bandId,
+    required String mediaId,
+    required int toIndex,
+  });
   Future<void> setBandAvatar({required String bandId, required String mediaId});
   Future<void> clearBandAvatar(String bandId);
   Future<void> setBandBanner({required String bandId, required String mediaId});
@@ -639,6 +638,22 @@ abstract class EarplugRepository {
   Future<OrganizationInviteAcceptance> acceptOrganizationInvite(String token);
   Future<Venue?> resolveVenue(String ref);
   Future<VenuePrivateDetails?> venuePrivateDetails(String venueId);
+
+  /// Adds a venue managed by [organizationId] and returns its id. The street
+  /// address stays private ([point] is the exact pin); [area] is the public
+  /// fallback label when the pin is not near a known neighborhood.
+  Future<String> createOrganizationVenue({
+    required String organizationId,
+    required String name,
+    required String addr,
+    required LatLng point,
+    String? area,
+    String? description,
+    VenueType? venueType,
+    int? capacityPublic,
+    String? loadInNotes,
+    int? capacity,
+  });
   Future<void> updateVenueProfile({
     required String venueId,
     String? name,
@@ -679,6 +694,16 @@ abstract class EarplugRepository {
 
   Future<void> toggleRsvp(String gigId, {bool? on});
   Future<void> toggleFollow(String bandId);
+  Future<List<SocialUserCard>> searchUsers(String q);
+  Future<void> toggleFollowUser(String userId, {bool? on});
+  Future<SocialGraph> mySocial();
+  Future<({List<SuggestedPerson> people, bool truncated})> suggestedPeople();
+  Future<FriendsGoing> friendsGoing({
+    required DateTime from,
+    required DateTime to,
+  });
+  Future<KnownAttendees> knownAttendees(String gigId, {required DateTime now});
+  Future<SocialUserDetail?> userCard(String userId);
   Future<void> toggleSave(String gigId);
   Future<RsvpTicket> ticketForGig(String gigId);
   Future<TicketReservation> reserveTickets({
@@ -736,11 +761,11 @@ abstract class EarplugRepository {
     required List<String> genres,
     required bool locationPersonalizationEnabled,
     required bool followedBandUpdatesEnabled,
+    bool? shareRsvpsWithFriends,
   });
   Future<String> generateAvatarUploadUrl();
   Future<void> setAvatar(String storageId);
   Future<void> clearAvatar();
-  Future<void> setProfileTutorialCompleted(bool completed);
   Future<void> updateFanOnboarding({
     FanCity? preferredCity,
     FanGenreChoice? genreChoice,
@@ -770,6 +795,22 @@ abstract class EarplugRepository {
     DateTime? now,
   });
   Future<void> markBandPreviewed(String bandId);
+  // Band members: `bandMembers:list` returns admins first, then by name.
+  Future<List<BandMember>> bandMembers(String bandId);
+  Future<void> setBandMemberRole({
+    required String bandId,
+    required String userId,
+    required BandMemberRole role,
+  });
+  Future<void> removeBandMember({
+    required String bandId,
+    required String userId,
+  });
+  Future<void> addBandMember({
+    required String bandId,
+    required String userId,
+    BandMemberRole role = BandMemberRole.member,
+  });
   Future<BandInvite?> bandInvite(String bandId);
   Future<BandInvite> createBandInvite(String bandId);
   Future<BandInvite> rotateBandInvite(String bandId);
@@ -870,6 +911,12 @@ abstract class EarplugRepository {
 
   Future<List<Opportunity>> manageOpportunities(String organizationId);
 
+  /// Live view of [manageOpportunities]: the organization's opportunities,
+  /// re-emitted whenever one of them or its applications changes.
+  Stream<List<Opportunity>> watchOrganizationOpportunities(
+    String organizationId,
+  );
+
   Future<Opportunity?> opportunity(String opportunityId);
 
   Future<List<ApplicantRow>> applicantsFor(String opportunityId);
@@ -905,6 +952,15 @@ abstract class EarplugRepository {
   Future<void> withdrawApplication(String applicationId);
 
   Future<List<BandApplication>> myApplications(String bandId);
+
+  Stream<List<BandApplication>> watchMyApplications(String bandId);
+
+  Future<DateTime?> markApplicationViewed(String applicationId);
+
+  Future<void> setApplicationHostNote({
+    required String applicationId,
+    required String note,
+  });
 
   Future<ArtistApplication?> myApplicationFor({
     required String opportunityId,

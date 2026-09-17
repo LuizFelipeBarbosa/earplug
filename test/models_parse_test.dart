@@ -295,8 +295,6 @@ void main() {
       expect(profile.homeLocation, isNull);
       expect(profile.locationPersonalizationEnabled, isFalse);
       expect(profile.followedBandUpdatesEnabled, isTrue);
-      expect(profile.profileTutorialAvailable, isFalse);
-      expect(profile.profileTutorialCompleted, isFalse);
     });
 
     test('parses editable identity and preference fields', () {
@@ -311,7 +309,6 @@ void main() {
         'homeLocation': 'berkeley',
         'locationPersonalizationEnabled': true,
         'followedBandUpdatesEnabled': false,
-        'profileTutorialCompleted': true,
       });
 
       expect(profile.avatarUrl, 'https://example.com/avatar.jpg');
@@ -319,8 +316,6 @@ void main() {
       expect(profile.homeLocation, FanCity.berkeley);
       expect(profile.locationPersonalizationEnabled, isTrue);
       expect(profile.followedBandUpdatesEnabled, isFalse);
-      expect(profile.profileTutorialAvailable, isTrue);
-      expect(profile.profileTutorialCompleted, isTrue);
     });
   });
 

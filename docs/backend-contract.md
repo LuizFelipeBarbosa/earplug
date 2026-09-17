@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.30)
+# EarPlug Convex function contract (FROZEN — v1.37)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -346,6 +346,8 @@ myApplicationStatus: ArtistApplicationStatus | null }`. The exact
 [`convex/lib/opportunityPayload.ts`](../convex/lib/opportunityPayload.ts);
 `ApplicationPayload` is defined by `applicationPayloadValidator` in
 [`convex/artistApplications.ts`](../convex/artistApplications.ts).
+It also carries the additive, nullable fields `viewedAt`, `shortlistedAt`,
+`declineReason`, `declineNote`, `hostNote`, and `hostNoteAt`.
 
 - `talentOpportunities:create` — Mutation; `{ organizationId, venueId, mode?, title, desc?, eventType?, expectedAttendance?, genres?, startsAt, doorsAt?, endsAt?, ageRequirement?, equipment?, requirements?, flyKey?, flyStorageId?, applicationsCloseAt?, visibility?, ticketing?, currency?, externalUrl?, slots? } -> { opportunityId, slug }`; verified organization owner/manager creates a draft at one of its verified venues.
 - `talentOpportunities:update` — Mutation; `{ opportunityId, expectedRevision, venueId?, title?, desc?, eventType?, expectedAttendance?, genres?, startsAt?, doorsAt?, endsAt?, ageRequirement?, equipment?, requirements?, flyKey?, flyStorageId?, applicationsCloseAt?, visibility?, ticketing?, currency?, externalUrl?, slots? } -> { revision }`; organization owner/manager edits a draft/open opportunity with revision checking; slots and venue changes are draft-only.
@@ -364,7 +366,9 @@ myApplicationStatus: ArtistApplicationStatus | null }`. The exact
 - `talentOpportunitiesRead:get` — Query; `{ opportunityId } -> OpportunityPayload | null`; owning-organization members only; missing or inaccessible opportunities return null.
 - `artistApplications:apply` — Mutation; `{ opportunityId, slotId, bandId, message, askMinor?, availabilityNote?, lineupNote? } -> { applicationId }`; band admin applies to an open slot belonging to an open `publicEvent` opportunity visible to the band (public or invited), with at most one active application per opportunity/band.
 - `artistApplications:withdraw` — Mutation; `{ applicationId } -> null`; band admin withdraws any active application and decrements the active count.
-- `artistApplications:review` — Mutation; `{ applicationId, action: "under_review" | "shortlisted" | "declined" } -> null`; organization owner/manager reviews through an allowed status transition; declining decrements the active count.
+- `artistApplications:review` — Mutation; `{ applicationId, action: "under_review" | "shortlisted" | "declined", declineReason?, declineNote? } -> null`; organization owner/manager reviews through an allowed status transition; declining decrements the active count.
+- `artistApplications:markViewed` — Mutation; `{ applicationId } -> { viewedAt: number | null }`; organization owner/manager marks a submitted/under-review application as viewed; idempotent, no-op otherwise. Returns an existing stamp even on other statuses, or null if no stamp exists and the status is ineligible; does not change `updatedAt`.
+- `artistApplications:setHostNote` — Mutation; `{ applicationId, note } -> { hostNote: string | null }`; organization owner/manager sets or clears a private note on an active application, capped at `MAX_HOST_NOTE_CHARS` (280) characters after trimming. Blank notes clear both `hostNote` and `hostNoteAt`; does not change `updatedAt`.
 - `artistApplications:forOpportunity` — Query; `{ opportunityId } -> Array<{ application: ApplicationPayload, band: BandPayload, contactEmail: string | null }>`; any organization role, active applications first then oldest first, skipping archived bands; only owner/manager/platform-admin receives contact email.
 - `artistApplications:forBand` — Query; `{ bandId } -> Array<{ application: ApplicationPayload, opportunity: OpportunityPayload }>`; band members receive all statuses, newest first, capped at 100; nonmembers receive `[]`.
 - `artistApplications:mine` — Query; `{ opportunityId, bandId } -> ApplicationPayload | null`; band-member role required; returns the band's most recent application for that opportunity.
@@ -1065,6 +1069,119 @@ enabled. `RESEND_SEND_ENABLED` is the only remaining backend feature flag.
 as the fallback for `avatarUrl`/`bannerUrl` when their newer storage fields are
 absent; a future change will backfill avatar/banner before dropping it.
 
+**v1.31 — friends graph and social discovery.** Added `userFollows` with
+`by_follower_followee`, `by_follower`, and `by_followee` indexes, plus the
+`users.search_name` index and optional `users.shareRsvpsWithFriends` field
+(read as true when absent). The one-shot `social:searchUsers` query performs
+name search (minimum two characters) or exact-email lookup, excludes the
+caller, tombstones, and email from cards, caps results at 20, and returns `[]`
+when unauthenticated;
+`social:toggleFollowUser` adds or removes a user follow, rejects self-follow
+and deleted targets, and maintains no follower/following counters (unlike
+`interactions:toggleFollow`). `social:mySocial` returns capped (200 per
+direction) following, followers, their mutual-friends intersection, counts,
+truncation, and the caller's RSVP-sharing setting; unauthenticated callers
+receive empty, zeroed values with sharing enabled. `social:friendsGoing`
+clamps its window to the shared feed cutoff, accepts at most 14 days, and
+returns published gigs where mutual friends who allow sharing RSVP'd, using a
+friend-major scan capped at 100 friends, 50 RSVP rows per friend, and 2,500
+rows overall. `social:userCard` returns a target's follow state and up to 10
+mutual bands, or null when unauthenticated or the target is absent/deleted.
+`peopleYouMayKnow` was deliberately not shipped. `users:updateProfile` now
+accepts optional `shareRsvpsWithFriends`; `users:me`/`UserPayload` now require
+it (default true for legacy rows), and `interactions:history` rows now carry
+`genres: string[]` copied from the gig.
+
+**v1.32 — venue photos and known attendees.** `venuePayloadValidator` now
+requires `photoUrls: string[]`, resolved owner-uploaded storage URLs capped at
+`MAX_VENUE_PHOTOS = 4` and `[]` when the venue has none; the shared
+`VenuePayload` shape applies to every venue read, including `venues:list`,
+`venues:detail`, `venues:resolvePublic`, `gigs:feedV2`'s `venues` array, and
+organizer reads in `organizations.ts`. The new `social:knownAttendees({ gigId,
+now })` query returns `{ people: Array<{ userId, name, avatarUrl,
+relation: "friend"|"seen", sharedShows: number }>, goingCount: number,
+truncated: boolean }` for mutual friends who RSVP'd or non-friends who share at
+least `MIN_SHARED_PAST_SHOWS = 2` past RSVPed gigs, while `sharesRsvps()` allows
+only attendees whose `shareRsvpsWithFriends` is not false; it reads at most
+`MAX_KNOWN_ATTENDEE_ROWS = 300` attendee rows, performs at most
+`MAX_KNOWN_ATTENDEE_CHECKS = 60` non-friend checks, consumes at most
+`MAX_KNOWN_ATTENDEE_RSVP_ROWS = 2500` RSVP rows overall, and returns at most
+`MAX_KNOWN_ATTENDEES = 20` people. Results sort friends first, then shared-show
+count descending and name; unauthenticated or missing gigs return empty zeroed
+values, and an unpublished gig returns no people with only its `goingCount`
+populated.
+
+**v1.33 — suggested people.** Added `social:suggestedPeople({})`, returning
+`{ people: Array<{ userId: Id<"users">, name: string, avatarUrl?: string,
+sharedShows: number, mutualFriends: number, followsMe: boolean }>, truncated:
+boolean }`; unauthenticated callers receive `{ people: [], truncated: false }`.
+Candidates qualify through at least `MIN_SHARED_SHOWS_FOR_SUGGESTION = 3`
+distinct shared RSVPed gigs (past or upcoming), or one of the caller's mutual
+friends following them. The co-attendance scan reads the caller's 50 newest
+RSVP rows and up to 100 attendee rows per distinct gig, counting the caller's
+own rows toward `MAX_FRIEND_RSVP_ROWS = 2500` and stopping further gigs once
+the running total exceeds that budget. The friends-of-friends scan reads up
+to 50 mutual friends and 100 followee rows per friend, counting each distinct
+friend once per candidate. Both signals merge by user id; self,
+already-followed, missing, and deleted users are excluded. `followsMe` comes
+from the caller's followers. Results sort by `sharedShows * 2 + mutualFriends`
+descending, then name ascending via `localeCompare`, and are capped at
+`MAX_SUGGESTED_PEOPLE = 20`. `truncated` propagates follow-edge truncation and
+reports the co-attendance row-budget stop or excess over 50 friends; the
+per-query row caps and final result cap do not themselves set it. Only live
+users allowed by `sharesRsvps()` contribute to `sharedShows`: a user with
+`shareRsvpsWithFriends: false` can still surface through mutual friends with
+`sharedShows: 0`, but their real shared-show count is never revealed. Rows
+carry no email; an absent avatar is omitted rather than returned as null.
+
+**v1.34 — application tracker.** `ApplicationPayload` adds nullable `viewedAt`,
+`shortlistedAt`, `declineReason`, `declineNote`, `hostNote`, and `hostNoteAt`
+for the APPLIED → VIEWED → SHORTLISTED → DECISION tracker. Storage fields are
+optional so existing applications remain readable without a migration.
+Added `artistApplications:markViewed` and `artistApplications:setHostNote`
+for organization owner/manager access. A host action moving an application
+into `under_review | shortlisted | declined | offered | booked` stamps
+`viewedAt` once; reaching `shortlisted` stamps `shortlistedAt` once. Both
+stamps are set-once, never overwritten or cleared. Expiry and withdrawal do
+not imply viewing. `declineReason` now accepts
+`slot_filled | not_a_fit | lineup_full | date_conflict | other`, with an
+optional free-text `declineNote` trimmed and limited to 500 characters;
+`artistApplications:review` accepts both as optional arguments on decline.
+Host notes are trimmed and limited to 280 characters, may be cleared while
+active, and are included in the authorized application payloads above.
+
+**v1.35 — media reorder.** Added
+`media:reorderMedia({ bandId, mediaId, toIndex }) -> null`, an admin-only
+mutation that moves one item in the band's single global order to an arbitrary
+clamped index in one call instead of repeated `media:moveMedia` adjacent
+swaps. No existing function's shape changed.
+
+**v1.36 — band members.** Added the additive `bandMembers:*` module for
+managing a band's roster without touching invitations: `bandMembers:list`
+(any accepted member; names, avatars, roles, `isSelf`, admins first then by
+name, deleted users excluded), `bandMembers:setRole` (admin-only),
+`bandMembers:remove` (admin removes anyone; any member removes only themself,
+i.e. leaves), and `bandMembers:add` (admin-only, idempotent direct add of a
+live user by id, default role `member`). The last-admin invariant holds on
+every write: the only admin can neither be demoted nor leave/be removed —
+those throw `"A band needs at least one admin"`. `add` and `remove` move
+`followerCount` ±1 with the member row exactly as `bandInvites:accept` does.
+No existing function's shape changed; `bandInvites:*` and
+`bands:profileDetails` are untouched.
+
+**v1.37 — organizer venue creation.** Added
+`venues:createForOrganization({ organizationId, name, addr, lat, lng, area?,
+description?, venueType?, capacityPublic?, loadInNotes?, capacity? }) ->
+Id<"venues">`, the "+ Add venue" path for organization owners and managers.
+Until now organization venues came only from `organizationApplications:approve`.
+The mutation applies the same validation as `venues:updateProfile` and
+`venues:updatePrivateDetails`, refuses an address any venue already uses
+(public column or private details — legacy adoption stays with the approval
+flow), and inserts a `verified`, `onTicket` venue managed by the organization
+whose public columns carry only the approximate label (`area` is the fallback
+label away from known neighborhoods) plus its `venuePrivateDetails` row. No
+existing function's shape changed.
+
 ## Reconciliation
 
 Verified against the current source as of v1.17; these deployed, client-required contract surfaces were previously undocumented:
@@ -1074,6 +1191,7 @@ Verified against the current source as of v1.17; these deployed, client-required
 - `gigs:checkInTicket({ projectId, payload: string }) -> { status: "checkedIn"|"alreadyCheckedIn", fanName, checkedInAt } | { status: "invalid" } | { status: "wrongGig" }` — `requireProjectAdmin`; validates a `TICKET_PREFIX`-prefixed 64-hex-character token through `gigRsvps.by_ticketToken`, then patches `checkedInAt` and `checkedInBy` once.
 - `interactions:ticketForGig({ gigId }) -> { payload: string, checkedInAt: number|null }` — authenticated; requires an RSVP, mints or reuses its `ticketToken`, and returns it with `TICKET_PREFIX`.
 - `venues:create({ bandId, name, area, addr, lat, lng }) -> { venue: VenuePayload, created: boolean }` — `requireBandAdmin(bandId)`; trims and length-validates text, range-validates coordinates, then deduplicates by normalized address before normalized name.
+- `venues:createForOrganization({ organizationId, name, addr, lat, lng, area?, description?, venueType?, capacityPublic?, loadInNotes?, capacity? }) -> Id<"venues">` — `requireOrganizationRole(organizationId, ["owner", "manager"])`; validates like `updateProfile` + `updatePrivateDetails`, rejects an address any venue already uses, and inserts a verified on-ticket managed venue with its private details.
 - `bands:setBandAvatar` / `bands:clearBandAvatar` / `bands:setBandBanner` / `bands:clearBandBanner` — `{ bandId, mediaId }` for set or `{ bandId }` for clear, returning `null`; admin-only, setting or clearing the band's avatar/banner storage id from its existing photo without deleting the blob.
 - `bands:archive({ bandId }) -> { bandId, archivedAt: number, alreadyArchived: boolean }` — admin-only soft-delete tombstone; first use sets `archivedAt`/`archivedBy` and schedules future published-gig cancellation plus follow/invite/performer-invite cleanup, while retries schedule the same cleanup as repair.
 - `bands:archiveStatus({ bandId }) -> { bandId, archivedAt: number|null }` — admin-only and deliberately readable after archiving so the original admin can verify the outcome while public and management reads hide the band.
@@ -1090,7 +1208,7 @@ Verified against the current source as of v1.17; these deployed, client-required
   "doorsTime": "8PM / 9PM", "lifecycle": "published|cancelled",
   // saveDraft accepts all eleven; maintenance:publishRealGig accepts the first six
   // custom implies a non-null flyerUrl once valid flyStorageId was supplied
-  "flyKey": "xerox|riso|marquee|blueprint|sunburst|custom|paper|blue|black|yellow|bluetype",
+  "flyKey": "ink|panel|accent|xerox|riso|marquee|blueprint|sunburst|custom|paper|blue|black|yellow|bluetype",
   // resolved from flyStorageId; null when no custom flyer is stored/live
   "flyerUrl": null,
   "lineup": ["<bandId>"],
@@ -1108,7 +1226,8 @@ Verified against the current source as of v1.17; these deployed, client-required
 
 // VenuePayload
 { "_id": "...", "name": "...", "area": "...", "addr": "...",
-  "distSF": "0.8 mi", "distOak": "6.3 mi", "lat": 37.75, "lng": -122.41 }
+  "distSF": "0.8 mi", "distOak": "6.3 mi", "lat": 37.75, "lng": -122.41,
+  "photoUrls": [] }
 
 // BandPayload — one shape everywhere; every key is always present
 { "_id": "...", "name": "...", "genres": ["garage"], "area": "...",
@@ -1188,6 +1307,8 @@ Verified against the current source as of v1.17; these deployed, client-required
   "homeLocation": null,
   "locationPersonalizationEnabled": false,
   "followedBandUpdatesEnabled": true,
+  // defaults to true when absent on a legacy row
+  "shareRsvpsWithFriends": true,
   // Presence is also the client's capability marker for tutorial mutations.
   // A legacy payload that omits it must not render tutorial controls.
   "profileTutorialCompleted": false,
@@ -1201,7 +1322,25 @@ Verified against the current source as of v1.17; these deployed, client-required
 { "gigId": "...", "title": "Basement Blowout",
   "startsAt": 1785300000000, "venueName": "Casa Quake",
   "bandNames": ["Mission Creep"], "flyKey": "custom",
-  "flyerUrl": null, "status": "rsvped" }
+  "flyerUrl": null, "status": "rsvped", "genres": ["punk"] }
+
+// SocialUserCard
+{ "userId": "...", "name": "...", "avatarUrl": null,
+  "isFollowing": false, "followsMe": false, "isFriend": false }
+
+// FriendsGoing — social:friendsGoing's return shape
+{ "entries": [
+    { "gigId": "...", "startsAt": 1785300000000,
+      "friends": [{ "userId": "...", "name": "...", "avatarUrl": null }] }
+  ],
+  "truncated": false }
+
+// KnownAttendees — social:knownAttendees's return shape
+{ "people": [
+    { "userId": "...", "name": "...", "avatarUrl": null,
+      "relation": "friend", "sharedShows": 0 }
+  ],
+  "goingCount": 12, "truncated": false }
 
 // BandRecap — shows are newest first; weekday is Monday=1 through Sunday=7
 { "window": { "showsAnalyzed": 2, "scanned": 14, "truncated": false,
@@ -1274,10 +1413,17 @@ Verified against the current source as of v1.17; these deployed, client-required
 | `bands:discoveryReadiness`      | `{ bandId, now }`    | `BandDiscoveryReadiness` — admin-only and throws otherwise. Returns the six detailed profile/listing flags, earliest relevant published show, earliest listing-eligible show, and its boost window. `now` changes presentation only and is never used for authorization.                                                                                                                                                                                                                                                                                                                                            |
 | `bandInvites:manage`            | `{ bandId }`         | `BandInvite` or `null` — admin-only status for the band's one reusable link, including expired/revoked state.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `bandInvites:resolve`           | `{ token, now? }`    | `BandInviteResolution` or `null` — public. Returns only confirmation-screen identity while the server-materialized expiry and revoked flags are clear. Deprecated `now?` is accepted for compatibility but ignored, so callers cannot extend validity with a false clock.                                                                                                                                                                                                                                                                                                                                           |
+| `bandMembers:list`              | `{ bandId }`         | `[{ userId, name, avatarUrl: string\|null, role: "admin"\|"member", isSelf }]` — requires either accepted band role and throws otherwise. Deleted users are excluded; ordered admins first, then by name. Capped at 100 memberships.                                                                                                                                                                                                                                                                                                                                                                                 |
 | `media:forBand`                 | `{ bandId }`         | `MediaPayload[]` — public; one list across both kinds, ordered by `order` asc                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `users:me`                      | `{}`                 | `UserPayload \| null`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `users:me`                      | `{}`                 | `UserPayload \| null` including required `shareRsvpsWithFriends` (true when absent on legacy rows)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ★ `interactions:myInteractions` | `{}`                 | `{ rsvpGigIds: string[], followBandIds: string[], savedGigIds: string[], gigs: GigPayload[], attendedCount: number }`; `gigs` deduplicates and hydrates upcoming/grace-window RSVP/saved rows beyond the feed window; empty/0 unauth                                                                                                                                                                                                                                                                                                                                                                                |
-| `interactions:history`          | `{ now: number }`    | `HistoryItem[]` — gigs the user RSVPed to with `startsAt < now`, newest first; `[]` unauth. `now` is client-supplied ms-since-epoch so events cross into history without unrelated cache invalidation. Missing gig references are skipped, missing venues become `""`, missing lineup bands are omitted, and a live uploaded flyer resolves `flyerUrl` while generated posters use `flyKey` with `flyerUrl: null`. Every item has `status: "rsvped"`; this does not claim attendance.                                                                                                                               |
+| `interactions:history`          | `{ now: number }`    | `HistoryItem[]` — gigs the user RSVPed to with `startsAt < now`, newest first; each item now also carries `genres: string[]` copied from the gig. `[]` unauth. `now` is client-supplied ms-since-epoch so events cross into history without unrelated cache invalidation. Missing gig references are skipped, missing venues become `""`, missing lineup bands are omitted, and a live uploaded flyer resolves `flyerUrl` while generated posters use `flyKey` with `flyerUrl: null`. Every item has `status: "rsvped"`; this does not claim attendance. |
+| `social:searchUsers`            | `{ q: string }`      | `SocialUserCard[]` — authenticated name search (minimum 2 characters) or exact-email match, excluding self/deleted users and never returning email; capped at 20, `[]` unauthenticated.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `social:mySocial`               | `{}`                 | `{ following: Id<"users">[], followers: Id<"users">[], friends: Id<"users">[], followingCount: number, followerCount: number, truncated: boolean, shareRsvpsWithFriends: boolean }` — authenticated follow graph with 200 ids per direction and mutual-friend intersection; unauthenticated returns empty/zeroed values with sharing true.                                                                                                                                                                                                                                                                                 |
+| `social:friendsGoing`           | `{ from: number, to: number }` | `{ entries: Array<{ gigId: Id<"gigs">, startsAt: number, friends: SocialPerson[] }>, truncated: boolean }` — published gigs where mutual friends who allow RSVP sharing are going; unauthenticated or invalid windows return empty. Requires `to > from`, a window ≤14 days, and clamps `from` to the shared feed cutoff. Friend-major scan is capped at 100 friends, 50 RSVPs each, and 2,500 rows overall.                                                                                                                                                                                        |
+| `social:userCard`               | `{ userId }`         | `SocialUserCard & { followedBandCount: number, mutualBands: Array<{ bandId: Id<"bands">, name: string }> }` or `null` — authenticated target lookup with follow state and up to 10 mutual bands; null unauthenticated or for a missing/deleted target.                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `social:knownAttendees`          | `{ gigId, now }`     | `{ people: Array<{ userId, name, avatarUrl, relation: "friend"\|"seen", sharedShows: number }>, goingCount: number, truncated: boolean }` — published-gig attendees known through mutual friendship or at least two shared past shows, subject to RSVP sharing; friends first, then shared-show count descending and name. Unauthenticated or missing gigs return empty zeroed values; unpublished gigs return no people and the gig's `goingCount`.                                                                                                                                                                                                 |
+| `social:suggestedPeople`        | `{}`                 | `{ people: Array<{ userId: Id<"users">, name: string, avatarUrl?: string, sharedShows: number, mutualFriends: number, followsMe: boolean }>, truncated: boolean }` — people sharing at least three RSVPed gigs (past or upcoming) or followed by a mutual friend, excluding self/already-followed/missing/deleted users. Shared shows count only while RSVP sharing is enabled; opted-out users can qualify through mutual friends with `sharedShows: 0`. Sorts by `sharedShows * 2 + mutualFriends` descending, then name ascending, capped at 20. Unauthenticated returns `{ people: [], truncated: false }`; truncation covers follow edges, the co-attendance row budget, and the 50-friends cap. |
 | `analytics:bandRecap`           | `{ bandId }`         | `BandRecap` — signed-in band members only (admin or member); throws otherwise. Reads the 200 most recent globally past gigs, analyzes at most the first 30 whose lineup contains the band, and returns shows newest first. `window.truncated` covers both the matching-show cap and a full global scan. The five-distinct-fan floor suppresses `leadTime`, `repeatFans`, `newReturning` and the per-show new/returning columns; `leadTime.unmeasurable` is also independently zeroed for 1–4 distinct fans. `venues`, `weekdays` and `pricing` always publish because they are exactly recomputable from `shows[]`. |
 
 ## Mutations
@@ -1286,7 +1432,7 @@ Verified against the current source as of v1.17; these deployed, client-required
 | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `users:ensureUser`                      | `{ name?: string }`                                                                                                                                                                                                  | `{ userId }`                    | Thin authenticated adapter over the shared Clerk adoption ladder, keyed on `identity.subject`. Falls back to adopting a live legacy row by `identity.email` — but **only** when `identity.emailVerified` is true **and** exactly one row carries that address, so an unverified sign-up cannot claim a migrated account and the known duplicate-email rows are left alone. Empty-email repair refuses collisions. Called by the client right after sign-in, but `user.created` can now run the same adoption before any sign-in. |
 | `users:deleteMe`                        | `{}`                                                                                                                                                                                                                 | `null`                          | Authenticated soft tombstone invoked before Clerk account deletion invalidates the session. Blanks email and preserves referenced history/joins; the webhook repeats the same operation idempotently.                                                                                                                                                                                                                                                                                                                            |
-| `users:updateProfile`                   | `{ name: string, bio: string\|null, homeLocation: "sf"\|"oak"\|null, genres: string[], locationPersonalizationEnabled: boolean, followedBandUpdatesEnabled: boolean }`                                               | `null`                          | Explicit full save. Trims name, bio, and genres; blank bio/unset location are stored absent and emitted as null. Rejects a blank or >100-char name, >500-char bio, more than 20 genres, and blank, duplicate, or >50-char genres.                                                                                                                                                                                                                                                                                                |
+| `users:updateProfile`                   | `{ name: string, bio: string\|null, homeLocation: "sf"\|"oak"\|null, genres: string[], locationPersonalizationEnabled: boolean, followedBandUpdatesEnabled: boolean, shareRsvpsWithFriends?: boolean }` | `null`                          | Explicit full save. Trims name, bio, and genres; blank bio/unset location are stored absent and emitted as null. Rejects a blank or >100-char name, >500-char bio, more than 20 genres, and blank, duplicate, or >50-char genres.                                                                                                                                                                                                                                                                                                |
 | `users:generateAvatarUploadUrl`         | `{}`                                                                                                                                                                                                                 | upload URL string               | Requires an authenticated user row. The client must upload a photo-compatible file before calling `setAvatar`.                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `users:setAvatar`                       | `{ storageId }`                                                                                                                                                                                                      | `null`                          | Requires a live `_storage` row accepted by the shared photo size/type rules. Sets `avatarStorageId` and clears legacy `avatarUrl`; replaced blobs are left to the existing orphan sweep.                                                                                                                                                                                                                                                                                                                                         |
 | `users:clearAvatar`                     | `{}`                                                                                                                                                                                                                 | `null`                          | Clears both avatar references without deleting a blob; orphan cleanup remains centralized.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -1294,6 +1440,7 @@ Verified against the current source as of v1.17; these deployed, client-required
 | `users:updateFanOnboarding`             | `{ preferredCity?: "sf"\|"oak", genreChoice?: "pending"\|"selected"\|"open", collapsed?: boolean, genres?: string[] }`                                                                                     | `null`                          | Requires a newly enrolled fan and at least one supplied field. Validates every supplied value and saves genre choice plus genres atomically.                                                                                                                                                                                                                                                                                                                                                                                      |
 | `interactions:toggleRsvp`               | `{ gigId }`                                                                                                                                                                                                          | `{ on: boolean }`               | Insert/delete join row via by_user_gig index; `goingCount` ±1 same transaction.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `interactions:toggleFollow`             | `{ bandId }`                                                                                                                                                                                                         | `{ on: boolean }`               | `followerCount` ±1 same transaction.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `social:toggleFollowUser`               | `{ userId, on? }`                                                                                                                                                                                                    | `{ on: boolean }`               | Rejects following yourself or a deleted target; no follower/following counters are maintained (unlike `interactions:toggleFollow`).                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `interactions:toggleSave`               | `{ gigId }`                                                                                                                                                                                                          | `{ on: boolean }`               |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `bands:createBand`                      | `{ name, genres: string[], bio, area, linkIg?, linkBc?, linkYt?, credits?, inviteHandles? }`                                                                                                                         | `{ bandId, slug, band }`        | Inserts a trimmed, validated band (nonblank name and home base, 1–3 nonblank genres; colorHex/initials/slug computed server-side; `followerCount = 1` for the admin membership). Deprecated `inviteHandles?` is accepted for old clients but ignored and never stored.                                                                                                                                                                                                                                                           |
 | `bands:updateProfile`                   | `{ bandId, name?, genres?, area?, bio?, inviteHandles?, linkIg?, linkBc?, linkYt?, credits? }`                                                                                                                       | `null`                          | requireBandAdmin. Fields remain optional for released partial-update and pre-credits clients; the current editor sends every editable field in one atomic save. Supplied fields are trimmed, blank optional fields are removed, and supplied required fields are validated. Deprecated `inviteHandles?` is accepted but ignored. A rename recomputes `initials` but deliberately NOT `slug` or `colorHex`.                                                                                                                       |
@@ -1302,11 +1449,15 @@ Verified against the current source as of v1.17; these deployed, client-required
 | `bandInvites:rotate`                    | `{ bandId }`                                                                                                                                                                                                         | `BandInvite`                    | requireBandAdmin. Replaces the token, creator, and seven-day expiry on the band's single row and clears revoked state. The former token stops resolving immediately.                                                                                                                                                                                                                                                                                                                                                             |
 | `bandInvites:revoke`                    | `{ bandId }`                                                                                                                                                                                                         | `null`                          | requireBandAdmin. Idempotently marks the current reusable link revoked.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `bandInvites:accept`                    | `{ token }`                                                                                                                                                                                                          | `{ bandId, membershipCreated }` | Authenticated explicit confirmation. Rejects expired/revoked/unknown links. Inserts a `member` membership and increments `followerCount` in the same transaction only when no membership already exists; repeat acceptance returns `membershipCreated: false`.                                                                                                                                                                                                                                                                   |
+| `bandMembers:setRole`                   | `{ bandId, userId, role: "admin"\|"member" }`                                                                                                                                                                       | `null`                          | requireBandAdmin. Throws `"Member not found"` for a non-member target; no-op when the role is unchanged. Demoting the band's only admin throws `"A band needs at least one admin"`.                                                                                                                                                                                                                                                                                                                                             |
+| `bandMembers:remove`                    | `{ bandId, userId }`                                                                                                                                                                                                 | `null`                          | Requires either accepted band role; a non-admin may only target themself (leave). Throws `"Member not found"` for a non-member target. Removing the band's only admin (self or otherwise) throws `"A band needs at least one admin"`. Deletes the member row and decrements `followerCount` (floored at 0) in the same transaction.                                                                                                                                                                                             |
+| `bandMembers:add`                       | `{ bandId, userId, role?: "admin"\|"member" }`                                                                                                                                                                      | `null`                          | requireBandAdmin. Target must be a live user (`"User not found"` otherwise). Idempotent: an existing membership returns `null` without change. Otherwise inserts the row with `role ?? "member"` and increments `followerCount` in the same transaction, mirroring `bandInvites:accept`.                                                                                                                                                                                                                                       |
 | `media:generateUploadUrl`               | `{ bandId }`                                                                                                                                                                                                         | upload URL string               | requireBandAdmin(bandId) and nothing else — the 50-row cap is NOT checked here, because this URL also uploads gig flyers. `media:addMedia` is the only place the cap is enforced.                                                                                                                                                                                                                                                                                                                                                |
 | `media:addMedia`                        | `{ bandId, kind: "video"\|"photo", storageId, title, caption?, lengthSec? }`                                                                                                                                         | `{ mediaId }`                   | requireBandAdmin(bandId); requires a live, acceptable, non-duplicate upload and room under the 50-row per-band cap. Ordering is appended **globally** — `max(order) + 1` across both kinds, one list per band, not one per kind. The first video auto-pins. A video insert sets `bands.hasClip = true` in the same transaction.                                                                                                                                                                                                  |
 | `media:deleteMedia`                     | `{ mediaId }`                                                                                                                                                                                                        | `null`                          | requireBandAdmin of the media's band; deletes the row only — the blob stays and is reclaimed later by `media:sweepOrphanBlobs`, so a shared or missing blob can never wedge row deletion. Repacks the band's whole order to 0..n-1, clears the hero reference when applicable, promotes the next video when the pinned one is deleted, and transactionally recomputes `bands.hasClip` after a video deletion.                                                                                                                    |
 | `media:pinMedia`                        | `{ mediaId }`                                                                                                                                                                                                        | `null`                          | requireBandAdmin of the media's band; video only; unpins siblings.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `media:moveMedia`                       | `{ mediaId, direction: "up"\|"down" }`                                                                                                                                                                               | `null`                          | requireBandAdmin of the media's band; swaps `order` with the adjacent row in the band's single global list, which may be of the other kind; no-op at ends.                                                                                                                                                                                                                                                                                                                                                                       |
+| `media:reorderMedia`                    | `{ bandId, mediaId, toIndex }`                                                                                                                                                                                       | `null`                          | requireBandAdmin(bandId); moves the row to the clamped index (0..n-1) in the band's single global order in one call, reordering only the rows between the old and new position; no-op if already at the target index. |
 
 The gig-project mutation family is admin-only: `gigs:createDraft`,
 `gigs:saveDraft`, `gigs:addPerformer`, `gigs:updatePerformer`,
@@ -1346,12 +1497,29 @@ the creating band republishes.
   read, so "the whole ordered list fits in one read" holds by construction.
 - `MAX_VENUE_GIGS = 200`; `venues:detail` reads one extra indexed row only to
   compute `truncated`, and hydrates gigs/bands from the returned 200-row page.
+- `MAX_VENUE_PHOTOS = 4` resolved photo URLs per venue payload.
 - `interactions:myInteractions` reads at most 500 RSVP, 500 follow and 500 save
   rows, then point-reads at most 1,000 deduplicated RSVP/save gigs. Only gigs at
   or after the shared six-hour feed cutoff are returned, but those hydrated
   rows make the reactive query depend on their gig and flyer-storage data.
 - `interactions:history` reads the 500 most recently created RSVP rows, then hydrates the existing
   past gig, venue, lineup bands, and flyer storage referenced by each result.
+- `MAX_SOCIAL_FOLLOWS = 200` per direction in `social:mySocial`.
+- `MAX_FRIENDS_GOING_FRIENDS = 100`, `MAX_RSVPS_PER_FRIEND = 50`, and
+  `MAX_FRIEND_RSVP_ROWS = 2500` bound the friend-major scan in
+  `social:friendsGoing`; the row budget binds ahead of the document-read limit
+  because of the queries-per-function transaction limit.
+- `MAX_USER_SEARCH_RESULTS = 20` and `MIN_USER_SEARCH_QUERY = 2` cap
+  `social:searchUsers` results and name-search query length.
+- `MIN_SHARED_PAST_SHOWS = 2`, `MAX_KNOWN_ATTENDEE_ROWS = 300`,
+  `MAX_KNOWN_ATTENDEE_CHECKS = 60`, `MAX_KNOWN_ATTENDEE_RSVP_ROWS = 2500`,
+  and `MAX_KNOWN_ATTENDEES = 20` bound `social:knownAttendees`.
+- `MIN_SHARED_SHOWS_FOR_SUGGESTION = 3` and `MAX_SUGGESTED_PEOPLE = 20`
+  bound `social:suggestedPeople` eligibility and results. Co-attendance reads
+  the caller's 50 newest RSVP rows and up to 100 attendees per distinct gig,
+  stopping further gigs once the running total (including the caller's rows)
+  exceeds `MAX_FRIEND_RSVP_ROWS = 2500`. Friends-of-friends reads at most 50
+  mutual friends and 100 followee rows per friend.
 - `MAX_MEDIA_BYTES = 100 MiB`.
 - Band invitation tokens carry 256 bits of strong pseudo-randomness. Creation
   and rotation schedule `bandInvites:expire` for seven days later; its band and
@@ -1369,10 +1537,14 @@ the creating band republishes.
 
 ## Invariants
 
+- Only `social:friendsGoing`, `social:knownAttendees`, and the shared-shows signal in `social:suggestedPeople` reveal another user's RSVPs: `social:friendsGoing` shows them only to mutual followers, while `social:knownAttendees` shows an attendee only when they are a mutual friend of the caller or share at least two past shows with them. `social:suggestedPeople` counts distinct shared gigs (past or upcoming), qualifying candidates through at least three shared shows or one mutual friend. All three queries reveal RSVP information only while that user's `shareRsvpsWithFriends` is not false. An opted-out user can still appear in `social:suggestedPeople` through mutual friends with `sharedShows: 0`, but their real shared-show count is never revealed; no social payload carries an email.
 - `bands.followerCount == count(follows by bandId) + count(bandMembers by
 bandId)`. Its permitted live writers are `interactions:toggleFollow` (±1 with
-  its follow row), `bands:createBand` (seeds 1 with its admin member row), and
-  `bandInvites:accept` (+1 with a newly inserted member row).
+  its follow row), `bands:createBand` (seeds 1 with its admin member row),
+  `bandInvites:accept` and `bandMembers:add` (+1 with a newly inserted member
+  row), and `bandMembers:remove` (−1 with the deleted member row).
+- Every band keeps at least one `admin` membership: `bandMembers:setRole` and
+  `bandMembers:remove` refuse to demote or delete the only admin.
   `convex/seed.ts`, however, writes decorative follower counts (486, 1214, 743,
   312, 927, 158) without creating any `follows` or `bandMembers` rows, so every
   seeded band intentionally violates the invariant.

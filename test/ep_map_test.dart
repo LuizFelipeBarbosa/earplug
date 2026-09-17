@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:earplug/services/stadia_map_style_repository.dart';
-import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_map.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -13,24 +12,23 @@ import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
+import 'support/pump.dart';
+
 void main() {
   testWidgets('raster maps are ready immediately without a style repository', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildEpTheme(Brightness.light),
-        home: Scaffold(
-          body: EpMap(
-            tiles: EpMapTiles.raster,
-            options: const MapOptions(
-              initialCenter: LatLng(34.05, -118.24),
-              initialZoom: 12,
-            ),
-            layers: const [SizedBox(key: Key('raster-map-layer'))],
-          ),
+    await pumpEp(
+      tester,
+      EpMap(
+        tiles: EpMapTiles.raster,
+        options: const MapOptions(
+          initialCenter: LatLng(34.05, -118.24),
+          initialZoom: 12,
         ),
+        layers: const [SizedBox(key: Key('raster-map-layer'))],
       ),
+      brightness: Brightness.light,
     );
 
     expect(find.byType(TileLayer), findsOne);
@@ -60,6 +58,57 @@ void main() {
           .where((link) => link.onTap != null),
       hasLength(3),
     );
+  });
+
+  testWidgets('attribution keeps its default bottom-right padding', (
+    tester,
+  ) async {
+    await pumpEp(
+      tester,
+      const EpMap(
+        tiles: EpMapTiles.raster,
+        options: MapOptions(
+          initialCenter: LatLng(34.05, -118.24),
+          initialZoom: 12,
+        ),
+      ),
+      brightness: Brightness.light,
+    );
+
+    final attribution = tester.widget<Positioned>(
+      find.ancestor(
+        of: find.text('© Stadia Maps'),
+        matching: find.byType(Positioned),
+      ),
+    );
+    expect(attribution.bottom, 6);
+    expect(attribution.left, 4);
+    expect(attribution.right, 6);
+  });
+
+  testWidgets('attribution applies custom padding', (tester) async {
+    await pumpEp(
+      tester,
+      const EpMap(
+        tiles: EpMapTiles.raster,
+        attributionPadding: EdgeInsets.only(bottom: 40, right: 10, left: 4),
+        options: MapOptions(
+          initialCenter: LatLng(34.05, -118.24),
+          initialZoom: 12,
+        ),
+      ),
+      brightness: Brightness.light,
+    );
+
+    final attribution = tester.widget<Positioned>(
+      find.ancestor(
+        of: find.text('© Stadia Maps'),
+        matching: find.byType(Positioned),
+      ),
+    );
+    expect(attribution.bottom, 40);
+    expect(attribution.left, 4);
+    expect(attribution.right, 10);
   });
 
   testWidgets('blocks taps while loading and renders linked attribution', (
@@ -160,17 +209,15 @@ void main() {
         value: repository,
         child: ValueListenableBuilder(
           valueListenable: brightness,
-          builder: (context, value, _) => MaterialApp(
-            theme: buildEpTheme(value),
-            home: Scaffold(
-              body: EpMap(
-                mapController: controller,
-                options: const MapOptions(
-                  initialCenter: LatLng(34.05, -118.24),
-                  initialZoom: 12,
-                ),
+          builder: (context, value, _) => epApp(
+            EpMap(
+              mapController: controller,
+              options: const MapOptions(
+                initialCenter: LatLng(34.05, -118.24),
+                initialZoom: 12,
               ),
             ),
+            brightness: value,
           ),
         ),
       ),
@@ -199,18 +246,16 @@ void main() {
     await tester.pumpWidget(
       ValueListenableBuilder(
         valueListenable: brightness,
-        builder: (context, value, _) => MaterialApp(
-          theme: buildEpTheme(value),
-          home: Scaffold(
-            body: EpMap(
-              tiles: EpMapTiles.raster,
-              mapController: controller,
-              options: const MapOptions(
-                initialCenter: LatLng(34.05, -118.24),
-                initialZoom: 12,
-              ),
+        builder: (context, value, _) => epApp(
+          EpMap(
+            tiles: EpMapTiles.raster,
+            mapController: controller,
+            options: const MapOptions(
+              initialCenter: LatLng(34.05, -118.24),
+              initialZoom: 12,
             ),
           ),
+          brightness: value,
         ),
       ),
     );
@@ -240,15 +285,11 @@ StadiaMapStyleRepository _repository(http.Client client) {
   );
 }
 
-Widget _mapHost(StadiaMapStyleRepository repository, Widget child) {
-  return Provider.value(
-    value: repository,
-    child: MaterialApp(
-      theme: buildEpTheme(Brightness.light),
-      home: Scaffold(body: child),
-    ),
-  );
-}
+Widget _mapHost(StadiaMapStyleRepository repository, Widget child) =>
+    Provider.value(
+      value: repository,
+      child: epApp(child, brightness: Brightness.light),
+    );
 
 http.Response _styleResponse() => http.Response(
   jsonEncode({

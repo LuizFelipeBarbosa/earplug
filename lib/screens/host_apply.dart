@@ -1,56 +1,20 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 
 import '../app_links.dart';
 import '../app_state.dart';
-import '../data/repository.dart';
 import '../models.dart';
 import '../services/media_picker.dart';
+import '../services/media_upload_service.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
+import '../widgets/application_document_tiles.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/form_bits.dart';
-
-Future<String> _uploadApplicationDocument(
-  EarplugRepository repository,
-  PickedMedia media,
-) async {
-  final uploadUri = Uri.parse(
-    await repository.generateApplicationDocumentUploadUrl(),
-  );
-  if (uploadUri.scheme == 'demo') {
-    return 'demo-application-doc-${DateTime.now().microsecondsSinceEpoch}';
-  }
-  final response = await http.post(
-    uploadUri,
-    headers: {'Content-Type': media.contentType},
-    body: media.bytes,
-  );
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw Exception('Upload failed with status ${response.statusCode}');
-  }
-  return (jsonDecode(response.body) as Map<String, dynamic>)['storageId']
-      as String;
-}
-
-String _extractErrorMessage(Object error) {
-  final text = error.toString();
-  const uncaughtErrorPrefix = 'Uncaught Error:';
-  final uncaughtErrorIndex = text.lastIndexOf(uncaughtErrorPrefix);
-  if (uncaughtErrorIndex >= 0) {
-    return text
-        .substring(uncaughtErrorIndex + uncaughtErrorPrefix.length)
-        .trim();
-  }
-  return text
-      .replaceFirst(RegExp(r'^(Bad state: |Exception: |ConvexError: )'), '')
-      .trim();
-}
 
 class HostApplyScreen extends StatefulWidget {
   const HostApplyScreen({super.key, this.mediaPicker, this.launch});
@@ -274,7 +238,7 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
   }
 
   Future<void> _handleMutationError(AppState app, Object error) async {
-    final message = _extractErrorMessage(error);
+    final message = stripErrorPrefix(error);
     final changedElsewhere = message.toLowerCase().contains(
       'changed elsewhere',
     );
@@ -329,7 +293,7 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
 
     final app = context.read<AppState>();
     try {
-      final storageId = await _uploadApplicationDocument(
+      final storageId = await uploadApplicationDocument(
         app.repository,
         selectedMedia,
       );
@@ -474,7 +438,7 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
               padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
               children: [
                 _header(context),
-                const SectionBar.form(label: 'YOUR DETAILS'),
+                const EpSectionHeader.form(label: 'YOUR DETAILS'),
                 EpLabeledField(
                   fieldKey: const ValueKey('host-apply-display-name'),
                   label: 'DISPLAY NAME',
@@ -526,24 +490,36 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
                   onChanged: _textChanged,
                   onEditingComplete: _saveOnBlur,
                 ),
-                SectionBar.form(label: 'ID DOCUMENT', count: _documents.length),
+                EpSectionHeader.form(
+                  label: 'ID DOCUMENT',
+                  count: _documents.length,
+                ),
                 if (_documents.isNotEmpty) ...[
                   Wrap(
                     spacing: 10,
                     runSpacing: 10,
                     children: [
                       for (final document in _documents)
-                        _DocumentTile(
+                        ApplicationDocumentTile(
                           document: document,
                           enabled: enabled,
                           onRemove: () => _removeDocument(document),
+                          removeKey: ValueKey(
+                            'host-apply-doc-remove-${document.storageId}',
+                          ),
                         ),
                     ],
                   ),
                   const SizedBox(height: 12),
                 ],
                 if (_documents.length < 5)
-                  _AddDocumentTile(enabled: enabled, onTap: _addDocument),
+                  AddApplicationDocumentTile(
+                    tileKey: const ValueKey('host-apply-doc-add'),
+                    enabled: enabled,
+                    onTap: _addDocument,
+                    title: 'ADD ID DOCUMENT',
+                    caption: 'A photo of your ID. Visible to reviewers only.',
+                  ),
                 const SizedBox(height: EpLayout.fieldGap),
                 CheckboxListTile(
                   key: const ValueKey('host-apply-agree'),
@@ -662,122 +638,6 @@ class _ApplicationNotice extends StatelessWidget {
             const SizedBox(height: 18),
             EpButton(action, onTap: onTap),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DocumentTile extends StatelessWidget {
-  const _DocumentTile({
-    required this.document,
-    required this.enabled,
-    required this.onRemove,
-  });
-
-  final ApplicationDocument document;
-  final bool enabled;
-  final VoidCallback onRemove;
-
-  bool get _isImage {
-    if (document.contentType?.startsWith('image/') == true) return true;
-    final path = Uri.tryParse(document.url ?? '')?.path.toLowerCase() ?? '';
-    return RegExp(r'\.(jpe?g|png|gif|webp|heic)$').hasMatch(path);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final fallback = ColoredBox(
-      color: context.epColors.surface,
-      child: Icon(
-        _isImage ? Icons.image_outlined : Icons.description_outlined,
-        color: context.epColors.contentSecondary,
-        size: 30,
-      ),
-    );
-    return SizedBox.square(
-      dimension: 92,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: _isImage
-                  ? EpNetworkImage(
-                      url: document.url,
-                      fallback: fallback,
-                      cacheWidth: 92,
-                      cacheHeight: 92,
-                    )
-                  : fallback,
-            ),
-          ),
-          Positioned(
-            top: 2,
-            right: 2,
-            child: IconButton.filled(
-              key: ValueKey('host-apply-doc-remove-${document.storageId}'),
-              tooltip: 'Remove document',
-              onPressed: enabled ? onRemove : null,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-              icon: const Icon(Icons.close, size: 17),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AddDocumentTile extends StatelessWidget {
-  const _AddDocumentTile({required this.enabled, required this.onTap});
-
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return DashedBox(
-      key: const ValueKey('host-apply-doc-add'),
-      padding: EdgeInsets.zero,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: enabled ? onTap : null,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.add_a_photo_outlined,
-                  color: enabled
-                      ? context.epColors.accent
-                      : context.epColors.contentDisabled,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'ADD ID DOCUMENT',
-                        style: Theme.of(context).textTheme.epBody.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'A photo of your ID. Visible to reviewers only.',
-                        style: Theme.of(context).textTheme.epCaption,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );

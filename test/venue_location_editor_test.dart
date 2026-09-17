@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:earplug/services/geocoding_service.dart';
+import 'package:earplug/widgets/approx_area_map.dart';
 import 'package:earplug/widgets/ep_map.dart';
 import 'package:earplug/widgets/venue_location_editor.dart';
 import 'package:flutter/material.dart';
@@ -384,6 +385,74 @@ void main() {
     );
     expect(preview.onTap, isNull);
     expect(find.byKey(const Key('venue-test-pin-map')), findsNothing);
+    harness.app.dispose();
+  });
+
+  testWidgets('venue editor emits field edits and requires a pin', (
+    tester,
+  ) async {
+    var draft = const VenueLocationDraft();
+    final geocoding = FakeGeocodingService();
+    final harness = await pumpApp(
+      tester,
+      geocoding: geocoding,
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: VenueLocationEditor(
+            initial: draft,
+            keyPrefix: 'marketplace-venue',
+            onChanged: (value) => draft = value,
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('marketplace-venue-name')),
+      'Harbor Loft',
+    );
+    await tester.enterText(
+      find.byKey(const Key('marketplace-venue-address')),
+      '9 Pier Street',
+    );
+    await tester.pumpAndSettle();
+
+    expect(draft.name, 'Harbor Loft');
+    expect(draft.address, '9 Pier Street');
+    expect(find.byKey(const Key('marketplace-venue-area')), findsNothing);
+    expect(draft.isComplete, isFalse);
+
+    final map = tester.widget<EpMap>(
+      find.descendant(
+        of: find.byKey(const Key('marketplace-venue-map')),
+        matching: find.byType(EpMap),
+      ),
+    );
+    map.options.onTap!(
+      const TapPosition(Offset.zero, Offset.zero),
+      const LatLng(37.8, -122.27),
+    );
+    await tester.pump();
+
+    expect(draft.pin, const LatLng(37.8, -122.27));
+    expect(draft.isComplete, isTrue);
+    harness.app.dispose();
+  });
+
+  testWidgets('approximate area map renders a ring without a pin', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(
+        body: ApproxAreaMap(centroid: LatLng(37.7749, -122.4194)),
+      ),
+    );
+
+    expect(find.byType(ApproxAreaMap), findsOneWidget);
+    expect(find.byType(CircleLayer), findsOneWidget);
+    expect(find.byType(MarkerLayer), findsNothing);
+    expect(find.byIcon(Icons.location_pin), findsNothing);
     harness.app.dispose();
   });
 }

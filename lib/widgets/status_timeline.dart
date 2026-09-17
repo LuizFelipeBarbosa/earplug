@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'ep_text.dart';
 
 enum TimelineStepState { done, current, pending, blocked }
 
@@ -42,7 +43,7 @@ class StatusTimeline extends StatelessWidget {
                           Expanded(
                             child: Container(
                               width: 1.5,
-                              color: context.epColors.border,
+                              color: context.epColors.line,
                             ),
                           ),
                         ],
@@ -58,16 +59,13 @@ class StatusTimeline extends StatelessWidget {
                         children: [
                           Text(
                             steps[index].label,
-                            style: epText(size: 13, weight: FontWeight.w800),
+                            style: Theme.of(context).textTheme.epBody,
                           ),
                           if (steps[index].caption case final caption?) ...[
                             const SizedBox(height: 3),
                             Text(
                               caption,
-                              style: epText(
-                                size: 11,
-                                color: context.epColors.contentDisabled,
-                              ),
+                              style: Theme.of(context).textTheme.epCaption,
                             ),
                           ],
                         ],
@@ -93,14 +91,7 @@ class _TimelineIndicator extends StatelessWidget {
     final colors = context.epColors;
 
     return switch (state) {
-      TimelineStepState.done => Container(
-        width: 14,
-        height: 14,
-        decoration: BoxDecoration(
-          color: colors.success,
-          shape: BoxShape.circle,
-        ),
-      ),
+      TimelineStepState.done => EpDot(fill: colors.success),
       TimelineStepState.current => Container(
         width: 16,
         height: 16,
@@ -116,22 +107,11 @@ class _TimelineIndicator extends StatelessWidget {
           ),
         ),
       ),
-      TimelineStepState.pending => Container(
-        width: 14,
-        height: 14,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: colors.border, width: 1.5),
-        ),
-      ),
-      TimelineStepState.blocked => Container(
-        width: 14,
-        height: 14,
-        decoration: BoxDecoration(
-          color: colors.destructiveTint,
-          shape: BoxShape.circle,
-          border: Border.all(color: colors.destructive, width: 1.5),
-        ),
+      TimelineStepState.pending => EpDot(border: colors.outline),
+      TimelineStepState.blocked => EpDot(
+        fill: colors.destructiveTint,
+        border: colors.destructive,
+        borderWidth: 1.5,
       ),
     };
   }

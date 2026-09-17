@@ -24,6 +24,19 @@ class AddressSuggestion {
   final LatLng point;
 }
 
+/// A resolved place for a coordinate: neighbourhood and/or locality.
+class PlaceName {
+  const PlaceName({this.neighbourhood, this.locality});
+
+  final String? neighbourhood;
+  final String? locality;
+
+  /// "Mission, San Francisco" / "San Francisco" / null when both are missing.
+  String? get label => [?neighbourhood, ?locality].isEmpty
+      ? null
+      : [?neighbourhood, ?locality].join(', ');
+}
+
 sealed class GeocodingFailure implements Exception {
   const GeocodingFailure();
 }
@@ -48,7 +61,13 @@ abstract interface class GeocodingService {
   Future<List<AddressSuggestion>> autocomplete(String text, {LatLng? focus});
 }
 
-class StadiaGeocodingService implements GeocodingService {
+abstract interface class ReverseGeocodingService {
+  /// Resolves [point] to a place; null when nothing useful comes back. Never throws.
+  Future<PlaceName?> reverseGeocode(LatLng point);
+}
+
+class StadiaGeocodingService
+    implements GeocodingService, ReverseGeocodingService {
   StadiaGeocodingService({
     this.apiKey = '',
     http.Client? httpClient,
@@ -106,6 +125,20 @@ class StadiaGeocodingService implements GeocodingService {
     }
   }
 
+  @override
+  Future<PlaceName?> reverseGeocode(LatLng point) async {
+    try {
+      final response = await _client
+          .get(buildReverseUri(point: point, apiKey: apiKey))
+          .timeout(timeout);
+      if (response.statusCode != 200) return null;
+      final decoded = jsonDecode(response.body);
+      return parseReverse(decoded);
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Uri buildUri({
     required String text,
     LatLng? focus,
@@ -124,6 +157,38 @@ class StadiaGeocodingService implements GeocodingService {
     return Uri.parse(
       'https://api.stadiamaps.com/geocoding/v1/autocomplete',
     ).replace(queryParameters: params);
+  }
+
+  static Uri buildReverseUri({required LatLng point, required String apiKey}) {
+    final params = <String, String>{
+      'point.lat': point.latitude.toString(),
+      'point.lon': point.longitude.toString(),
+      'size': '1',
+      'layers': 'neighbourhood,locality',
+    };
+    if (apiKey.isNotEmpty) params['api_key'] = apiKey;
+    return Uri.parse(
+      'https://api.stadiamaps.com/geocoding/v1/reverse',
+    ).replace(queryParameters: params);
+  }
+
+  static PlaceName? parseReverse(Object? json) {
+    if (json is! Map) return null;
+    final features = json['features'];
+    if (features is! List || features.isEmpty) return null;
+
+    final feature = features.first;
+    if (feature is! Map) return null;
+    final properties = feature['properties'];
+    if (properties is! Map) return null;
+    final layer = _nonEmptyString(properties['layer']);
+    final name = _nonEmptyString(properties['name']);
+    var neighbourhood = _nonEmptyString(properties['neighbourhood']);
+    var locality = _nonEmptyString(properties['locality']);
+    if (layer == 'neighbourhood') neighbourhood ??= name;
+    if (layer == 'locality') locality ??= name;
+    final place = PlaceName(neighbourhood: neighbourhood, locality: locality);
+    return place.label == null ? null : place;
   }
 
   static List<AddressSuggestion> parseFeatures(Object? json) {

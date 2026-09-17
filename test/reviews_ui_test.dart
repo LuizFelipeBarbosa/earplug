@@ -69,7 +69,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ReviewComposeScreen), findsNothing);
-    expect(harness.app.current.screen, Screen.orgDash);
+    expect(harness.app.current.screen, Screen.orgOpportunities);
     expect(harness.app.canGoBack, isFalse);
     expect(harness.app.toast, 'Review published');
     final reviews = await repository.reviewsForBooking('bk4');
@@ -195,7 +195,7 @@ void main() {
       findsOneWidget,
     );
     final card = find.byKey(ValueKey('band-review-${review.reviewId}'));
-    expect(tester.widget(card), isA<EpCard>());
+    expect(card, findsOneWidget);
     expect(
       find.descendant(of: card, matching: find.text('The Foghorn Club')),
       findsOneWidget,
@@ -215,7 +215,7 @@ void main() {
     final category = tester.widget<EpChip>(
       find.descendant(of: card, matching: find.byType(EpChip)),
     );
-    expect(category.label, 'PROFESSIONALISM');
+    expect(category.label, 'professionalism');
     expect(category.active, isTrue);
     expect(category.onTap, isNull);
     expect(category.readOnly, isTrue);
@@ -237,11 +237,10 @@ void main() {
   });
 
   testWidgets(
-    'organizer dashboard shows seeded rating and only public reviews',
+    'organizer dashboard omits reviews; repository lists only public ones',
     (tester) async {
       final auth = FakeAuthService();
       final repository = DemoRepository(auth: auth);
-      final review = (await repository.reviewsForOrganization('org1')).single;
       final harness = await pumpApp(
         tester,
         auth: auth,
@@ -249,41 +248,36 @@ void main() {
         home: const Scaffold(body: OrgDashScreen()),
       );
       await enterOrganizer(tester, harness, 'org1');
-      final rating = find.byKey(const ValueKey('org-dash-stat-rating'));
-      await _scrollTo(tester, rating);
-      final stat = tester.widget<EpStatCard>(rating);
-      expect(stat.label, 'RATING');
-      expect(stat.value, '4.0');
-      expect(stat.caption, '1 reviews');
-
-      final section = find.byKey(const ValueKey('org-dash-reviews'));
-      await _scrollTo(tester, section);
-      final card = find.byKey(ValueKey('org-dash-review-${review.reviewId}'));
-      expect(
-        find.descendant(of: card, matching: find.text('Foghorn Diet')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: card, matching: find.text(review.monthLabel)),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: card, matching: find.text(review.text)),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: card, matching: find.byIcon(Icons.star)),
-        findsNWidgets(4),
-      );
-      // bk4's seeded artist review stays blind until the organizer submits.
-      expect(find.text('Pigeon Court'), findsNothing);
+      expect(find.byKey(const ValueKey('org-dash-stat-rating')), findsNothing);
+      expect(find.byKey(const ValueKey('org-dash-reviews')), findsNothing);
       expect(tester.takeException(), isNull);
+
+      final summary = (await repository.organization('org1'))!.reviewSummary!;
+      expect(summary.count, 1);
+      expect(summary.mean, 4);
+      expect(summary.completedBookings, 1);
+
+      final review = (await repository.reviewsForOrganization('org1')).single;
+      expect(review.counterpartyName, 'Foghorn Diet');
+      expect(review.rating, 4);
+      expect(review.text, isNotEmpty);
+      // bk4's seeded artist review stays blind until the organizer submits.
+      final blind = await repository.reviewsForBooking('bk4');
+      expect(blind.mine, isNull);
+      expect(blind.theirs, isNull);
+      expect(blind.canSubmit, isTrue);
+      expect(
+        (await repository.reviewsForOrganization(
+          'org1',
+        )).map((r) => r.counterpartyName),
+        isNot(contains('Pigeon Court')),
+      );
     },
   );
 
-  testWidgets(
-    'organizer dashboard shows Pigeon Court after both sides submit',
-    (tester) async {
+  test(
+    'organization reviews list Pigeon Court after both sides submit',
+    () async {
       final auth = FakeAuthService();
       final repository = DemoRepository(auth: auth);
       await repository.submitReview(
@@ -292,38 +286,23 @@ void main() {
         categories: const [],
         text: 'Great show.',
       );
-      final reviews = await repository.reviewsForOrganization('org1');
-      expect(reviews.first.counterpartyName, 'Pigeon Court');
-      final harness = await pumpApp(
-        tester,
-        auth: auth,
-        repository: repository,
-        home: const Scaffold(body: OrgDashScreen()),
-      );
-      await enterOrganizer(tester, harness, 'org1');
-      final rating = find.byKey(const ValueKey('org-dash-stat-rating'));
-      await _scrollTo(tester, rating);
-      final stat = tester.widget<EpStatCard>(rating);
-      expect(stat.value, '3.5');
-      expect(stat.caption, '2 reviews');
 
-      await _scrollTo(tester, find.byKey(const ValueKey('org-dash-reviews')));
-      final first = find.byKey(
-        ValueKey('org-dash-review-${reviews.first.reviewId}'),
-      );
-      final last = find.byKey(
-        ValueKey('org-dash-review-${reviews.last.reviewId}'),
-      );
+      final reviews = await repository.reviewsForOrganization('org1');
+      expect(reviews, hasLength(2));
+      expect(reviews.first.counterpartyName, 'Pigeon Court');
+      expect(reviews.first.text, isNotEmpty);
+      expect(reviews.last.counterpartyName, 'Foghorn Diet');
       expect(
-        find.descendant(of: first, matching: find.text('Pigeon Court')),
-        findsOneWidget,
+        reviews.first.submittedAt.isAfter(reviews.last.submittedAt) ||
+            reviews.first.submittedAt == reviews.last.submittedAt,
+        isTrue,
       );
-      expect(
-        find.descendant(of: first, matching: find.text(reviews.first.text)),
-        findsOneWidget,
-      );
-      expect(tester.getTopLeft(first).dy, lessThan(tester.getTopLeft(last).dy));
-      expect(tester.takeException(), isNull);
+      final limited = await repository.reviewsForOrganization('org1', limit: 1);
+      expect(limited.map((r) => r.reviewId), [reviews.first.reviewId]);
+
+      final summary = (await repository.organization('org1'))!.reviewSummary!;
+      expect(summary.count, 2);
+      expect(summary.mean, 3.5);
     },
   );
 }

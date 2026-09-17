@@ -55,3 +55,19 @@ String dateLabel(DateTime d) =>
 
 /// "Aug 2026".
 String monthLabel(DateTime d) => '${monthNames[d.month - 1]} ${d.year}';
+
+/// "Aug 15", in the device's local time.
+String shortDateLabel(DateTime date) {
+  final local = date.toLocal();
+  return '${monthNames[local.month - 1]} ${local.day}';
+}
+
+({DateTime start, DateTime end}) weekendWindow(DateTime now) {
+  final localMidnight = DateTime(now.year, now.month, now.day);
+  final daysUntilFriday = (DateTime.friday - now.weekday + 7) % 7;
+  final offset = now.weekday >= DateTime.friday
+      ? -(now.weekday - DateTime.friday)
+      : daysUntilFriday;
+  final start = localMidnight.add(Duration(days: offset));
+  return (start: start, end: start.add(const Duration(days: 3)));
+}

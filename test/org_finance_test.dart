@@ -10,6 +10,7 @@ import 'package:earplug/screens/org_transactions.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -110,6 +111,116 @@ void main() {
     await tester.tap(transactions);
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.orgTransactions);
+  });
+
+  for (final (state, badge, tone, action) in [
+    (
+      StripeAccountState.none,
+      'SET UP',
+      EpBadgeTone.attention,
+      'CONNECT STRIPE',
+    ),
+    (
+      StripeAccountState.onboarding,
+      'SETUP IN PROGRESS — FINISH IN STRIPE',
+      EpBadgeTone.attention,
+      'CONTINUE SETUP',
+    ),
+    (
+      StripeAccountState.restricted,
+      'SETUP IN PROGRESS — FINISH IN STRIPE',
+      EpBadgeTone.attention,
+      'CONTINUE SETUP',
+    ),
+    (
+      StripeAccountState.enabled,
+      'CONNECTED',
+      EpBadgeTone.success,
+      'MANAGE PAYOUTS IN STRIPE',
+    ),
+  ]) {
+    testWidgets('Stripe section reads $badge and offers $action when '
+        '${state.name}', (tester) async {
+      repository.stripeStatus = _stripeStatus(state);
+      await pumpScreen(tester, const OrgFinanceScreen());
+
+      final pill = tester.widget<EpBadge>(
+        find.byKey(const Key('org-finance-stripe-badge')),
+      );
+      expect(pill.label.toUpperCase(), badge);
+      expect(pill.tone, tone);
+      final enabled = state == StripeAccountState.enabled;
+      final primary = find.byKey(
+        Key(enabled ? 'org-finance-stripe' : 'org-finance-connect-stripe'),
+      );
+      expect(
+        find.descendant(of: primary, matching: find.text(action)),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          Key(enabled ? 'org-finance-connect-stripe' : 'org-finance-stripe'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('org-finance-stripe-refresh')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('org-finance-stripe-error')), findsNothing);
+
+      final section = find.byKey(const Key('org-finance-stripe-section'));
+      if (state == StripeAccountState.restricted) {
+        expect(find.text('NEEDS INFORMATION'), findsOneWidget);
+        expect(find.text('individual.verification.document'), findsOneWidget);
+        expect(find.text('external_account'), findsOneWidget);
+      } else {
+        expect(find.text('NEEDS INFORMATION'), findsNothing);
+      }
+      expect(
+        find.descendant(
+          of: section,
+          matching: find.text(
+            enabled ? '✓ COLLECTED VIA STRIPE' : 'ACTION NEEDED',
+          ),
+        ),
+        findsOneWidget,
+      );
+    });
+  }
+
+  testWidgets('Stripe refresh fetches the status again', (tester) async {
+    repository.stripeStatus = _stripeStatus(StripeAccountState.onboarding);
+    final harness = await pumpScreen(tester, const OrgFinanceScreen());
+    final requests = repository.stripeStatusRequests;
+    harness.app.organizationStripeStatus = null;
+
+    await tester.tap(find.byKey(const Key('org-finance-stripe-refresh')));
+    await tester.pumpAndSettle();
+    expect(repository.stripeStatusRequests, requests + 1);
+    expect(
+      harness.app.organizationStripeStatus?.state,
+      StripeAccountState.onboarding,
+    );
+  });
+
+  testWidgets('tax row continues onboarding until details are submitted', (
+    tester,
+  ) async {
+    repository.stripeStatus = _stripeStatus(StripeAccountState.onboarding);
+    final harness = await pumpScreen(tester, const OrgFinanceScreen());
+    final launched = <String>[];
+    harness.app.hostedUrlLauncher = (url) async => launched.add(url);
+
+    final tax = find.byKey(const Key('org-finance-tax-dashboard'));
+    expect(
+      find.descendant(of: tax, matching: find.text('ADD IN STRIPE')),
+      findsOneWidget,
+    );
+    await tester.tap(tax);
+    await tester.pumpAndSettle();
+    expect(launched, ['https://demo.stripe/onboard/org1']);
+    expect(repository.stripeStatusRequests, greaterThan(1));
   });
 
   testWidgets('pending payment opens its booking as the organizer', (
@@ -290,11 +401,11 @@ void main() {
       );
       expect(
         tester
-            .widget<StatusPill>(
-              find.descendant(of: funds, matching: find.byType(StatusPill)),
+            .widget<EpBadge>(
+              find.descendant(of: funds, matching: find.byType(EpBadge)),
             )
             .tone,
-        EpStatusPillTone.warning,
+        EpBadgeTone.warning,
       );
       expect(find.text('STALE'), findsOneWidget);
       expect(find.byKey(const Key('org-finance-connect-stripe')), findsNothing);
@@ -402,11 +513,11 @@ void main() {
       );
       expect(
         tester
-            .widget<StatusPill>(
-              find.descendant(of: row, matching: find.byType(StatusPill)),
+            .widget<EpBadge>(
+              find.descendant(of: row, matching: find.byType(EpBadge)),
             )
             .tone,
-        EpStatusPillTone.success,
+        EpBadgeTone.success,
       );
     }
     expect(find.text('No transactions yet.'), findsNothing);
@@ -471,7 +582,9 @@ class _FinanceRepository extends DemoRepository {
   _FinanceRepository({required super.auth});
 
   int overviewRequests = 0;
+  int stripeStatusRequests = 0;
   bool failFinance = false;
+  StripeAccountStatus? stripeStatus;
   Completer<void>? pendingFinance;
   FinanceSnapshot? balanceSnapshot;
   BookingSide? bookingSide;
@@ -484,6 +597,14 @@ class _FinanceRepository extends DemoRepository {
     await pendingFinance?.future;
     if (failFinance) throw StateError('Finance unavailable');
     return super.financeOverview(organizationId);
+  }
+
+  @override
+  Future<StripeAccountStatus> organizationStripeStatus(
+    String organizationId,
+  ) async {
+    stripeStatusRequests++;
+    return stripeStatus ?? await super.organizationStripeStatus(organizationId);
   }
 
   @override
@@ -512,3 +633,15 @@ class _FinanceRepository extends DemoRepository {
     return result;
   }
 }
+
+StripeAccountStatus _stripeStatus(StripeAccountState state) =>
+    StripeAccountStatus(
+      state: state,
+      hasAccount: state != StripeAccountState.none,
+      chargesEnabled: state == StripeAccountState.enabled,
+      payoutsEnabled: state == StripeAccountState.enabled,
+      detailsSubmitted: state == StripeAccountState.enabled,
+      requirementsDue: state == StripeAccountState.restricted
+          ? const ['individual.verification.document', 'external_account']
+          : const [],
+    );

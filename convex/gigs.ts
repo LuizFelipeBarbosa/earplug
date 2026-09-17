@@ -449,12 +449,16 @@ async function upcomingGigs(ctx: QueryCtx): Promise<UpcomingGigs> {
   };
 }
 
-async function hydrateVenues(cache: DocCache, venueIds: Set<Id<"venues">>) {
+async function hydrateVenues(
+  ctx: QueryCtx,
+  cache: DocCache,
+  venueIds: Set<Id<"venues">>,
+) {
   const venues = [];
   for (const venueId of venueIds) {
     const venue = await cache.get(venueId);
     if (venue && venue.status !== "suspended") {
-      venues.push(toVenuePayload(venue));
+      venues.push(await toVenuePayload(ctx, venue, cache));
     }
   }
   return venues;
@@ -527,7 +531,7 @@ export const feedV2 = query({
     }
     return {
       gigs: gigPayloads,
-      venues: await hydrateVenues(cache, venueIds),
+      venues: await hydrateVenues(ctx, cache, venueIds),
       bands,
       nextStartsAt,
     };
@@ -621,7 +625,7 @@ export const pastForBand = query({
       venueIds.add(gig.venueId);
       if (gigs.length === MAX_PAST_GIGS) break;
     }
-    return { gigs, venues: await hydrateVenues(cache, venueIds) };
+    return { gigs, venues: await hydrateVenues(ctx, cache, venueIds) };
   },
 });
 

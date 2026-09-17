@@ -1,57 +1,21 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 
 import '../app_links.dart';
 import '../app_state.dart';
-import '../data/repository.dart';
 import '../models.dart';
 import '../services/media_picker.dart';
+import '../services/media_upload_service.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
+import '../widgets/application_document_tiles.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/venue_location_editor.dart';
-
-Future<String> _uploadApplicationDocument(
-  EarplugRepository repository,
-  PickedMedia media,
-) async {
-  final uploadUri = Uri.parse(
-    await repository.generateApplicationDocumentUploadUrl(),
-  );
-  if (uploadUri.scheme == 'demo') {
-    return 'demo-application-doc-${DateTime.now().microsecondsSinceEpoch}';
-  }
-  final response = await http.post(
-    uploadUri,
-    headers: {'Content-Type': media.contentType},
-    body: media.bytes,
-  );
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw Exception('Upload failed with status ${response.statusCode}');
-  }
-  return (jsonDecode(response.body) as Map<String, dynamic>)['storageId']
-      as String;
-}
-
-String _extractErrorMessage(Object error) {
-  final text = error.toString();
-  const uncaughtErrorPrefix = 'Uncaught Error:';
-  final uncaughtErrorIndex = text.lastIndexOf(uncaughtErrorPrefix);
-  if (uncaughtErrorIndex >= 0) {
-    return text
-        .substring(uncaughtErrorIndex + uncaughtErrorPrefix.length)
-        .trim();
-  }
-  return text
-      .replaceFirst(RegExp(r'^(Bad state: |Exception: |ConvexError: )'), '')
-      .trim();
-}
 
 class OrgApplyScreen extends StatefulWidget {
   const OrgApplyScreen({super.key, this.mediaPicker, this.launch});
@@ -370,7 +334,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   }
 
   Future<void> _handleMutationError(AppState app, Object error) async {
-    final message = _extractErrorMessage(error);
+    final message = stripErrorPrefix(error);
     final changedElsewhere = message.toLowerCase().contains(
       'changed elsewhere',
     );
@@ -424,7 +388,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
 
     final app = context.read<AppState>();
     try {
-      final storageId = await _uploadApplicationDocument(
+      final storageId = await uploadApplicationDocument(
         app.repository,
         selectedMedia,
       );
@@ -632,12 +596,12 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
                 ? 'SUBMITTING…'
                 : venueStep
                 ? 'CONTINUE'
-                : 'SUBMIT APPLICATION',
+                : 'SUBMIT',
             onPrimary: venueStep
                 ? (_venueComplete && !_busy ? _continue : null)
                 : (_canSubmit ? _submit : null),
             secondaryKey: const ValueKey('org-apply-save'),
-            secondaryLabel: 'SAVE FOR LATER',
+            secondaryLabel: 'SAVE DRAFT',
             onSecondary: _busy ? null : _saveForLater,
           ),
         ],
@@ -684,7 +648,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: colors.surfaceRaised,
-                borderRadius: BorderRadius.circular(99),
+                borderRadius: BorderRadius.circular(EpLayout.pillRadius),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -721,7 +685,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
         LinearProgressIndicator(
           value: venueStep ? .5 : 1,
           minHeight: 4,
-          borderRadius: BorderRadius.circular(99),
+          borderRadius: BorderRadius.circular(EpLayout.pillRadius),
           color: colors.accent,
           backgroundColor: colors.border,
           semanticsLabel: venueStep
@@ -735,7 +699,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   List<Widget> _venueFields(BuildContext context) {
     final enabled = !_busy;
     return [
-      const SectionBar.form(label: 'ORGANIZATION TYPE'),
+      const EpSectionHeader.form(label: 'ORGANIZATION TYPE'),
       Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -773,7 +737,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
           style: Theme.of(context).textTheme.epCaption,
         ),
       ],
-      SectionBar.form(
+      EpSectionHeader.form(
         label: _orgType == OrganizationType.venueOperator
             ? 'YOUR VENUE'
             : 'YOUR ORGANIZATION',
@@ -876,7 +840,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   List<Widget> _contactFields(BuildContext context) {
     final enabled = !_busy;
     return [
-      const SectionBar.form(label: 'CONTACT'),
+      const EpSectionHeader.form(label: 'CONTACT'),
       EpLabeledField(
         fieldKey: const ValueKey('org-apply-contact-name'),
         label: 'CONTACT NAME',
@@ -926,26 +890,31 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
         onChanged: _textChanged,
         onEditingComplete: _saveOnBlur,
       ),
-      SectionBar.form(label: 'VERIFICATION', count: _documents.length),
+      EpSectionHeader.form(label: 'VERIFICATION', count: _documents.length),
       if (_documents.isNotEmpty) ...[
         Wrap(
           spacing: 10,
           runSpacing: 10,
           children: [
             for (final document in _documents)
-              _DocumentTile(
+              ApplicationDocumentTile(
                 document: document,
                 enabled: enabled,
                 onRemove: () => _removeDocument(document),
+                removeKey: ValueKey(
+                  'org-apply-doc-remove-${document.storageId}',
+                ),
               ),
           ],
         ),
         const SizedBox(height: 12),
       ],
       if (_documents.length < 5)
-        _AddDocumentTile(
+        AddApplicationDocumentTile(
+          tileKey: const ValueKey('org-apply-doc-add'),
           enabled: enabled,
           onTap: _addDocument,
+          title: 'Add a verification photo',
           caption: _orgType == OrganizationType.venueOperator
               ? 'Business license, lease, or utility bill. Visible to reviewers only.'
               : 'Upload something that proves your organization exists (registration, a flyer with your name, or a social page screenshot).',
@@ -1024,128 +993,6 @@ class _RequirementsChecklist extends StatelessWidget {
             ),
           ),
       ],
-    );
-  }
-}
-
-class _DocumentTile extends StatelessWidget {
-  const _DocumentTile({
-    required this.document,
-    required this.enabled,
-    required this.onRemove,
-  });
-
-  final ApplicationDocument document;
-  final bool enabled;
-  final VoidCallback onRemove;
-
-  bool get _isImage {
-    if (document.contentType?.startsWith('image/') == true) return true;
-    final path = Uri.tryParse(document.url ?? '')?.path.toLowerCase() ?? '';
-    return RegExp(r'\.(jpe?g|png|gif|webp|heic)$').hasMatch(path);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final fallback = ColoredBox(
-      color: context.epColors.surface,
-      child: Icon(
-        _isImage ? Icons.image_outlined : Icons.description_outlined,
-        color: context.epColors.contentSecondary,
-        size: 30,
-      ),
-    );
-    return SizedBox.square(
-      dimension: 92,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: _isImage
-                  ? EpNetworkImage(
-                      url: document.url,
-                      fallback: fallback,
-                      cacheWidth: 92,
-                      cacheHeight: 92,
-                    )
-                  : fallback,
-            ),
-          ),
-          Positioned(
-            top: 2,
-            right: 2,
-            child: IconButton.filled(
-              key: ValueKey('org-apply-doc-remove-${document.storageId}'),
-              tooltip: 'Remove document',
-              onPressed: enabled ? onRemove : null,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-              icon: const Icon(Icons.close, size: 17),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AddDocumentTile extends StatelessWidget {
-  const _AddDocumentTile({
-    required this.enabled,
-    required this.onTap,
-    this.caption =
-        'Business license, lease, or utility bill. Visible to reviewers only.',
-  });
-
-  final bool enabled;
-  final VoidCallback onTap;
-  final String caption;
-
-  @override
-  Widget build(BuildContext context) {
-    return DashedBox(
-      key: const ValueKey('org-apply-doc-add'),
-      padding: EdgeInsets.zero,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: enabled ? onTap : null,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.add_a_photo_outlined,
-                  color: enabled
-                      ? context.epColors.accent
-                      : context.epColors.contentDisabled,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Add a verification photo',
-                        style: Theme.of(context).textTheme.epBody.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        caption,
-                        style: Theme.of(context).textTheme.epCaption,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:earplug/app_links.dart';
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
@@ -19,6 +17,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import 'support/fakes.dart';
+import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
@@ -1026,12 +1025,7 @@ class _NonOwningAppHost extends StatelessWidget {
       ChangeNotifierProvider<AppState>.value(value: app(), child: child);
 }
 
-final _licensePhoto = PickedMedia(
-  bytes: Uint8List.fromList([1, 2, 3]),
-  filename: 'license.jpg',
-  contentType: 'image/jpeg',
-  sizeBytes: 3,
-);
+final _licensePhoto = stubPhotoFixture(filename: 'license.jpg');
 
 void _disposeApp(AppState app) {
   try {

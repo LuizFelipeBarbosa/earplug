@@ -8,6 +8,10 @@ import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_sheet.dart';
+import '../widgets/ep_states.dart';
+import '../widgets/ep_text.dart';
+import '../widgets/form_bits.dart';
 import '../widgets/opportunity_labels.dart';
 import '../widgets/send_offer_sheet.dart';
 
@@ -73,6 +77,15 @@ class _OpportunityApplicantsScreenState
           _selectedSlotId = null;
         }
       });
+      final unreviewedIds = [
+        for (final row in applicants)
+          if (row.application.status == ArtistApplicationStatus.submitted ||
+              row.application.status == ArtistApplicationStatus.underReview)
+            row.application.id,
+      ];
+      if (unreviewedIds.isNotEmpty) {
+        unawaited(app.markApplicationsViewed(unreviewedIds));
+      }
     } catch (error) {
       if (!mounted || !identical(_loadToken, token)) return;
       setState(() {
@@ -92,10 +105,11 @@ class _OpportunityApplicantsScreenState
     setState(() => _reviewing = true);
     try {
       if (action == ArtistApplicationReviewAction.declined) {
-        final confirmed = await _confirm(
+        final confirmed = await epConfirm(
           context,
-          'Decline this applicant?',
-          'The application will be declined and removed from the active applicant count.',
+          title: 'Decline this applicant?',
+          body:
+              'The application will be declined and removed from the active applicant count.',
         );
         if (!confirmed || !mounted) return;
       }
@@ -135,8 +149,7 @@ class _OpportunityApplicantsScreenState
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final opportunity = _opportunity;
-    final slots = [...?opportunity?.slots]
-      ..sort((a, b) => a.order.compareTo(b.order));
+    final slots = opportunity?.orderedSlots ?? const [];
     final applicants = _applicants
         .where(
           (row) =>
@@ -151,7 +164,7 @@ class _OpportunityApplicantsScreenState
         16,
         headerTopPad(context),
         16,
-        tabBarClearance,
+        MediaQuery.paddingOf(context).bottom + 24,
       ),
       children: [
         if (opportunity != null) ...[
@@ -165,7 +178,7 @@ class _OpportunityApplicantsScreenState
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              StatusPill(
+              EpBadge(
                 label: opportunityStatusLabel(opportunity.status),
                 tone: opportunityStatusTone(opportunity.status),
               ),
@@ -203,24 +216,15 @@ class _OpportunityApplicantsScreenState
             child: Center(child: CircularProgressIndicator()),
           )
         else if (_loadFailed)
-          Column(
-            children: [
-              const Text('Could not load applicants. Please retry.'),
-              TextButton(
-                onPressed: () => unawaited(_load(refresh: true)),
-                child: const Text('RETRY'),
-              ),
-            ],
+          EpInlineRetry(
+            message: 'Could not load applicants. Please retry.',
+            onRetry: () => unawaited(_load(refresh: true)),
           )
         else if (applicants.isEmpty)
-          DashedBox(
-            child: Text(
-              _selectedSlotId == null
-                  ? 'No applicants yet.'
-                  : 'No applicants for this slot yet.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.epCaption,
-            ),
+          EmptyNote(
+            message: _selectedSlotId == null
+                ? 'No applicants yet.'
+                : 'No applicants for this slot yet.',
           )
         else if (opportunity != null)
           for (final row in applicants) ...[
@@ -312,7 +316,7 @@ class _ApplicantCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(application.message, style: textTheme.epBody),
           const SizedBox(height: 10),
-          StatusPill(
+          EpBadge(
             label: applicationStatusLabel(application.status),
             tone: applicationStatusTone(application.status),
           ),
@@ -453,14 +457,16 @@ class _ApplicantInsightsSectionState extends State<_ApplicantInsightsSection> {
               dimension: 20,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
-          else if (_failed) ...[
-            const Text('Could not load insights. Please retry.'),
-            TextButton(
-              key: ValueKey('applicant-${widget.applicationId}-insights-retry'),
-              onPressed: () => unawaited(_load(refresh: true)),
-              child: const Text('RETRY'),
-            ),
-          ] else if (insights != null)
+          else if (_failed)
+            EpInlineRetry(
+              message: 'Could not load insights. Please retry.',
+              retryKey: ValueKey(
+                'applicant-${widget.applicationId}-insights-retry',
+              ),
+              onRetry: () => unawaited(_load(refresh: true)),
+              crossAxisAlignment: CrossAxisAlignment.start,
+            )
+          else if (insights != null)
             Column(
               key: ValueKey('applicant-${widget.applicationId}-insights-panel'),
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -504,7 +510,7 @@ class _ApplicantInsightsSectionState extends State<_ApplicantInsightsSection> {
                       : 'Returning attendees: ${insights.returningAttendees}',
                 ),
                 const SizedBox(height: 10),
-                Text(_estimatedDrawLabel(insights.estimatedDraw)),
+                Text(estimatedDrawLabel(insights.estimatedDraw)),
                 const SizedBox(height: 10),
                 Text(
                   insights.byArea.suppressed
@@ -540,30 +546,3 @@ Widget _insightStat(BuildContext context, String label, int count) => Column(
     Text('$count', style: Theme.of(context).textTheme.epSectionHeading),
   ],
 );
-
-String _estimatedDrawLabel(EstimatedDraw? draw) {
-  if (draw == null) return 'Estimated draw: No history yet';
-  final basis = draw.basis == DrawBasis.checkIns ? 'check-ins' : 'RSVPs';
-  return 'Estimated draw: ${draw.low}–${draw.high} · '
-      '${draw.confidence.wireValue} confidence · based on $basis';
-}
-
-Future<bool> _confirm(BuildContext context, String title, String body) async =>
-    await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(body),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('KEEP'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text('CONFIRM'),
-          ),
-        ],
-      ),
-    ) ??
-    false;

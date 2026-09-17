@@ -5,17 +5,19 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../date_names.dart';
+import '../initials.dart';
 import '../models.dart';
 import '../services/image_url.dart';
 import '../theme.dart';
+import 'ep_rows.dart';
+import 'ep_text.dart';
 
 /// Top padding for screen headers: status bar / notch plus breathing room.
-double headerTopPad(BuildContext context) => EpLayout.isDesktop(context)
-    ? 28
-    : math.max(MediaQuery.paddingOf(context).top, 14) + 10;
+double headerTopPad(BuildContext context) =>
+    EpLayout.isDesktop(context) ? 28 : MediaQuery.paddingOf(context).top + 22;
 
-/// Bottom inset used by scrollables so content clears the floating tab bar.
-const double tabBarClearance = 96;
+/// Bottom inset used by scrollables so content clears the tab bar.
+const double tabBarClearance = EpLayout.tabBarHeight + 32;
 
 double actionBarClearance(BuildContext context) =>
     EpLayout.stackActions(context) ? 200 : 112;
@@ -39,83 +41,89 @@ class ScreenHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // RootShell supplies the 28px desktop shell inset; mobile screens need
+    // the full status-bar-aware header offset here.
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(
-        16,
-        headerTopPad(context),
-        16,
+        EpLayout.gutter,
+        EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
+        EpLayout.gutter,
         bottomPadding,
       ),
       decoration: BoxDecoration(
         color: filled ? context.epColors.background : null,
-        border: Border(bottom: BorderSide(color: context.epColors.border)),
+        border: Border(bottom: BorderSide(color: context.epColors.line)),
       ),
       child: child,
     );
   }
 }
 
-/// A consistent page title with room for longer labels and larger text.
-/// On compact pages, actions sit below the title instead of squeezing it.
-class EpPageHeading extends StatelessWidget {
-  const EpPageHeading({
+/// A pushed screen's title row: the back pill, the page heading and an
+/// optional trailing control placed directly after the title.
+class EpBackHeading extends StatelessWidget {
+  const EpBackHeading({
     super.key,
     required this.title,
-    this.description,
-    this.leading,
-    this.action,
+    required this.backKey,
+    required this.onBack,
+    this.backLabel = 'Back',
+    this.trailing,
   });
 
   final String title;
-  final String? description;
-  final Widget? leading;
-  final Widget? action;
+  final Key backKey;
+  final VoidCallback? onBack;
+  final String backLabel;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final stackAction =
-            constraints.maxWidth < 560 ||
-            MediaQuery.textScalerOf(context).scale(1) > 1.2;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                if (leading != null) ...[leading!, const SizedBox(width: 10)],
-                Expanded(
-                  child: Semantics(
-                    header: true,
-                    child: Text(
-                      title,
-                      style: Theme.of(context).textTheme.epPageHeading,
-                    ),
-                  ),
-                ),
-                if (action != null && !stackAction) ...[
-                  const SizedBox(width: 16),
-                  action!,
-                ],
-              ],
-            ),
-            if (description != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                description!,
-                style: Theme.of(context).textTheme.epBody.copyWith(
-                  color: context.epColors.contentSecondary,
-                ),
-              ),
-            ],
-            if (action != null && stackAction) ...[
-              const SizedBox(height: 12),
-              Align(alignment: Alignment.centerLeft, child: action!),
-            ],
-          ],
-        );
-      },
+    return Row(
+      children: [
+        EpIconPill(
+          key: backKey,
+          icon: Icons.arrow_back,
+          semanticLabel: backLabel,
+          onPressed: onBack,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(title, style: Theme.of(context).textTheme.epPageHeading),
+        ),
+        ?trailing,
+      ],
+    );
+  }
+}
+
+/// A lone back pill under the status bar, inset by the page gutters.
+class EpBackBar extends StatelessWidget {
+  const EpBackBar({super.key, required this.controlKey, required this.onBack});
+
+  final Key controlKey;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        EpLayout.gutter,
+        EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
+        EpLayout.gutter,
+        0,
+      ),
+      child: Row(
+        children: [
+          EpIconPill(
+            key: controlKey,
+            icon: Icons.arrow_back,
+            semanticLabel: 'Back',
+            onPressed: onBack,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -179,131 +187,16 @@ class EpNetworkImage extends StatelessWidget {
   }
 }
 
-class SectionLabel extends StatelessWidget {
-  final String text;
-  final bool blue;
-
-  const SectionLabel(this.text, {super.key, this.blue = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: Theme.of(context).textTheme.epLabel.copyWith(
-        fontWeight: FontWeight.w800,
-        letterSpacing: 1.4,
-        color: blue
-            ? context.epColors.accent
-            : context.epColors.contentSecondary,
-      ),
-    );
-  }
-}
-
-/// Calendar/list section heading used by both fan and band surfaces.
-class SectionBar extends StatelessWidget {
-  const SectionBar({
-    super.key,
-    required this.label,
-    this.count,
-    this.trailing,
-    this.padding = const EdgeInsets.only(top: 20, bottom: 10),
-  });
-
-  const SectionBar.form({
-    super.key,
-    required this.label,
-    this.count,
-    this.trailing,
-  }) : padding = const EdgeInsets.only(
-         top: EpLayout.formSectionGap,
-         bottom: 12,
-       );
-
-  final String label;
-  final int? count;
-  final Widget? trailing;
-  final EdgeInsets padding;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = count == null
-        ? label.toUpperCase()
-        : '${label.toUpperCase()} · $count';
-    return Padding(
-      padding: padding,
-      child: Row(
-        children: [
-          Container(
-            width: 16,
-            height: 3,
-            decoration: BoxDecoration(
-              color: context.epColors.volt,
-              borderRadius: BorderRadius.circular(99),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(text, style: Theme.of(context).textTheme.epSection),
-          ),
-          ?trailing,
-        ],
-      ),
-    );
-  }
-}
-
-/// The small tracked-out text button at the end of a section heading —
-/// "SEE ALL 12", "SEE LESS VENUES".
-class SectionActionButton extends StatelessWidget {
-  const SectionActionButton({
-    super.key,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final String label;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextButton(
-      onPressed: onPressed,
-      child: Text(
-        label,
-        maxLines: 2,
-        textAlign: TextAlign.end,
-        style: Theme.of(
-          context,
-        ).textTheme.epLabel.copyWith(fontSize: 11, letterSpacing: .7),
-      ),
-    );
-  }
-}
-
 /// A date-first visual anchor for event and history rows.
 class DateBlock extends StatelessWidget {
-  const DateBlock({
-    super.key,
-    required this.day,
-    required this.month,
-    this.semanticLabel,
-    this.size = 40,
-  });
-
   /// Zero-padded day over the three-letter month, e.g. "07" / "SEP".
-  DateBlock.forDate(
-    DateTime date, {
-    super.key,
-    this.semanticLabel,
-    this.size = 40,
-  }) : day = date.day.toString().padLeft(2, '0'),
-       month = monthNamesUpper[date.month - 1];
+  DateBlock.forDate(DateTime date, {super.key, this.semanticLabel})
+    : day = date.day.toString().padLeft(2, '0'),
+      month = monthNamesUpper[date.month - 1];
 
   final String day;
   final String month;
   final String? semanticLabel;
-  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -312,42 +205,27 @@ class DateBlock extends StatelessWidget {
       image: true,
       child: ExcludeSemantics(
         child: SizedBox(
-          width: size,
-          height: size,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: context.epColors.raised,
-              border: Border.all(color: context.epColors.border),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: MediaQuery.withNoTextScaling(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      day.trim(),
-                      maxLines: 1,
-                      style: Theme.of(context).textTheme.epDisplay.copyWith(
-                        fontSize: size * .43,
-                        height: 1,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      month.trim().toUpperCase(),
-                      maxLines: 1,
-                      style: Theme.of(context).textTheme.epChipLabel.copyWith(
-                        color: context.epColors.volt,
-                        fontSize: math.max(11, size * .175),
-                        letterSpacing: 1.1,
-                        height: 1,
-                      ),
-                    ),
-                  ],
+          width: 40,
+          child: MediaQuery.withNoTextScaling(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  day.trim().toUpperCase(),
+                  semanticsLabel: day,
+                  style: Theme.of(context).textTheme.epPosterTitle.copyWith(
+                    color: context.epColors.ink,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 4),
+                Text(
+                  month.trim().toUpperCase(),
+                  semanticsLabel: month,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.epSection.copyWith(color: context.epColors.muted),
+                ),
+              ],
             ),
           ),
         ),
@@ -383,16 +261,25 @@ class EpChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final enabled = onTap != null || onRemoved != null;
     final locked = active && !enabled && !readOnly;
+    final palette = context.epColors;
+    final transparent = palette.background.withValues(alpha: 0);
     final textStyle = Theme.of(context).textTheme.epChipLabel.copyWith(
-      color: !enabled && !active
-          ? context.epColors.contentDisabled
+      color: !enabled && !active && !readOnly
+          ? palette.contentDisabled
           : active
           ? neutralSelected
-                ? context.epColors.contentPrimary
-                : context.epColors.onHighlight
-          : ghost
-          ? context.epColors.mute
-          : context.epColors.contentSecondary,
+                ? palette.ink
+                : palette.onAccent
+          : palette.ink,
+    );
+    final selectedColor = neutralSelected
+        ? palette.surfaceSelected
+        : palette.ink;
+    final side = active ? BorderSide.none : BorderSide(color: palette.outline);
+    final labelText = Text(
+      label.toUpperCase(),
+      semanticsLabel: semanticLabel ?? label,
+      style: textStyle,
     );
     if (ghost) {
       return Semantics(
@@ -403,19 +290,22 @@ class EpChip extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
           child: Material(
-            color: Colors.transparent,
+            type: MaterialType.transparency,
             child: InkWell(
               onTap: onTap,
               customBorder: const StadiumBorder(),
               child: Center(
                 child: DashedBox(
                   expand: false,
-                  radius: 99,
+                  radius: EpLayout.pillRadius,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
+                    horizontal: 16,
+                    vertical: 8,
                   ),
-                  child: Text(label.toUpperCase(), style: textStyle),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 20),
+                    child: labelText,
+                  ),
                 ),
               ),
             ),
@@ -427,46 +317,28 @@ class EpChip extends StatelessWidget {
       return ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
         child: InputChip(
-          labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-          label: Text(label.toUpperCase(), style: textStyle),
+          labelPadding: EdgeInsets.zero,
+          label: labelText,
           selected: active,
           onPressed: onTap,
           onDeleted: onRemoved,
           deleteIcon: Icon(Icons.close, size: 16),
-          deleteIconColor: active && !neutralSelected
-              ? context.epColors.onHighlight
-              : context.epColors.mute,
+          deleteIconColor: textStyle.color,
           showCheckmark: false,
-          backgroundColor: Colors.transparent,
-          selectedColor: neutralSelected
-              ? context.epColors.surfaceDisabled
-              : context.epColors.highlight,
-          disabledColor: Colors.transparent,
-          side: BorderSide(
-            color: active && neutralSelected
-                ? context.epColors.contentSecondary
-                : active
-                ? context.epColors.highlight
-                : context.epColors.border,
-          ),
+          backgroundColor: transparent,
+          selectedColor: selectedColor,
+          disabledColor: transparent,
+          side: side,
           shape: const StadiumBorder(),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         ),
       );
     }
-    final selectedColor = neutralSelected
-        ? context.epColors.surfaceDisabled
-        : context.epColors.highlight;
-    final borderColor = active && neutralSelected
-        ? context.epColors.contentSecondary
-        : active
-        ? context.epColors.highlight
-        : context.epColors.border;
     final chip = ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
       child: FilterChip(
-        labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-        label: Text(label.toUpperCase(), style: textStyle),
+        labelPadding: EdgeInsets.zero,
+        label: labelText,
         selected: active,
         // Keep RawChip enabled so it does not fade the selected label.
         onSelected: locked || readOnly
@@ -476,20 +348,14 @@ class EpChip extends StatelessWidget {
             : (_) => onTap!(),
         onDeleted: onRemoved,
         deleteIcon: Icon(Icons.close, size: 16),
-        deleteIconColor: active && !neutralSelected
-            ? context.epColors.onHighlight
-            : context.epColors.mute,
+        deleteIconColor: textStyle.color,
         showCheckmark: false,
-        backgroundColor: Colors.transparent,
-        selectedColor: locked
-            ? selectedColor.withValues(alpha: .55)
-            : selectedColor,
-        disabledColor: Colors.transparent,
-        side: BorderSide(
-          color: locked ? borderColor.withValues(alpha: .55) : borderColor,
-        ),
+        backgroundColor: transparent,
+        selectedColor: selectedColor,
+        disabledColor: transparent,
+        side: side,
         shape: const StadiumBorder(),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       ),
     );
     if (locked || readOnly) {
@@ -499,66 +365,7 @@ class EpChip extends StatelessWidget {
   }
 }
 
-enum EpStatusPillTone { success, selected, warning, neutral }
-
-/// Small, textual state marker. Color is never the only status signal.
-class StatusPill extends StatelessWidget {
-  const StatusPill({
-    super.key,
-    required this.label,
-    this.tone = EpStatusPillTone.success,
-  });
-
-  final String label;
-  final EpStatusPillTone tone;
-
-  @override
-  Widget build(BuildContext context) {
-    final (background, foreground, border) = switch (tone) {
-      EpStatusPillTone.success => (
-        context.epColors.successTint,
-        context.epColors.success,
-        context.epColors.success.withValues(alpha: .5),
-      ),
-      EpStatusPillTone.selected => (
-        context.epColors.selected,
-        context.epColors.ink,
-        context.epColors.accent,
-      ),
-      EpStatusPillTone.warning => (
-        context.epColors.warningTint,
-        context.epColors.volt,
-        context.epColors.volt,
-      ),
-      EpStatusPillTone.neutral => (
-        context.epColors.raised,
-        context.epColors.contentSecondary,
-        context.epColors.border,
-      ),
-    };
-    return Semantics(
-      label: label,
-      child: ExcludeSemantics(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-          decoration: BoxDecoration(
-            color: background,
-            border: Border.all(color: border),
-            borderRadius: BorderRadius.circular(99),
-          ),
-          child: Text(
-            label.toUpperCase(),
-            style: Theme.of(
-              context,
-            ).textTheme.epChipLabel.copyWith(color: foreground, fontSize: 11),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The single high-energy callout a page may promote above its quiet cards.
+/// The accent callout a page may promote above its quiet panels.
 class VoltStrip extends StatelessWidget {
   const VoltStrip({
     super.key,
@@ -581,34 +388,33 @@ class VoltStrip extends StatelessWidget {
       container: true,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: context.epColors.highlight,
-          borderRadius: BorderRadius.circular(14),
-        ),
+        padding: const EdgeInsets.all(20),
+        color: context.epColors.accent,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               kicker.toUpperCase(),
-              style: Theme.of(context).textTheme.epSection.copyWith(
-                color: context.epColors.onHighlight,
-                fontSize: 11,
-              ),
+              semanticsLabel: kicker,
+              style: Theme.of(
+                context,
+              ).textTheme.epSection.copyWith(color: context.epColors.onAccent),
             ),
             const SizedBox(height: 6),
             Text(
-              title,
-              style: Theme.of(context).textTheme.epPosterTitle.copyWith(
-                color: context.epColors.onHighlight,
-              ),
+              title.toUpperCase(),
+              semanticsLabel: title,
+              style: Theme.of(context).textTheme
+                  .epDisplayAt(40)
+                  .copyWith(color: context.epColors.onAccent, height: .9),
             ),
             const SizedBox(height: 5),
             Text(
-              meta,
+              meta.toUpperCase(),
+              semanticsLabel: meta,
               style: Theme.of(
                 context,
-              ).textTheme.epMeta.copyWith(color: context.epColors.onHighlight),
+              ).textTheme.epMeta.copyWith(color: context.epColors.onAccent),
             ),
             if (actionLabel != null) ...[
               const SizedBox(height: 10),
@@ -616,16 +422,26 @@ class VoltStrip extends StatelessWidget {
                 onPressed: onAction,
                 style: ButtonStyle(
                   minimumSize: WidgetStatePropertyAll(Size(48, 48)),
+                  padding: WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                  shape: WidgetStatePropertyAll(StadiumBorder()),
+                  textStyle: WidgetStatePropertyAll(
+                    Theme.of(context).textTheme.epLabel,
+                  ),
                   backgroundColor: WidgetStatePropertyAll(
-                    context.epColors.onHighlight,
+                    context.epColors.background,
                   ),
                   foregroundColor: WidgetStateProperty.resolveWith(
                     (states) => states.contains(WidgetState.disabled)
-                        ? context.epColors.mute
-                        : context.epColors.highlight,
+                        ? context.epColors.contentDisabled
+                        : context.epColors.ink,
                   ),
                 ),
-                child: Text(actionLabel!.toUpperCase()),
+                child: Text(
+                  actionLabel!.toUpperCase(),
+                  semanticsLabel: actionLabel,
+                ),
               ),
             ],
           ],
@@ -659,11 +475,22 @@ class LedgerRow extends StatelessWidget {
       children: [
         if (leading != null) ...[leading!, const SizedBox(width: 8)],
         Expanded(
-          child: Text(
-            description,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.epMeta,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(
+                  context,
+                ).textTheme.epBody.copyWith(color: context.epColors.ink),
+              ),
+              if (details.isNotEmpty)
+                Text(
+                  details.join(' · ').toUpperCase(),
+                  semanticsLabel: details.join(' · '),
+                  style: Theme.of(context).textTheme.epMeta,
+                ),
+            ],
           ),
         ),
         if (trailing != null) ...[const SizedBox(width: 8), trailing!],
@@ -674,52 +501,26 @@ class LedgerRow extends StatelessWidget {
       button: onTap != null,
       label: description,
       excludeSemantics: true,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
-        child: Material(
-          color: Colors.transparent,
-          child: onTap == null
-              ? Align(alignment: Alignment.centerLeft, child: content)
-              : InkWell(onTap: onTap, child: content),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          child: EpRow(
+            minHeight: 47,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: content,
+          ),
         ),
       ),
     );
   }
 }
 
-/// FREE / $n price tag (the spec's badgeStyle).
-class PriceBadge extends StatelessWidget {
-  final Gig gig;
-
-  const PriceBadge(this.gig, {super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: gig.free ? Ep.brand : null,
-        border: gig.free ? null : Border.all(color: context.epColors.border),
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Text(
-        gig.priceLabel,
-        style: Theme.of(context).textTheme.epLabel.copyWith(
-          fontSize: 11,
-          fontWeight: FontWeight.w900,
-          letterSpacing: .8,
-          color: gig.free ? Colors.white : context.epColors.contentPrimary,
-        ),
-      ),
-    );
-  }
-}
-
-class FlyerPatternPainter extends CustomPainter {
+class _FlyerPatternPainter extends CustomPainter {
   final FlyerStyle style;
   final double scale;
 
-  const FlyerPatternPainter(this.style, this.scale);
+  const _FlyerPatternPainter(this.style, this.scale);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -776,7 +577,7 @@ class FlyerPatternPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(FlyerPatternPainter old) =>
+  bool shouldRepaint(_FlyerPatternPainter old) =>
       old.style != style || old.scale != scale;
 }
 
@@ -804,10 +605,10 @@ class FlyerBox extends StatelessWidget {
     this.imageUrl,
     this.width,
     this.height,
-    this.radius = 6,
+    this.radius = 0,
     this.padding = EdgeInsets.zero,
     this.child,
-    this.shadow = true,
+    this.shadow = false,
     this.scrim = false,
     this.patternScale = 1,
   });
@@ -823,7 +624,7 @@ class FlyerBox extends StatelessWidget {
         boxShadow: shadow
             ? [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: .5),
+                  color: context.epColors.background.withValues(alpha: .5),
                   blurRadius: 10,
                   offset: const Offset(0, 3),
                 ),
@@ -833,7 +634,7 @@ class FlyerBox extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: imageUrl == null || imageUrl!.isEmpty
           ? CustomPaint(
-              painter: FlyerPatternPainter(style, patternScale),
+              painter: _FlyerPatternPainter(style, patternScale),
               child: Padding(padding: padding, child: child),
             )
           : RepaintBoundary(
@@ -846,19 +647,13 @@ class FlyerBox extends StatelessWidget {
                     cacheWidth: (width ?? 448).round(),
                     cacheHeight: height?.round(),
                     fallback: CustomPaint(
-                      painter: FlyerPatternPainter(style, patternScale),
+                      painter: _FlyerPatternPainter(style, patternScale),
                     ),
                   ),
                   if (scrim)
                     const DecoratedBox(
                       key: ValueKey('flyer-image-scrim'),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Color(0xA8000000), Color(0xBD000000)],
-                        ),
-                      ),
+                      decoration: BoxDecoration(gradient: Ep.bannerScrim),
                     ),
                   Padding(padding: padding, child: child),
                 ],
@@ -886,10 +681,10 @@ class GigFlyer extends StatelessWidget {
     super.key,
     this.width,
     this.height,
-    this.radius = 6,
+    this.radius = 0,
     this.padding = EdgeInsets.zero,
     this.child,
-    this.shadow = true,
+    this.shadow = false,
     this.scrim = false,
     this.patternScale = 1,
   });
@@ -911,7 +706,7 @@ class GigFlyer extends StatelessWidget {
   }
 }
 
-/// The fan-profile avatar: an uploaded photo, or initials on the brand color.
+/// The fan-profile avatar: an uploaded photo, or initials on a square panel.
 ///
 /// Kept separate from [BandAvatar] so the personal-identity fallback stays
 /// consistent everywhere it appears.
@@ -921,31 +716,30 @@ class EpFanAvatar extends StatelessWidget {
     required this.name,
     this.imageUrl,
     this.size = 40,
-    this.radius = 9,
-    this.fontSize,
   });
 
   final String? name;
   final String? imageUrl;
   final double size;
-  final double radius;
-  final double? fontSize;
 
   @override
   Widget build(BuildContext context) {
-    final initials = _profileInitials(name);
+    final initials = initialsFirstWords(name);
     final fallback = ColoredBox(
-      color: Ep.brand,
+      color: context.epColors.panel,
       child: Center(
         child: initials == '??'
-            ? Icon(Icons.person, size: size * .52, color: Colors.white)
+            ? Icon(
+                Icons.person,
+                size: size * .52,
+                color: context.epColors.muted,
+              )
             : Text(
-                initials,
-                style: Theme.of(context).textTheme.epLabel.copyWith(
-                  color: Colors.white,
-                  fontSize: fontSize ?? size * .34,
-                  fontWeight: FontWeight.w800,
-                ),
+                initials.toUpperCase(),
+                semanticsLabel: initials,
+                style: Theme.of(context).textTheme
+                    .epDisplayAt(size * .45)
+                    .copyWith(color: context.epColors.ink),
               ),
       ),
     );
@@ -956,8 +750,8 @@ class EpFanAvatar extends StatelessWidget {
           ? 'Profile avatar'
           : '${name!.trim()} avatar',
       child: ExcludeSemantics(
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(radius),
+        child: ClipRect(
+          clipBehavior: Clip.antiAlias,
           child: SizedBox.square(
             dimension: size,
             child: EpNetworkImage(
@@ -973,30 +767,74 @@ class EpFanAvatar extends StatelessWidget {
   }
 }
 
-class ProfileCompleteBadge extends StatelessWidget {
-  const ProfileCompleteBadge({super.key});
+/// Name over the optional scene and member-since captions, as on the fan
+/// profile header and its edit-screen preview.
+class FanIdentityLines extends StatelessWidget {
+  const FanIdentityLines({
+    super.key,
+    required this.name,
+    required this.homeLocation,
+    required this.createdAt,
+    required this.nameKey,
+    required this.sceneKey,
+    required this.sinceKey,
+    this.showUnknownScene = false,
+  });
+
+  final String name;
+  final FanCity? homeLocation;
+  final DateTime? createdAt;
+  final Key nameKey;
+  final Key sceneKey;
+  final Key sinceKey;
+
+  /// Renders a muted "Scene unknown" line when [homeLocation] is null.
+  final bool showUnknownScene;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const Key('profile-complete-badge'),
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-      decoration: BoxDecoration(
-        color: context.epColors.success.withValues(alpha: .12),
-        border: Border.all(
-          color: context.epColors.success.withValues(alpha: .55),
-        ),
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Text(
-        'PROFILE COMPLETE',
-        style: Theme.of(context).textTheme.epCaption.copyWith(
-          color: context.epColors.success,
-          fontSize: 11,
-          fontWeight: FontWeight.w900,
-          letterSpacing: .7,
-        ),
-      ),
+    final caption = Theme.of(context).textTheme.epCaption;
+    final palette = context.epColors;
+    final Widget? scene;
+    if (homeLocation case final FanCity city) {
+      scene = Text(
+        '${city.label} scene',
+        key: sceneKey,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: caption.copyWith(color: palette.ink),
+      );
+    } else if (showUnknownScene) {
+      scene = Text(
+        'Scene unknown',
+        key: sceneKey,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: caption.copyWith(color: palette.muted),
+      );
+    } else {
+      scene = null;
+    }
+    final Widget? since;
+    if (createdAt case final date?) {
+      since = Text(
+        'Since ${monthNames[date.month - 1]} ${date.year}',
+        key: sinceKey,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: caption.copyWith(color: palette.muted),
+      );
+    } else {
+      since = null;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        EpDisplay(name, key: nameKey, size: 20, keepCase: true),
+        if (scene != null || since != null) const SizedBox(height: 2),
+        ?scene,
+        ?since,
+      ],
     );
   }
 }
@@ -1005,16 +843,8 @@ class ProfileCompleteBadge extends StatelessWidget {
 class BandAvatar extends StatelessWidget {
   final Band band;
   final double size;
-  final double radius;
-  final double fontSize;
 
-  const BandAvatar(
-    this.band, {
-    super.key,
-    this.size = 40,
-    this.radius = 9,
-    this.fontSize = 14,
-  });
+  const BandAvatar(this.band, {super.key, this.size = 40});
 
   @override
   Widget build(BuildContext context) {
@@ -1022,8 +852,6 @@ class BandAvatar extends StatelessWidget {
       name: band.name,
       imageUrl: band.profileImageUrl,
       size: size,
-      radius: radius,
-      fontSize: fontSize,
     );
   }
 }
@@ -1031,16 +859,12 @@ class BandAvatar extends StatelessWidget {
 class CircleIconButton extends StatelessWidget {
   final VoidCallback? onTap;
   final IconData icon;
-  final Color? background;
-  final bool bordered;
   final String? tooltip;
 
   const CircleIconButton({
     super.key,
     required this.onTap,
-    this.icon = Icons.chevron_left,
-    this.background,
-    this.bordered = true,
+    this.icon = Icons.arrow_back,
     this.tooltip,
   });
 
@@ -1061,32 +885,29 @@ class CircleIconButton extends StatelessWidget {
         foregroundColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.disabled)
               ? context.epColors.contentDisabled
-              : context.epColors.contentPrimary,
+              : context.epColors.ink,
         ),
         overlayColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.pressed)) {
-            return context.epColors.contentPrimary.withValues(alpha: .14);
+            return context.epColors.ink.withValues(alpha: .14);
           }
           if (states.contains(WidgetState.hovered) ||
               states.contains(WidgetState.focused)) {
-            return context.epColors.contentPrimary.withValues(alpha: .08);
+            return context.epColors.ink.withValues(alpha: .08);
           }
-          return Colors.transparent;
+          return context.epColors.background.withValues(alpha: 0);
         }),
         shape: WidgetStatePropertyAll(CircleBorder()),
       ),
       icon: Container(
-        width: 40,
-        height: 40,
+        width: 36,
+        height: 36,
         decoration: BoxDecoration(
-          color: onTap == null
-              ? context.epColors.surfaceDisabled
-              : background ?? context.epColors.surface,
-          borderRadius: BorderRadius.circular(EpLayout.controlRadius),
-          border: bordered ? Border.all(color: context.epColors.border) : null,
+          shape: BoxShape.circle,
+          border: Border.all(color: context.epColors.outline),
         ),
         alignment: Alignment.center,
-        child: Icon(icon, size: 20),
+        child: Icon(icon, size: 16),
       ),
     );
   }
@@ -1107,88 +928,67 @@ class EpButton extends StatelessWidget {
     super.key,
     required this.onTap,
     this.kind = EpButtonKind.filled,
-    this.fontSize = 13.5,
+    this.fontSize = 12,
     this.padding = const EdgeInsets.symmetric(vertical: 15),
   });
 
   @override
   Widget build(BuildContext context) {
     final callback = kind == EpButtonKind.disabled ? null : onTap;
+    final palette = context.epColors;
+    final transparent = palette.background.withValues(alpha: 0);
     final (Color background, Color foreground) = switch (kind) {
-      EpButtonKind.light => (
-        context.epColors.contentPrimary,
-        context.epColors.background,
-      ),
-      EpButtonKind.filled ||
-      EpButtonKind.outline ||
-      EpButtonKind.ghost => (Ep.brand, Colors.white),
-      EpButtonKind.disabled => (
-        context.epColors.surfaceDisabled,
-        context.epColors.contentDisabled,
-      ),
+      EpButtonKind.light => (palette.ink, palette.onAccent),
+      EpButtonKind.filled => (palette.accent, palette.onAccent),
+      EpButtonKind.outline || EpButtonKind.ghost => (transparent, palette.ink),
+      EpButtonKind.disabled => (transparent, palette.contentDisabled),
     };
     final style = ButtonStyle(
       minimumSize: WidgetStatePropertyAll(Size(48, 48)),
       padding: WidgetStatePropertyAll(padding),
       backgroundColor: WidgetStateProperty.resolveWith(
-        (states) => states.contains(WidgetState.disabled)
-            ? context.epColors.surfaceDisabled
-            : background,
+        (states) =>
+            states.contains(WidgetState.disabled) ? transparent : background,
       ),
       foregroundColor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.disabled)
-            ? context.epColors.contentDisabled
+            ? palette.contentDisabled
             : foreground,
       ),
       textStyle: WidgetStatePropertyAll(
-        Theme.of(context).textTheme.epLabel.copyWith(
-          fontSize: fontSize,
-          fontWeight: FontWeight.w800,
-          letterSpacing: .8,
-        ),
+        Theme.of(context).textTheme.epLabel.copyWith(fontSize: fontSize),
       ),
       side: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.disabled)) {
-          return BorderSide(color: context.epColors.surfaceDisabled);
+          return BorderSide(color: palette.outline);
         }
         if (states.contains(WidgetState.focused)) {
-          return BorderSide(color: context.epColors.contentPrimary, width: 2);
+          return BorderSide(color: palette.ink, width: 2);
         }
         return switch (kind) {
-          EpButtonKind.outline => BorderSide(
-            color: context.epColors.accent,
-            width: 1.5,
-          ),
-          EpButtonKind.ghost => BorderSide(color: context.epColors.border),
+          EpButtonKind.outline => BorderSide(color: palette.outline),
           _ => BorderSide.none,
         };
       }),
-      shape: WidgetStatePropertyAll(
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
+      shape: WidgetStatePropertyAll(StadiumBorder()),
+    );
+    final text = Text(
+      label.toUpperCase(),
+      semanticsLabel: label,
+      textAlign: TextAlign.center,
     );
     final button = switch (kind) {
       EpButtonKind.outline || EpButtonKind.ghost => OutlinedButton(
         onPressed: callback,
-        style: style.copyWith(
-          backgroundColor: WidgetStatePropertyAll(Colors.transparent),
-          foregroundColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.disabled)
-                ? context.epColors.contentDisabled
-                : kind == EpButtonKind.outline
-                ? context.epColors.accent
-                : context.epColors.contentPrimary,
-          ),
-        ),
-        child: Text(label, textAlign: TextAlign.center),
-      ),
-      _ => FilledButton(
-        onPressed: callback,
         style: style,
-        child: Text(label, textAlign: TextAlign.center),
+        child: text,
       ),
+      _ => FilledButton(onPressed: callback, style: style, child: text),
     };
-    return SizedBox(width: double.infinity, child: button);
+    return Semantics(
+      enabled: callback != null,
+      child: SizedBox(width: double.infinity, child: button),
+    );
   }
 }
 
@@ -1197,7 +997,7 @@ class EpButton extends StatelessWidget {
 InputDecoration epInputDecoration(BuildContext context, String hint) =>
     InputDecoration(hintText: hint);
 
-/// Compact dashboard metric with a label, headline value, and caption.
+/// Unchromed dashboard metric with a headline value, label, and caption.
 class EpStatCard extends StatelessWidget {
   final String label;
   final String value;
@@ -1215,54 +1015,47 @@ class EpStatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textScale = MediaQuery.textScalerOf(context).scale(1);
-    final tile = EpCard(
+    final tile = Padding(
       padding: const EdgeInsets.all(12),
-      radius: 14,
-      borderColor: context.epColors.surface,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 100;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                height:
-                    (compact ? 32 : 18) +
-                    (textScale - 1).clamp(0, 1) * (compact ? 21 : 9),
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: Text(
-                    label.toUpperCase(),
-                    maxLines: compact ? 2 : 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.epChipLabel.copyWith(
-                      fontSize: 11,
-                      letterSpacing: compact ? 0 : 1.5,
-                      color: context.epColors.mute,
-                    ),
-                  ),
-                ),
+              Text(
+                value.toUpperCase(),
+                semanticsLabel: value,
+                style: Theme.of(context).textTheme.epDisplayAt(32),
               ),
               const SizedBox(height: 4),
-              Text(
-                value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.epDisplay.copyWith(fontSize: 22),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight:
+                      (compact ? 32 : 18) +
+                      (textScale - 1).clamp(0, 1) * (compact ? 21 : 9),
+                ),
+                child: Text(
+                  label.toUpperCase(),
+                  semanticsLabel: label,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.epSection.copyWith(color: context.epColors.muted),
+                ),
               ),
               if (caption != null && caption!.trim().isNotEmpty) ...[
                 const SizedBox(height: 2),
-                SizedBox(
-                  height:
-                      (compact ? 48 : 32) +
-                      (textScale - 1).clamp(0, 1) * (compact ? 42 : 28),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight:
+                        (compact ? 48 : 32) +
+                        (textScale - 1).clamp(0, 1) * (compact ? 42 : 28),
+                  ),
                   child: Text(
                     caption!,
-                    maxLines: compact ? 3 : 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.epCaption,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epBody.copyWith(color: context.epColors.muted),
                   ),
                 ),
               ],
@@ -1289,7 +1082,7 @@ class EpCard extends StatelessWidget {
   const EpCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(12),
+    this.padding = const EdgeInsets.all(16),
     this.radius = EpLayout.cardRadius,
     this.borderColor,
     this.onTap,
@@ -1298,27 +1091,18 @@ class EpCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (color, defaultBorder) = switch (variant) {
-      EpCardVariant.standard => (
-        context.epColors.surface,
-        context.epColors.border,
-      ),
-      EpCardVariant.raised => (
-        context.epColors.surfaceRaised,
-        context.epColors.border,
-      ),
-      EpCardVariant.selected => (
-        context.epColors.surfaceSelected,
-        context.epColors.accent,
-      ),
-      EpCardVariant.disabled => (
-        context.epColors.surfaceDisabled,
-        context.epColors.surfaceDisabled,
-      ),
+    final color = switch (variant) {
+      EpCardVariant.standard => context.epColors.panel,
+      EpCardVariant.raised => context.epColors.surfaceRaised,
+      EpCardVariant.selected => context.epColors.surfaceSelected,
+      EpCardVariant.disabled => context.epColors.surfaceDisabled,
     };
+    final border =
+        borderColor ??
+        (variant == EpCardVariant.selected ? context.epColors.accent : null);
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(radius),
-      side: BorderSide(color: borderColor ?? defaultBorder),
+      side: border == null ? BorderSide.none : BorderSide(color: border),
     );
     final enabledOnTap = variant == EpCardVariant.disabled ? null : onTap;
     final content = Padding(padding: padding, child: child);
@@ -1330,7 +1114,7 @@ class EpCard extends StatelessWidget {
       selected: variant == EpCardVariant.selected ? true : null,
       child: Material(
         color: color,
-        surfaceTintColor: Colors.transparent,
+        surfaceTintColor: context.epColors.background.withValues(alpha: 0),
         shape: shape,
         clipBehavior: Clip.antiAlias,
         child: SizedBox(
@@ -1363,14 +1147,14 @@ class DashedBox extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(20),
     this.color,
-    this.radius = 13,
+    this.radius = 0,
     this.expand = true,
   });
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: _DashedBorderPainter(color ?? context.epColors.border, radius),
+      painter: _DashedBorderPainter(color ?? context.epColors.outline, radius),
       child: Container(
         width: expand ? double.infinity : null,
         padding: padding,
@@ -1418,15 +1202,15 @@ class _DashedBorderPainter extends CustomPainter {
 /// Play-button triangle.
 class PlayTriangle extends StatelessWidget {
   final double size;
-  final Color color;
+  final Color? color;
 
-  const PlayTriangle({super.key, this.size = 14, this.color = Colors.white});
+  const PlayTriangle({super.key, this.size = 14, this.color});
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
       size: Size(size, size * 1.2),
-      painter: _TrianglePainter(color),
+      painter: _TrianglePainter(color ?? context.epColors.ink),
     );
   }
 }
@@ -1448,16 +1232,4 @@ class _TrianglePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_TrianglePainter old) => old.color != color;
-}
-
-/// "Sam Reyes" → "SR"; single words take one letter; null/empty → "??".
-String _profileInitials(String? name) {
-  final words = name
-      ?.trim()
-      .split(RegExp(r'\s+'))
-      .where((word) => word.isNotEmpty)
-      .take(2)
-      .toList();
-  if (words == null || words.isEmpty) return '??';
-  return words.map((word) => word[0]).join().toUpperCase();
 }

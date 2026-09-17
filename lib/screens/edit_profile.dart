@@ -1,16 +1,15 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
-import '../genres.dart';
 import '../models.dart';
 import '../services/location_service.dart';
 import '../services/media_picker.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
 
@@ -26,14 +25,13 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _scrollController = ScrollController();
   late final TextEditingController _nameController;
-  late final TextEditingController _bioController;
   late final TextEditingController _homeLocationController;
   late final FocusNode _homeLocationFocusNode;
   late final MediaPicker _mediaPicker;
-  late final Set<String> _genres;
   FanCity? _homeLocation;
   var _locationPersonalizationEnabled = false;
   var _followedBandUpdatesEnabled = true;
+  var _shareRsvpsWithFriends = true;
   PickedMedia? _pickedAvatar;
   var _removeAvatar = false;
   var _locatingHome = false;
@@ -47,26 +45,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   // Snapshot of the persisted profile, used to detect unsaved edits.
   String _initialName = '';
-  String _initialBio = '';
   FanCity? _initialHomeLocation;
-  Set<String> _initialGenres = const {};
   var _initialLocationPersonalization = false;
   var _initialFollowedBandUpdates = true;
+  var _initialShareRsvpsWithFriends = true;
 
   @override
   void initState() {
     super.initState();
     final profile = context.read<AppState>().profile;
     _initialName = profile?.name ?? '';
-    _initialBio = profile?.bio ?? '';
     _initialHomeLocation = profile?.homeLocation;
-    _initialGenres = Set.of(profile?.genres ?? const []);
     _initialLocationPersonalization =
         profile?.locationPersonalizationEnabled ?? false;
     _initialFollowedBandUpdates = profile?.followedBandUpdatesEnabled ?? true;
+    _initialShareRsvpsWithFriends = profile?.shareRsvpsWithFriends ?? true;
     _nameController = TextEditingController(text: profile?.name ?? '');
-    _bioController = TextEditingController(text: profile?.bio ?? '');
-    _genres = Set.of(profile?.genres ?? const []);
     _homeLocation = profile?.homeLocation;
     _homeLocationController = TextEditingController(
       text: _homeLocation?.autocompleteLabel ?? '',
@@ -76,6 +70,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _locationPersonalizationEnabled =
         profile?.locationPersonalizationEnabled ?? false;
     _followedBandUpdatesEnabled = profile?.followedBandUpdatesEnabled ?? true;
+    _shareRsvpsWithFriends = profile?.shareRsvpsWithFriends ?? true;
     _mediaPicker = widget.mediaPicker ?? MediaPicker();
   }
 
@@ -83,7 +78,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void dispose() {
     _scrollController.dispose();
     _nameController.dispose();
-    _bioController.dispose();
     _homeLocationController
       ..removeListener(_homeLocationTextChanged)
       ..dispose();
@@ -149,11 +143,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   bool get _isDirty =>
       _nameController.text.trim() != _initialName.trim() ||
-      _bioController.text.trim() != _initialBio.trim() ||
       _homeLocation != _initialHomeLocation ||
-      !setEquals(_genres, _initialGenres) ||
       _locationPersonalizationEnabled != _initialLocationPersonalization ||
       _followedBandUpdatesEnabled != _initialFollowedBandUpdates ||
+      _shareRsvpsWithFriends != _initialShareRsvpsWithFriends ||
       _pickedAvatar != null ||
       _removeAvatar;
 
@@ -212,7 +205,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               backgroundColor: WidgetStatePropertyAll(
                 dialogContext.epColors.destructive,
               ),
-              foregroundColor: const WidgetStatePropertyAll(Colors.white),
+              foregroundColor: WidgetStatePropertyAll(
+                dialogContext.epColors.onAccent,
+              ),
             ),
             onPressed: () => Navigator.pop(dialogContext, true),
             child: Text('DISCARD'),
@@ -306,16 +301,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _homeLocationValidation = null;
     });
     final app = context.read<AppState>();
+    final profile = app.profile;
     final saved = await app.saveFanProfile(
       name: name,
-      bio: switch (_bioController.text.trim()) {
-        '' => null,
-        final value => value,
-      },
+      bio: profile?.bio,
       homeLocation: resolvedHomeLocation,
-      genres: _genres.toList()..sort(),
+      genres: profile?.genres ?? const [],
       locationPersonalizationEnabled: _locationPersonalizationEnabled,
       followedBandUpdatesEnabled: _followedBandUpdatesEnabled,
+      shareRsvpsWithFriends: _shareRsvpsWithFriends,
     );
     if (!mounted) return;
 
@@ -351,16 +345,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           child: ListView(
             controller: _scrollController,
             padding: EdgeInsets.fromLTRB(
-              16,
-              headerTopPad(context),
-              16,
+              EpLayout.gutter,
+              EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
+              EpLayout.gutter,
               actionBarClearance(context) +
                   MediaQuery.paddingOf(context).bottom,
             ),
             children: [
               Row(
+                key: const ValueKey('edit-profile-header-row'),
                 children: [
                   CircleIconButton(
+                    key: const ValueKey('edit-profile-back-control'),
                     onTap: _saving ? null : _attemptClose,
                     tooltip: 'Back to profile',
                   ),
@@ -373,25 +369,30 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                 ],
               ),
-              Text(
-                'Update your public profile and private music preferences.',
-                style: Theme.of(context).textTheme.epCaption,
-              ),
-              const SectionBar.form(label: 'Identity'),
+              const SizedBox(height: EpLayout.fieldGap),
               ListenableBuilder(
-                listenable: Listenable.merge([_nameController]),
+                listenable: _nameController,
                 builder: (context, _) => _FanIdentityPreview(
                   name: _nameController.text,
-                  scene: _sceneName(_homeLocation),
+                  homeLocation: _homeLocation,
+                  createdAt: profile?.createdAt,
                   imageUrl: _removeAvatar ? null : profile?.avatarUrl,
                   picked: _pickedAvatar,
                   onEditAvatar: _saving ? null : _openAvatarOptions,
                 ),
               ),
-              const SizedBox(height: EpLayout.fieldGap),
+              const EpSectionHeader(
+                key: Key('fan-name-header'),
+                label: 'Display name · Required',
+                padding: EdgeInsets.only(
+                  top: EpLayout.formSectionGap,
+                  bottom: EpLayout.fieldGap,
+                ),
+              ),
               EpLabeledField(
                 fieldKey: const Key('fan-name-field'),
                 label: 'DISPLAY NAME',
+                showLabel: false,
                 hint: 'Your name',
                 controller: _nameController,
                 required: true,
@@ -416,66 +417,40 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                 ),
               ],
-              const SizedBox(height: EpLayout.fieldGap),
-              EpLabeledField(
-                fieldKey: const Key('fan-bio-field'),
-                label: 'ABOUT',
-                hint: 'A little about your taste in music',
-                controller: _bioController,
-                enabled: !_saving,
-                minLines: 4,
-                maxLines: 6,
-                maxLength: 280,
-                onChanged: (_) {},
+              const EpSectionHeader(
+                key: Key('fan-home-location-header'),
+                label: 'Home location',
+                padding: EdgeInsets.only(
+                  top: EpLayout.formSectionGap,
+                  bottom: EpLayout.fieldGap,
+                ),
               ),
-              const SectionBar.form(label: 'Scene & Taste'),
-              _FanSelectionField(
+              Column(
                 key: const Key('fan-home-location-field'),
-                label: 'HOME LOCATION',
-                caption:
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
                     'Private to your account. Personalization below decides whether this scene tunes discovery.',
-                child: _HomeLocationEditor(
-                  controller: _homeLocationController,
-                  focusNode: _homeLocationFocusNode,
-                  enabled: !_saving && !_locatingHome,
-                  locating: _locatingHome,
-                  selectedLocation: _homeLocation,
-                  failure: _homeLocationFailure,
-                  notice: _homeLocationNotice,
-                  validationMessage: _homeLocationValidation,
-                  onSelected: _selectHomeLocation,
-                  onUseCurrentLocation: _useCurrentLocation,
-                  onClear: () => _setHomeLocation(null),
-                  onRetry: _useCurrentLocation,
-                  onRecovery: _openLocationRecovery,
-                ),
+                    style: Theme.of(context).textTheme.epCaption,
+                  ),
+                  const SizedBox(height: 10),
+                  _HomeLocationEditor(
+                    controller: _homeLocationController,
+                    focusNode: _homeLocationFocusNode,
+                    enabled: !_saving && !_locatingHome,
+                    locating: _locatingHome,
+                    failure: _homeLocationFailure,
+                    notice: _homeLocationNotice,
+                    validationMessage: _homeLocationValidation,
+                    onSelected: _selectHomeLocation,
+                    onUseCurrentLocation: _useCurrentLocation,
+                    onClear: () => _setHomeLocation(null),
+                    onRetry: _useCurrentLocation,
+                    onRecovery: _openLocationRecovery,
+                  ),
+                ],
               ),
-              const SizedBox(height: EpLayout.fieldGap),
-              _FanSelectionField(
-                key: const Key('fan-favorite-genres-field'),
-                label: 'FAVORITE GENRES · ${_genres.length}',
-                child: Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
-                  children: [
-                    for (final genre in kGenres)
-                      EpChip(
-                        key: ValueKey('profile-genre-$genre'),
-                        label: genre,
-                        active: _genres.contains(genre),
-                        neutralSelected: true,
-                        onTap: _saving
-                            ? null
-                            : () => setState(() {
-                                _genres.contains(genre)
-                                    ? _genres.remove(genre)
-                                    : _genres.add(genre);
-                              }),
-                      ),
-                  ],
-                ),
-              ),
-              const SectionBar.form(label: 'Preferences'),
+              const EpSectionHeader.form(label: 'Preferences'),
               SwitchRow(
                 key: const Key('location-personalization'),
                 label: 'Personalize with home location',
@@ -499,6 +474,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ? null
                     : (value) =>
                           setState(() => _followedBandUpdatesEnabled = value),
+              ),
+              const SizedBox(height: 12),
+              SwitchRow(
+                key: const Key('edit-profile-share-rsvps'),
+                label: 'Share my RSVPs with friends',
+                caption: "Friends see the shows you're going to.",
+                value: _shareRsvpsWithFriends,
+                onChanged: _saving
+                    ? null
+                    : (value) => setState(() => _shareRsvpsWithFriends = value),
               ),
               if (_error case final error?) ...[
                 const SizedBox(height: EpLayout.fieldGap),
@@ -530,9 +515,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 }
-
-String _sceneName(FanCity? city) =>
-    city == null ? 'Scene undisclosed' : '${city.label} scene';
 
 FanCity _nearestFanCity(UserLocation location) {
   var nearest = FanCity.values.first;
@@ -572,7 +554,6 @@ class _HomeLocationEditor extends StatelessWidget {
     required this.focusNode,
     required this.enabled,
     required this.locating,
-    required this.selectedLocation,
     required this.failure,
     required this.notice,
     required this.validationMessage,
@@ -587,7 +568,6 @@ class _HomeLocationEditor extends StatelessWidget {
   final FocusNode focusNode;
   final bool enabled;
   final bool locating;
-  final FanCity? selectedLocation;
   final LocationFailure? failure;
   final String? notice;
   final String? validationMessage;
@@ -601,7 +581,7 @@ class _HomeLocationEditor extends StatelessWidget {
   Widget build(BuildContext context) {
     final query = controller.text.trim();
     final exactMatch = fanCityFromLocationInput(query);
-    final suggestions = focusNode.hasFocus && exactMatch == null
+    final suggestions = exactMatch == null
         ? fanCitySuggestions(query).toList(growable: false)
         : const <FanCity>[];
     final hasNoResults =
@@ -609,6 +589,14 @@ class _HomeLocationEditor extends StatelessWidget {
         query.isNotEmpty &&
         exactMatch == null &&
         suggestions.isEmpty;
+
+    final locationActionStyle = TextButton.styleFrom(
+      foregroundColor: context.epColors.contentSecondary,
+      minimumSize: const Size(48, 48),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      shape: const RoundedRectangleBorder(),
+      textStyle: Theme.of(context).textTheme.epChipLabel,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -622,10 +610,10 @@ class _HomeLocationEditor extends StatelessWidget {
           textInputAction: TextInputAction.done,
           autofillHints: const [AutofillHints.addressCity],
           onSubmitted: (_) => focusNode.unfocus(),
-          decoration: epInputDecoration(context, 'Type a city or location')
+          decoration: epInputDecoration(context, 'City or neighbourhood')
               .copyWith(
                 prefixIcon: Icon(
-                  Icons.location_city_outlined,
+                  Icons.location_on_outlined,
                   color: context.epColors.contentSecondary,
                   size: 20,
                 ),
@@ -644,26 +632,29 @@ class _HomeLocationEditor extends StatelessWidget {
             decoration: BoxDecoration(
               border: Border(top: BorderSide(color: context.epColors.border)),
             ),
-            child: Column(
-              children: [
-                for (final city in suggestions)
-                  TextButton.icon(
-                    key: ValueKey('home-location-suggestion-${city.name}'),
-                    onPressed: () => onSelected(city),
-                    style: TextButton.styleFrom(
-                      foregroundColor: context.epColors.contentPrimary,
-                      minimumSize: const Size.fromHeight(48),
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      shape: const RoundedRectangleBorder(),
+            child: Focus(
+              canRequestFocus: false,
+              descendantsAreFocusable: false,
+              child: Column(
+                children: [
+                  for (final city in suggestions)
+                    TextButton.icon(
+                      key: ValueKey('home-location-suggestion-${city.name}'),
+                      onPressed: () => onSelected(city),
+                      style: TextButton.styleFrom(
+                        foregroundColor: context.epColors.contentPrimary,
+                        minimumSize: const Size.fromHeight(48),
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        shape: const RoundedRectangleBorder(),
+                      ),
+                      icon: Icon(Icons.place_outlined, size: 18),
+                      label: Text(city.autocompleteLabel),
                     ),
-                    icon: Icon(Icons.place_outlined, size: 18),
-                    label: Text(city.autocompleteLabel),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
-        Divider(color: context.epColors.border, height: 1),
         if (hasNoResults)
           Padding(
             padding: const EdgeInsets.only(top: 10),
@@ -673,39 +664,17 @@ class _HomeLocationEditor extends StatelessWidget {
               style: Theme.of(context).textTheme.epCaption,
             ),
           ),
-        Wrap(
-          spacing: 4,
-          runSpacing: 4,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            TextButton.icon(
-              key: const Key('use-current-home-location'),
-              onPressed: enabled ? onUseCurrentLocation : null,
-              style: TextButton.styleFrom(
-                foregroundColor: context.epColors.contentPrimary,
-                minimumSize: const Size(48, 48),
-              ),
-              icon: locating
-                  ? SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(
-                        color: context.epColors.contentSecondary,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : Icon(Icons.my_location, size: 19),
-              label: Text(
-                locating ? 'FINDING YOUR LOCATION…' : 'USE CURRENT LOCATION',
-              ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            key: const Key('use-current-home-location'),
+            onPressed: enabled ? onUseCurrentLocation : null,
+            style: locationActionStyle,
+            child: Text(
+              locating ? 'FINDING YOUR LOCATION…' : 'USE CURRENT LOCATION',
+              textAlign: TextAlign.right,
             ),
-            if (selectedLocation != null && query.isNotEmpty)
-              Text(
-                'SELECTED',
-                style: Theme.of(context).textTheme.epChipLabel.copyWith(
-                  color: context.epColors.contentSecondary,
-                ),
-              ),
-          ],
+          ),
         ),
         if (notice case final message?)
           Semantics(
@@ -742,10 +711,7 @@ class _HomeLocationEditor extends StatelessWidget {
               TextButton(
                 key: const Key('retry-current-home-location'),
                 onPressed: locating ? null : onRetry,
-                style: TextButton.styleFrom(
-                  foregroundColor: context.epColors.contentPrimary,
-                  minimumSize: const Size(48, 48),
-                ),
+                style: locationActionStyle,
                 child: Text('RETRY'),
               ),
               if (locationFailure.reason ==
@@ -755,10 +721,7 @@ class _HomeLocationEditor extends StatelessWidget {
                 TextButton(
                   key: const Key('open-home-location-settings'),
                   onPressed: onRecovery,
-                  style: TextButton.styleFrom(
-                    foregroundColor: context.epColors.contentPrimary,
-                    minimumSize: const Size(48, 48),
-                  ),
+                  style: locationActionStyle,
                   child: Text(
                     locationFailure.reason ==
                             LocationFailureReason.servicesDisabled
@@ -777,28 +740,29 @@ class _HomeLocationEditor extends StatelessWidget {
 class _FanIdentityPreview extends StatelessWidget {
   const _FanIdentityPreview({
     required this.name,
-    required this.scene,
+    required this.homeLocation,
+    required this.createdAt,
     required this.imageUrl,
     required this.picked,
     required this.onEditAvatar,
   });
 
   final String name;
-  final String scene;
+  final FanCity? homeLocation;
+  final DateTime? createdAt;
   final String? imageUrl;
   final PickedMedia? picked;
   final VoidCallback? onEditAvatar;
 
   @override
   Widget build(BuildContext context) {
-    final displayName = name.trim().isEmpty ? 'Your display name' : name.trim();
+    final displayName = name.trim().isEmpty ? 'Your profile' : name;
     return Container(
       key: const Key('fan-identity-preview'),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: context.epColors.surfaceRaised,
         border: Border.all(color: context.epColors.border),
-        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -821,10 +785,9 @@ class _FanIdentityPreview extends StatelessWidget {
                 label: 'Edit profile photo',
                 excludeSemantics: true,
                 child: Material(
-                  color: Colors.transparent,
+                  type: MaterialType.transparency,
                   child: InkWell(
                     key: const Key('fan-avatar-preview-control'),
-                    borderRadius: BorderRadius.circular(24),
                     onTap: onEditAvatar,
                     child: Padding(
                       padding: const EdgeInsets.only(right: 4, bottom: 4),
@@ -832,6 +795,7 @@ class _FanIdentityPreview extends StatelessWidget {
                         name: name,
                         imageUrl: imageUrl,
                         picked: picked,
+                        size: 64,
                       ),
                     ),
                   ),
@@ -839,39 +803,14 @@ class _FanIdentityPreview extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      displayName,
-                      key: const Key('fan-preview-name'),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.epDisplay.copyWith(
-                        color: context.epColors.contentPrimary,
-                        fontSize: 25,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      scene.toUpperCase(),
-                      key: const Key('fan-preview-scene'),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.epBody.copyWith(
-                        color: context.epColors.contentSecondary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    TextAction(
-                      'EDIT PHOTO',
-                      key: const Key('fan-avatar-edit-action'),
-                      color: context.epColors.contentPrimary,
-                      padding: EdgeInsets.zero,
-                      onTap: onEditAvatar,
-                    ),
-                  ],
+                child: FanIdentityLines(
+                  name: displayName,
+                  homeLocation: homeLocation,
+                  createdAt: createdAt,
+                  nameKey: const Key('fan-preview-name'),
+                  sceneKey: const Key('fan-preview-scene'),
+                  sinceKey: const Key('fan-preview-since'),
+                  showUnknownScene: true,
                 ),
               ),
             ],
@@ -882,66 +821,36 @@ class _FanIdentityPreview extends StatelessWidget {
   }
 }
 
-class _FanSelectionField extends StatelessWidget {
-  const _FanSelectionField({
-    super.key,
-    required this.label,
-    required this.child,
-    this.caption,
-  });
-
-  final String label;
-  final String? caption;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        FieldLabel(label),
-        if (caption case final caption?) ...[
-          const SizedBox(height: 5),
-          Text(caption, style: Theme.of(context).textTheme.epCaption),
-        ],
-        const SizedBox(height: 10),
-        child,
-      ],
-    );
-  }
-}
-
 class _AvatarPreview extends StatelessWidget {
   const _AvatarPreview({
     required this.name,
     required this.imageUrl,
     required this.picked,
+    this.size = 88,
   });
 
   final String name;
   final String? imageUrl;
   final PickedMedia? picked;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     final photo = picked;
-    final cacheSize = (88 * MediaQuery.devicePixelRatioOf(context)).round();
+    final cacheSize = (size * MediaQuery.devicePixelRatioOf(context)).round();
     final avatar = photo == null
-        ? EpFanAvatar(name: name, imageUrl: imageUrl, size: 88, radius: 24)
+        ? EpFanAvatar(name: name, imageUrl: imageUrl, size: size)
         : Semantics(
             image: true,
             label: 'Selected profile photo',
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Image.memory(
-                photo.bytes,
-                key: const Key('picked-fan-avatar-preview'),
-                width: 88,
-                height: 88,
-                fit: BoxFit.cover,
-                cacheWidth: cacheSize,
-                cacheHeight: cacheSize,
-              ),
+            child: Image.memory(
+              photo.bytes,
+              key: const Key('picked-fan-avatar-preview'),
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              cacheWidth: cacheSize,
+              cacheHeight: cacheSize,
             ),
           );
     return Stack(
@@ -956,14 +865,18 @@ class _AvatarPreview extends StatelessWidget {
               width: 28,
               height: 28,
               decoration: BoxDecoration(
-                color: context.epColors.volt,
+                color: context.epColors.accent,
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: context.epColors.background,
                   width: 3,
                 ),
               ),
-              child: Icon(Icons.edit, size: 14, color: context.epColors.dark),
+              child: Icon(
+                Icons.edit,
+                size: 14,
+                color: context.epColors.onAccent,
+              ),
             ),
           ),
         ),

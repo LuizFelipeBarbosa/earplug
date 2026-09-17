@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../theme.dart';
 import 'branding.dart';
+import 'ep_text.dart';
 import 'sheets.dart';
 
 class EpNavigationItem extends StatelessWidget {
@@ -26,29 +27,34 @@ class EpNavigationItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? context.epColors.ink : context.epColors.mute;
+    final color = selected ? context.epColors.accent : context.epColors.muted;
     if (vertical) {
       return Semantics(
+        button: true,
         selected: selected,
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: TextButton.icon(
-            onPressed: onPressed,
-            style: TextButton.styleFrom(
-              alignment: Alignment.centerLeft,
-              minimumSize: const Size(double.infinity, 52),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              backgroundColor: selected
-                  ? context.epColors.surfaceSelected
-                  : null,
-              foregroundColor: selected
-                  ? context.epColors.accent
-                  : context.epColors.contentSecondary,
-            ),
-            icon: Icon(icon, size: 21),
-            label: Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: Text(label, style: const TextStyle(letterSpacing: .6)),
+        label: label,
+        onTap: onPressed,
+        excludeSemantics: true,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onPressed,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Row(
+                children: [
+                  Icon(icon, size: 16, color: color),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      label.toUpperCase(),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.epLabel.copyWith(fontSize: 12, color: color),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -61,50 +67,34 @@ class EpNavigationItem extends StatelessWidget {
       onTap: onPressed,
       excludeSemantics: true,
       child: Material(
-        color: Colors.transparent,
+        type: MaterialType.transparency,
         child: InkWell(
           onTap: onPressed,
           focusColor: context.epColors.accent.withValues(alpha: .2),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 66, minWidth: 48),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 160),
-                  width: 24,
-                  height: 2.5,
-                  decoration: BoxDecoration(
-                    color: selected ? Ep.brand : Colors.transparent,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Icon(icon, size: 19, color: color),
-                const SizedBox(height: 4),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final visualLabel =
-                        compactLabel != null && constraints.maxWidth < 82
-                        ? compactLabel!
-                        : label;
-                    return Text(
-                      visualLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.epCaption.copyWith(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: .8,
-                        color: color,
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(height: 4),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final visualLabel =
+                      compactLabel != null && constraints.maxWidth < 82
+                      ? compactLabel!
+                      : label;
+                  return Text(
+                    visualLabel.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epChipLabel.copyWith(color: color),
+                  );
+                },
+              ),
+            ],
           ),
         ),
       ),
@@ -141,10 +131,11 @@ class _TabBarShell extends StatelessWidget {
         ),
         padding: EdgeInsets.only(bottom: bottomPad),
         child: SizedBox(
-          height: 66 + (textScale - 1).clamp(0, 1) * 14,
+          height: EpLayout.tabBarHeight + (textScale - 1).clamp(0, 1) * 14,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [for (final item in items) Expanded(child: item)],
             ),
           ),
@@ -169,13 +160,16 @@ class FanTabBar extends StatelessWidget {
     final switcherLabel = hasSwitchableIdentity ? 'SWITCH' : 'CREATE';
     return _TabBarShell(
       vertical: vertical,
-      borderColor: context.epColors.border,
+      borderColor: context.epColors.line,
       items: [
         EpNavigationItem(
           vertical: vertical,
           icon: Icons.home_outlined,
           label: 'GIGS',
-          selected: scr == Screen.home,
+          selected:
+              scr == Screen.home ||
+              scr == Screen.exploreCollection ||
+              scr == Screen.people,
           onPressed: () => app.resetTo(Screen.home),
         ),
         EpNavigationItem(
@@ -187,8 +181,8 @@ class FanTabBar extends StatelessWidget {
         ),
         EpNavigationItem(
           vertical: vertical,
-          icon: Icons.person_outline,
-          label: 'PROFILE',
+          icon: Icons.confirmation_number_outlined,
+          label: 'YOU',
           selected:
               scr == Screen.myGigs ||
               scr == Screen.myTickets ||
@@ -197,7 +191,7 @@ class FanTabBar extends StatelessWidget {
         ),
         EpNavigationItem(
           vertical: vertical,
-          icon: Icons.groups_outlined,
+          icon: switcherLabel == 'SWITCH' ? Icons.mic_none : Icons.add,
           label: switcherLabel,
           compactLabel: switcherLabel,
           selected: false,
@@ -216,41 +210,63 @@ class BandTabBar extends StatelessWidget {
 
   final bool vertical;
 
+  static const _gigsScreens = {
+    Screen.gigMgr,
+    Screen.gigCreate,
+    Screen.hostedGig,
+    Screen.opportunityDetail,
+    Screen.bookingDetail,
+    Screen.bandPayouts,
+  };
+
+  static bool _onOwnProfile(AppState app) {
+    final current = app.current;
+    return switch (current.screen) {
+      Screen.bandPreview => current.param == app.bandId,
+      Screen.bandEdit || Screen.bandMedia => true,
+      _ => false,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final scr = app.current.screen;
     return _TabBarShell(
       vertical: vertical,
-      borderColor: context.epColors.border,
+      borderColor: context.epColors.line,
       items: [
         EpNavigationItem(
           vertical: vertical,
-          icon: Icons.grid_view_rounded,
-          label: 'DASH',
-          selected: scr == Screen.bandDash,
-          onPressed: () => app.resetTo(Screen.bandDash),
-        ),
-        EpNavigationItem(
-          vertical: vertical,
-          icon: Icons.person_outline,
-          label: 'PROFILE',
-          selected: scr == Screen.bandEdit,
-          onPressed: () => app.resetTo(Screen.bandEdit),
-        ),
-        EpNavigationItem(
-          vertical: vertical,
-          icon: Icons.table_rows_outlined,
+          key: const Key('band-tab-gigs'),
+          icon: Icons.list,
           label: 'GIGS',
-          selected: scr == Screen.gigMgr,
+          selected: _gigsScreens.contains(scr),
           onPressed: () => app.resetTo(Screen.gigMgr),
         ),
         EpNavigationItem(
           vertical: vertical,
-          icon: Icons.insert_chart_outlined_rounded,
+          key: const Key('band-tab-insights'),
+          icon: Icons.bar_chart,
           label: 'INSIGHTS',
           selected: scr == Screen.analytics,
           onPressed: () => app.resetTo(Screen.analytics),
+        ),
+        EpNavigationItem(
+          vertical: vertical,
+          key: const Key('band-tab-profile'),
+          icon: Icons.mic_none,
+          label: 'PROFILE',
+          selected: _onOwnProfile(app),
+          onPressed: app.openOwnProfileTab,
+        ),
+        EpNavigationItem(
+          vertical: vertical,
+          key: const Key('band-tab-switch'),
+          icon: Icons.swap_horiz,
+          label: 'SWITCH',
+          selected: false,
+          onPressed: () => showSwitcherSheet(context),
         ),
       ],
     );
@@ -265,50 +281,101 @@ class OrganizerTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final scr = app.current.screen;
-    final canManage = app.canManageOrganization(app.organizationId);
     return _TabBarShell(
       vertical: vertical,
-      borderColor: context.epColors.border,
-      items: [
-        EpNavigationItem(
-          vertical: vertical,
-          key: const Key('organizer-tab-dash'),
-          icon: Icons.grid_view_rounded,
-          label: 'DASH',
-          selected: scr == Screen.orgDash,
-          onPressed: () => app.resetTo(Screen.orgDash),
-        ),
-        if (app.currentIsHost || canManage)
-          EpNavigationItem(
-            vertical: vertical,
-            key: const Key('organizer-tab-opportunities'),
-            icon: Icons.campaign_outlined,
-            label: app.currentIsHost ? 'REQUESTS' : 'GIGS',
-            selected: scr == Screen.orgOpportunities,
-            onPressed: () => app.resetTo(Screen.orgOpportunities),
-          ),
-        if (!app.currentIsHost && canManage)
-          EpNavigationItem(
-            vertical: vertical,
-            key: const Key('organizer-tab-team'),
-            icon: Icons.group_outlined,
-            label: 'TEAM',
-            selected: scr == Screen.orgTeam,
-            onPressed: () => app.resetTo(Screen.orgTeam),
-          ),
-        if (app.currentIsHost || canManage)
-          EpNavigationItem(
-            vertical: vertical,
-            key: const Key('organizer-tab-settings'),
-            icon: Icons.settings_outlined,
-            label: 'SETTINGS',
-            selected: scr == Screen.orgSettings,
-            onPressed: () => app.resetTo(Screen.orgSettings),
-          ),
-      ],
+      borderColor: context.epColors.line,
+      items: app.currentIsHost
+          ? _hostItems(app)
+          : _organizerItems(context, app),
     );
   }
+
+  /// Hosts keep DASH / REQUESTS / SETTINGS.
+  List<Widget> _hostItems(AppState app) {
+    final scr = app.current.screen;
+    return [
+      EpNavigationItem(
+        vertical: vertical,
+        key: const Key('organizer-tab-dash'),
+        icon: Icons.home_outlined,
+        label: 'DASH',
+        selected: scr == Screen.orgDash,
+        onPressed: () => app.resetTo(Screen.orgDash),
+      ),
+      EpNavigationItem(
+        vertical: vertical,
+        key: const Key('organizer-tab-opportunities'),
+        icon: Icons.sensors,
+        label: 'REQUESTS',
+        selected: scr == Screen.orgOpportunities,
+        onPressed: () => app.resetTo(Screen.orgOpportunities),
+      ),
+      EpNavigationItem(
+        vertical: vertical,
+        key: const Key('organizer-tab-settings'),
+        icon: Icons.settings_outlined,
+        label: 'SETTINGS',
+        selected: scr == Screen.orgSettings,
+        onPressed: () => app.resetTo(Screen.orgSettings),
+      ),
+    ];
+  }
+
+  /// Other organizers: GIGS is home, PROFILE gathers settings, team and
+  /// finance, and SWITCH opens the identity switcher.
+  List<Widget> _organizerItems(BuildContext context, AppState app) {
+    final scr = app.current.screen;
+    return [
+      EpNavigationItem(
+        vertical: vertical,
+        key: const Key('organizer-tab-opportunities'),
+        icon: Icons.sensors,
+        label: 'GIGS',
+        selected: _organizerGigsScreens.contains(scr),
+        onPressed: () => app.resetTo(Screen.orgOpportunities),
+      ),
+      EpNavigationItem(
+        vertical: vertical,
+        key: const Key('organizer-tab-venues'),
+        icon: Icons.place_outlined,
+        label: 'VENUES',
+        selected: scr == Screen.orgVenues || scr == Screen.orgVenueEdit,
+        onPressed: () => app.resetTo(Screen.orgVenues),
+      ),
+      EpNavigationItem(
+        vertical: vertical,
+        key: const Key('organizer-tab-organization'),
+        icon: Icons.business_outlined,
+        label: 'PROFILE',
+        selected: _organizationScreens.contains(scr),
+        onPressed: () => app.resetTo(Screen.orgSettings),
+      ),
+      EpNavigationItem(
+        vertical: vertical,
+        key: const Key('organizer-tab-switch'),
+        icon: Icons.swap_horiz,
+        label: 'SWITCH',
+        selected: false,
+        onPressed: () => showSwitcherSheet(context),
+      ),
+    ];
+  }
+
+  static const _organizerGigsScreens = {
+    Screen.orgOpportunities,
+    Screen.orgOpportunity,
+    Screen.applicantReview,
+    Screen.opportunityEdit,
+    Screen.opportunityApplicants,
+    Screen.bookingDetail,
+  };
+
+  static const _organizationScreens = {
+    Screen.orgSettings,
+    Screen.orgTeam,
+    Screen.orgFinance,
+    Screen.orgTransactions,
+  };
 }
 
 /// Persistent navigation for the wider web workspace.
@@ -324,68 +391,50 @@ class EpDesktopSidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 224,
-      child: DefaultTextStyle(
-        style: Theme.of(context).textTheme.epBody,
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(8, 28, 8, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
+    return Container(
+      width: EpLayout.railWidth,
+      decoration: BoxDecoration(
+        border: Border(right: BorderSide(color: context.epColors.line)),
+      ),
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+      child: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const EpLogo.compact(height: 42),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'EARPLUG',
-                          style: epDisplay(
-                            size: 23,
-                            color: context.epColors.contentPrimary,
-                          ),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: EpLogo.full(width: 113, height: 32),
+                    ),
+                    const SizedBox(height: 40),
+                    EpEyebrow(label),
+                    const SizedBox(height: 16),
+                    navigation,
+                    const Spacer(),
+                    if (label == 'DISCOVER') ...[
+                      Text(
+                        'GOOD MUSIC.\nCLOSER TO HOME.',
+                        style: Theme.of(context).textTheme.epDisplayAt(24),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Find a show. Support the scene.',
+                        style: Theme.of(context).textTheme.epBody.copyWith(
+                          color: context.epColors.muted,
                         ),
                       ),
-                    ),
+                    ] else
+                      OutlinedButton(
+                        onPressed: () => showSwitcherSheet(context),
+                        child: const Text('BACK TO DISCOVER'),
+                      ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'YOUR LOCAL MUSIC SCENE',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.epMeta.copyWith(letterSpacing: 1),
-                ),
-                const SizedBox(height: 44),
-                Padding(
-                  padding: const EdgeInsets.only(left: 16, bottom: 16),
-                  child: Text(
-                    label,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.epMeta.copyWith(letterSpacing: 1.5),
-                  ),
-                ),
-                navigation,
-                const SizedBox(height: 40),
-                Divider(color: context.epColors.border),
-                const SizedBox(height: 24),
-                Text(
-                  'Good music.\nCloser to home.',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.epSectionHeading.copyWith(height: 1.4),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Find a show. Support the scene.',
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-              ],
+              ),
             ),
           ),
         ),

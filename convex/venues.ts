@@ -96,7 +96,7 @@ export const create = mutation({
         ) ?? null;
     }
     if (existing) {
-      return { venue: toVenuePayload(existing), created: false };
+      return { venue: await toVenuePayload(ctx, existing), created: false };
     }
 
     const point = { lat: args.lat, lng: args.lng };
@@ -134,7 +134,139 @@ export const create = mutation({
     });
     const venue = await ctx.db.get(venueId);
     if (!venue) throw new Error("Created venue not found");
-    return { venue: toVenuePayload(venue), created: true };
+    return { venue: await toVenuePayload(ctx, venue), created: true };
+  },
+});
+
+/** Adds a venue managed by an organization.
+ *
+ * Until now organization venues came only from application approval, which
+ * adopts or inserts a venue once per organization. This is the "+ Add venue"
+ * path for owners and managers. The new venue starts `onTicket`: the street
+ * address lives in `venuePrivateDetails` and the public columns carry the
+ * approximate label until an owner discloses the exact address. */
+export const createForOrganization = mutation({
+  args: {
+    organizationId: v.id("organizations"),
+    name: v.string(),
+    addr: v.string(),
+    lat: v.number(),
+    lng: v.number(),
+    /** Fallback public label when the pin is not near a known neighborhood. */
+    area: v.optional(v.string()),
+    description: v.optional(v.string()),
+    venueType: v.optional(venueTypeValidator),
+    capacityPublic: v.optional(v.number()),
+    loadInNotes: v.optional(v.string()),
+    capacity: v.optional(v.number()),
+  },
+  returns: v.id("venues"),
+  handler: async (ctx, args) => {
+    const { organization, user } = await requireOrganizationRole(
+      ctx,
+      args.organizationId,
+      ["owner", "manager"],
+    );
+
+    const name = args.name.trim();
+    if (name === "") throw new Error("Venue name is required");
+    if (name.length > MAX_VENUE_NAME) throw new Error("Venue name is too long");
+    const addr = args.addr.trim();
+    if (addr === "") throw new Error("Venue address is required");
+    if (addr.length > MAX_VENUE_ADDRESS)
+      throw new Error("Venue address is too long");
+    if (
+      !Number.isFinite(args.lat) ||
+      !Number.isFinite(args.lng) ||
+      args.lat < -90 ||
+      args.lat > 90 ||
+      args.lng < -180 ||
+      args.lng > 180
+    ) {
+      throw new Error("Choose a valid map location");
+    }
+    const area = args.area?.trim() ?? "";
+    if (area.length > MAX_VENUE_AREA) throw new Error("Venue area is too long");
+    const description = args.description?.trim() ?? "";
+    if (description.length > MAX_VENUE_DESCRIPTION) {
+      throw new Error("Venue description is too long");
+    }
+    const loadInNotes = args.loadInNotes?.trim() ?? "";
+    if (loadInNotes.length > MAX_VENUE_DESCRIPTION) {
+      throw new Error("Load-in notes are too long");
+    }
+    for (const capacity of [args.capacityPublic, args.capacity]) {
+      if (
+        capacity !== undefined &&
+        (!Number.isInteger(capacity) ||
+          capacity < 0 ||
+          capacity > MAX_VENUE_CAPACITY)
+      ) {
+        throw new Error("Venue capacity must be an integer from 0 to 100000");
+      }
+    }
+
+    const normalizedAddr = normalizeVenueText(addr);
+    const [privateMatch, publicMatch] = await Promise.all([
+      ctx.db
+        .query("venuePrivateDetails")
+        .withIndex("by_normalizedAddr", (q) =>
+          q.eq("normalizedAddr", normalizedAddr),
+        )
+        .first(),
+      ctx.db
+        .query("venues")
+        .withIndex("by_normalizedAddr", (q) =>
+          q.eq("normalizedAddr", normalizedAddr),
+        )
+        .first(),
+    ]);
+    if (privateMatch !== null || publicMatch !== null) {
+      throw new Error("Another venue already uses that address");
+    }
+
+    const point = { lat: args.lat, lng: args.lng };
+    const approx = approximateLocation(point, area);
+    const approxPoint = { lat: approx.lat, lng: approx.lng };
+    const now = Date.now();
+    const venueId = await ctx.db.insert("venues", {
+      name,
+      normalizedName: normalizeVenueText(name),
+      slug: await uniqueVenueSlug(ctx, name),
+      area: approx.label,
+      addr: approx.label,
+      lat: approx.lat,
+      lng: approx.lng,
+      distSF: formatMiles(SF_CENTER, approxPoint),
+      distOak: formatMiles(OAK_CENTER, approxPoint),
+      createdBy: user._id,
+      status: organization.status === "suspended" ? "suspended" : "verified",
+      addressDisclosure: "onTicket",
+      managedByOrganizationId: args.organizationId,
+      approxLabel: approx.label,
+      approxLat: approx.lat,
+      approxLng: approx.lng,
+      ...(approx.neighborhood === null
+        ? {}
+        : { neighborhood: approx.neighborhood }),
+      ...(approx.city === null ? {} : { city: approx.city }),
+      ...(args.venueType === undefined ? {} : { venueType: args.venueType }),
+      ...(description === "" ? {} : { description }),
+      ...(args.capacityPublic === undefined
+        ? {}
+        : { capacityPublic: args.capacityPublic }),
+    });
+    await ctx.db.insert("venuePrivateDetails", {
+      venueId,
+      addr,
+      lat: args.lat,
+      lng: args.lng,
+      normalizedAddr,
+      ...(loadInNotes === "" ? {} : { loadInNotes }),
+      ...(args.capacity === undefined ? {} : { capacity: args.capacity }),
+      updatedAt: now,
+    });
+    return venueId;
   },
 });
 
@@ -154,9 +286,10 @@ export const list = query({
       .withIndex("by_name")
       .order("asc")
       .take(MAX_VENUES);
-    return venues
-      .filter((venue) => venue.status !== "suspended")
-      .map(toVenuePayload);
+    const filtered = venues.filter((venue) => venue.status !== "suspended");
+    return await Promise.all(
+      filtered.map((venue) => toVenuePayload(ctx, venue)),
+    );
   },
 });
 
@@ -175,7 +308,7 @@ export const resolvePublic = query({
       venue = normalized ? await ctx.db.get(normalized) : null;
     }
     if (!venue || venue.status === "suspended") return null;
-    return toVenuePayload(venue);
+    return await toVenuePayload(ctx, venue);
   },
 });
 
@@ -252,7 +385,7 @@ export const detail = query({
     }
 
     return {
-      venue: toVenuePayload(venue),
+      venue: await toVenuePayload(ctx, venue, cache),
       gigs,
       bands,
       truncated: visible.length > MAX_VENUE_GIGS,

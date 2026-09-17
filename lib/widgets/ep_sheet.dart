@@ -7,12 +7,45 @@ import '../theme.dart';
 Future<void> showEpSheet(BuildContext context, WidgetBuilder builder) {
   return showModalBottomSheet(
     context: context,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: .6),
+    backgroundColor: context.epColors.background.withValues(alpha: 0),
+    barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: .6),
     isScrollControlled: true,
     constraints: BoxConstraints(
       maxWidth: EpLayout.isDesktop(context) ? 560 : 600,
     ),
     builder: builder,
   );
+}
+
+/// A two-button confirmation dialog. Resolves true only when the user taps
+/// [confirmLabel]; KEEP and the barrier both resolve false.
+Future<bool> epConfirm(
+  BuildContext context, {
+  required String title,
+  required String body,
+  String keepLabel = 'KEEP',
+  String confirmLabel = 'CONFIRM',
+  Key? keepKey,
+  Key? confirmKey,
+}) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: Text(body),
+      actions: [
+        TextButton(
+          key: keepKey,
+          onPressed: () => Navigator.pop(context, false),
+          child: Text(keepLabel),
+        ),
+        FilledButton(
+          key: confirmKey,
+          onPressed: () => Navigator.pop(context, true),
+          child: Text(confirmLabel),
+        ),
+      ],
+    ),
+  );
+  return confirmed ?? false;
 }

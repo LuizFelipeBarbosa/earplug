@@ -1,6 +1,7 @@
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { applicationStatusPatch } from "./applicationStamps";
 import { assertBookingTransition, COMPLETION_DELAY_MS } from "./bookingStatus";
 import { publishGigFromOpportunity, syncGigLineup } from "./gigPublish";
 import {
@@ -37,7 +38,10 @@ export async function confirmBooking(
   const application = await ctx.db.get(booking.applicationId);
   if (!application) throw new Error("Application not found");
   assertApplicationTransition(application.status, "booked");
-  await ctx.db.patch(application._id, { status: "booked", updatedAt: now });
+  await ctx.db.patch(
+    application._id,
+    applicationStatusPatch(application, "booked", now),
+  );
 
   let competitorCount = 0;
   for (const status of APPLICATION_ACTIVE_STATUSES) {
@@ -51,10 +55,9 @@ export async function confirmBooking(
       if (competitor._id === booking.applicationId) continue;
       assertApplicationTransition(competitor.status, "declined");
       await ctx.db.patch(competitor._id, {
-        status: "declined",
+        ...applicationStatusPatch(competitor, "declined", now),
         declineReason: "slot_filled",
         decidedAt: now,
-        updatedAt: now,
       });
       competitorCount++;
     }

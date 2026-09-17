@@ -7,6 +7,8 @@ import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_states.dart';
+import '../widgets/ep_text.dart';
 
 class AdminBookingsScreen extends StatefulWidget {
   const AdminBookingsScreen({super.key});
@@ -123,7 +125,10 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     if (!app.isPlatformAdmin) {
-      return _NotAuthorized(onBack: app.toFanView);
+      return EpNotAuthorized(
+        message: 'Only platform admins can view bookings.',
+        onBack: app.toFanView,
+      );
     }
 
     return Material(
@@ -260,15 +265,12 @@ class _BookingRow extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              StatusPill(
-                label: row.status.label,
-                tone: _statusTone(row.status),
-              ),
+              EpBadge(label: row.status.label, tone: _statusTone(row.status)),
               if (row.openDisputeId != null)
-                StatusPill(
+                EpBadge(
                   key: Key('admin-booking-${row.bookingId}-dispute'),
                   label: 'DISPUTE',
-                  tone: EpStatusPillTone.warning,
+                  tone: EpBadgeTone.warning,
                 ),
             ],
           ),
@@ -310,46 +312,11 @@ class _BookingRow extends StatelessWidget {
   }
 }
 
-class _NotAuthorized extends StatelessWidget {
-  const _NotAuthorized({required this.onBack});
-
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      key: const Key('admin-not-authorized'),
-      child: Material(
-        color: context.epColors.background,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Only platform admins can view bookings.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.epBody,
-              ),
-              const SizedBox(height: 16),
-              EpButton(
-                'BACK TO FAN VIEW',
-                kind: EpButtonKind.outline,
-                onTap: onBack,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-EpStatusPillTone _statusTone(BookingStatus status) => switch (status) {
+EpBadgeTone _statusTone(BookingStatus status) => switch (status) {
   BookingStatus.confirmed ||
   BookingStatus.paid ||
-  BookingStatus.completed => EpStatusPillTone.success,
+  BookingStatus.completed => EpBadgeTone.success,
   BookingStatus.disputed ||
-  BookingStatus.awaitingPayment => EpStatusPillTone.warning,
-  _ => EpStatusPillTone.neutral,
+  BookingStatus.awaitingPayment => EpBadgeTone.warning,
+  _ => EpBadgeTone.neutral,
 };

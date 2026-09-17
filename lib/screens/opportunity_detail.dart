@@ -6,7 +6,9 @@ import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/map_view.dart';
 import '../widgets/sheets.dart';
@@ -64,26 +66,12 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
     final bandId = app.bandId;
     setState(() => _withdrawing = true);
     try {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Withdraw application?'),
-          content: const Text(
-            'Your band will no longer be considered for this opportunity.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('KEEP'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('CONFIRM'),
-            ),
-          ],
-        ),
+      final confirmed = await epConfirm(
+        context,
+        title: 'Withdraw application?',
+        body: 'Your band will no longer be considered for this opportunity.',
       );
-      if (confirmed != true) return;
+      if (!confirmed) return;
       // BrowseItem carries a status, so fetch the current application id before withdrawing.
       final applications = await app.repository.myApplications(bandId);
       final application = applications
@@ -160,10 +148,6 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
           );
         }
         final opportunity = item.opportunity;
-        final venue = opportunity.venue;
-        final isPrivate =
-            opportunity.privateEvent ||
-            opportunity.mode == OpportunityMode.privateBooking;
         final status = item.myApplicationStatus;
         final applied = status != null && status.isActive;
         final canWithdraw =
@@ -171,7 +155,9 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
         return Stack(
           children: [
             Positioned.fill(
-              child: ListView(
+              child: OpportunityDetailPresentation(
+                opportunity: opportunity,
+                invited: item.invited,
                 padding: EdgeInsets.fromLTRB(
                   16,
                   headerTopPad(context),
@@ -180,188 +166,13 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
                       actionBarClearance(context) +
                       MediaQuery.paddingOf(context).bottom,
                 ),
-                children: [
+                leading: [
                   Align(
                     alignment: Alignment.centerLeft,
                     child: BackButton(onPressed: _back),
                   ),
-                  Text(
-                    opportunity.title,
-                    style: Theme.of(context).textTheme.epPageHeading,
-                  ),
-                  if (isPrivate) ...[
-                    const SizedBox(height: 8),
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: EpChip(
-                        key: Key('opp-detail-private'),
-                        label: 'PRIVATE EVENT',
-                        active: true,
-                        readOnly: true,
-                        onTap: null,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  Text(
-                    '${opportunity.status.wireValue.replaceAll('_', ' ').toUpperCase()} · Applications close ${_dateLabel(opportunity.applicationsCloseAt)}',
-                    style: Theme.of(context).textTheme.epCaption,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    MaterialLocalizations.of(
-                      context,
-                    ).formatFullDate(opportunity.startsAt.toLocal()),
-                    style: Theme.of(context).textTheme.epMeta,
-                  ),
-                  if (item.invited) ...[
-                    const SizedBox(height: 8),
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: StatusPill(
-                        label: 'INVITED',
-                        tone: EpStatusPillTone.selected,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  if (!isPrivate && venue != null)
-                    EpCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          VenueMiniMap(
-                            venue: venue,
-                            approximate: venue.exactAddress == null,
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            venue.name,
-                            style: Theme.of(context).textTheme.epSectionHeading,
-                          ),
-                          Text(
-                            venue.area,
-                            style: Theme.of(context).textTheme.epMeta,
-                          ),
-                        ],
-                      ),
-                    )
-                  else if (opportunity.area.isNotEmpty)
-                    Text(
-                      opportunity.area,
-                      style: Theme.of(context).textTheme.epMeta,
-                    ),
-                  if (isPrivate) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'The exact address is shared with the booked artist after the deposit is paid.',
-                      key: const Key('opp-detail-private-note'),
-                      style: Theme.of(context).textTheme.epBody,
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  const SectionBar(label: 'SLOTS'),
-                  for (final slot in opportunity.slots)
-                    Padding(
-                      key: ValueKey('opp-detail-slot-${slot.id}'),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  slot.role.name.toUpperCase(),
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.epSectionHeading,
-                                ),
-                                Text(
-                                  [
-                                    Money(
-                                      slot.guaranteeMinor,
-                                      opportunity.currency,
-                                    ).label,
-                                    if (slot.setLengthMin != null)
-                                      '${slot.setLengthMin} min',
-                                    if (slot.required) 'REQUIRED',
-                                  ].join(' · '),
-                                  style: Theme.of(context).textTheme.epMeta,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          StatusPill(
-                            label: slot.status.name.toUpperCase(),
-                            tone: slot.status == SlotStatus.open
-                                ? EpStatusPillTone.success
-                                : EpStatusPillTone.neutral,
-                          ),
-                        ],
-                      ),
-                    ),
-                  const SizedBox(height: 20),
-                  const SectionBar(label: 'STYLE'),
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 7,
-                    children: [
-                      for (final genre in opportunity.genres)
-                        EpChip(
-                          label: genre,
-                          active: true,
-                          onTap: null,
-                          readOnly: true,
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    opportunity.ageRequirement.label,
-                    style: Theme.of(context).textTheme.epMeta,
-                  ),
-                  const SizedBox(height: 20),
-                  const SectionBar(label: 'DETAILS'),
-                  if (opportunity.desc.trim().isNotEmpty)
-                    Text(
-                      opportunity.desc,
-                      style: Theme.of(context).textTheme.epBody,
-                    ),
-                  if (opportunity.equipment?.trim().isNotEmpty == true)
-                    LedgerRow(
-                      title: 'Equipment',
-                      details: [opportunity.equipment!],
-                    ),
-                  if (opportunity.requirements?.trim().isNotEmpty == true)
-                    LedgerRow(
-                      title: 'Requirements',
-                      details: [opportunity.requirements!],
-                    ),
-                  if (opportunity.expectedAttendance != null)
-                    LedgerRow(
-                      title: isPrivate ? 'EXPECTED GUESTS' : 'Expected attendance',
-                      details: ['${opportunity.expectedAttendance}'],
-                    ),
-                  LedgerRow(
-                    title: 'Ticketing',
-                    details: [
-                      switch (opportunity.ticketing) {
-                        OpportunityTicketing.none => 'No tickets required',
-                        OpportunityTicketing.rsvp => 'RSVP',
-                        OpportunityTicketing.external => 'External tickets',
-                        OpportunityTicketing.paid => 'Paid tickets',
-                      },
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  const SectionBar(label: 'ORGANIZER'),
-                  Text(
-                    'Verified organizer',
-                    style: Theme.of(context).textTheme.epMeta,
-                  ),
+                ],
+                trailing: [
                   if (_error != null)
                     Padding(
                       padding: const EdgeInsets.all(12),
@@ -390,6 +201,209 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
           ],
         );
       },
+    );
+  }
+}
+
+/// The artist-facing read of an opportunity: title, when, where, slots, style,
+/// details and organizer. The band-side screen wraps it with its apply bar;
+/// the organizer's composer renders the same thing under a PREVIEW badge.
+class OpportunityDetailPresentation extends StatelessWidget {
+  const OpportunityDetailPresentation({
+    super.key,
+    required this.opportunity,
+    this.invited = false,
+    this.preview = false,
+    this.padding = EdgeInsets.zero,
+    this.leading = const <Widget>[],
+    this.trailing = const <Widget>[],
+  });
+
+  final Opportunity opportunity;
+  final bool invited;
+
+  /// Read-only render of an unpublished draft, badged so the organizer knows
+  /// nothing here is live yet.
+  final bool preview;
+  final EdgeInsetsGeometry padding;
+  final List<Widget> leading;
+  final List<Widget> trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final venue = opportunity.venue;
+    final isPrivate =
+        opportunity.privateEvent ||
+        opportunity.mode == OpportunityMode.privateBooking;
+    return ListView(
+      padding: padding,
+      children: [
+        ...leading,
+        if (preview) ...[
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: EpBadge(
+              key: Key('opp-preview-badge'),
+              label: 'PREVIEW',
+              tone: EpBadgeTone.selected,
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        Text(
+          opportunity.title,
+          style: Theme.of(context).textTheme.epPageHeading,
+        ),
+        if (isPrivate) ...[
+          const SizedBox(height: 8),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: EpChip(
+              key: Key('opp-detail-private'),
+              label: 'PRIVATE EVENT',
+              active: true,
+              readOnly: true,
+              onTap: null,
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Text(
+          '${opportunity.status.wireValue.replaceAll('_', ' ').toUpperCase()} · Applications close ${_dateLabel(opportunity.applicationsCloseAt)}',
+          style: Theme.of(context).textTheme.epCaption,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          MaterialLocalizations.of(
+            context,
+          ).formatFullDate(opportunity.startsAt.toLocal()),
+          style: Theme.of(context).textTheme.epMeta,
+        ),
+        if (invited) ...[
+          const SizedBox(height: 8),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: EpBadge(label: 'INVITED', tone: EpBadgeTone.selected),
+          ),
+        ],
+        const SizedBox(height: 20),
+        if (!isPrivate && venue != null)
+          EpCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                VenueMiniMap(
+                  venue: venue,
+                  approximate: venue.exactAddress == null,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  venue.name,
+                  style: Theme.of(context).textTheme.epSectionHeading,
+                ),
+                Text(venue.area, style: Theme.of(context).textTheme.epMeta),
+              ],
+            ),
+          )
+        else if (opportunity.area.isNotEmpty)
+          Text(opportunity.area, style: Theme.of(context).textTheme.epMeta),
+        if (isPrivate) ...[
+          const SizedBox(height: 8),
+          Text(
+            'The exact address is shared with the booked artist after the deposit is paid.',
+            key: const Key('opp-detail-private-note'),
+            style: Theme.of(context).textTheme.epBody,
+          ),
+        ],
+        const SizedBox(height: 20),
+        const EpSectionHeader(label: 'SLOTS'),
+        for (final slot in opportunity.slots)
+          Padding(
+            key: ValueKey('opp-detail-slot-${slot.id}'),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        slot.role.name.toUpperCase(),
+                        style: Theme.of(context).textTheme.epSectionHeading,
+                      ),
+                      Text(
+                        [
+                          Money(
+                            slot.guaranteeMinor,
+                            opportunity.currency,
+                          ).label,
+                          if (slot.setLengthMin != null)
+                            '${slot.setLengthMin} min',
+                          if (slot.required) 'REQUIRED',
+                        ].join(' · '),
+                        style: Theme.of(context).textTheme.epMeta,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                EpBadge(
+                  label: slot.status.name.toUpperCase(),
+                  tone: slot.status == SlotStatus.open
+                      ? EpBadgeTone.success
+                      : EpBadgeTone.neutral,
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 20),
+        const EpSectionHeader(label: 'STYLE'),
+        Wrap(
+          spacing: 7,
+          runSpacing: 7,
+          children: [
+            for (final genre in opportunity.genres)
+              EpChip(label: genre, active: true, onTap: null, readOnly: true),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          opportunity.ageRequirement.label,
+          style: Theme.of(context).textTheme.epMeta,
+        ),
+        const SizedBox(height: 20),
+        const EpSectionHeader(label: 'DETAILS'),
+        if (opportunity.desc.trim().isNotEmpty)
+          Text(opportunity.desc, style: Theme.of(context).textTheme.epBody),
+        if (opportunity.equipment?.trim().isNotEmpty == true)
+          LedgerRow(title: 'Equipment', details: [opportunity.equipment!]),
+        if (opportunity.requirements?.trim().isNotEmpty == true)
+          LedgerRow(
+            title: 'Requirements',
+            details: [opportunity.requirements!],
+          ),
+        if (opportunity.expectedAttendance != null)
+          LedgerRow(
+            title: isPrivate ? 'EXPECTED GUESTS' : 'Expected attendance',
+            details: ['${opportunity.expectedAttendance}'],
+          ),
+        LedgerRow(
+          title: 'Ticketing',
+          details: [
+            switch (opportunity.ticketing) {
+              OpportunityTicketing.none => 'No tickets required',
+              OpportunityTicketing.rsvp => 'RSVP',
+              OpportunityTicketing.external => 'External tickets',
+              OpportunityTicketing.paid => 'Paid tickets',
+            },
+          ],
+        ),
+        const SizedBox(height: 20),
+        const EpSectionHeader(label: 'ORGANIZER'),
+        Text('Verified organizer', style: Theme.of(context).textTheme.epMeta),
+        ...trailing,
+      ],
     );
   }
 }
@@ -510,7 +524,7 @@ class _ApplySheetState extends State<_ApplySheet> {
             child: ListView(
               children: [
                 if (_bands.length > 1) ...[
-                  const SectionBar(label: 'BAND'),
+                  const EpSectionHeader(label: 'BAND'),
                   Wrap(
                     spacing: 7,
                     runSpacing: 7,
@@ -528,7 +542,7 @@ class _ApplySheetState extends State<_ApplySheet> {
                   ),
                   const SizedBox(height: 18),
                 ],
-                const SectionBar(label: 'SLOT'),
+                const EpSectionHeader(label: 'SLOT'),
                 Wrap(
                   spacing: 7,
                   runSpacing: 7,

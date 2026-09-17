@@ -6,7 +6,9 @@ import '../errors.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_states.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart' show EpFormSheet;
 
@@ -126,7 +128,10 @@ class _AdminSafetyScreenState extends State<AdminSafetyScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     if (!app.isPlatformAdmin) {
-      return _NotAuthorized(onBack: app.toFanView);
+      return EpNotAuthorized(
+        message: 'Only platform admins can view safety reports.',
+        onBack: app.toFanView,
+      );
     }
 
     return Material(
@@ -154,7 +159,7 @@ class _AdminSafetyScreenState extends State<AdminSafetyScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
                 children: [
-                  const SectionBar(label: 'OPEN REPORTS'),
+                  const EpSectionHeader(label: 'OPEN REPORTS'),
                   if (_loadFailed) ...[
                     const Text("Couldn't load safety reports."),
                     const SizedBox(height: 12),
@@ -357,41 +362,6 @@ class _ResolveSheetState extends State<_ResolveSheet> {
             onTap: _submitting ? null : _confirm,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _NotAuthorized extends StatelessWidget {
-  const _NotAuthorized({required this.onBack});
-
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      key: const Key('admin-not-authorized'),
-      child: Material(
-        color: context.epColors.background,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Only platform admins can view safety reports.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.epBody,
-              ),
-              const SizedBox(height: 16),
-              EpButton(
-                'BACK TO FAN VIEW',
-                kind: EpButtonKind.outline,
-                onTap: onBack,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

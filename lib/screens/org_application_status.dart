@@ -7,32 +7,9 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/status_timeline.dart';
-
-Future<bool> _confirmWithdraw(BuildContext context) async =>
-    await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('WITHDRAW APPLICATION?'),
-        content: const Text(
-          'Withdrawing ends this application. You will need to reapply.',
-        ),
-        actions: [
-          TextButton(
-            key: const Key('org-status-withdraw-cancel'),
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('KEEP'),
-          ),
-          FilledButton(
-            key: const Key('org-status-withdraw-confirm'),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('CONFIRM'),
-          ),
-        ],
-      ),
-    ) ??
-    false;
 
 class OrgApplicationStatusScreen extends StatefulWidget {
   const OrgApplicationStatusScreen({super.key});
@@ -69,7 +46,14 @@ class _OrgApplicationStatusScreenState
   }
 
   Future<void> _withdraw(OrganizationApplication application) async {
-    if (!await _confirmWithdraw(context) || !mounted) return;
+    final confirmed = await epConfirm(
+      context,
+      title: 'WITHDRAW APPLICATION?',
+      body: 'Withdrawing ends this application. You will need to reapply.',
+      keepKey: const Key('org-status-withdraw-cancel'),
+      confirmKey: const Key('org-status-withdraw-confirm'),
+    );
+    if (!confirmed || !mounted) return;
     setState(() => _withdrawing = true);
     final app = context.read<AppState>();
     try {
@@ -224,7 +208,7 @@ class _OrgApplicationStatusScreenState
                       child: Text(
                         'No organizer application found.',
                         textAlign: TextAlign.center,
-                        style: epText(color: context.epColors.contentSecondary),
+                        style: Theme.of(context).textTheme.epCaption,
                       ),
                     ),
                   )

@@ -13,17 +13,24 @@ mixin _NavigationState on _AppStateCore {
   Venue? knownVenue(String id);
   bool isAdminOf(String id);
   OrganizationRole? organizerRoleFor(String organizationId);
+  bool get currentIsHost;
   Booking? bookingById(String id);
   ActiveIdentity identityForBooking(Booking booking);
   void ensureExploreBands();
+  void ensureSocial();
   void needAuth(PendingAuth p);
   Future<void> loadBandProfileDetails(String id, {bool refresh = false});
   Future<void> refreshBandSetupStatus(String id);
   Future<void> refreshBandDiscoveryReadiness(String id);
   Future<void> refreshBandInvite(String id);
   Future<void> refreshManagedGigs();
+  void ensureManagedGigs();
 
   VoidCallback? _stopBrowserHistory;
+
+  /// Set by [requestMembersSheet] and consumed once by the band profile
+  /// screen via [takeMembersSheetRequest].
+  bool _membersSheetRequested = false;
 
   // ---- navigation
   List<ScreenEntry> _stack = const [ScreenEntry(Screen.home)];
@@ -79,18 +86,36 @@ mixin _NavigationState on _AppStateCore {
       _syncPublicGigSubscriptionForCurrentScreen();
     });
     pushBrowserPath(_browserPathFor(s, param));
-    if (current.screen == Screen.explore) ensureExploreBands();
+    if (_showsBandDirectory(current)) ensureExploreBands();
+    if (current.screen == Screen.explore) ensureSocial();
   }
 
   void back() {
     if (_stack.length <= 1) {
-      if (current.screen == Screen.gig || current.screen == Screen.orgApply) {
+      final root = current.screen;
+      if (root == Screen.gig || root == Screen.orgApply) {
         resetTo(Screen.home);
+      } else if (tabBarHiddenScreens.contains(root)) {
+        // A pushed screen with nothing beneath it (deep link, reload): its
+        // back arrow lands on the home tab of the identity it belongs to.
+        resetTo(_homeTabFor(root));
       }
       return;
     }
     _popAppStack();
     replaceBrowserPath(_browserPathFor(current.screen, current.param));
+  }
+
+  Screen _homeTabFor(Screen screen) {
+    if (screen == Screen.bandMedia || screen == Screen.gigCreate) {
+      return Screen.gigMgr;
+    }
+    return switch (identity) {
+      OrganizerIdentity() =>
+        currentIsHost ? Screen.orgDash : Screen.orgOpportunities,
+      BandIdentity() => Screen.gigMgr,
+      _ => Screen.home,
+    };
   }
 
   void _popAppStack() {
@@ -99,29 +124,43 @@ mixin _NavigationState on _AppStateCore {
       _stack = _stack.sublist(0, _stack.length - 1);
       _syncPublicGigSubscriptionForCurrentScreen();
     });
-    _refreshVisibleBandDashboard();
-    if (current.screen == Screen.explore) ensureExploreBands();
+    _refreshVisibleBandHome();
+    if (_showsBandDirectory(current)) ensureExploreBands();
+    if (current.screen == Screen.explore) ensureSocial();
   }
 
-  void resetTo(Screen s) {
+  void resetTo(Screen s, [String? param]) {
     _set(() {
-      _stack = [ScreenEntry(s)];
+      _stack = [ScreenEntry(s, param)];
       _syncPublicGigSubscriptionForCurrentScreen();
     });
-    replaceBrowserPath(_browserPathFor(s, null));
-    _refreshVisibleBandDashboard();
+    replaceBrowserPath(_browserPathFor(s, param));
+    _refreshVisibleBandHome();
     _onBandChanged();
     _onOrganizationChanged();
-    if (current.screen == Screen.explore) ensureExploreBands();
+    if (_showsBandDirectory(current)) ensureExploreBands();
+    if (current.screen == Screen.explore) ensureSocial();
   }
+
+  /// Explore and its bands collection both page the band directory.
+  static bool _showsBandDirectory(ScreenEntry entry) =>
+      entry.screen == Screen.explore ||
+      (entry.screen == Screen.exploreCollection && entry.param == 'bands');
 
   String _browserPathFor(Screen screen, String? param) => switch (screen) {
     Screen.gig => '/g/${gig(param ?? '')?.publicRef ?? param ?? ''}',
+    Screen.hostedGig => '/manage/gigs/${param ?? ''}',
     Screen.band => '/${_bands[param]?.publicRef ?? param ?? ''}',
     Screen.venue => _venueBrowserPath(param),
+    Screen.exploreCollection =>
+      param == null || param.isEmpty ? '/explore' : '/explore/$param',
+    Screen.people => '/people',
     Screen.orgJoin => '/apply/${param ?? ''}',
     Screen.opportunityDetail => '/opportunities/${param ?? ''}',
     Screen.bookingDetail => '/bookings/${param ?? ''}',
+    Screen.orgOpportunity => '/organizer/opportunities/${param ?? ''}',
+    Screen.applicantReview => '/organizer/review/${param ?? ''}',
+    Screen.orgSettings => '/organization',
     Screen.orgApply => organizerApplyPath,
     Screen.hostApply => '/host/apply',
     Screen.privateLocations => '/org/locations',
@@ -146,8 +185,10 @@ mixin _NavigationState on _AppStateCore {
     return '/venues/$browserRef';
   }
 
-  void _refreshVisibleBandDashboard() {
-    if (current.screen == Screen.bandDash && bandId.isNotEmpty) {
+  /// GIGS is the band home: it hosts the readiness hero, so landing there
+  /// refreshes what the hero shows.
+  void _refreshVisibleBandHome() {
+    if (current.screen == Screen.gigMgr && bandId.isNotEmpty) {
       unawaited(refreshBandSetupStatus(bandId));
       unawaited(refreshBandDiscoveryReadiness(bandId));
     }
@@ -157,6 +198,18 @@ mixin _NavigationState on _AppStateCore {
     if (current.screen == Screen.gig && current.param == id) return;
     go(Screen.gig, id);
     unawaited(_loadPublicGig(id));
+  }
+
+  /// An organizer's own opportunity, from the GIGS tab.
+  void openOrgOpportunity(String id) => go(Screen.orgOpportunity, id);
+
+  /// One application to an organizer's opportunity.
+  void openApplicantReview(String applicationId) =>
+      go(Screen.applicantReview, applicationId);
+
+  void openHostedGig(String projectId) {
+    go(Screen.hostedGig, projectId);
+    ensureManagedGigs();
   }
 
   void openBand(String id) {
@@ -173,7 +226,17 @@ mixin _NavigationState on _AppStateCore {
     unawaited(_markBandPreviewed(id));
   }
 
-  void returnToBandDashboard() => resetTo(Screen.bandDash);
+  /// The PROFILE tab: the band's own public profile as a tab root.
+  void openOwnProfileTab() {
+    final id = bandId;
+    if (id.isEmpty) return;
+    resetTo(Screen.bandPreview, id);
+    unawaited(loadBandProfileDetails(id));
+    unawaited(_markBandPreviewed(id));
+  }
+
+  /// Back to the band home, which is the GIGS tab.
+  void returnToBandDashboard() => resetTo(Screen.gigMgr);
 
   void openBandEditor({String? section}) {
     if (!isAdminOf(bandId)) return;
@@ -182,7 +245,25 @@ mixin _NavigationState on _AppStateCore {
     if (section == 'members') unawaited(refreshBandInvite(bandId));
   }
 
-  void openInvitationPanel() => openBandEditor(section: 'members');
+  /// Lands on the band's own profile with the members sheet requested;
+  /// the profile screen picks the request up with [takeMembersSheetRequest].
+  void requestMembersSheet() {
+    final id = bandId;
+    if (id.isEmpty) return;
+    _membersSheetRequested = true;
+    resetTo(Screen.bandPreview, id);
+    unawaited(loadBandProfileDetails(id));
+    unawaited(refreshBandInvite(id));
+  }
+
+  /// Returns whether a members sheet was requested, clearing the request.
+  bool takeMembersSheetRequest() {
+    final requested = _membersSheetRequested;
+    _membersSheetRequested = false;
+    return requested;
+  }
+
+  void openInvitationPanel() => requestMembersSheet();
 
   void openVenue(String id) {
     if (current.screen == Screen.venue && current.param == id) return;

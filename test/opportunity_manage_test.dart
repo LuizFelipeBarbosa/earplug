@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:earplug/app_state.dart';
-import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
@@ -10,86 +9,223 @@ import 'package:earplug/screens/door_mode.dart';
 import 'package:earplug/screens/opportunity_applicants.dart';
 import 'package:earplug/screens/org_opportunities.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/design_rules.dart';
-import 'support/fakes.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
 void main() {
-  testWidgets('opportunities group drafts and open listings with counts', (
+  testWidgets('the requests list leads with segments and application chips', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
-    final openSection = find.byKey(const ValueKey('org-opps-section-OPEN'));
-    final draftsSection = find.byKey(const ValueKey('org-opps-section-DRAFTS'));
     final openCard = find.byKey(const ValueKey('org-opp-opp1'));
+    final quietCard = find.byKey(const ValueKey('org-opp-opp3'));
     final draftCard = find.byKey(const ValueKey('org-opp-opp2'));
 
+    expect(find.byKey(const Key('org-opps-title')), findsOneWidget);
     expect(find.text('OPPORTUNITIES'), findsOneWidget);
     expect(find.text('Post a slot. Find your next artist.'), findsOneWidget);
-    expect(find.text('NEW OPPORTUNITY'), findsOneWidget);
+    final newPill = tester.widget<EpPill>(
+      find.byKey(const Key('org-opps-new')),
+    );
+    expect(newPill.label, '+ New opportunity');
+    expect(newPill.variant, EpPillVariant.outline);
+    expect(newPill.size, EpPillSize.chip);
+    final tabs = tester.widget<EpSegmentTabs>(
+      find.byKey(const Key('org-opps-tabs')),
+    );
+    expect(tabs.labels, ['Active', 'Confirmed', 'Past']);
+    expect(tabs.selected, 0);
+    expect(find.byKey(const ValueKey('org-opps-section-OPEN')), findsNothing);
+    expect(find.byKey(const ValueKey('org-opps-section-DRAFTS')), findsNothing);
+
+    // Nothing is booked in the demo, so CONFIRMED is absent and ACTIVE lists
+    // the open listings first and the draft last.
+    expect(find.text('ACTIVE · 3'), findsOneWidget);
+    expect(find.textContaining('CONFIRMED ·'), findsNothing);
     expect(
-      tester
-          .widget<SectionBar>(
-            find.descendant(of: openSection, matching: find.byType(SectionBar)),
-          )
-          .count,
-      2,
+      tester.getTopLeft(openCard).dy,
+      lessThan(tester.getTopLeft(quietCard).dy),
     );
     expect(
-      tester
-          .widget<SectionBar>(
-            find.descendant(
-              of: draftsSection,
-              matching: find.byType(SectionBar),
-            ),
-          )
-          .label,
-      'DRAFTS',
+      tester.getTopLeft(quietCard).dy,
+      lessThan(tester.getTopLeft(draftCard).dy),
     );
+
+    final applied = tester.widget<EpBadge>(
+      find.byKey(const Key('org-opp-applied-opp1')),
+    );
+    expect(applied.label, '2 applied');
+    expect(applied.tone, EpBadgeTone.selected);
     expect(
-      find.descendant(of: openSection, matching: openCard),
+      find.descendant(of: openCard, matching: find.text('2 APPLIED')),
       findsOneWidget,
     );
+    final none = tester.widget<EpBadge>(
+      find.byKey(const Key('org-opp-applied-opp3')),
+    );
+    expect(none.label, '0 applied');
+    expect(none.tone, EpBadgeTone.neutral);
     expect(
-      find.descendant(of: draftsSection, matching: draftCard),
+      find.descendant(of: draftCard, matching: find.text('DRAFT')),
       findsOneWidget,
     );
-    expect(
-      find.descendant(of: openCard, matching: find.text('2 applied')),
-      findsOneWidget,
-    );
+    // Card titles speak in the display voice, so the title is shouted.
     expect(
       find.descendant(
         of: openCard,
-        matching: find.text(DemoData.opportunities['opp1']!.title),
+        matching: find.text(
+          DemoData.opportunities['opp1']!.title.toUpperCase(),
+        ),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
         of: openCard,
-        matching: find.text(r'Headliner $300.00 · Support $150.00'),
+        matching: find.textContaining('Headliner, Support · 2 slots · closes '),
       ),
       findsOneWidget,
     );
+    expect(find.text('PAST · 0'), findsOneWidget);
+    expect(find.byKey(const Key('org-opps-past-body')), findsNothing);
+    harness.app.dispose();
+  });
+
+  testWidgets('confirmed requests lead the Active view and fill Confirmed', (
+    tester,
+  ) async {
+    final harness = await pumpOrganizerScreen(
+      tester,
+      const OrgOpportunitiesScreen(),
+      repositoryBuilder: (auth) =>
+          StubRepository(auth: auth)
+            ..wraps<List<Opportunity>>('manageOpportunities', (opportunities) {
+              return opportunities.map((opportunity) {
+                if (opportunity.id != 'opp3') return opportunity;
+                // Booked slots alone make a request confirmed; the status
+                // may lag behind.
+                return opportunity.copyWith(
+                  slots: [
+                    for (final slot in opportunity.slots)
+                      OpportunitySlot(
+                        id: slot.id,
+                        order: slot.order,
+                        role: slot.role,
+                        guaranteeMinor: slot.guaranteeMinor,
+                        required: slot.required,
+                        status: SlotStatus.booked,
+                        bandId: 'b1',
+                      ),
+                  ],
+                );
+              }).toList();
+            }),
+    );
+    final confirmedCard = find.byKey(const ValueKey('org-opp-opp3'));
+    final openCard = find.byKey(const ValueKey('org-opp-opp1'));
+
+    expect(find.text('CONFIRMED · 1'), findsOneWidget);
+    expect(find.text('ACTIVE · 2'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('CONFIRMED · 1')).dy,
+      lessThan(tester.getTopLeft(find.text('ACTIVE · 2')).dy),
+    );
+    expect(
+      tester.getTopLeft(confirmedCard).dy,
+      lessThan(tester.getTopLeft(openCard).dy),
+    );
+    expect(
+      find.descendant(of: confirmedCard, matching: find.text('CONFIRMED')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: confirmedCard,
+        matching: find.text(r'Headliner · $0.00 · 1/1 slots booked'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('org-opp-applied-opp3')), findsNothing);
+
+    await tester.tap(_segment('CONFIRMED'));
+    await tester.pumpAndSettle();
+    expect(confirmedCard, findsOneWidget);
+    expect(openCard, findsNothing);
+    expect(find.byKey(const Key('org-opps-past-toggle')), findsNothing);
+    harness.app.dispose();
+  });
+
+  testWidgets('past requests collapse into one row and fill the Past view', (
+    tester,
+  ) async {
+    final harness = await pumpOrganizerScreen(
+      tester,
+      const OrgOpportunitiesScreen(),
+      repositoryBuilder: (auth) => StubRepository(auth: auth)
+        ..wraps<List<Opportunity>>('manageOpportunities', (opportunities) {
+          return opportunities.map((opportunity) {
+            return switch (opportunity.id) {
+              'opp2' => opportunity.copyWith(
+                status: OpportunityStatus.completed,
+              ),
+              'opp3' => opportunity.copyWith(
+                status: OpportunityStatus.cancelled,
+              ),
+              _ => opportunity,
+            };
+          }).toList();
+        }),
+    );
+    final completedCard = find.byKey(const ValueKey('org-opp-opp2'));
+    final cancelledCard = find.byKey(const ValueKey('org-opp-opp3'));
+    final toggle = find.byKey(const Key('org-opps-past-toggle'));
+    final body = find.byKey(const Key('org-opps-past-body'));
+
+    expect(find.text('ACTIVE · 1'), findsOneWidget);
+    expect(find.text('PAST · 2'), findsOneWidget);
+    expect(find.text('Incl. 1 cancelled'), findsOneWidget);
+    expect(body, findsNothing);
+    expect(completedCard, findsNothing);
+
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(body, findsOneWidget);
+    expect(find.descendant(of: body, matching: completedCard), findsOneWidget);
+    expect(find.descendant(of: body, matching: cancelledCard), findsOneWidget);
+    expect(
+      find.descendant(of: cancelledCard, matching: find.text('CANCELLED')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: completedCard, matching: find.text('COMPLETED')),
+      findsOneWidget,
+    );
+
+    await tester.tap(_segment('PAST'));
+    await tester.pumpAndSettle();
+    expect(toggle, findsNothing);
+    expect(completedCard, findsOneWidget);
+    expect(cancelledCard, findsOneWidget);
+    expect(find.byKey(const ValueKey('org-opp-opp1')), findsNothing);
     harness.app.dispose();
   });
 
   testWidgets('promoter opportunities show their venue approval status', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
@@ -102,7 +238,7 @@ void main() {
       of: card,
       matching: find.byKey(const Key('org-opp-venue-consent-opp-promoter')),
     );
-    expect(tester.widget<StatusPill>(consent).tone, EpStatusPillTone.warning);
+    expect(tester.widget<EpBadge>(consent).tone, EpBadgeTone.warning);
     expect(
       find.descendant(of: consent, matching: find.text('PENDING APPROVAL')),
       findsOneWidget,
@@ -126,10 +262,10 @@ void main() {
 
     expect(find.text('REQUESTS'), findsOneWidget);
     expect(find.text('Post a request. Find your artist.'), findsOneWidget);
-    expect(find.text('NEW REQUEST'), findsOneWidget);
+    expect(find.text('+ NEW REQUEST'), findsOneWidget);
     expect(find.text('OPPORTUNITIES'), findsNothing);
     expect(find.text('Post a slot. Find your next artist.'), findsNothing);
-    expect(find.text('NEW OPPORTUNITY'), findsNothing);
+    expect(find.text('+ NEW OPPORTUNITY'), findsNothing);
     final privateCard = find.byKey(const ValueKey('org-opp-opp-private'));
     await tester.ensureVisible(privateCard);
     expect(
@@ -153,7 +289,7 @@ void main() {
   testWidgets(
     'published paid opportunities load sales and offer a door action',
     (tester) async {
-      final harness = await _pumpOrganizerScreen(
+      final harness = await pumpOrganizerScreen(
         tester,
         const SizedBox.shrink(),
         repositoryBuilder: (auth) =>
@@ -175,20 +311,11 @@ void main() {
       expect(expected.netMinor, greaterThan(0));
       expect(harness.app.salesFor('g8'), isNull);
 
-      await tester.pumpWidget(
-        ChangeNotifierProvider<AppState>.value(
-          value: harness.app,
-          child: MaterialApp(
-            theme: buildEpTheme(),
-            home: const Scaffold(body: OrgOpportunitiesScreen()),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
+      await rehostApp(tester, harness.app, const OrgOpportunitiesScreen());
       final caption = find.byKey(const Key('org-opp-sales-opp1'));
       await tester.ensureVisible(caption);
       expect(
-        tester.widget<Text>(caption).data,
+        tester.widget<EpMonoText>(caption).text,
         '${expected.sold}/${expected.capacity} sold · ${expected.net.label} net',
       );
       expect(repository.salesReads, readsBeforeScreen + 1);
@@ -202,7 +329,11 @@ void main() {
         tester.widget<DoorModeScreen>(find.byType(DoorModeScreen)).launch.gigId,
         'g8',
       );
-      expect(find.text(DemoData.opportunities['opp1']!.title), findsOneWidget);
+      // Door mode renders the gig title in the uppercase display voice.
+      expect(
+        find.text(DemoData.opportunities['opp1']!.title.toUpperCase()),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
       harness.app.dispose();
     },
@@ -214,7 +345,7 @@ void main() {
           ? 'published RSVP opportunities offer DOOR without loading sales'
           : 'paid opportunities without a published gig have no sales or DOOR',
       (tester) async {
-        final harness = await _pumpOrganizerScreen(
+        final harness = await pumpOrganizerScreen(
           tester,
           const OrgOpportunitiesScreen(),
           repositoryBuilder: (auth) => _PublishedOpportunityRepository(
@@ -227,8 +358,8 @@ void main() {
         );
         expect(find.byKey(const Key('org-opp-sales-opp1')), findsNothing);
         final card = find.byKey(const ValueKey('org-opp-opp1'));
-        await tester.ensureVisible(card);
-        await tester.tap(card);
+        await _revealOpportunityCard(tester, card);
+        await tester.tap(find.byKey(const Key('org-opp-actions-opp1')));
         await tester.pumpAndSettle();
         expect(find.text('Door'), published ? findsOneWidget : findsNothing);
         harness.app.dispose();
@@ -239,7 +370,7 @@ void main() {
   testWidgets('new opportunity opens the editor with the new parameter', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
@@ -252,10 +383,10 @@ void main() {
     harness.app.dispose();
   });
 
-  testWidgets('close applications moves the opportunity to CLOSED', (
+  testWidgets('close applications keeps the opportunity active as CLOSED', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
@@ -265,19 +396,21 @@ void main() {
     final card = find.byKey(const ValueKey('org-opp-opp1'));
     await tester.ensureVisible(card);
     await tester.pumpAndSettle();
-    final closedSection = find.byKey(const ValueKey('org-opps-section-CLOSED'));
-    expect(find.descendant(of: closedSection, matching: card), findsOneWidget);
+    expect(find.text('ACTIVE · 3'), findsOneWidget);
     expect(
-      tester
-          .widget<SectionBar>(
-            find.descendant(
-              of: closedSection,
-              matching: find.byType(SectionBar),
-            ),
-          )
-          .label,
-      'CLOSED',
+      find.descendant(of: card, matching: find.text('CLOSED')),
+      findsOneWidget,
     );
+    expect(
+      find.descendant(
+        of: card,
+        matching: find.text(
+          'Headliner, Support · 2 slots · applications closed',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('org-opp-applied-opp1')), findsOneWidget);
     final opportunities = await harness.app.repository.manageOpportunities(
       'org1',
     );
@@ -294,7 +427,7 @@ void main() {
   testWidgets('delete draft removes the opportunity without another dialog', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
@@ -310,7 +443,7 @@ void main() {
   testWidgets('duplicate adds a draft with no active applications', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
@@ -330,7 +463,7 @@ void main() {
   });
 
   testWidgets('cancel opportunity requires confirmation', (tester) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
@@ -354,7 +487,7 @@ void main() {
   testWidgets('reopen uses a picked deadline and returns to OPEN', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
     );
@@ -378,7 +511,7 @@ void main() {
   testWidgets('reopen is offered and works for a booking-status opportunity', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
       repositoryBuilder: (auth) =>
@@ -391,8 +524,8 @@ void main() {
             }),
     );
     final card = find.byKey(const ValueKey('org-opp-opp1'));
-    await tester.ensureVisible(card);
-    await tester.tap(card);
+    await _revealOpportunityCard(tester, card);
+    await tester.tap(find.byKey(const Key('org-opp-actions-opp1')));
     await tester.pumpAndSettle();
     expect(find.text('Reopen'), findsOneWidget);
 
@@ -414,7 +547,7 @@ void main() {
   testWidgets('applicants show both bands and the matching slot guarantees', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -443,7 +576,7 @@ void main() {
   testWidgets('only shortlisted applicants have a primary send offer action', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -460,7 +593,7 @@ void main() {
   testWidgets('send offer starts with the slot guarantee in whole dollars', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -493,7 +626,7 @@ void main() {
   testWidgets('send offer discloses the configured booking commission', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -517,7 +650,7 @@ void main() {
       'send offer keeps its caption while fees load and ${fails ? 'fail' : 'are unconfigured'}',
       (tester) async {
         late _FeeRatesRepository repository;
-        final harness = await _pumpOrganizerScreen(
+        final harness = await pumpOrganizerScreen(
           tester,
           const OpportunityApplicantsScreen(opportunityId: 'opp1'),
           repositoryBuilder: (auth) =>
@@ -570,7 +703,7 @@ void main() {
   testWidgets('paid offer failure stays in the sheet with an inline error', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -603,7 +736,7 @@ void main() {
   testWidgets('wrapped paid offer failure shows only the server message', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
       repositoryBuilder: (auth) => StubRepository(auth: auth)
@@ -634,7 +767,7 @@ void main() {
   testWidgets('sending an offer updates the applicant and opens its booking', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -668,7 +801,7 @@ void main() {
   });
 
   testWidgets('send offer fields stay outside applicant cards', (tester) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -682,7 +815,7 @@ void main() {
   });
 
   testWidgets('invalid guarantees do not send offers', (tester) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -717,7 +850,7 @@ void main() {
   testWidgets('a zero guarantee sends selected terms and trimmed notes', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -735,8 +868,19 @@ void main() {
       find.byKey(const ValueKey('send-offer-notes')),
       '  Backline provided.  ',
     );
+    // The sheet's list is lazy and the message field sits below the fold.
     final message = find.byKey(const ValueKey('send-offer-message'));
-    await tester.ensureVisible(message);
+    await tester.scrollUntilVisible(
+      message,
+      200,
+      scrollable: find
+          .ancestor(
+            of: find.byKey(const ValueKey('send-offer-notes')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
     await tester.enterText(message, '  Looking forward to the show!  ');
     await tester.tap(find.byKey(const ValueKey('send-offer-submit')));
     await tester.pumpAndSettle();
@@ -755,7 +899,7 @@ void main() {
   testWidgets('closing the offer sheet leaves the applicant shortlisted', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -776,7 +920,7 @@ void main() {
     testWidgets(
       'loading ${accepted ? 'booked' : 'offered'} applicants shows their booking',
       (tester) async {
-        final harness = await _pumpOrganizerScreen(
+        final harness = await pumpOrganizerScreen(
           tester,
           const SizedBox.shrink(),
         );
@@ -794,18 +938,11 @@ void main() {
           );
         }
         harness.app.organizationBookings = [];
-        await tester.pumpWidget(
-          ChangeNotifierProvider<AppState>.value(
-            value: harness.app,
-            child: MaterialApp(
-              theme: buildEpTheme(),
-              home: const Scaffold(
-                body: OpportunityApplicantsScreen(opportunityId: 'opp1'),
-              ),
-            ),
-          ),
+        await rehostApp(
+          tester,
+          harness.app,
+          const OpportunityApplicantsScreen(opportunityId: 'opp1'),
         );
-        await tester.pumpAndSettle();
 
         expect(
           _applicantPill(tester, 'app2').label,
@@ -835,7 +972,7 @@ void main() {
   }
 
   testWidgets('shortlisting updates the applicant status pill', (tester) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -855,7 +992,7 @@ void main() {
   testWidgets(
     'declining refreshes the status pill and active applicant count',
     (tester) async {
-      final harness = await _pumpOrganizerScreen(
+      final harness = await pumpOrganizerScreen(
         tester,
         const OpportunityApplicantsScreen(opportunityId: 'opp1'),
       );
@@ -880,7 +1017,7 @@ void main() {
   );
 
   testWidgets('keeping an applicant cancels the decline', (tester) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -898,7 +1035,7 @@ void main() {
   testWidgets('starting review preserves shortlist and decline actions', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -922,7 +1059,7 @@ void main() {
   testWidgets('slot chips filter applicants and ALL restores both', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -949,7 +1086,7 @@ void main() {
   });
 
   testWidgets('tapping the band name opens its profile', (tester) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -965,7 +1102,7 @@ void main() {
   testWidgets('finance members can read applicants without actions', (
     tester,
   ) async {
-    final harness = await _pumpOrganizerScreen(
+    final harness = await pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
@@ -988,7 +1125,7 @@ void main() {
   testWidgets(
     'applicant insights expander renders numbers for a non-suppressed band',
     (tester) async {
-      final harness = await _pumpOrganizerScreen(
+      final harness = await pumpOrganizerScreen(
         tester,
         const OpportunityApplicantsScreen(opportunityId: 'opp1'),
         repositoryBuilder: (auth) => _ApplicantInsightsRepository(auth: auth),
@@ -1027,7 +1164,7 @@ void main() {
   testWidgets(
     'applicant insights expander shows suppressed and no-history states',
     (tester) async {
-      final harness = await _pumpOrganizerScreen(
+      final harness = await pumpOrganizerScreen(
         tester,
         const OpportunityApplicantsScreen(opportunityId: 'opp1'),
         repositoryBuilder: (auth) => _ApplicantInsightsRepository(auth: auth),
@@ -1064,53 +1201,6 @@ void main() {
       harness.app.dispose();
     },
   );
-}
-
-Future<AppHarness> _pumpOrganizerScreen(
-  WidgetTester tester,
-  Widget screen, {
-  DemoRepository Function(FakeAuthService auth)? repositoryBuilder,
-}) async {
-  final auth = FakeAuthService();
-  await auth.signInDemo();
-  final repository =
-      repositoryBuilder?.call(auth) ?? DemoRepository(auth: auth);
-  final app = AppState(repository: repository, auth: auth);
-  final picker = FakeMediaPicker();
-  final media = BandMediaController(
-    repository: repository,
-    picker: picker,
-    uploader: app.mediaUploader,
-    say: app.say,
-  );
-  app.attachMediaController(media);
-  addTearDown(media.dispose);
-  final harness = AppHarness(
-    app: app,
-    auth: auth,
-    media: media,
-    picker: picker,
-    geocoding: FakeGeocodingService(),
-  );
-
-  // Unlike pumpApp, this wrapper leaves disposal to each test body. Providing
-  // the existing app by value prevents the provider from disposing it twice.
-  tester.view.physicalSize = const Size(402, 900);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-  app.switchToOrganization('org1');
-  await tester.pumpWidget(
-    ChangeNotifierProvider<AppState>.value(
-      value: app,
-      child: MaterialApp(
-        theme: buildEpTheme(),
-        home: Scaffold(body: screen),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-  await enterOrganizer(tester, harness, 'org1');
-  return harness;
 }
 
 class _FeeRatesRepository extends DemoRepository {
@@ -1249,23 +1339,45 @@ class _PublishedOpportunityRepository extends StubRepository {
   );
 }
 
+/// A label in the ACTIVE / CONFIRMED / PAST strip; status pills lower in the
+/// list may carry the same word.
+Finder _segment(String label) => find.descendant(
+  of: find.byKey(const Key('org-opps-tabs')),
+  matching: find.text(label),
+);
+
+/// Brings an opportunity card fully into view before it is tapped.
+///
+/// The list builds its rows lazily, so a single [WidgetTester.ensureVisible]
+/// can only scroll as far as the extent estimated from the rows laid out so
+/// far, and it leaves the render tree one frame behind the new offset. Pumping
+/// and repeating settles both.
+Future<void> _revealOpportunityCard(WidgetTester tester, Finder card) async {
+  for (var attempt = 0; attempt < 5; attempt++) {
+    await tester.ensureVisible(card);
+    await tester.pumpAndSettle();
+    final viewport = tester.getRect(find.byType(ListView).first);
+    if (viewport.contains(tester.getRect(card).center)) return;
+  }
+}
+
 Future<void> _chooseOpportunityAction(
   WidgetTester tester,
   String opportunityId,
   String action,
 ) async {
   final card = find.byKey(ValueKey('org-opp-$opportunityId'));
-  await tester.ensureVisible(card);
-  await tester.tap(card);
+  await _revealOpportunityCard(tester, card);
+  await tester.tap(find.byKey(Key('org-opp-actions-$opportunityId')));
   await tester.pumpAndSettle();
   await tester.tap(find.text(action));
   await tester.pumpAndSettle();
 }
 
-StatusPill _applicantPill(WidgetTester tester, String applicationId) =>
-    tester.widget<StatusPill>(
+EpBadge _applicantPill(WidgetTester tester, String applicationId) =>
+    tester.widget<EpBadge>(
       find.descendant(
         of: find.byKey(ValueKey('applicant-$applicationId')),
-        matching: find.byType(StatusPill),
+        matching: find.byType(EpBadge),
       ),
     );

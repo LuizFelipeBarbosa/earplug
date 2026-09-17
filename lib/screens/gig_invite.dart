@@ -5,6 +5,8 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_text.dart';
+import '../widgets/join_flow.dart';
 
 class GigInviteScreen extends StatelessWidget {
   const GigInviteScreen({super.key});
@@ -35,7 +37,7 @@ class GigInviteScreen extends StatelessWidget {
                 ],
               ),
             ),
-            Divider(height: 1, color: context.epColors.border),
+            const EpHairline(),
             Expanded(
               child: Center(
                 child: SingleChildScrollView(
@@ -82,12 +84,13 @@ class GigInviteScreen extends StatelessWidget {
         invite: invite,
       );
     }
-    return _Unavailable(
+    return JoinError(
       key: const ValueKey('performer-invite-unavailable'),
       message:
           app.performerInviteError ??
           'This invitation is invalid, expired, or revoked.',
-      onRetry: app.performerInviteToken == null
+      actionLabel: 'TRY AGAIN',
+      onAction: app.performerInviteToken == null
           ? null
           : () => app.openPerformerInvite(app.performerInviteToken!),
     );
@@ -117,17 +120,16 @@ class _Confirmation extends StatelessWidget {
         Text(
           'Join ${invite.gigTitle}?',
           textAlign: TextAlign.center,
-          style: epDisplay(size: 24),
+          style: Theme.of(context).textTheme.epDisplayAt(24),
         ),
         const SizedBox(height: 9),
         Text(
           'You were invited to replace “${invite.performerName}” in the lineup. '
           'Choose which band should appear on the bill.',
           textAlign: TextAlign.center,
-          style: epText(
-            size: 13,
+          style: Theme.of(context).textTheme.epBody.copyWith(
+            fontSize: 13,
             color: context.epColors.contentSecondary,
-            height: 1.5,
           ),
         ),
         if (waitingForBands) ...[
@@ -138,10 +140,9 @@ class _Confirmation extends StatelessWidget {
           Text(
             'You need to be an admin of a band before you can claim this spot.',
             textAlign: TextAlign.center,
-            style: epText(
-              size: 12,
+            style: Theme.of(context).textTheme.epBody.copyWith(
+              fontSize: 12,
               color: context.epColors.warning,
-              height: 1.4,
             ),
           ),
         ] else if (app.authed) ...[
@@ -167,7 +168,10 @@ class _Confirmation extends StatelessWidget {
           Text(
             error,
             textAlign: TextAlign.center,
-            style: epText(size: 12, color: context.epColors.destructive),
+            style: Theme.of(context).textTheme.epBody.copyWith(
+              fontSize: 12,
+              color: context.epColors.destructive,
+            ),
           ),
         ],
         const SizedBox(height: 22),
@@ -215,13 +219,13 @@ class _Claimed extends StatelessWidget {
               ? 'Lineup spot claimed.'
               : 'You joined ${invite!.gigTitle}.',
           textAlign: TextAlign.center,
-          style: epDisplay(size: 23),
+          style: Theme.of(context).textTheme.epDisplayAt(23),
         ),
         const SizedBox(height: 8),
         Text(
           'Your band now appears in the lineup.',
           textAlign: TextAlign.center,
-          style: epText(size: 12.5, color: context.epColors.contentSecondary),
+          style: Theme.of(context).textTheme.epCaption.copyWith(fontSize: 12.5),
         ),
         const SizedBox(height: 22),
         EpButton(
@@ -229,48 +233,6 @@ class _Claimed extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 15),
           onTap: onManager,
         ),
-      ],
-    );
-  }
-}
-
-class _Unavailable extends StatelessWidget {
-  const _Unavailable({super.key, required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback? onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Icon(
-          Icons.link_off,
-          size: 54,
-          color: context.epColors.contentSecondary,
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'Invitation unavailable',
-          textAlign: TextAlign.center,
-          style: epDisplay(size: 22),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          message,
-          textAlign: TextAlign.center,
-          style: epText(
-            size: 12.5,
-            color: context.epColors.contentSecondary,
-            height: 1.45,
-          ),
-        ),
-        if (onRetry != null) ...[
-          const SizedBox(height: 20),
-          EpButton('TRY AGAIN', kind: EpButtonKind.outline, onTap: onRetry),
-        ],
       ],
     );
   }

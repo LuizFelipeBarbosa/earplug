@@ -6,7 +6,7 @@ import 'package:earplug/navigation.dart';
 import 'package:earplug/screens/admin_application.dart';
 import 'package:earplug/screens/admin_queue.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -80,7 +80,7 @@ void main() {
       find.byKey(const Key('admin-queue-row-application-review-1')),
       findsOneWidget,
     );
-    expect(find.text('The Knockout'), findsOneWidget);
+    expect(find.text('THE KNOCKOUT'), findsOneWidget);
   });
 
   testWidgets('admin queue shows a promoter type pill for submitted drafts', (
@@ -108,8 +108,8 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(tester.widget<StatusPill>(typePill).label, 'PROMOTER');
-    expect(tester.widget<StatusPill>(typePill).tone, EpStatusPillTone.neutral);
+    expect(tester.widget<EpBadge>(typePill).label, 'Promoter');
+    expect(tester.widget<EpBadge>(typePill).variant, EpBadgeVariant.secondary);
     expect(find.text('PROMOTER').hitTestable(), findsOneWidget);
   });
 
@@ -127,11 +127,11 @@ void main() {
       home: AdminApplicationScreen(applicationId: applicationId),
     );
 
-    final typePill = tester.widget<StatusPill>(
+    final typePill = tester.widget<EpBadge>(
       find.byKey(const Key('admin-application-type')),
     );
     expect(typePill.label, 'PROMOTER');
-    expect(typePill.tone, EpStatusPillTone.neutral);
+    expect(typePill.tone, EpBadgeTone.neutral);
     await tester.scrollUntilVisible(
       find.text('DOCUMENTS'),
       200,
@@ -338,13 +338,12 @@ void main() {
     expect(find.byKey(Key('admin-row-$applicationId-host')), findsOneWidget);
     expect(find.byKey(Key('admin-row-$applicationId-type')), findsNothing);
     expect(
-      find.descendant(of: hostRow, matching: find.text('Jordan (host)')),
+      find.descendant(
+        of: hostRow,
+        matching: find.text('JORDAN (HOST)'),
+      ),
       findsOneWidget,
     );
-    final hostCount = tester
-        .widgetList<EpStatCard>(find.byType(EpStatCard))
-        .singleWhere((card) => card.label == 'HOSTS');
-    expect(hostCount.value, '1');
 
     await tester.tap(find.byKey(const Key('admin-queue-kind-host')));
     await tester.pumpAndSettle();
@@ -435,7 +434,6 @@ void main() {
     testWidgets('admin queue opens $label', (tester) async {
       final result = await _pumpAdmin(tester, const AdminQueueScreen());
       final entry = find.byKey(Key(key));
-      expect(tester.widget<EpButton>(entry).kind, EpButtonKind.outline);
 
       await tester.ensureVisible(entry);
       await tester.tap(entry);

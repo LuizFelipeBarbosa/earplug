@@ -15,12 +15,12 @@ enum Screen {
   myGigs,
   auth,
   bandCreate,
-  bandDash,
   bandEdit,
   bandMedia,
   editProfile,
   settings,
   gigMgr,
+  hostedGig,
   gigCreate,
   analytics,
   orgApply,
@@ -36,8 +36,10 @@ enum Screen {
   adminQueue,
   adminApplication,
   orgOpportunities,
+  orgOpportunity,
   opportunityEdit,
   opportunityApplicants,
+  applicantReview,
   opportunityDetail,
   bookingDetail,
   reviewCompose,
@@ -55,6 +57,8 @@ enum Screen {
   adminSafety,
   adminDisputes,
   adminBookings,
+  exploreCollection,
+  people,
 }
 
 sealed class ActiveIdentity {
@@ -83,9 +87,12 @@ class AdminIdentity extends ActiveIdentity {
 }
 
 const fanTabScreens = {
+  Screen.band,
   Screen.hostApply,
   Screen.home,
   Screen.explore,
+  Screen.exploreCollection,
+  Screen.people,
   Screen.myGigs,
   Screen.myTickets,
   Screen.ticket,
@@ -93,9 +100,10 @@ const fanTabScreens = {
   Screen.ticketCheckoutCancel,
 };
 const bandTabScreens = {
-  Screen.bandDash,
+  Screen.bandPreview,
   Screen.bandEdit,
   Screen.gigMgr,
+  Screen.hostedGig,
   Screen.analytics,
   Screen.opportunityDetail,
   Screen.bookingDetail,
@@ -114,13 +122,34 @@ const organizerTabScreens = {
   Screen.orgFinance,
   Screen.orgTransactions,
   Screen.orgOpportunities,
+  Screen.orgOpportunity,
   Screen.opportunityEdit,
   Screen.opportunityApplicants,
+  Screen.applicantReview,
   Screen.bookingDetail,
   Screen.reviewCompose,
   Screen.checkoutReturn,
   Screen.checkoutCancel,
   Screen.stripeReturn,
+};
+/// Edit menus and pushed detail views: on phones these render without the
+/// bottom tab bar so the whole screen belongs to the task. Tabs, dashboards,
+/// lists, profile previews and settings hubs keep the bar.
+const tabBarHiddenScreens = {
+  Screen.opportunityEdit,
+  Screen.orgOpportunity,
+  Screen.applicantReview,
+  Screen.orgVenueEdit,
+  Screen.privateLocationEdit,
+  Screen.bandEdit,
+  Screen.bandMedia,
+  Screen.gigCreate,
+  Screen.hostedGig,
+  Screen.bookingDetail,
+  Screen.opportunityApplicants,
+  Screen.orgFinance,
+  Screen.orgTransactions,
+  Screen.orgTeam,
 };
 const adminScreens = {
   Screen.adminQueue,

@@ -1,18 +1,16 @@
-import 'dart:typed_data';
-
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/host_apply.dart';
 import 'package:earplug/screens/org_application_status.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/services/media_picker.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fakes.dart';
+import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
@@ -335,9 +333,7 @@ void main() {
     });
   }
 
-  testWidgets('switcher host entry opens the host application', (
-    tester,
-  ) async {
+  testWidgets('switcher host entry opens the host application', (tester) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = _HostTestRepository(
@@ -577,7 +573,7 @@ void main() {
 
   for (final role in [OrganizationRole.owner, OrganizationRole.door]) {
     testWidgets(
-      'host tabs show three items for $role and organizer retains TEAM',
+      'host tabs show three items for $role and organizers get four',
       (tester) async {
         final auth = FakeAuthService();
         await auth.signInDemo();
@@ -615,8 +611,14 @@ void main() {
         );
 
         await enterOrganizer(tester, harness, 'org1');
-        expect(find.byKey(const Key('organizer-tab-team')), findsOneWidget);
+        expect(harness.app.current.screen, Screen.orgOpportunities);
+        expect(find.byKey(const Key('organizer-tab-dash')), findsNothing);
+        expect(find.byKey(const Key('organizer-tab-team')), findsNothing);
+        expect(find.byType(EpNavigationItem), findsNWidgets(4));
         expect(find.text('GIGS'), findsOneWidget);
+        expect(find.text('VENUES'), findsOneWidget);
+        expect(find.text('PROFILE'), findsOneWidget);
+        expect(find.text('SWITCH'), findsOneWidget);
         expect(find.text('REQUESTS'), findsNothing);
       },
     );
@@ -700,12 +702,7 @@ const _hostFields = {
   'host-apply-email': 'jordan@example.com',
 };
 
-final _idPhoto = PickedMedia(
-  bytes: Uint8List.fromList([1, 2, 3]),
-  filename: 'id.jpg',
-  contentType: 'image/jpeg',
-  sizeBytes: 3,
-);
+final _idPhoto = stubPhotoFixture(filename: 'id.jpg');
 
 Future<OrganizationApplication> _seedHostDraft(
   DemoRepository repository, {

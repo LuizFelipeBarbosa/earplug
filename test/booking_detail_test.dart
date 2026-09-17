@@ -10,6 +10,8 @@ import 'package:earplug/money.dart';
 import 'package:earplug/screens/booking_detail.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:earplug/widgets/map_view.dart';
 import 'package:earplug/widgets/sheets.dart';
@@ -82,13 +84,13 @@ void main() {
       expect(open, findsNothing);
       await _reveal(
         tester,
-        find.widgetWithText(StatusPill, 'UNDER DISPUTE'),
+        find.widgetWithText(EpBadge, 'UNDER DISPUTE'),
         delta: -300,
       );
       expect(
         tester
-            .widget<StatusPill>(
-              find.widgetWithText(StatusPill, 'UNDER DISPUTE'),
+            .widget<EpBadge>(
+              find.widgetWithText(EpBadge, 'UNDER DISPUTE'),
             )
             .label,
         'Under dispute',
@@ -111,11 +113,11 @@ void main() {
       );
       final row = find.byKey(Key('booking-dispute-${dispute.disputeId}'));
       await _reveal(tester, row);
-      expect(find.widgetWithText(SectionBar, 'DISPUTE'), findsOneWidget);
+      expect(find.widgetWithText(EpSectionHeader, 'DISPUTE'), findsOneWidget);
       expect(
         find.descendant(
           of: row,
-          matching: find.widgetWithText(StatusPill, 'OPEN'),
+          matching: find.widgetWithText(EpBadge, 'OPEN'),
         ),
         findsOneWidget,
       );
@@ -147,7 +149,7 @@ void main() {
       expect(
         find.descendant(
           of: row,
-          matching: find.widgetWithText(StatusPill, 'UNDER REVIEW'),
+          matching: find.widgetWithText(EpBadge, 'UNDER REVIEW'),
         ),
         findsOneWidget,
       );
@@ -165,7 +167,7 @@ void main() {
       expect(
         find.descendant(
           of: row,
-          matching: find.widgetWithText(StatusPill, 'RESOLVED'),
+          matching: find.widgetWithText(EpBadge, 'RESOLVED'),
         ),
         findsOneWidget,
       );
@@ -210,9 +212,9 @@ void main() {
         repository: repository,
       );
       // TERMS follows the dispute action, so its reveal builds that part of the list.
-      await _reveal(tester, find.widgetWithText(SectionBar, 'TERMS'));
+      await _reveal(tester, find.widgetWithText(EpSectionHeader, 'TERMS'));
       expect(find.byKey(const Key('booking-dispute-open')), findsNothing);
-      expect(find.widgetWithText(SectionBar, 'DISPUTE'), findsNothing);
+      expect(find.widgetWithText(EpSectionHeader, 'DISPUTE'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }
@@ -258,7 +260,7 @@ void main() {
     expect(harness.app.bookingById(booking.id)?.status, BookingStatus.refunded);
     expect(
       tester
-          .widget<StatusPill>(find.widgetWithText(StatusPill, 'REFUNDED'))
+          .widget<EpBadge>(find.widgetWithText(EpBadge, 'REFUNDED'))
           .label,
       'Refunded',
     );
@@ -285,7 +287,7 @@ void main() {
     expect(
       find.descendant(
         of: latestRow,
-        matching: find.widgetWithText(StatusPill, 'RESOLVED'),
+        matching: find.widgetWithText(EpBadge, 'RESOLVED'),
       ),
       findsOneWidget,
     );
@@ -475,7 +477,7 @@ void main() {
           Key('booking-safety-report-${report.reportId}'),
         );
         await _reveal(tester, card);
-        expect(find.widgetWithText(SectionBar, 'SAFETY'), findsOneWidget);
+        expect(find.widgetWithText(EpSectionHeader, 'SAFETY'), findsOneWidget);
         expect(
           find.descendant(of: card, matching: find.text('HARASSMENT')),
           findsOneWidget,
@@ -497,7 +499,7 @@ void main() {
         expect(
           find.descendant(
             of: card,
-            matching: find.widgetWithText(StatusPill, 'OPEN'),
+            matching: find.widgetWithText(EpBadge, 'OPEN'),
           ),
           findsOneWidget,
         );
@@ -516,7 +518,7 @@ void main() {
         expect(
           find.descendant(
             of: card,
-            matching: find.widgetWithText(StatusPill, 'RESOLVED'),
+            matching: find.widgetWithText(EpBadge, 'RESOLVED'),
           ),
           findsOneWidget,
         );
@@ -597,7 +599,7 @@ void main() {
     expect(find.byType(EpFormSheet), findsNothing);
     expect(find.byKey(const Key('booking-cancel')), findsNothing);
     expect(
-      find.widgetWithText(StatusPill, 'CANCELLED FOR SAFETY'),
+      find.widgetWithText(EpBadge, 'CANCELLED FOR SAFETY'),
       findsOneWidget,
     );
     expect(find.textContaining('Cancelled for safety '), findsOneWidget);
@@ -631,7 +633,7 @@ void main() {
     expect(find.byKey(const Key('booking-withdraw')), findsNothing);
     expect(
       find.descendant(
-        of: find.byType(StatusPill),
+        of: find.byType(EpBadge),
         matching: find.text('WITHDRAWN'),
       ),
       findsOneWidget,
@@ -649,7 +651,7 @@ void main() {
 
     expect(
       find.descendant(
-        of: find.byType(StatusPill),
+        of: find.byType(EpBadge),
         matching: find.text('OFFER SENT'),
       ),
       findsOneWidget,
@@ -670,17 +672,16 @@ void main() {
       ],
     );
 
-    // The sticky action stays above RootShell's organizer tab bar.
+    // A pushed detail renders without the tab bar; the sticky action sits
+    // flush with the bottom of the screen.
+    expect(find.byType(OrganizerTabBar), findsNothing);
     final sticky = find
         .ancestor(
           of: find.byKey(const Key('booking-withdraw')),
           matching: find.byType(SafeArea),
         )
         .first;
-    expect(
-      tester.getBottomRight(sticky).dy,
-      lessThanOrEqualTo(tester.getTopLeft(find.byType(OrganizerTabBar)).dy),
-    );
+    expect(tester.getBottomRight(sticky).dy, tester.view.physicalSize.height);
 
     final fee = find.byKey(const Key('booking-fee'));
     await _reveal(tester, fee);
@@ -720,7 +721,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('band sees its own tab bar for a shared booking screen', (
+  testWidgets('band identity wins for a shared booking screen', (
     tester,
   ) async {
     final harness = await pumpApp(tester, home: const RootShell());
@@ -736,9 +737,10 @@ void main() {
 
     // The cached viewer side wins even with an organization still selected.
     expect(harness.app.organizationId, 'org1');
-    expect(find.byType(BandTabBar), findsOneWidget);
-    expect(find.byType(OrganizerTabBar), findsNothing);
     expect(harness.app.identity, isA<BandIdentity>());
+    // Booking detail is a pushed screen: no tab bar for either identity.
+    expect(find.byType(BandTabBar), findsNothing);
+    expect(find.byType(OrganizerTabBar), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -945,8 +947,8 @@ void main() {
       )).single;
       expect(
         tester
-            .widget<StatusPill>(
-              find.descendant(of: row, matching: find.byType(StatusPill)),
+            .widget<EpBadge>(
+              find.descendant(of: row, matching: find.byType(EpBadge)),
             )
             .label,
         'Paid ${dates.formatFullDate(paidPayment.paidAt!.toLocal())}',

@@ -1,8 +1,9 @@
-import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/pump.dart';
 
 void main() {
   testWidgets('EpLabeledField labels required fields and forwards input', (
@@ -14,7 +15,7 @@ void main() {
     addTearDown(optionalController.dispose);
     var changedValue = '';
 
-    await _pump(
+    await pumpEp(
       tester,
       Column(
         children: [
@@ -64,7 +65,7 @@ void main() {
     addTearDown(nameFocus.dispose);
     addTearDown(emailFocus.dispose);
 
-    await _pump(
+    await pumpEp(
       tester,
       EpFieldRow(
         first: EpLabeledField(
@@ -121,7 +122,7 @@ void main() {
   testWidgets('InlineFormFeedback shrinks away without a message', (
     tester,
   ) async {
-    await _pump(tester, const InlineFormFeedback());
+    await pumpEp(tester, const InlineFormFeedback());
 
     final feedback = find.byType(InlineFormFeedback);
     expect(
@@ -138,7 +139,7 @@ void main() {
   testWidgets('InlineFormFeedback gives errors precedence over success', (
     tester,
   ) async {
-    await _pump(
+    await pumpEp(
       tester,
       const InlineFormFeedback(
         error: 'Could not save.',
@@ -153,15 +154,4 @@ void main() {
     expect(find.byKey(const ValueKey('success')), findsNothing);
     expect(find.text('Saved.'), findsNothing);
   });
-
-}
-
-Future<void> _pump(WidgetTester tester, Widget child) {
-  return tester.pumpWidget(
-    MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: buildEpTheme(),
-      home: Scaffold(body: child),
-    ),
-  );
 }

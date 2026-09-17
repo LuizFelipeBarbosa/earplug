@@ -275,8 +275,7 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
             (pin.longitude * 100).round() / 100,
           );
     return Material(
-      color: context.epColors.surface,
-      borderRadius: BorderRadius.circular(12),
+      color: context.epColors.panel,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         key: Key('${widget.keyPrefix}-preview'),
@@ -289,8 +288,7 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
                 child: SizedBox(
                   width: 104,
                   height: 80,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
+                  child: ClipRect(
                     child: MediaQuery(
                       data: MediaQuery.of(
                         context,
@@ -319,16 +317,14 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
                     Text(
                       'FANS WILL SEE',
                       style: Theme.of(context).textTheme.epLabel.copyWith(
-                        color: context.epColors.contentSecondary,
+                        color: context.epColors.muted,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       _draft.areaLabel,
                       key: Key('${widget.keyPrefix}-area-caption'),
-                      style: Theme.of(
-                        context,
-                      ).textTheme.epBody.copyWith(fontWeight: FontWeight.w700),
+                      style: Theme.of(context).textTheme.epBodyStrong,
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -341,7 +337,8 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
               const SizedBox(width: 4),
               Icon(
                 Icons.chevron_right,
-                color: context.epColors.contentSecondary,
+                size: 16,
+                color: context.epColors.muted,
               ),
             ],
           ),
@@ -354,8 +351,7 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
     return Container(
       key: Key('${widget.keyPrefix}-suggestions'),
       decoration: BoxDecoration(
-        border: Border.all(color: context.epColors.border),
-        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: context.epColors.line),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -366,7 +362,6 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
               onTap: widget.enabled
                   ? () => _pickSuggestion(_suggestions[index])
                   : null,
-              borderRadius: BorderRadius.circular(10),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
@@ -488,7 +483,7 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
           Text(
             pinHint,
             style: Theme.of(context).textTheme.epCaption.copyWith(
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
               color: _draft.pin == null
                   ? context.epColors.warning
                   : context.epColors.accent,
@@ -498,8 +493,7 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
           SizedBox(
             key: Key('${widget.keyPrefix}-map'),
             height: 220,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+            child: ClipRect(
               child: EpMap(
                 mapController: _controller,
                 options: MapOptions(
@@ -607,8 +601,7 @@ class _VenuePinSheetState extends State<_VenuePinSheet> {
         ),
         const SizedBox(height: 14),
         Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+          child: ClipRect(
             child: EpMap(
               key: Key('${widget.keyPrefix}-pin-map'),
               options: MapOptions(

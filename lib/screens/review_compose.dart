@@ -5,6 +5,8 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 
 class ReviewComposeScreen extends StatefulWidget {
@@ -118,10 +120,7 @@ class _ReviewComposeScreenState extends State<ReviewComposeScreen> {
                 if (_loading)
                   const Center(child: CircularProgressIndicator())
                 else if (booking == null)
-                  Text(
-                    'BOOKING NOT FOUND',
-                    style: epText(color: context.epColors.contentSecondary),
-                  )
+                  const EpEyebrow('BOOKING NOT FOUND')
                 else ...[
                   Text(
                     '${booking.opportunityTitle} · '
@@ -129,7 +128,7 @@ class _ReviewComposeScreenState extends State<ReviewComposeScreen> {
                     '${Gig.dateShortFor(booking.startsAt.millisecondsSinceEpoch)}',
                     style: Theme.of(context).textTheme.epBody,
                   ),
-                  const SectionBar.form(label: 'RATING'),
+                  const EpSectionHeader.form(label: 'RATING'),
                   Row(
                     children: [
                       for (var rating = 1; rating <= 5; rating++)
@@ -154,7 +153,7 @@ class _ReviewComposeScreenState extends State<ReviewComposeScreen> {
                         ),
                     ],
                   ),
-                  const SectionBar.form(label: 'CATEGORIES'),
+                  const EpSectionHeader.form(label: 'CATEGORIES'),
                   Wrap(
                     spacing: 7,
                     runSpacing: 7,
@@ -175,7 +174,7 @@ class _ReviewComposeScreenState extends State<ReviewComposeScreen> {
                         ),
                     ],
                   ),
-                  const SectionBar.form(label: 'REVIEW'),
+                  const EpSectionHeader.form(label: 'REVIEW'),
                   EpLabeledField(
                     fieldKey: const ValueKey('review-text'),
                     label: 'REVIEW',
