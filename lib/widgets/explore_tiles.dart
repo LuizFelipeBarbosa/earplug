@@ -284,10 +284,7 @@ class ExploreEventRow extends StatelessWidget {
       lines: lines,
       cancelled: gig.lifecycle == GigLifecycle.cancelled,
       thumbnail: poster,
-      priceChip: _GigPriceChip(
-        gig: gig,
-        price: lines.price,
-      ),
+      priceChip: _GigPriceChip(gig: gig, price: lines.price),
       saveAction: saveAction,
       sub: sub,
       onTap: onTap,
@@ -352,10 +349,9 @@ class ExploreEventSnapshotRow extends StatelessWidget {
               lines.price.toUpperCase(),
               key: ValueKey('snapshot-price-$id'),
               textAlign: TextAlign.right,
-              style: Theme.of(context).textTheme.epChipLabel.copyWith(
-                fontSize: 13,
-                color: context.epColors.ink,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.epChipLabel.copyWith(fontSize: 13),
             ),
       onTap: onTap,
     );
@@ -483,10 +479,7 @@ class _EventRowBody extends StatelessWidget {
 }
 
 class _GigPriceChip extends StatelessWidget {
-  const _GigPriceChip({
-    required this.gig,
-    required this.price,
-  });
+  const _GigPriceChip({required this.gig, required this.price});
 
   final Gig gig;
   final String price;
@@ -601,16 +594,12 @@ class ExploreFeaturedCard extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: textTheme.epBody.copyWith(
-                              fontSize: 14,
                               color: Ep.ink.withValues(alpha: 0.85),
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
-                        _GigPriceChip(
-                          gig: gig,
-                          price: lines.price,
-                        ),
+                        _GigPriceChip(gig: gig, price: lines.price),
                       ],
                     ),
                   ],

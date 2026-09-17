@@ -9,6 +9,8 @@ import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/fan_event_card.dart';
+import '../widgets/form_bits.dart';
+import '../widgets/opportunity_labels.dart';
 import '../widgets/venue_mini_map.dart';
 
 class VenueDetailScreen extends StatefulWidget {
@@ -41,41 +43,16 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
 
     return Column(
       children: [
-        _TopBar(onBack: app.back),
+        EpBackBar(
+          controlKey: const ValueKey('venue-detail-back-control'),
+          onBack: app.back,
+        ),
         Expanded(
           child: detail != null
               ? _VenueContent(detail: detail, app: app)
               : _VenueState(venueId: widget.venueId, app: app),
         ),
       ],
-    );
-  }
-}
-
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onBack});
-
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        EpLayout.gutter,
-        EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
-        EpLayout.gutter,
-        0,
-      ),
-      child: Row(
-        children: [
-          EpIconPill(
-            key: const ValueKey('venue-detail-back-control'),
-            icon: Icons.arrow_back,
-            semanticLabel: 'Back',
-            onPressed: onBack,
-          ),
-        ],
-      ),
     );
   }
 }
@@ -144,7 +121,12 @@ class _CenteredState extends StatelessWidget {
               ),
               const SizedBox(height: 16),
             ],
-            EpDisplay(title, size: 24, maxLines: 3, textAlign: TextAlign.center),
+            EpDisplay(
+              title,
+              size: 24,
+              maxLines: 3,
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 8),
             Text(
               message,
@@ -267,7 +249,10 @@ class _VenueContentState extends State<_VenueContent> {
         const SizedBox(height: 20),
         EpSectionHeader(label: 'Upcoming · ${_gigs.length}'),
         if (_gigs.isEmpty)
-          const _QuietNote('Nothing on the calendar right now.')
+          const EmptyNote(
+            message: 'Nothing on the calendar right now.',
+            padding: EdgeInsets.symmetric(vertical: 12),
+          )
         else
           for (final gig in _gigs)
             FanEventCard(
@@ -278,30 +263,35 @@ class _VenueContentState extends State<_VenueContent> {
               rowKey: ValueKey('fan-event-${gig.id}'),
             ),
         if (detail.truncated)
-          const _QuietNote(
-            'Showing the next 200 events.',
+          const EmptyNote(
             key: Key('venue-detail-truncated'),
+            message: 'Showing the next 200 events.',
+            padding: EdgeInsets.symmetric(vertical: 12),
           ),
         EpSectionHeader(label: 'Performing bands · ${_performerIds.length}'),
         if (_performerIds.isEmpty)
-          const _QuietNote('No performers announced yet.')
+          const EmptyNote(
+            message: 'No performers announced yet.',
+            padding: EdgeInsets.symmetric(vertical: 12),
+          )
         else
-          for (final bandId in _performerIds)
-            _PerformerRow(band: detail.bands[bandId]!, app: app),
+          for (final band in _performerIds.map((id) => detail.bands[id]!))
+            EpEntityRow(
+              key: ValueKey('venue-band-${band.id}'),
+              leading: BandAvatar(band),
+              title: band.name,
+              sub: band.genreLine,
+              trailing: Icon(
+                Icons.chevron_right,
+                size: 16,
+                color: context.epColors.muted,
+              ),
+              onTap: () => app.openBand(band.id),
+            ),
       ],
     );
   }
 }
-
-String _venueTypeLabel(VenueType type) => switch (type) {
-  VenueType.bar => 'Bar',
-  VenueType.club => 'Club',
-  VenueType.hall => 'Hall',
-  VenueType.house => 'House',
-  VenueType.outdoor => 'Outdoor',
-  VenueType.private => 'Private',
-  VenueType.other => 'Other',
-};
 
 class _VenueHeader extends StatelessWidget {
   const _VenueHeader({required this.venue});
@@ -312,7 +302,7 @@ class _VenueHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final area = venue.area.trim();
     final traits = [
-      if (venue.venueType case final type?) _venueTypeLabel(type),
+      if (venue.venueType case final type?) venueTypeLabel(type),
       if (venue.capacityPublic case final capacity?) 'Capacity $capacity',
     ].join(' · ');
     final description = [
@@ -349,49 +339,6 @@ class _VenueHeader extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-class _PerformerRow extends StatelessWidget {
-  const _PerformerRow({required this.band, required this.app});
-
-  final Band band;
-  final AppState app;
-
-  @override
-  Widget build(BuildContext context) {
-    return EpEntityRow(
-      key: ValueKey('venue-band-${band.id}'),
-      leading: BandAvatar(band),
-      title: band.name,
-      sub: band.genreLine,
-      trailing: Icon(
-        Icons.chevron_right,
-        size: 16,
-        color: context.epColors.muted,
-      ),
-      onTap: () => app.openBand(band.id),
-    );
-  }
-}
-
-/// Muted aside used by the empty and truncated states.
-class _QuietNote extends StatelessWidget {
-  const _QuietNote(this.text, {super.key});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Text(
-        text,
-        style: Theme.of(
-          context,
-        ).textTheme.epBody.copyWith(color: context.epColors.muted),
-      ),
     );
   }
 }

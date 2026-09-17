@@ -11,6 +11,14 @@ import '../widgets/ep_text.dart';
 import '../widgets/explore_friends.dart';
 import '../widgets/explore_tiles.dart';
 import '../widgets/fan_event_card.dart';
+import '../widgets/form_bits.dart';
+
+const _notePadding = EdgeInsets.fromLTRB(
+  EpLayout.gutter,
+  20,
+  EpLayout.gutter,
+  tabBarClearance,
+);
 
 class ExploreCollectionScreen extends StatefulWidget {
   const ExploreCollectionScreen({super.key, required this.collectionKey});
@@ -62,23 +70,9 @@ class _ExploreCollectionScreenState extends State<ExploreCollectionScreen> {
       key: const Key('explore-collection-screen'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(
-            EpLayout.gutter,
-            EpLayout.isDesktop(context) ? 0 : headerTopPad(context),
-            EpLayout.gutter,
-            0,
-          ),
-          child: Row(
-            children: [
-              EpIconPill(
-                key: const ValueKey('explore-collection-back-control'),
-                icon: Icons.arrow_back,
-                semanticLabel: 'Back',
-                onPressed: app.back,
-              ),
-            ],
-          ),
+        EpBackBar(
+          controlKey: const ValueKey('explore-collection-back-control'),
+          onBack: app.back,
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(
@@ -107,14 +101,24 @@ class _ExploreCollectionScreenState extends State<ExploreCollectionScreen> {
       return const _CollectionContent(
         title: 'Collection',
         subtitle: '',
-        body: _MutedMessage("This collection isn't available."),
+        body: EmptyNote(
+          message: "This collection isn't available.",
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          padding: _notePadding,
+        ),
       );
     }
     return _CollectionContent(
       title: collection.title,
       subtitle: _countLabel(collection.gigs.length, 'show'),
       body: collection.gigs.isEmpty
-          ? const _MutedMessage('Nothing here right now.')
+          ? const EmptyNote(
+              message: 'Nothing here right now.',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              padding: _notePadding,
+            )
           : ListView.builder(
               padding: const EdgeInsets.fromLTRB(
                 EpLayout.gutter,
@@ -208,7 +212,12 @@ class _ExploreCollectionScreenState extends State<ExploreCollectionScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const _MutedMessage("No friends have RSVP'd for this weekend yet."),
+            const EmptyNote(
+              message: "No friends have RSVP'd for this weekend yet.",
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              padding: _notePadding,
+            ),
             const SizedBox(height: 16),
             EpPill(
               label: 'Find people',
@@ -266,28 +275,4 @@ class _CollectionContent {
   final String title;
   final String subtitle;
   final Widget body;
-}
-
-class _MutedMessage extends StatelessWidget {
-  const _MutedMessage(this.message);
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(
-      EpLayout.gutter,
-      20,
-      EpLayout.gutter,
-      tabBarClearance,
-    ),
-    child: Text(
-      message,
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-      style: Theme.of(
-        context,
-      ).textTheme.epBody.copyWith(color: context.epColors.muted),
-    ),
-  );
 }
