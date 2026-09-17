@@ -1,6 +1,6 @@
 import '../models.dart';
 import '../money.dart';
-import 'common.dart';
+import 'ep_text.dart';
 
 String slotRoleLabel(SlotRole role) => switch (role) {
   SlotRole.headliner => 'Headliner',
@@ -18,14 +18,12 @@ String opportunityStatusLabel(OpportunityStatus status) => switch (status) {
   OpportunityStatus.cancelled => 'Cancelled',
 };
 
-EpStatusPillTone opportunityStatusTone(OpportunityStatus status) =>
-    switch (status) {
-      OpportunityStatus.open ||
-      OpportunityStatus.confirmed => EpStatusPillTone.success,
-      OpportunityStatus.applicationsClosed ||
-      OpportunityStatus.booking => EpStatusPillTone.warning,
-      _ => EpStatusPillTone.neutral,
-    };
+EpBadgeTone opportunityStatusTone(OpportunityStatus status) => switch (status) {
+  OpportunityStatus.open || OpportunityStatus.confirmed => EpBadgeTone.success,
+  OpportunityStatus.applicationsClosed ||
+  OpportunityStatus.booking => EpBadgeTone.warning,
+  _ => EpBadgeTone.neutral,
+};
 
 String applicationStatusLabel(ArtistApplicationStatus status) =>
     switch (status) {
@@ -39,13 +37,13 @@ String applicationStatusLabel(ArtistApplicationStatus status) =>
       ArtistApplicationStatus.expired => 'Expired',
     };
 
-EpStatusPillTone applicationStatusTone(ArtistApplicationStatus status) =>
+EpBadgeTone applicationStatusTone(ArtistApplicationStatus status) =>
     switch (status) {
-      ArtistApplicationStatus.shortlisted => EpStatusPillTone.selected,
+      ArtistApplicationStatus.shortlisted => EpBadgeTone.selected,
       ArtistApplicationStatus.offered ||
-      ArtistApplicationStatus.booked => EpStatusPillTone.success,
-      ArtistApplicationStatus.declined => EpStatusPillTone.warning,
-      _ => EpStatusPillTone.neutral,
+      ArtistApplicationStatus.booked => EpBadgeTone.success,
+      ArtistApplicationStatus.declined => EpBadgeTone.warning,
+      _ => EpBadgeTone.neutral,
     };
 
 String organizationRoleLabel(OrganizationRole role) => switch (role) {

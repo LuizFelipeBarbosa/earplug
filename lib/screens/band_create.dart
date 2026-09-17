@@ -333,7 +333,10 @@ class _PostCreateRow extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Icon(Icons.chevron_right, color: context.epColors.mute),
+                  Icon(
+                    Icons.chevron_right,
+                    color: context.epColors.contentDisabled,
+                  ),
                 ],
               ),
             ),
@@ -421,9 +424,9 @@ class _CreatedView extends StatelessWidget {
             children: [
               Text(
                 "YOU'RE LIVE",
-                style: Theme.of(context).textTheme.epSection.copyWith(
-                  color: context.epColors.accent,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.epSection.copyWith(color: context.epColors.accent),
               ),
               const SizedBox(height: 18),
               BandIdentityHeader(

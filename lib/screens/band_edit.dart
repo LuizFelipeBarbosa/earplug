@@ -298,28 +298,16 @@ class _BandEditScreenState extends State<BandEditScreen> {
               _footerClearance + MediaQuery.paddingOf(context).bottom,
             ),
             children: [
-              Row(
-                children: [
-                  EpIconPill(
-                    key: const ValueKey('band-edit-back'),
-                    icon: Icons.arrow_back,
-                    semanticLabel: 'Back',
-                    onPressed: app.back,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'EDIT BAND',
-                      style: Theme.of(context).textTheme.epPageHeading,
-                    ),
-                  ),
-                  EpIconPill(
-                    key: const ValueKey('band-edit-preview'),
-                    icon: Icons.visibility_outlined,
-                    semanticLabel: 'Preview public page',
-                    onPressed: app.previewPublicProfile,
-                  ),
-                ],
+              EpBackHeading(
+                title: 'EDIT BAND',
+                backKey: const ValueKey('band-edit-back'),
+                onBack: app.back,
+                trailing: EpIconPill(
+                  key: const ValueKey('band-edit-preview'),
+                  icon: Icons.visibility_outlined,
+                  semanticLabel: 'Preview public page',
+                  onPressed: app.previewPublicProfile,
+                ),
               ),
               const SizedBox(height: 18),
               KeyedSubtree(
@@ -718,7 +706,7 @@ class _ArchiveBandDialogState extends State<_ArchiveBandDialog> {
           onPressed: !matches || _working ? null : _archive,
           style: FilledButton.styleFrom(
             backgroundColor: context.epColors.destructive,
-            foregroundColor: context.epColors.dark,
+            foregroundColor: context.epColors.background,
           ),
           child: Text(_working ? 'ARCHIVING…' : 'ARCHIVE BAND'),
         ),

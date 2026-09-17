@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../theme.dart';
 import 'common.dart';
+import 'ep_rows.dart';
 
 /// Scrolls [controller] to its end after the next frame, so feedback that
 /// just appeared below a form comes into view. No-op once [state] is gone.
@@ -543,31 +544,24 @@ class SwitchRow extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               onTap: callback,
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 48),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: context.epColors.line),
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          label,
-                          style: Theme.of(context).textTheme.epBody.copyWith(
-                            color: enabled
-                                ? context.epColors.ink
-                                : context.epColors.contentDisabled,
-                          ),
+              child: EpRow(
+                minHeight: 47,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: Theme.of(context).textTheme.epBody.copyWith(
+                          color: enabled
+                              ? context.epColors.ink
+                              : context.epColors.contentDisabled,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      _CompactSwitch(value: value, enabled: enabled),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 12),
+                    _CompactSwitch(value: value, enabled: enabled),
+                  ],
                 ),
               ),
             ),
@@ -773,7 +767,7 @@ class FormSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionBar.form(label: title, count: count),
+        EpSectionHeader.form(label: title, count: count),
         Text(
           description,
           style: Theme.of(

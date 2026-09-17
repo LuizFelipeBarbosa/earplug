@@ -77,22 +77,10 @@ class _BandMediaScreenState extends State<BandMediaScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                EpIconPill(
-                  key: const ValueKey('band-media-back'),
-                  icon: Icons.arrow_back,
-                  semanticLabel: 'Back',
-                  onPressed: app.back,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'MEDIA',
-                    style: Theme.of(context).textTheme.epPageHeading,
-                  ),
-                ),
-              ],
+            EpBackHeading(
+              title: 'MEDIA',
+              backKey: const ValueKey('band-media-back'),
+              onBack: app.back,
             ),
             const SizedBox(height: 16),
             EpMonoText(
@@ -484,28 +472,19 @@ class _MediaThumbnail extends StatelessWidget {
           media: item,
           fallback: ColoredBox(color: context.epColors.surface),
         )
-      : _PhotoSurface(item: item);
-}
-
-class _PhotoSurface extends StatelessWidget {
-  const _PhotoSurface({required this.item});
-
-  final BandMedia item;
-
-  @override
-  Widget build(BuildContext context) => EpNetworkImage(
-    url: item.url,
-    fit: BoxFit.cover,
-    fallback: ColoredBox(
-      color: context.epColors.surface,
-      child: Center(
-        child: Icon(
-          Icons.photo_outlined,
-          color: context.epColors.contentDisabled,
-        ),
-      ),
-    ),
-  );
+      : EpNetworkImage(
+          url: item.url,
+          fit: BoxFit.cover,
+          fallback: ColoredBox(
+            color: context.epColors.surface,
+            child: Center(
+              child: Icon(
+                Icons.photo_outlined,
+                color: context.epColors.contentDisabled,
+              ),
+            ),
+          ),
+        );
 }
 
 void _showMediaSheet(
@@ -559,9 +538,7 @@ void _showMediaSheet(
                 children: [
                   Text(
                     item.title,
-                    style: Theme.of(
-                      sheetContext,
-                    ).textTheme.epBody.copyWith(fontWeight: FontWeight.w800),
+                    style: Theme.of(sheetContext).textTheme.epBodyStrong,
                   ),
                   const SizedBox(height: 4),
                   Row(
@@ -650,56 +627,6 @@ void _showMediaSheet(
   );
 }
 
-class _ConfirmRemoveSheet extends StatelessWidget {
-  const _ConfirmRemoveSheet({required this.item, required this.onDelete});
-
-  final BandMedia item;
-  final Future<void> Function() onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    return EpSheetShell(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-      backgroundColor: context.epColors.raised,
-      borderColor: context.epColors.border,
-      topRadius: EpLayout.cardRadius,
-      handleColor: context.epColors.mute,
-      handleBottomSpacing: 14,
-      mainAxisSize: MainAxisSize.min,
-      header: Text(
-        'REMOVE ${item.isVideo ? 'VIDEO' : 'PHOTO'}?',
-        style: Theme.of(context).textTheme.epSectionHeading,
-      ),
-      children: [
-        const SizedBox(height: 8),
-        Text(
-          item.title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.epCaption,
-        ),
-        const SizedBox(height: 16),
-        OutlinedButton(
-          style: OutlinedButton.styleFrom(
-            foregroundColor: context.epColors.destructive,
-          ),
-          onPressed: () async {
-            await onDelete();
-            if (!context.mounted) return;
-            Navigator.pop(context);
-          },
-          child: Text('DELETE'),
-        ),
-        const SizedBox(height: 8),
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text('KEEP'),
-        ),
-      ],
-    );
-  }
-}
-
 void _showDeleteSheet(
   BuildContext context,
   BandMediaController media,
@@ -708,9 +635,11 @@ void _showDeleteSheet(
 ) {
   showEpSheet(
     context,
-    (_) => _ConfirmRemoveSheet(
-      item: item,
-      onDelete: () => media.remove(bandId, item.id),
+    (_) => EpConfirmSheet(
+      header: 'REMOVE ${item.isVideo ? 'VIDEO' : 'PHOTO'}?',
+      caption: item.title,
+      confirmLabel: 'DELETE',
+      onConfirm: () => media.remove(bandId, item.id),
     ),
   );
 }
