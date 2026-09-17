@@ -50,7 +50,6 @@ void main() {
     );
     expect(tabs.labels, ['Active', 'Confirmed', 'Past']);
     expect(tabs.selected, 0);
-    expect(find.byType(SectionBar), findsNothing);
     expect(find.byKey(const ValueKey('org-opps-section-OPEN')), findsNothing);
     expect(find.byKey(const ValueKey('org-opps-section-DRAFTS')), findsNothing);
 

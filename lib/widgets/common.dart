@@ -5,9 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../date_names.dart';
+import '../initials.dart';
 import '../models.dart';
 import '../services/image_url.dart';
 import '../theme.dart';
+import 'ep_rows.dart';
 import 'ep_text.dart';
 
 /// Top padding for screen headers: status bar / notch plus breathing room.
@@ -204,50 +206,7 @@ class SectionLabel extends StatelessWidget {
 }
 
 /// Calendar/list section heading used by both fan and band surfaces.
-class SectionBar extends StatelessWidget {
-  const SectionBar({
-    super.key,
-    required this.label,
-    this.count,
-    this.trailing,
-    this.padding = const EdgeInsets.only(top: 24, bottom: 4),
-  });
-
-  const SectionBar.form({
-    super.key,
-    required this.label,
-    this.count,
-    this.trailing,
-  }) : padding = const EdgeInsets.only(top: EpLayout.formSectionGap, bottom: 4);
-
-  final String label;
-  final int? count;
-  final Widget? trailing;
-  final EdgeInsets padding;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = count == null ? label : '$label · $count';
-    return Padding(
-      padding: padding,
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              text.toUpperCase(),
-              semanticsLabel: text,
-              style: Theme.of(context).textTheme.epSection,
-            ),
-          ),
-          if (trailing != null) ...[
-            const SizedBox(width: 8),
-            Flexible(child: trailing!),
-          ],
-        ],
-      ),
-    );
-  }
-}
+typedef SectionBar = EpSectionHeader;
 
 /// The small tracked-out text button at the end of a section heading —
 /// "SEE ALL 12", "SEE LESS VENUES".
@@ -460,49 +419,10 @@ class EpChip extends StatelessWidget {
   }
 }
 
-enum EpStatusPillTone { success, selected, warning, attention, neutral }
+typedef EpStatusPillTone = EpBadgeTone;
 
 /// Small, textual state marker. Color is never the only status signal.
-class StatusPill extends StatelessWidget {
-  const StatusPill({
-    super.key,
-    required this.label,
-    this.tone = EpStatusPillTone.success,
-  });
-
-  final String label;
-  final EpStatusPillTone tone;
-
-  @override
-  Widget build(BuildContext context) {
-    final foreground = switch (tone) {
-      EpStatusPillTone.success => context.epColors.success,
-      EpStatusPillTone.selected => context.epColors.accent,
-      EpStatusPillTone.warning => context.epColors.ink,
-      EpStatusPillTone.attention => context.epColors.attention,
-      EpStatusPillTone.neutral => context.epColors.muted,
-    };
-    return Semantics(
-      label: label,
-      child: ExcludeSemantics(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            border: Border.all(color: context.epColors.line),
-            borderRadius: BorderRadius.circular(2),
-          ),
-          child: Text(
-            label.toUpperCase(),
-            semanticsLabel: label,
-            style: Theme.of(
-              context,
-            ).textTheme.epChipLabel.copyWith(color: foreground),
-          ),
-        ),
-      ),
-    );
-  }
-}
+typedef StatusPill = EpBadge;
 
 /// The accent callout a page may promote above its quiet panels.
 class VoltStrip extends StatelessWidget {
@@ -640,21 +560,14 @@ class LedgerRow extends StatelessWidget {
       button: onTap != null,
       label: description,
       excludeSemantics: true,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            onTap: onTap,
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: context.epColors.line),
-                ),
-              ),
-              child: content,
-            ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          child: EpRow(
+            minHeight: 47,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: content,
           ),
         ),
       ),
@@ -870,7 +783,7 @@ class EpFanAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initials = _profileInitials(name);
+    final initials = initialsFirstWords(name);
     final fallback = ColoredBox(
       color: context.epColors.panel,
       child: Center(
@@ -1378,16 +1291,4 @@ class _TrianglePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_TrianglePainter old) => old.color != color;
-}
-
-/// "Sam Reyes" → "SR"; single words take one letter; null/empty → "??".
-String _profileInitials(String? name) {
-  final words = name
-      ?.trim()
-      .split(RegExp(r'\s+'))
-      .where((word) => word.isNotEmpty)
-      .take(2)
-      .toList();
-  if (words == null || words.isEmpty) return '??';
-  return words.map((word) => word[0]).join().toUpperCase();
 }
