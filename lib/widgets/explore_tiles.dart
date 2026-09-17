@@ -714,7 +714,11 @@ class ExploreBandTile extends StatelessWidget {
           // name and genres.
           behavior: HitTestBehavior.opaque,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            // The compact tile centres the avatar over its one-line name; the
+            // default tile keeps both on the left edge, under the heading.
+            crossAxisAlignment: compact
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               EpAvatarTile(
                 initials: band.initials,
@@ -725,13 +729,15 @@ class ExploreBandTile extends StatelessWidget {
               ),
               if (compact) ...[
                 const SizedBox(height: _compactBandTileAvatarGap),
-                EpMonoText(
+                Text(
                   band.name,
-                  size: _compactBandTileNameSize,
-                  weight: FontWeight.w500,
-                  keepCase: true,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.epLabel.copyWith(
+                    fontSize: _compactBandTileNameSize,
+                    color: context.epColors.ink,
+                  ),
                 ),
               ] else ...[
                 const SizedBox(height: _bandTileAvatarGap),

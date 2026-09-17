@@ -92,6 +92,53 @@ void main() {
       );
     });
 
+    testWidgets('compact band tile centres the avatar over the name', (
+      tester,
+    ) async {
+      for (final name in [
+        'Rex',
+        'The Very Long Band Name That Cannot Fit In Eighty-Eight Pixels',
+      ]) {
+        var tapped = false;
+        await tester.pumpWidget(
+          plain(
+            Row(
+              children: [
+                ExploreBandTile.compact(
+                  band: bandFixture(id: 'compact-band', name: name),
+                  onTap: () => tapped = true,
+                ),
+              ],
+            ),
+          ),
+        );
+        expect(tester.takeException(), isNull, reason: name);
+        final tileRect = tester.getRect(find.byType(ExploreBandTile));
+        final avatarRect = tester.getRect(find.byType(EpAvatarTile));
+        final nameRect = tester.getRect(find.text(name));
+        expect(tileRect.width, 88, reason: name);
+        expect(avatarRect.width, 56, reason: name);
+        expect(
+          avatarRect.center.dx,
+          closeTo(nameRect.center.dx, 1),
+          reason: name,
+        );
+        expect(
+          avatarRect.center.dx,
+          closeTo(tileRect.center.dx, 1),
+          reason: name,
+        );
+        expect(nameRect.width, lessThanOrEqualTo(tileRect.width), reason: name);
+        final nameText = tester.widget<Text>(find.text(name));
+        expect(nameText.maxLines, 1);
+        expect(nameText.overflow, TextOverflow.ellipsis);
+        expect(nameText.textAlign, TextAlign.center);
+        // The tap target spans the full tile width, not just the avatar.
+        await tester.tapAt(Offset(tileRect.left + 2, avatarRect.center.dy));
+        expect(tapped, isTrue, reason: name);
+      }
+    });
+
     testWidgets('band rail height fits the tallest tile at any text scale', (
       tester,
     ) async {
@@ -117,7 +164,11 @@ void main() {
         double line(TextStyle style) =>
             (style.fontSize! * style.height! * scale).ceilToDouble();
         final expected =
-            72 + 6 + 2 + line(textTheme.epLabel) * 3 + line(textTheme.epMeta) * 2;
+            72 +
+            6 +
+            2 +
+            line(textTheme.epLabel) * 3 +
+            line(textTheme.epMeta) * 2;
         final rail = exploreBandRailHeight(context);
         expect(rail, expected);
         // Name and genres both hit their line caps in this fixture, so the
@@ -394,11 +445,15 @@ void main() {
         tester,
         home: Scaffold(
           body: Consumer<AppState>(
-            builder: (context, app, _) => ExploreBandRow(bandId: 'b1', app: app),
+            builder: (context, app, _) =>
+                ExploreBandRow(bandId: 'b1', app: app),
           ),
         ),
       );
-      expect(find.byKey(const ValueKey('explore-band-card-b1')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('explore-band-card-b1')),
+        findsOneWidget,
+      );
       expect(find.byKey(const ValueKey('explore-follow-b1')), findsOneWidget);
       expect(find.text('FOLLOW'), findsOneWidget);
       expect(find.textContaining('fans'), findsOneWidget);
