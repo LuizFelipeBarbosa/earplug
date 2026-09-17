@@ -704,35 +704,6 @@ void main() {
     }
   });
 
-  testWidgets('collection card shows title, show count, and handles taps', (
-    tester,
-  ) async {
-    var tapped = false;
-    final collection = ExploreCollection(
-      key: 'week',
-      kind: ExploreCollectionKind.week,
-      title: 'Weekend picks',
-      gigs: [
-        gigFixture(id: 'g1'),
-        gigFixture(id: 'g2'),
-      ],
-      score: 1,
-    );
-    await tester.pumpWidget(
-      plain(
-        ExploreCollectionCard(
-          collection: collection,
-          onTap: () => tapped = true,
-        ),
-      ),
-    );
-
-    expect(find.text('WEEKEND PICKS'), findsOneWidget);
-    expect(find.text('2 SHOWS'), findsOneWidget);
-    await tester.tap(find.text('WEEKEND PICKS'));
-    expect(tapped, isTrue);
-  });
-
   testWidgets(
     'snapshot card shows its lines, flyer pattern, and whole-row tap',
     (tester) async {
@@ -1334,7 +1305,6 @@ void main() {
       expect(titleRect.left, closeTo(dateRect.left, 0.1));
       final buttonRect = tester.getRect(find.byType(ExploreCardIconButton));
       expect(titleRect.right, lessThanOrEqualTo(buttonRect.left + 0.1));
-      expect(find.byType(ExploreLineupRow), findsNothing);
     }
   });
 
@@ -1391,65 +1361,6 @@ void main() {
         expect(label.style?.color, palette.onAccent);
         expect(tester.takeException(), isNull);
       }
-    },
-  );
-
-  testWidgets('lineup row shows all chips when wide and see all when narrow', (
-    tester,
-  ) async {
-    const bands = [
-      ExploreLineupBand(name: 'Aster', initials: 'AS'),
-      ExploreLineupBand(name: 'Briar', initials: 'BR'),
-      ExploreLineupBand(name: 'Cinder', initials: 'CI'),
-    ];
-    await tester.pumpWidget(
-      plain(SizedBox(width: 700, child: ExploreLineupRow(bands: bands))),
-    );
-    expect(find.text('Aster'), findsOneWidget);
-    expect(find.text('Briar'), findsOneWidget);
-    expect(find.text('Cinder'), findsOneWidget);
-    expect(find.byKey(const Key('lineup-see-all')), findsNothing);
-
-    var tapped = false;
-    await tester.pumpWidget(
-      plain(
-        SizedBox(
-          width: 300,
-          child: ExploreLineupRow(
-            bands: const [
-              ExploreLineupBand(name: 'A Very Long Band Name', initials: 'AL'),
-              ExploreLineupBand(name: 'Another Long Band Name', initials: 'AN'),
-              ExploreLineupBand(name: 'Third Long Band Name', initials: 'TL'),
-            ],
-            onSeeAll: () => tapped = true,
-          ),
-        ),
-      ),
-    );
-    expect(find.byKey(const Key('lineup-see-all')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('lineup-see-all')));
-    expect(tapped, isTrue);
-  });
-
-  testWidgets(
-    'lineup row always shows the first band even when it must ellipsize',
-    (tester) async {
-      const bands = [
-        ExploreLineupBand(name: 'A Very Long Band Name Indeed', initials: 'AV'),
-        ExploreLineupBand(name: 'Second', initials: 'SE'),
-      ];
-      await tester.pumpWidget(
-        plain(SizedBox(width: 200, child: ExploreLineupRow(bands: bands))),
-      );
-      expect(find.byType(EpAvatarTile), findsOneWidget);
-      expect(find.byKey(const Key('lineup-see-all')), findsOneWidget);
-
-      await tester.pumpWidget(
-        plain(SizedBox(width: 700, child: ExploreLineupRow(bands: bands))),
-      );
-      expect(find.text('A Very Long Band Name Indeed'), findsOneWidget);
-      expect(find.text('Second'), findsOneWidget);
-      expect(find.byKey(const Key('lineup-see-all')), findsNothing);
     },
   );
 
@@ -1514,8 +1425,6 @@ void main() {
       expect(find.text('FREE'), findsOneWidget);
       expect(find.byKey(ValueKey('gig-price-${gig.id}')), findsOneWidget);
       expect(find.byType(EpDateBlock), findsNothing);
-      expect(find.byType(ExploreLineupRow), findsNothing);
-      expect(find.byType(ExploreLineupWrap), findsNothing);
       expect(find.byType(EpAvatarTile), findsNothing);
       final date = tester.getRect(find.text(lines.dateLine));
       final title = tester.getRect(find.text(lines.title.toUpperCase()));
@@ -1853,17 +1762,6 @@ void main() {
     }
   });
 
-  testWidgets('location row shows copy and handles taps', (tester) async {
-    var tapped = false;
-    await tester.pumpWidget(
-      plain(ExploreLocationRow(label: 'Oakland', onTap: () => tapped = true)),
-    );
-    expect(find.text('OAKLAND'), findsOneWidget);
-    expect(find.text('Set as your location'), findsOneWidget);
-    await tester.tap(find.text('OAKLAND'));
-    expect(tapped, isTrue);
-  });
-
   testWidgets(
     'venue tile renders metadata and singular/plural without verification badges',
     (tester) async {
@@ -2136,13 +2034,6 @@ void main() {
       name: 'A Very Long Band Name That Wraps',
       genres: ['garage', 'surf punk'],
     );
-    final collection = ExploreCollection(
-      key: 'large',
-      kind: ExploreCollectionKind.week,
-      title: 'A Collection Title That Needs Several Lines',
-      gigs: [gigFixture(id: 'large-gig')],
-      score: 0,
-    );
     final venue = Venue(
       id: 'large-venue',
       name: 'A Venue With A Long Name',
@@ -2158,7 +2049,6 @@ void main() {
     );
     for (final child in [
       ExploreBandTile(band: band, onTap: () {}),
-      ExploreCollectionCard(collection: collection, onTap: () {}),
       ExploreVenueTile(
         entry: VenueWithShows(
           venue: venue,
@@ -2189,7 +2079,6 @@ void main() {
         ),
         onTap: () {},
       ),
-      ExploreLocationRow(label: 'A Location With A Long Name', onTap: () {}),
     ]) {
       debugPrint('scale child: ${child.runtimeType}');
       await tester.pumpWidget(plain(child, textScaler: scaler));
