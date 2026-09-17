@@ -6,6 +6,8 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_sheet.dart';
+import '../widgets/ep_states.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/venue_location_editor.dart';
 
@@ -96,7 +98,11 @@ class _PrivateLocationsScreenState extends State<PrivateLocationsScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (_error != null)
-            _LoadError(message: 'Could not load locations.', onRetry: _load)
+            EpLoadError(
+              message: 'Could not load locations.',
+              onRetry: _load,
+              textAlign: TextAlign.center,
+            )
           else if (_locations.isEmpty)
             const Text(
               'No locations yet. Add the place where your event happens; artists see only the area until the deposit is paid.',
@@ -331,25 +337,13 @@ class _PrivateLocationEditScreenState extends State<PrivateLocationEditScreen> {
     final organizationId = app.organizationId;
     final key = _loadedKey;
     final locationId = widget.locationId;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('REMOVE LOCATION?'),
-        content: Text('Remove ${_label.text.trim()} from your locations?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('KEEP'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('CONFIRM'),
-          ),
-        ],
-      ),
+    final confirmed = await epConfirm(
+      context,
+      title: 'REMOVE LOCATION?',
+      body: 'Remove ${_label.text.trim()} from your locations?',
     );
     if (!mounted ||
-        confirmed != true ||
+        !confirmed ||
         key != _loadedKey ||
         app.organizationId != organizationId) {
       return;
@@ -411,7 +405,11 @@ class _PrivateLocationEditScreenState extends State<PrivateLocationEditScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (_loadError != null)
-            _LoadError(message: _loadError!, onRetry: _load)
+            EpLoadError(
+              message: _loadError!,
+              onRetry: _load,
+              textAlign: TextAlign.center,
+            )
           else ...[
             FormSection(
               title: 'LOCATION',
@@ -488,27 +486,6 @@ class _PrivateLocationEditScreenState extends State<PrivateLocationEditScreen> {
               ),
             ],
           ],
-        ],
-      ),
-    );
-  }
-}
-
-class _LoadError extends StatelessWidget {
-  const _LoadError({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 56),
-      child: Column(
-        children: [
-          Text(message, textAlign: TextAlign.center),
-          const SizedBox(height: 12),
-          EpButton('RETRY', kind: EpButtonKind.outline, onTap: onRetry),
         ],
       ),
     );

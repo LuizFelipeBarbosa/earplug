@@ -6,8 +6,10 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_states.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
+import '../widgets/opportunity_labels.dart';
 import '../widgets/venue_location_editor.dart';
 
 /// Edits one organization venue, or creates one when [venueId] is
@@ -363,7 +365,7 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
             child: Center(child: CircularProgressIndicator()),
           )
         else if (_loadError != null)
-          _LoadError(message: _loadError!, onRetry: _load)
+          EpLoadError(message: _loadError!, onRetry: _load)
         else if (showForm) ...[
           Row(
             children: [
@@ -421,7 +423,7 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
                     for (final type in VenueType.values)
                       EpChip(
                         key: ValueKey('org-venue-type-${type.wireValue}'),
-                        label: _venueTypeLabel(type),
+                        label: venueTypeLabel(type),
                         active: _venueType == type,
                         onTap: canManage
                             ? () {
@@ -536,39 +538,8 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
   }
 }
 
-class _LoadError extends StatelessWidget {
-  const _LoadError({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 56),
-      child: Column(
-        children: [
-          Text(message),
-          const SizedBox(height: 12),
-          EpButton('RETRY', kind: EpButtonKind.outline, onTap: onRetry),
-        ],
-      ),
-    );
-  }
-}
-
 class _VenueNotFound implements Exception {
   const _VenueNotFound();
 }
 
 const _bayAreaCenter = LatLng(37.7749, -122.4194);
-
-String _venueTypeLabel(VenueType type) => switch (type) {
-  VenueType.bar => 'Bar',
-  VenueType.club => 'Club',
-  VenueType.hall => 'Hall',
-  VenueType.house => 'House',
-  VenueType.outdoor => 'Outdoor',
-  VenueType.private => 'Private',
-  VenueType.other => 'Other',
-};

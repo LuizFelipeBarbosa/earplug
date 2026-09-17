@@ -9,6 +9,7 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/ep_states.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
@@ -222,7 +223,7 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
             child: Center(child: CircularProgressIndicator()),
           )
         else if (_error != null)
-          _LoadError(onRetry: _refresh)
+          EpLoadError(message: 'Could not load venues.', onRetry: _refresh)
         else ...[
           if (_consents.isNotEmpty) ...[
             const SectionBar(label: 'VENUE REQUESTS'),
@@ -414,24 +415,6 @@ class _VenueConsentNoteSheetState extends State<_VenueConsentNoteSheet> {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _LoadError extends StatelessWidget {
-  const _LoadError({required this.onRetry});
-
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const SizedBox(height: 56),
-        const Text('Could not load venues.'),
-        const SizedBox(height: 12),
-        EpButton('RETRY', kind: EpButtonKind.outline, onTap: onRetry),
-      ],
     );
   }
 }
