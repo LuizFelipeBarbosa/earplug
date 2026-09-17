@@ -9,10 +9,12 @@ import '../services/media_picker.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/band_identity_editor.dart';
+import '../widgets/brand_icons.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
+import '../widgets/genre_autocomplete_field.dart';
 import '../widgets/sheets.dart';
 
 /// The pinned create bar's height above the safe area: EpBottomCta's 20/32
@@ -35,14 +37,12 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
   final _name = TextEditingController();
   final _area = TextEditingController();
   final _bio = TextEditingController();
-  final _customGenre = TextEditingController();
   final _instagram = TextEditingController();
   final _bandcamp = TextEditingController();
   final _youtube = TextEditingController();
 
   bool _loaded = false;
   bool _wasCreated = false;
-  bool _addingCustomGenre = false;
 
   @override
   void didChangeDependencies() {
@@ -68,7 +68,6 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
     _name.dispose();
     _area.dispose();
     _bio.dispose();
-    _customGenre.dispose();
     _instagram.dispose();
     _bandcamp.dispose();
     _youtube.dispose();
@@ -113,16 +112,16 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
     );
   }
 
-  void _addCustomGenre() {
-    final value = _customGenre.text;
+  /// The autocomplete hands back the whole selection; the draft only exposes
+  /// single-genre add/remove, so apply the difference.
+  void _setGenres(List<String> genres) {
     final app = context.read<AppState>();
-    final genre = value.trim().toLowerCase();
-    final alreadySelected = app.nbGenres.contains(genre);
-    final added = app.addNbGenre(value);
-    if (value.trim().isEmpty) return;
-    if (!added && !alreadySelected) return;
-    _customGenre.clear();
-    setState(() => _addingCustomGenre = false);
+    for (final genre in List.of(app.nbGenres)) {
+      if (!genres.contains(genre)) app.toggleNbGenre(genre);
+    }
+    for (final genre in genres) {
+      if (!app.nbGenres.contains(genre)) app.addNbGenre(genre);
+    }
   }
 
   @override
@@ -241,45 +240,59 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                 ),
               ),
               const SizedBox(height: EpLayout.fieldGap),
-              BandGenreEditor(
-                genres: app.nbGenres,
-                onToggle: app.toggleNbGenre,
-                customController: _customGenre,
-                addingCustomGenre: _addingCustomGenre,
-                onShowCustomGenre: () =>
-                    setState(() => _addingCustomGenre = true),
-                onAddCustomGenre: _addCustomGenre,
+              IgnorePointer(
+                ignoring: saving,
+                child: ExcludeFocus(
+                  excluding: saving,
+                  child: GenreAutocompleteField(
+                    selected: app.nbGenres,
+                    onChanged: _setGenres,
+                    keyPrefix: 'edit-genres',
+                  ),
+                ),
               ),
-              FormSection(
-                title: 'Links',
-                description:
-                    'Add the places where fans can listen, watch, and follow.',
-                child: Column(
-                  children: [
-                    EpLabeledField(
-                      fieldKey: const ValueKey('create-instagram'),
-                      label: 'INSTAGRAM',
-                      hint: 'Instagram',
-                      controller: _instagram,
-                      onChanged: app.setNbIg,
-                    ),
-                    const SizedBox(height: EpLayout.fieldGap),
-                    EpLabeledField(
-                      fieldKey: const ValueKey('create-bandcamp'),
-                      label: 'BANDCAMP',
-                      hint: 'Bandcamp',
-                      controller: _bandcamp,
-                      onChanged: app.setNbBc,
-                    ),
-                    const SizedBox(height: EpLayout.fieldGap),
-                    EpLabeledField(
-                      fieldKey: const ValueKey('create-youtube'),
-                      label: 'YOUTUBE OR VIDEO',
-                      hint: 'YouTube or video',
-                      controller: _youtube,
-                      onChanged: app.setNbYt,
-                    ),
-                  ],
+              const SizedBox(height: EpLayout.formSectionGap),
+              const FieldLabel('LINKS'),
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(EpLayout.cardRadius),
+                clipBehavior: Clip.antiAlias,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: context.epColors.surface,
+                    border: Border.all(color: context.epColors.border),
+                    borderRadius: BorderRadius.circular(EpLayout.cardRadius),
+                  ),
+                  child: Column(
+                    children: [
+                      _LinkField(
+                        fieldKey: const ValueKey('create-instagram'),
+                        glyph: BrandGlyph.instagram,
+                        hint: 'Instagram',
+                        controller: _instagram,
+                        enabled: !saving,
+                        onChanged: app.setNbIg,
+                      ),
+                      const EpHairline(),
+                      _LinkField(
+                        fieldKey: const ValueKey('create-bandcamp'),
+                        glyph: BrandGlyph.bandcamp,
+                        hint: 'Bandcamp',
+                        controller: _bandcamp,
+                        enabled: !saving,
+                        onChanged: app.setNbBc,
+                      ),
+                      const EpHairline(),
+                      _LinkField(
+                        fieldKey: const ValueKey('create-youtube'),
+                        glyph: BrandGlyph.youtube,
+                        hint: 'YouTube',
+                        controller: _youtube,
+                        enabled: !saving,
+                        onChanged: app.setNbYt,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -348,6 +361,55 @@ class _IdentityField extends StatelessWidget {
       ],
     );
   }
+}
+
+class _LinkField extends StatelessWidget {
+  const _LinkField({
+    required this.fieldKey,
+    required this.glyph,
+    required this.hint,
+    required this.controller,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final Key fieldKey;
+  final BrandGlyph glyph;
+  final String hint;
+  final TextEditingController controller;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+    child: Row(
+      children: [
+        BrandIcon(glyph: glyph, color: context.epColors.contentSecondary),
+        const SizedBox(width: 12),
+        Expanded(
+          child: TextField(
+            key: fieldKey,
+            controller: controller,
+            enabled: enabled,
+            onChanged: onChanged,
+            keyboardType: TextInputType.url,
+            style: Theme.of(context).textTheme.epInput,
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: Theme.of(
+                context,
+              ).textTheme.epInput.copyWith(color: context.epColors.muted),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _CreateBar extends StatelessWidget {

@@ -7,13 +7,16 @@ import 'package:earplug/screens/band_create.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/band_identity_editor.dart';
+import 'package:earplug/widgets/brand_icons.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/form_bits.dart';
+import 'package:earplug/widgets/genre_autocomplete_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/design_rules.dart';
 import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
@@ -85,6 +88,7 @@ void main() {
       expect(find.text('ABOUT'), findsOne);
       expect(find.bySemanticsLabel(RegExp(r'^ABOUT')), findsOne);
       expect(find.text('GENRES · REQUIRED'), findsOne);
+      expect(find.text('LINKS'), findsOne);
       for (final key in const [
         ValueKey('create-band-name'),
         ValueKey('create-home-base'),
@@ -113,6 +117,69 @@ void main() {
         findsOne,
       );
 
+      // The same genres autocomplete as Edit Band: counter, no chip grid.
+      final genreField = tester.widget<GenreAutocompleteField>(
+        find.byType(GenreAutocompleteField),
+      );
+      expect(genreField.keyPrefix, 'edit-genres');
+      expect(genreField.max, 3);
+      expect(find.byType(BandGenreEditor), findsNothing);
+      expect(find.byKey(const ValueKey('show-custom-genre')), findsNothing);
+      expect(find.byKey(const ValueKey('edit-custom-genre')), findsNothing);
+      expect(find.text('0 of 3 selected'), findsNothing);
+      expect(
+        tester
+            .widget<EpMonoText>(find.byKey(const ValueKey('edit-genres-count')))
+            .text,
+        '0 OF 3',
+      );
+
+      // The same links block as Edit Band: one bordered surface with three
+      // icon rows and platform hints, no descriptive paragraph.
+      expect(
+        find.textContaining('Add the places where fans can listen'),
+        findsNothing,
+      );
+      expect(find.text('INSTAGRAM'), findsNothing);
+      expect(find.text('YOUTUBE OR VIDEO'), findsNothing);
+      final linksCard = _linksCard;
+      expect(linksCard, findsOne);
+      expect(
+        find.descendant(of: linksCard, matching: find.byType(TextField)),
+        findsNWidgets(3),
+      );
+      expect(
+        find.descendant(of: linksCard, matching: find.byType(EpHairline)),
+        findsNWidgets(2),
+      );
+      final glyphs = tester.widgetList<BrandIcon>(
+        find.descendant(of: linksCard, matching: find.byType(BrandIcon)),
+      );
+      expect(glyphs.map((icon) => icon.glyph), [
+        BrandGlyph.instagram,
+        BrandGlyph.bandcamp,
+        BrandGlyph.youtube,
+      ]);
+      final palette = tester.element(linksCard).epColors;
+      expect(
+        glyphs.every((icon) => icon.color == palette.contentSecondary),
+        isTrue,
+      );
+      for (final (key, hint) in const [
+        (ValueKey('create-instagram'), 'Instagram'),
+        (ValueKey('create-bandcamp'), 'Bandcamp'),
+        (ValueKey('create-youtube'), 'YouTube'),
+      ]) {
+        final field = find.byKey(key);
+        expect(find.ancestor(of: field, matching: linksCard), findsOne);
+        final decoration = tester.widget<TextField>(field).decoration!;
+        expect(decoration.hintText, hint);
+        expect(decoration.hintStyle?.color, palette.muted);
+        expect(decoration.labelText, isNull);
+        expect(decoration.border, InputBorder.none);
+        expect(find.text(hint), findsOne);
+      }
+
       // Nothing from the old form survives: credits, members, media rows.
       expect(find.text('CREDITS'), findsNothing);
       expect(find.byKey(const ValueKey('create-credits')), findsNothing);
@@ -121,6 +188,7 @@ void main() {
       expect(find.byType(ReadyPill), findsNothing);
       expect(find.text('PREVIEW'), findsNothing);
       expect(find.byType(EpCard), findsNothing);
+      expectNoFieldInCard(tester);
 
       final bannerTop = tester.getTopLeft(banner);
       final name = tester.getTopLeft(
@@ -133,12 +201,14 @@ void main() {
         find.byKey(const ValueKey('create-about')),
       );
       final genres = tester.getTopLeft(
-        find.byKey(const ValueKey('band-genres-field')),
+        find.byKey(const ValueKey('edit-genres-input')),
       );
+      final links = tester.getTopLeft(linksCard);
       expect(bannerTop.dy, lessThan(name.dy));
       expect(name.dy, lessThan(area.dy));
       expect(area.dy, lessThan(aboutTop.dy));
       expect(aboutTop.dy, lessThan(genres.dy));
+      expect(genres.dy, lessThan(links.dy));
 
       // Header row: back, title and the eye at the right edge, nothing else.
       final headerRow = find
@@ -297,56 +367,99 @@ void main() {
     expect(harness.app.nbName, 'Static Bloom');
   });
 
-  testWidgets('create preserves genre validation and custom genre flow', (
+  testWidgets(
+    'genres use the shared autocomplete with suggestions, removal and custom entries',
+    (tester) async {
+      final harness = await _pumpBandCreate(tester);
+      tester.view.physicalSize = const Size(402, 2200);
+      await tester.pump();
+
+      final input = find.byKey(const ValueKey('edit-genres-input'));
+      final count = find.byKey(const ValueKey('edit-genres-count'));
+      for (final (query, genre) in const [
+        ('punk', 'punk'),
+        ('hard', 'hardcore'),
+        ('gar', 'garage'),
+      ]) {
+        await tester.enterText(input, query);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('edit-genres-suggestions')), findsOne);
+        await tester.tap(
+          find.byKey(const ValueKey('edit-genres-suggestion-0')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(ValueKey('edit-genres-chip-$genre')), findsOne);
+      }
+      expect(harness.app.nbGenres, ['punk', 'hardcore', 'garage']);
+      expect(tester.widget<EpMonoText>(count).text, '3 OF 3');
+      expect(tester.widget<TextField>(input).enabled, isFalse);
+      expect(
+        tester.widget<TextField>(input).decoration!.hintText,
+        'Genres full',
+      );
+      expect(
+        find.byKey(const ValueKey('edit-genres-suggestions')),
+        findsNothing,
+      );
+
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('edit-genres-chip-hardcore')),
+          matching: find.byType(IconButton),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(harness.app.nbGenres, ['punk', 'garage']);
+      expect(
+        find.byKey(const ValueKey('edit-genres-chip-hardcore')),
+        findsNothing,
+      );
+      expect(tester.widget<EpMonoText>(count).text, '2 OF 3');
+      expect(tester.widget<TextField>(input).enabled, isTrue);
+
+      await tester.enterText(input, 'surf punk');
+      await tester.pumpAndSettle();
+      expect(find.text('Add "surf punk"'), findsOne);
+      await tester.tap(find.byKey(const ValueKey('edit-genres-add-custom')));
+      await tester.pumpAndSettle();
+      expect(harness.app.nbGenres, ['punk', 'garage', 'surf punk']);
+      expect(
+        find.byKey(const ValueKey('edit-genres-chip-surf punk')),
+        findsOne,
+      );
+      expect(tester.widget<EpMonoText>(count).text, '3 OF 3');
+      expect(harness.app.toast, isEmpty);
+    },
+  );
+
+  testWidgets('a fourth genre is refused inline without touching the draft', (
     tester,
   ) async {
     final harness = await _pumpBandCreate(tester);
     tester.view.physicalSize = const Size(402, 2200);
     await tester.pump();
 
-    await tester.tap(find.text('PUNK'));
-    await tester.tap(find.text('HARDCORE'));
-    await tester.tap(find.text('GARAGE'));
-    await tester.tap(find.text('THRASH'));
-    await tester.pump();
+    final input = find.byKey(const ValueKey('edit-genres-input'));
+    for (final query in const ['punk', 'hard', 'gar']) {
+      await tester.enterText(input, query);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('edit-genres-suggestion-0')));
+      await tester.pumpAndSettle();
+    }
     expect(harness.app.nbGenres, ['punk', 'hardcore', 'garage']);
-    expect(harness.app.toast, 'Three genres max. It keeps discovery honest.');
+    expect(tester.widget<TextField>(input).enabled, isFalse);
 
-    await tester.tap(find.text('HARDCORE'));
-    await tester.tap(find.byKey(const ValueKey('show-custom-genre')));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const ValueKey('edit-custom-genre')),
-      'surf punk',
-    );
-    await tester.tap(find.widgetWithText(FilledButton, 'ADD'));
-    await tester.pump();
-    expect(harness.app.nbGenres, ['punk', 'garage', 'surf punk']);
-    await tester.pump(const Duration(seconds: 3));
-  });
-
-  testWidgets('custom genre remains available when three are selected', (
-    tester,
-  ) async {
-    final harness = await _pumpBandCreate(tester);
-    tester.view.physicalSize = const Size(402, 2200);
-    await tester.pump();
-
-    await tester.tap(find.text('PUNK'));
-    await tester.tap(find.text('HARDCORE'));
-    await tester.tap(find.text('GARAGE'));
-    await tester.tap(find.byKey(const ValueKey('show-custom-genre')));
-    await tester.pump();
-    final customGenre = find.byKey(const ValueKey('edit-custom-genre'));
-    await tester.enterText(customGenre, 'ska');
-    await tester.tap(find.widgetWithText(FilledButton, 'ADD'));
-    await tester.pump();
-
+    // A commit that lands after the last slot filled shows the limit note
+    // where the user is looking instead of toasting.
+    final field = tester.widget<TextField>(input);
+    field.controller!.text = 'ska';
+    field.onSubmitted!('ska');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('edit-genres-limit')), findsOne);
+    expect(find.text('Choose no more than three genres.'), findsOne);
     expect(harness.app.nbGenres, ['punk', 'hardcore', 'garage']);
-    expect(harness.app.toast, 'Three genres max.');
-    expect(customGenre, findsOne);
-    expect(tester.widget<TextField>(customGenre).controller!.text, 'ska');
-    await tester.pump(const Duration(seconds: 3));
+    expect(harness.app.toast, isEmpty);
+    expect(find.byKey(const ValueKey('edit-genres-chip-ska')), findsNothing);
   });
 
   testWidgets('a held header image uploads into the banner role on create', (
@@ -462,11 +575,13 @@ void main() {
         isEmpty,
       );
     }
+    expect(find.byKey(const ValueKey('edit-genres-chip-punk')), findsNothing);
     expect(
-      tester.widget<EpChip>(find.widgetWithText(EpChip, 'PUNK')).active,
-      isFalse,
+      tester
+          .widget<EpMonoText>(find.byKey(const ValueKey('edit-genres-count')))
+          .text,
+      '0 OF 3',
     );
-    expect(find.text('0 of 3 selected'), findsOne);
     expect(find.text('0 / 160'), findsOne);
   });
 
@@ -548,6 +663,20 @@ final _submitPill = find.descendant(
   matching: find.byType(EpPill),
 );
 
+/// The bordered surface that holds the three link rows (not an EpCard).
+final _linksCard = find
+    .ancestor(
+      of: find.byKey(const ValueKey('create-instagram')),
+      matching: find.byWidgetPredicate((widget) {
+        if (widget is! DecoratedBox) return false;
+        final decoration = widget.decoration;
+        return decoration is BoxDecoration &&
+            decoration.border != null &&
+            decoration.color != null;
+      }),
+    )
+    .first;
+
 Future<AppHarness> _pumpBandCreate(
   WidgetTester tester, {
   EarplugRepository? repository,
@@ -574,7 +703,16 @@ Future<void> _fillForm(WidgetTester tester) async {
     find.byKey(const ValueKey('create-home-base')),
     'Mission, SF',
   );
-  final punk = find.text('PUNK');
+  final input = find.byKey(const ValueKey('edit-genres-input'));
+  await tester.scrollUntilVisible(
+    input,
+    160,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+  await tester.enterText(input, 'punk');
+  await tester.pumpAndSettle();
+  final punk = find.byKey(const ValueKey('edit-genres-suggestion-0'));
   await tester.scrollUntilVisible(
     punk,
     160,
