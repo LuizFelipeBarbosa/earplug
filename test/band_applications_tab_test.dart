@@ -6,7 +6,6 @@ import 'package:earplug/models.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/application_tracker_bar.dart';
 import 'package:earplug/widgets/band_applications_tab.dart';
-import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,11 +22,11 @@ void main() {
     expect(find.text('IN PROGRESS · 1'), findsOneWidget);
     expect(find.textContaining('DECIDED ·'), findsNothing);
     final card = find.byKey(const ValueKey('band-app-app1'));
-    final pill = tester.widget<StatusPill>(
-      find.descendant(of: card, matching: find.byType(StatusPill)),
+    final pill = tester.widget<EpBadge>(
+      find.descendant(of: card, matching: find.byType(EpBadge)),
     );
     expect(pill.label, 'IN REVIEW');
-    expect(pill.tone, EpStatusPillTone.neutral);
+    expect(pill.tone, EpBadgeTone.neutral);
     final tracker = _tracker(tester, 'app1');
     expect(tracker.reached, {ApplicationTrackerStep.applied});
     expect(tracker.outcome, ApplicationOutcome.pending);
@@ -77,11 +76,11 @@ void main() {
         tester.getTopLeft(find.text('DECIDED · 1')).dy,
         lessThan(tester.getTopLeft(declined).dy),
       );
-      final pill = tester.widget<StatusPill>(
-        find.descendant(of: declined, matching: find.byType(StatusPill)),
+      final pill = tester.widget<EpBadge>(
+        find.descendant(of: declined, matching: find.byType(EpBadge)),
       );
       expect(pill.label, 'DECLINED');
-      expect(pill.tone, EpStatusPillTone.neutral);
+      expect(pill.tone, EpBadgeTone.neutral);
       _expectStepColor(tester, 'app3', 'DECLINED', colors.destructive);
       expect(
         tester.widget<EpMonoText>(reason).text,

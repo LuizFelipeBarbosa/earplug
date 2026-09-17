@@ -10,6 +10,7 @@ import 'package:earplug/screens/org_transactions.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -116,25 +117,25 @@ void main() {
     (
       StripeAccountState.none,
       'SET UP',
-      EpStatusPillTone.attention,
+      EpBadgeTone.attention,
       'CONNECT STRIPE',
     ),
     (
       StripeAccountState.onboarding,
       'SETUP IN PROGRESS — FINISH IN STRIPE',
-      EpStatusPillTone.attention,
+      EpBadgeTone.attention,
       'CONTINUE SETUP',
     ),
     (
       StripeAccountState.restricted,
       'SETUP IN PROGRESS — FINISH IN STRIPE',
-      EpStatusPillTone.attention,
+      EpBadgeTone.attention,
       'CONTINUE SETUP',
     ),
     (
       StripeAccountState.enabled,
       'CONNECTED',
-      EpStatusPillTone.success,
+      EpBadgeTone.success,
       'MANAGE PAYOUTS IN STRIPE',
     ),
   ]) {
@@ -143,7 +144,7 @@ void main() {
       repository.stripeStatus = _stripeStatus(state);
       await pumpScreen(tester, const OrgFinanceScreen());
 
-      final pill = tester.widget<StatusPill>(
+      final pill = tester.widget<EpBadge>(
         find.byKey(const Key('org-finance-stripe-badge')),
       );
       expect(pill.label.toUpperCase(), badge);
@@ -400,11 +401,11 @@ void main() {
       );
       expect(
         tester
-            .widget<StatusPill>(
-              find.descendant(of: funds, matching: find.byType(StatusPill)),
+            .widget<EpBadge>(
+              find.descendant(of: funds, matching: find.byType(EpBadge)),
             )
             .tone,
-        EpStatusPillTone.warning,
+        EpBadgeTone.warning,
       );
       expect(find.text('STALE'), findsOneWidget);
       expect(find.byKey(const Key('org-finance-connect-stripe')), findsNothing);
@@ -512,11 +513,11 @@ void main() {
       );
       expect(
         tester
-            .widget<StatusPill>(
-              find.descendant(of: row, matching: find.byType(StatusPill)),
+            .widget<EpBadge>(
+              find.descendant(of: row, matching: find.byType(EpBadge)),
             )
             .tone,
-        EpStatusPillTone.success,
+        EpBadgeTone.success,
       );
     }
     expect(find.text('No transactions yet.'), findsNothing);

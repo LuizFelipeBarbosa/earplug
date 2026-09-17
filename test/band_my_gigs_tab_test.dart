@@ -7,7 +7,6 @@ import 'package:earplug/screens/door_mode.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/band_my_gigs_tab.dart';
 import 'package:earplug/widgets/band_next_up_card.dart';
-import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
@@ -93,12 +92,12 @@ void main() {
       projects: [_project('published-paid', unpublishedChanges: true)],
     );
     final row = find.byKey(const Key('my-gigs-hosted-published-paid'));
-    final status = tester.widget<StatusPill>(
-      find.descendant(of: row, matching: find.byType(StatusPill)),
+    final status = tester.widget<EpBadge>(
+      find.descendant(of: row, matching: find.byType(EpBadge)),
     );
 
     expect(status.label, 'UNPUBLISHED CHANGES');
-    expect(status.tone, EpStatusPillTone.warning);
+    expect(status.tone, EpBadgeTone.warning);
     expect(tester.takeException(), isNull);
   });
 

@@ -14,6 +14,7 @@ import 'package:earplug/screens/org_settings.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/band_my_gigs_tab.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -303,13 +304,13 @@ void main() {
     expect(harness.app.bandPayoutStatus?.canSellTickets, isTrue);
     expect(find.text('TICKET SALES'), findsOneWidget);
     expect(find.text('TICKET SALES ENABLED'), findsOneWidget);
-    final pill = tester.widget<StatusPill>(
+    final pill = tester.widget<EpBadge>(
       find.ancestor(
         of: find.text('TICKET SALES ENABLED'),
-        matching: find.byType(StatusPill),
+        matching: find.byType(EpBadge),
       ),
     );
-    expect(pill.tone, EpStatusPillTone.success);
+    expect(pill.tone, EpBadgeTone.success);
     expect(find.byKey(const Key('band-payouts-enable-tickets')), findsNothing);
     expect(find.text(_ticketSalesCaption), findsOneWidget);
   });
@@ -423,11 +424,11 @@ void main() {
         ),
         findsOneWidget,
       );
-      final paidPill = tester.widget<StatusPill>(
-        find.descendant(of: paidRow, matching: find.byType(StatusPill)),
+      final paidPill = tester.widget<EpBadge>(
+        find.descendant(of: paidRow, matching: find.byType(EpBadge)),
       );
       expect(paidPill.label, 'paid');
-      expect(paidPill.tone, EpStatusPillTone.success);
+      expect(paidPill.tone, EpBadgeTone.success);
 
       final heldRow = find.byKey(const ValueKey('band-payout-p2'));
       expect(
@@ -447,11 +448,11 @@ void main() {
       );
       expect(
         tester
-            .widget<StatusPill>(
-              find.descendant(of: heldRow, matching: find.byType(StatusPill)),
+            .widget<EpBadge>(
+              find.descendant(of: heldRow, matching: find.byType(EpBadge)),
             )
             .tone,
-        EpStatusPillTone.warning,
+        EpBadgeTone.warning,
       );
     },
   );
@@ -544,10 +545,10 @@ void main() {
         ),
         findsOneWidget,
       );
-      final pill = find.descendant(of: row, matching: find.byType(StatusPill));
+      final pill = find.descendant(of: row, matching: find.byType(EpBadge));
       if (needsTaxInformation) {
-        expect(tester.widget<StatusPill>(pill).label, 'ACTION NEEDED');
-        expect(tester.widget<StatusPill>(pill).tone, EpStatusPillTone.warning);
+        expect(tester.widget<EpBadge>(pill).label, 'ACTION NEEDED');
+        expect(tester.widget<EpBadge>(pill).tone, EpBadgeTone.warning);
       } else {
         expect(pill, findsNothing);
       }
@@ -643,11 +644,11 @@ void main() {
       await enterOrganizer(tester, harness, 'org1');
 
       final section = find.byKey(const Key('org-finance-stripe-section'));
-      final badge = tester.widget<StatusPill>(
+      final badge = tester.widget<EpBadge>(
         find.byKey(const Key('org-finance-stripe-badge')),
       );
       expect(badge.label.toUpperCase(), 'SETUP IN PROGRESS — FINISH IN STRIPE');
-      expect(badge.tone, EpStatusPillTone.attention);
+      expect(badge.tone, EpBadgeTone.attention);
       expect(find.text('CONTINUE SETUP'), findsOneWidget);
       expect(find.text('NEEDS INFORMATION'), findsOneWidget);
       expect(find.text('individual.id_number'), findsOneWidget);
@@ -777,7 +778,7 @@ void main() {
     harness.app.hostedUrlLauncher = (url) async => launched.add(url);
 
     final badge = find.byKey(const Key('org-finance-stripe-badge'));
-    expect(tester.widget<StatusPill>(badge).label.toUpperCase(), 'SET UP');
+    expect(tester.widget<EpBadge>(badge).label.toUpperCase(), 'SET UP');
     expect(
       find.text(
         'Not connected. Connect Stripe to sell tickets and receive payouts.',
@@ -795,7 +796,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(launched, ['https://demo.stripe/onboard/org1']);
     expect(
-      tester.widget<StatusPill>(badge).label.toUpperCase(),
+      tester.widget<EpBadge>(badge).label.toUpperCase(),
       'SETUP IN PROGRESS — FINISH IN STRIPE',
     );
     expect(find.textContaining('Setup in progress.'), findsOneWidget);
@@ -812,7 +813,7 @@ void main() {
 
     await harness.app.handleStripeReturn(band: false, id: 'org1');
     await tester.pumpAndSettle();
-    expect(tester.widget<StatusPill>(badge).label.toUpperCase(), 'CONNECTED');
+    expect(tester.widget<EpBadge>(badge).label.toUpperCase(), 'CONNECTED');
     expect(
       find.text('Connected. Payouts go to your Stripe account.'),
       findsOneWidget,

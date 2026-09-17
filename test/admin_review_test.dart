@@ -6,7 +6,6 @@ import 'package:earplug/navigation.dart';
 import 'package:earplug/screens/admin_application.dart';
 import 'package:earplug/screens/admin_queue.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/ep_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -128,11 +127,11 @@ void main() {
       home: AdminApplicationScreen(applicationId: applicationId),
     );
 
-    final typePill = tester.widget<StatusPill>(
+    final typePill = tester.widget<EpBadge>(
       find.byKey(const Key('admin-application-type')),
     );
     expect(typePill.label, 'PROMOTER');
-    expect(typePill.tone, EpStatusPillTone.neutral);
+    expect(typePill.tone, EpBadgeTone.neutral);
     await tester.scrollUntilVisible(
       find.text('DOCUMENTS'),
       200,
