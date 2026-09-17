@@ -8,6 +8,7 @@ import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_states.dart';
+import '../widgets/ep_text.dart';
 
 class AdminBookingsScreen extends StatefulWidget {
   const AdminBookingsScreen({super.key});
@@ -264,15 +265,12 @@ class _BookingRow extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              StatusPill(
-                label: row.status.label,
-                tone: _statusTone(row.status),
-              ),
+              EpBadge(label: row.status.label, tone: _statusTone(row.status)),
               if (row.openDisputeId != null)
-                StatusPill(
+                EpBadge(
                   key: Key('admin-booking-${row.bookingId}-dispute'),
                   label: 'DISPUTE',
-                  tone: EpStatusPillTone.warning,
+                  tone: EpBadgeTone.warning,
                 ),
             ],
           ),
@@ -314,11 +312,11 @@ class _BookingRow extends StatelessWidget {
   }
 }
 
-EpStatusPillTone _statusTone(BookingStatus status) => switch (status) {
+EpBadgeTone _statusTone(BookingStatus status) => switch (status) {
   BookingStatus.confirmed ||
   BookingStatus.paid ||
-  BookingStatus.completed => EpStatusPillTone.success,
+  BookingStatus.completed => EpBadgeTone.success,
   BookingStatus.disputed ||
-  BookingStatus.awaitingPayment => EpStatusPillTone.warning,
-  _ => EpStatusPillTone.neutral,
+  BookingStatus.awaitingPayment => EpBadgeTone.warning,
+  _ => EpBadgeTone.neutral,
 };

@@ -6,6 +6,7 @@ import '../errors.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/ep_states.dart';
 import '../widgets/form_bits.dart';
@@ -158,7 +159,7 @@ class _AdminSafetyScreenState extends State<AdminSafetyScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
                 children: [
-                  const SectionBar(label: 'OPEN REPORTS'),
+                  const EpSectionHeader(label: 'OPEN REPORTS'),
                   if (_loadFailed) ...[
                     const Text("Couldn't load safety reports."),
                     const SizedBox(height: 12),

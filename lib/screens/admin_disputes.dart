@@ -7,8 +7,10 @@ import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/ep_states.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart' show EpFormSheet;
 
@@ -237,7 +239,7 @@ class _AdminDisputesScreenState extends State<AdminDisputesScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
                 children: [
-                  const SectionBar(label: 'OPEN DISPUTES'),
+                  const EpSectionHeader(label: 'OPEN DISPUTES'),
                   if (_loadFailed) ...[
                     const Text("Couldn't load disputes."),
                     const SizedBox(height: 12),
@@ -359,9 +361,9 @@ class _DisputeRow extends StatelessWidget {
                 dateLabel(row.createdAt),
                 style: Theme.of(context).textTheme.epCaption,
               ),
-              StatusPill(
+              EpBadge(
                 label: row.status.wireValue.replaceAll('_', ' '),
-                tone: EpStatusPillTone.warning,
+                tone: EpBadgeTone.warning,
               ),
             ],
           ),

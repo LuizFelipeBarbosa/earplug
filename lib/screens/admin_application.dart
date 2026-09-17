@@ -8,8 +8,10 @@ import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/approx_area_map.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/ep_states.dart';
+import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/map_view.dart';
 import '../widgets/opportunity_labels.dart';
@@ -281,30 +283,12 @@ class _OrganizationSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _DetailValue(label: 'Name', value: application.orgName),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 9),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 96,
-                  child: Text(
-                    'TYPE',
-                    style: Theme.of(context).textTheme.epCaption.copyWith(
-                      color: context.epColors.contentSecondary,
-                    ),
-                  ),
-                ),
-                Flexible(
-                  child: StatusPill(
-                    key: const Key('admin-application-type'),
-                    label: organizationTypeLabel(
-                      application.orgType,
-                    ).toUpperCase(),
-                    tone: EpStatusPillTone.neutral,
-                  ),
-                ),
-              ],
+          _DetailValue(
+            label: 'Type',
+            child: EpBadge(
+              key: const Key('admin-application-type'),
+              label: organizationTypeLabel(application.orgType).toUpperCase(),
+              tone: EpBadgeTone.neutral,
             ),
           ),
           if (website != null && website.isNotEmpty)
@@ -424,11 +408,17 @@ class _VenueSection extends StatelessWidget {
           if (draft.venueType case final type?)
             _DetailValue(label: 'Venue type', value: venueTypeLabel(type)),
           const SizedBox(height: 12),
-          const _MapCaption(text: 'Exact address — admin only'),
+          Text(
+            'Exact address — admin only',
+            style: Theme.of(context).textTheme.epCaption,
+          ),
           const SizedBox(height: 7),
           VenueMiniMap(venue: exactVenue, approximate: false),
           const SizedBox(height: 16),
-          const _MapCaption(text: 'What fans will see'),
+          Text(
+            'What fans will see',
+            style: Theme.of(context).textTheme.epCaption,
+          ),
           const SizedBox(height: 7),
           ApproxAreaMap(centroid: draft.point, label: draft.area),
         ],
@@ -486,11 +476,9 @@ class _DocumentRow extends StatelessWidget {
       );
     }
 
-    return Container(
+    return EpRow(
+      minHeight: 0,
       padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: context.epColors.line)),
-      ),
       child: Row(
         children: [
           const Icon(Icons.description_outlined, size: 16),
@@ -533,7 +521,7 @@ class _ReviewSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          StatusPill(
+          EpBadge(
             label: organizationApplicationStatusLabel(application.status),
             tone: _statusTone(application.status),
           ),
@@ -572,7 +560,7 @@ class _DetailSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionBar(label: label),
+        EpSectionHeader(label: label),
         Padding(
           padding: const EdgeInsets.only(top: 4, bottom: 8),
           child: child,
@@ -582,11 +570,18 @@ class _DetailSection extends StatelessWidget {
   }
 }
 
+/// A labelled detail row: the label in a fixed column, then either [value]
+/// as text or a custom [child].
 class _DetailValue extends StatelessWidget {
-  const _DetailValue({super.key, required this.label, required this.value});
+  const _DetailValue({super.key, required this.label, this.value, this.child})
+    : assert(
+        (value == null) != (child == null),
+        'Provide exactly one of value or child',
+      );
 
   final String label;
-  final String value;
+  final String? value;
+  final Widget? child;
 
   @override
   Widget build(BuildContext context) {
@@ -599,30 +594,15 @@ class _DetailValue extends StatelessWidget {
             width: 96,
             child: Text(
               label.toUpperCase(),
-              style: Theme.of(context).textTheme.epCaption.copyWith(
-                color: context.epColors.contentSecondary,
-              ),
+              style: Theme.of(context).textTheme.epCaption,
             ),
           ),
-          Expanded(child: Text(value)),
+          if (child case final child?)
+            Flexible(child: child)
+          else
+            Expanded(child: Text(value ?? '')),
         ],
       ),
-    );
-  }
-}
-
-class _MapCaption extends StatelessWidget {
-  const _MapCaption({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: Theme.of(
-        context,
-      ).textTheme.epCaption.copyWith(color: context.epColors.contentSecondary),
     );
   }
 }
@@ -824,13 +804,13 @@ bool _isActionable(OrganizationApplicationStatus status) =>
     status == OrganizationApplicationStatus.submitted ||
     status == OrganizationApplicationStatus.underReview;
 
-EpStatusPillTone _statusTone(OrganizationApplicationStatus status) =>
+EpBadgeTone _statusTone(OrganizationApplicationStatus status) =>
     switch (status) {
-      OrganizationApplicationStatus.approved => EpStatusPillTone.success,
-      OrganizationApplicationStatus.submitted => EpStatusPillTone.selected,
+      OrganizationApplicationStatus.approved => EpBadgeTone.success,
+      OrganizationApplicationStatus.submitted => EpBadgeTone.selected,
       OrganizationApplicationStatus.underReview ||
-      OrganizationApplicationStatus.needsInfo => EpStatusPillTone.warning,
+      OrganizationApplicationStatus.needsInfo => EpBadgeTone.warning,
       OrganizationApplicationStatus.draft ||
       OrganizationApplicationStatus.rejected ||
-      OrganizationApplicationStatus.withdrawn => EpStatusPillTone.neutral,
+      OrganizationApplicationStatus.withdrawn => EpBadgeTone.neutral,
     };
