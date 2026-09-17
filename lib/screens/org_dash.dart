@@ -5,7 +5,6 @@ import '../app_state.dart';
 import '../host_request_groups.dart';
 import '../initials.dart';
 import '../models.dart';
-import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
@@ -336,14 +335,11 @@ class _NextEvent extends StatelessWidget {
           const SizedBox(height: 12),
           EpMonoText(location, keepCase: true, color: secondary),
           const SizedBox(height: 4),
-          EpMonoText(_bookedSlotLine(event), keepCase: true, color: secondary),
+          EpMonoText(bookedSlotLine(event), keepCase: true, color: secondary),
           const SizedBox(height: 12),
           const Align(
             alignment: Alignment.centerLeft,
-            child: StatusPill(
-              label: 'Confirmed',
-              tone: EpStatusPillTone.success,
-            ),
+            child: EpBadge(label: 'Confirmed', tone: EpBadgeTone.success),
           ),
           const SizedBox(height: 20),
           Align(
@@ -360,19 +356,6 @@ class _NextEvent extends StatelessWidget {
       ),
     );
   }
-}
-
-/// "Headliner · $300.00 · 2/2 slots booked".
-String _bookedSlotLine(Opportunity opportunity) {
-  final slots = [...opportunity.slots]
-    ..sort((a, b) => a.order.compareTo(b.order));
-  final booked = slots.where((slot) => slot.status == SlotStatus.booked).length;
-  final lead = slots.firstOrNull;
-  return [
-    if (lead != null) slotRoleLabel(lead.role),
-    if (lead != null) Money(lead.guaranteeMinor, opportunity.currency).label,
-    '$booked/${slots.length} slots booked',
-  ].join(' · ');
 }
 
 class _MenuRows extends StatelessWidget {
@@ -436,10 +419,10 @@ class _MenuRows extends StatelessWidget {
             label: 'Finance',
             trailing: financeEnabled
                 ? null
-                : const StatusPill(
+                : const EpBadge(
                     key: Key('org-dash-finance-badge'),
                     label: 'Set up',
-                    tone: EpStatusPillTone.attention,
+                    tone: EpBadgeTone.attention,
                   ),
             onTap: app.openFinance,
           ),

@@ -343,7 +343,6 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
                   key: const Key('gig-save'),
                   label: 'Save',
                   variant: EpPillVariant.primary,
-                  size: EpPillSize.chip,
                   onPressed: () async {
                     await app.saveGigDraft();
                     if (context.mounted) app.previewGigDraft();
@@ -681,8 +680,6 @@ class _LineupField extends StatelessWidget {
                                   'gig-performer-role-pill-${performer.id}',
                                 ),
                                 label: performer.role.name,
-                                size: EpPillSize.chip,
-                                variant: EpPillVariant.outline,
                                 onPressed: null,
                               ),
                             ),
@@ -833,7 +830,7 @@ class _AddPerformerBodyState extends State<_AddPerformerBody> {
             },
           ),
         ),
-        Divider(),
+        const EpHairline(),
         EpLabeledField(
           controller: _name,
           label: 'PERFORMER NAME',

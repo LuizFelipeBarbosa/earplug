@@ -94,16 +94,7 @@ class BandIdentityHeader extends StatelessWidget {
             ),
             DecoratedBox(
               key: const ValueKey('band-profile-banner-scrim'),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: .66),
-                    Colors.black.withValues(alpha: .74),
-                  ],
-                ),
-              ),
+              decoration: const BoxDecoration(gradient: Ep.bannerScrim),
             ),
             if (showAvatar)
               Padding(
@@ -184,9 +175,9 @@ class BandIdentityHeader extends StatelessWidget {
                               height: 66,
                               padding: const EdgeInsets.all(4),
                               decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: .35),
+                                color: Ep.blackA(.35),
                                 border: Border.all(
-                                  color: Colors.white.withValues(alpha: .86),
+                                  color: Ep.whiteA(.86),
                                   width: 2,
                                 ),
                                 borderRadius: BorderRadius.circular(
@@ -253,10 +244,7 @@ class BandIdentityHeader extends StatelessWidget {
                                 'PROFILE IMAGE',
                                 textAlign: TextAlign.center,
                                 style: Theme.of(context).textTheme.epChipLabel
-                                    .copyWith(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                    ),
+                                    .copyWith(color: Colors.white),
                               ),
                             ],
                           ],
@@ -399,8 +387,8 @@ class _EditLabel extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 40),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: .78),
-        border: Border.all(color: Colors.white.withValues(alpha: .24)),
+        color: Ep.blackA(.78),
+        border: Border.all(color: Ep.whiteA(.24)),
         borderRadius: BorderRadius.circular(EpLayout.pillRadius),
       ),
       child: Row(
