@@ -10,6 +10,8 @@ import 'common.dart';
 import 'ep_rows.dart';
 import 'ep_sheet.dart';
 import 'ep_text.dart';
+import 'form_bits.dart';
+import 'opportunity_labels.dart';
 import 'sheets.dart';
 
 /// The organization's TEAM section: one entity row per member with the
@@ -130,31 +132,20 @@ class _OrgTeamPanelState extends State<OrgTeamPanel> {
       await _refreshMembers();
       if (mounted) app.say('Role updated.');
     } catch (error) {
-      if (mounted) app.say(_errorMessage(error));
+      if (mounted) app.say(stripStateErrorPrefix(error));
     }
   }
 
   Future<void> _confirmRemove(OrganizationMember member) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('Remove ${member.name}?'),
-        content: const Text(
+    final confirmed = await epConfirm(
+      context,
+      title: 'Remove ${member.name}?',
+      body:
           'They will lose access to this organization and its management tools.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('CANCEL'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('REMOVE'),
-          ),
-        ],
-      ),
+      keepLabel: 'CANCEL',
+      confirmLabel: 'REMOVE',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     final app = context.read<AppState>();
     try {
@@ -165,7 +156,7 @@ class _OrgTeamPanelState extends State<OrgTeamPanel> {
       await _refreshMembers();
       if (mounted) app.say('Member removed.');
     } catch (error) {
-      if (mounted) app.say(_errorMessage(error));
+      if (mounted) app.say(stripStateErrorPrefix(error));
     }
   }
 
@@ -417,7 +408,7 @@ class _InviteSheetState extends State<_InviteSheet> {
             SelectableText(
               '$publicWebOrigin/apply/${invite.token}',
               key: const Key('org-team-invite-link'),
-              style: textTheme.epBody.copyWith(fontSize: 11.5),
+              style: textTheme.epInviteUrl,
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -496,14 +487,4 @@ class _LoadError extends StatelessWidget {
   }
 }
 
-String organizationRoleLabel(OrganizationRole role) => switch (role) {
-  OrganizationRole.owner => 'Owner',
-  OrganizationRole.manager => 'Manager',
-  OrganizationRole.finance => 'Finance',
-  OrganizationRole.door => 'Door',
-};
-
 String _expiryLabel(DateTime date) => '${date.month}/${date.day}/${date.year}';
-
-String _errorMessage(Object error) =>
-    error.toString().replaceFirst(RegExp(r'^(Bad state: |Exception: )'), '');

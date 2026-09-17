@@ -5,7 +5,10 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
+import 'ep_rows.dart';
 import 'ep_sheet.dart';
+import 'ep_text.dart';
+import 'opportunity_labels.dart';
 
 /// Shared visual chrome for bottom sheets presented by [showEpSheet].
 class EpSheetShell extends StatelessWidget {
@@ -283,21 +286,14 @@ class EpOptionCard extends StatelessWidget {
         type: MaterialType.transparency,
         child: InkWell(
           onTap: onTap,
-          child: Container(
+          child: EpRow(
+            minHeight: 0,
             padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: colors.line)),
-            ),
             child: Row(
               children: [
-                Container(
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: selected ? colors.accent : null,
-                    border: selected ? null : Border.all(color: colors.outline),
-                  ),
+                EpDot(
+                  fill: selected ? colors.accent : null,
+                  border: selected ? null : colors.outline,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -347,11 +343,9 @@ class _SheetOption extends StatelessWidget {
       enabled: true,
       child: InkWell(
         onTap: onTap,
-        child: Container(
+        child: EpRow(
+          minHeight: 0,
           padding: EdgeInsets.symmetric(vertical: verticalPadding),
-          decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: context.epColors.line)),
-          ),
           child: leading,
         ),
       ),
@@ -388,11 +382,7 @@ class EpActionSheet extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       handleBottomSpacing: 14,
       mainAxisSize: MainAxisSize.min,
-      header: Text(
-        header.toUpperCase(),
-        semanticsLabel: header,
-        style: Theme.of(context).textTheme.epSection,
-      ),
+      header: EpEyebrow(header),
       children: [
         const SizedBox(height: 8),
         for (var index = 0; index < items.length; index++) ...[
@@ -430,12 +420,9 @@ class _ActionSheetRow extends StatelessWidget {
                 Navigator.of(context).pop();
                 item.onPressed!();
               },
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 48),
+        child: EpRow(
+          minHeight: 47,
           padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: context.epColors.line)),
-          ),
           child: Row(
             children: [
               if (item.icon != null) ...[
@@ -490,13 +477,6 @@ bool _applicationInProgress(OrganizationApplication? application) =>
       _ => false,
     };
 
-String _roleLabel(OrganizationRole role) => switch (role) {
-  OrganizationRole.owner => 'Owner',
-  OrganizationRole.manager => 'Manager',
-  OrganizationRole.finance => 'Finance',
-  OrganizationRole.door => 'Door',
-};
-
 String _applicationStatusLabel(OrganizationApplicationStatus status) =>
     switch (status) {
       OrganizationApplicationStatus.draft => 'Draft',
@@ -522,11 +502,7 @@ void showSwitcherSheet(BuildContext context) {
       maxHeightFactor: .88,
       scrollable: true,
       mainAxisSize: MainAxisSize.min,
-      header: Text(
-        'Switch identity'.toUpperCase(),
-        semanticsLabel: 'Switch identity',
-        style: Theme.of(ctx).textTheme.epSection,
-      ),
+      header: const EpEyebrow('Switch identity'),
       children: [
         if (app.authed)
           _IdentityOption(
@@ -561,7 +537,7 @@ void showSwitcherSheet(BuildContext context) {
                   membership.organization.orgType ==
                       OrganizationType.privateHost
                   ? 'Host'
-                  : 'Organizer · ${_roleLabel(membership.role)}',
+                  : 'Organizer · ${organizationRoleLabel(membership.role)}',
               active:
                   identity is OrganizerIdentity &&
                   identity.organizationId == membership.organization.id,

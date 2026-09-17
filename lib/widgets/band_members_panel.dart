@@ -183,9 +183,10 @@ class _BandMembersPanelBodyState extends State<_BandMembersPanelBody> {
   }) {
     showEpSheet(
       context,
-      (_) => _ConfirmSheet(
+      (_) => EpConfirmSheet(
         header: header,
         confirmLabel: confirmLabel,
+        confirmKey: const Key('band-member-confirm'),
         onConfirm: () => _runMemberAction(
           () => app.removeBandMember(widget.bandId, member.userId),
         ),
@@ -396,60 +397,47 @@ class _MemberRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.epColors;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 44),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Row(
+    return EpRow(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          EpFanAvatar(name: member.name, imageUrl: member.avatarUrl, size: 40),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                EpFanAvatar(
-                  name: member.name,
-                  imageUrl: member.avatarUrl,
-                  size: 40,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      EpDisplay(member.name, size: 20, maxLines: 1),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          StatusPill(
-                            label: member.role.label.toUpperCase(),
-                            tone: member.role == BandMemberRole.admin
-                                ? EpStatusPillTone.selected
-                                : EpStatusPillTone.neutral,
-                          ),
-                          if (member.isSelf) ...[
-                            const SizedBox(width: 6),
-                            EpMonoText('· You', color: palette.muted),
-                          ],
-                        ],
-                      ),
+                EpDisplay(member.name, size: 20, maxLines: 1),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    StatusPill(
+                      label: member.role.label.toUpperCase(),
+                      tone: member.role == BandMemberRole.admin
+                          ? EpStatusPillTone.selected
+                          : EpStatusPillTone.neutral,
+                    ),
+                    if (member.isSelf) ...[
+                      const SizedBox(width: 6),
+                      EpMonoText('· You', color: palette.muted),
                     ],
-                  ),
+                  ],
                 ),
-                if (showActions) ...[
-                  const SizedBox(width: 12),
-                  EpIconPill(
-                    key: ValueKey('band-member-actions-${member.userId}'),
-                    icon: Icons.more_horiz,
-                    semanticLabel: 'Actions for ${member.name}',
-                    onPressed: onActions,
-                  ),
-                ],
               ],
             ),
           ),
-        ),
-        const EpHairline(),
-      ],
+          if (showActions) ...[
+            const SizedBox(width: 12),
+            EpIconPill(
+              key: ValueKey('band-member-actions-${member.userId}'),
+              icon: Icons.more_horiz,
+              semanticLabel: 'Actions for ${member.name}',
+              onPressed: onActions,
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -478,7 +466,7 @@ class _InviteBlock extends StatelessWidget {
         SelectableText(
           invite.url,
           key: const ValueKey('band-invite-url'),
-          style: Theme.of(context).textTheme.epBody.copyWith(fontSize: 11.5),
+          style: Theme.of(context).textTheme.epInviteUrl,
         ),
         const SizedBox(height: 12),
         Wrap(
@@ -515,56 +503,6 @@ class _InviteBlock extends StatelessWidget {
         Text(
           'One secure link, valid seven days, usable by several members.',
           style: Theme.of(context).textTheme.epCaption,
-        ),
-      ],
-    );
-  }
-}
-
-class _ConfirmSheet extends StatelessWidget {
-  const _ConfirmSheet({
-    required this.header,
-    required this.confirmLabel,
-    required this.onConfirm,
-  });
-
-  final String header;
-  final String confirmLabel;
-  final Future<void> Function() onConfirm;
-
-  @override
-  Widget build(BuildContext context) {
-    return EpSheetShell(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-      backgroundColor: context.epColors.raised,
-      borderColor: context.epColors.border,
-      topRadius: EpLayout.cardRadius,
-      handleColor: context.epColors.mute,
-      handleBottomSpacing: 14,
-      mainAxisSize: MainAxisSize.min,
-      header: Text(
-        header.toUpperCase(),
-        semanticsLabel: header,
-        style: Theme.of(context).textTheme.epSectionHeading,
-      ),
-      children: [
-        const SizedBox(height: 16),
-        OutlinedButton(
-          key: const Key('band-member-confirm'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: context.epColors.destructive,
-          ),
-          onPressed: () async {
-            await onConfirm();
-            if (!context.mounted) return;
-            Navigator.pop(context);
-          },
-          child: Text(confirmLabel),
-        ),
-        const SizedBox(height: 8),
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('KEEP'),
         ),
       ],
     );

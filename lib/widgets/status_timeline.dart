@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'ep_text.dart';
 
 enum TimelineStepState { done, current, pending, blocked }
 
@@ -90,14 +91,7 @@ class _TimelineIndicator extends StatelessWidget {
     final colors = context.epColors;
 
     return switch (state) {
-      TimelineStepState.done => Container(
-        width: 14,
-        height: 14,
-        decoration: BoxDecoration(
-          color: colors.success,
-          shape: BoxShape.circle,
-        ),
-      ),
+      TimelineStepState.done => EpDot(fill: colors.success),
       TimelineStepState.current => Container(
         width: 16,
         height: 16,
@@ -113,22 +107,11 @@ class _TimelineIndicator extends StatelessWidget {
           ),
         ),
       ),
-      TimelineStepState.pending => Container(
-        width: 14,
-        height: 14,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: colors.outline),
-        ),
-      ),
-      TimelineStepState.blocked => Container(
-        width: 14,
-        height: 14,
-        decoration: BoxDecoration(
-          color: colors.destructiveTint,
-          shape: BoxShape.circle,
-          border: Border.all(color: colors.destructive, width: 1.5),
-        ),
+      TimelineStepState.pending => EpDot(border: colors.outline),
+      TimelineStepState.blocked => EpDot(
+        fill: colors.destructiveTint,
+        border: colors.destructive,
+        borderWidth: 1.5,
       ),
     };
   }

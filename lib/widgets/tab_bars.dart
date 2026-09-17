@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../theme.dart';
 import 'branding.dart';
+import 'ep_text.dart';
 import 'sheets.dart';
 
 class EpNavigationItem extends StatelessWidget {
@@ -410,10 +411,7 @@ class EpDesktopSidebar extends StatelessWidget {
                       child: EpLogo.full(width: 113, height: 32),
                     ),
                     const SizedBox(height: 40),
-                    Text(
-                      label.toUpperCase(),
-                      style: Theme.of(context).textTheme.epSection,
-                    ),
+                    EpEyebrow(label),
                     const SizedBox(height: 16),
                     navigation,
                     const Spacer(),

@@ -5,6 +5,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/opportunity_labels.dart';
 
 class OrgJoinScreen extends StatefulWidget {
   const OrgJoinScreen({super.key, required this.token});
@@ -173,10 +174,7 @@ class _JoinLoading extends StatelessWidget {
       children: [
         const CircularProgressIndicator(),
         const SizedBox(height: 16),
-        Text(
-          'CHECKING INVITATION…',
-          style: Theme.of(context).textTheme.epMeta,
-        ),
+        Text('CHECKING INVITATION…', style: Theme.of(context).textTheme.epMeta),
       ],
     );
   }
@@ -209,7 +207,7 @@ class _JoinConfirmation extends StatelessWidget {
         ),
         const SizedBox(height: 18),
         Text(
-          'Join ${resolution.organizationName} as ${_roleLabel(resolution.role)}',
+          'Join ${resolution.organizationName} as ${organizationRoleLabel(resolution.role)}',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.epDisplayAt(23),
         ),
@@ -322,10 +320,3 @@ class _JoinError extends StatelessWidget {
     );
   }
 }
-
-String _roleLabel(OrganizationRole role) => switch (role) {
-  OrganizationRole.owner => 'Owner',
-  OrganizationRole.manager => 'Manager',
-  OrganizationRole.finance => 'Finance',
-  OrganizationRole.door => 'Door',
-};
