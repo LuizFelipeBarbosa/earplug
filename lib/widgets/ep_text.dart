@@ -356,29 +356,78 @@ class EpHairline extends StatelessWidget {
 
 enum EpBadgeVariant { outline, secondary }
 
+enum EpBadgeTone { success, selected, warning, attention, neutral }
+
 class EpBadge extends StatelessWidget {
   const EpBadge({
     super.key,
     required this.label,
     this.variant = EpBadgeVariant.outline,
+    this.tone,
   });
 
   final String label;
   final EpBadgeVariant variant;
 
+  /// Colours the label only; null keeps the ink default.
+  final EpBadgeTone? tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.epColors;
+    final toneColor = switch (tone) {
+      null => palette.ink,
+      EpBadgeTone.success => palette.success,
+      EpBadgeTone.selected => palette.accent,
+      EpBadgeTone.warning => palette.ink,
+      EpBadgeTone.attention => palette.attention,
+      EpBadgeTone.neutral => palette.muted,
+    };
+    return Semantics(
+      label: label,
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(2),
+            border: variant == EpBadgeVariant.outline
+                ? Border.all(color: palette.line)
+                : null,
+            color: variant == EpBadgeVariant.secondary ? palette.panel : null,
+          ),
+          child: EpMonoText(label, color: toneColor),
+        ),
+      ),
+    );
+  }
+}
+
+/// A small circle: a filled marker, an outlined ring, or both.
+class EpDot extends StatelessWidget {
+  const EpDot({
+    super.key,
+    this.size = 14,
+    this.fill,
+    this.border,
+    this.borderWidth = 1,
+  });
+
+  final double size;
+  final Color? fill;
+  final Color? border;
+  final double borderWidth;
+
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    width: size,
+    height: size,
     decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(2),
-      border: variant == EpBadgeVariant.outline
-          ? Border.all(color: context.epColors.line)
-          : null,
-      color: variant == EpBadgeVariant.secondary
-          ? context.epColors.panel
-          : null,
+      shape: BoxShape.circle,
+      color: fill,
+      border: border == null
+          ? null
+          : Border.all(color: border!, width: borderWidth),
     ),
-    child: EpMonoText(label),
   );
 }
 

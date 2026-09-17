@@ -521,4 +521,207 @@ void main() {
       );
     }
   });
+
+  testWidgets('badge tones colour the label only', (tester) async {
+    for (final brightness in Brightness.values) {
+      final palette = buildEpTheme(brightness).extension<EpPalette>()!;
+      for (final tone in [null, ...EpBadgeTone.values]) {
+        await _pump(
+          tester,
+          EpBadge(label: 'Attention', tone: tone),
+          brightness: brightness,
+        );
+        final expected = switch (tone) {
+          null => palette.ink,
+          EpBadgeTone.success => palette.success,
+          EpBadgeTone.selected => palette.accent,
+          EpBadgeTone.warning => palette.ink,
+          EpBadgeTone.attention => palette.attention,
+          EpBadgeTone.neutral => palette.muted,
+        };
+        expect(
+          tester.widget<Text>(find.text('ATTENTION')).style!.color,
+          expected,
+        );
+        expect(find.bySemanticsLabel('Attention'), findsOneWidget);
+        final decoration =
+            tester
+                    .widget<Container>(
+                      find.descendant(
+                        of: find.byType(EpBadge),
+                        matching: find.byType(Container),
+                      ),
+                    )
+                    .decoration!
+                as BoxDecoration;
+        expect(decoration.border!.top.color, palette.line);
+      }
+    }
+  });
+
+  testWidgets('dot draws a circle with optional fill and ring', (tester) async {
+    await _pump(tester, const EpDot());
+    final ring = tester.widget<Container>(find.byType(Container));
+    final ringDecoration = ring.decoration! as BoxDecoration;
+    expect(ringDecoration.shape, BoxShape.circle);
+    expect(ringDecoration.color, isNull);
+    expect(ringDecoration.border, isNull);
+    expect(tester.getSize(find.byType(EpDot)), const Size(14, 14));
+
+    await _pump(
+      tester,
+      const EpDot(
+        size: 10,
+        fill: Colors.red,
+        border: Colors.blue,
+        borderWidth: 2,
+      ),
+    );
+    final filled = tester.widget<Container>(find.byType(Container));
+    final filledDecoration = filled.decoration! as BoxDecoration;
+    expect(filledDecoration.shape, BoxShape.circle);
+    expect(filledDecoration.color, Colors.red);
+    expect(filledDecoration.border!.top.color, Colors.blue);
+    expect(filledDecoration.border!.top.width, 2);
+    expect(tester.getSize(find.byType(EpDot)), const Size(10, 10));
+  });
+
+  testWidgets('section header count, trailing and form spacing', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      const SizedBox(
+        width: 360,
+        child: EpSectionHeader(
+          label: 'Shows',
+          count: 3,
+          trailing: SizedBox(key: Key('trail'), width: 20, height: 20),
+        ),
+      ),
+    );
+    expect(find.text('SHOWS · 3'), findsOneWidget);
+    expect(find.bySemanticsLabel('Shows · 3'), findsOneWidget);
+    expect(find.byKey(const Key('trail')), findsOneWidget);
+    expect(
+      tester.getRect(find.byKey(const Key('trail'))).left,
+      greaterThanOrEqualTo(tester.getRect(find.text('SHOWS · 3')).right + 8),
+    );
+    expect(find.byType(TextButton), findsNothing);
+    expect(
+      tester.widget<EpSectionHeader>(find.byType(EpSectionHeader)).padding,
+      const EdgeInsets.only(top: 24, bottom: 4),
+    );
+
+    await _pump(
+      tester,
+      const SizedBox(
+        width: 360,
+        child: EpSectionHeader.form(label: 'Details', action: 'Edit'),
+      ),
+    );
+    expect(find.text('DETAILS'), findsOneWidget);
+    expect(find.text('EDIT'), findsOneWidget);
+    expect(
+      tester.widget<EpSectionHeader>(find.byType(EpSectionHeader)).padding,
+      const EdgeInsets.only(top: EpLayout.formSectionGap, bottom: 4),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('menu row forwards its padding to the row base', (tester) async {
+    await _pump(tester, const EpMenuRow(icon: Icons.add, label: 'Menu'));
+    expect(
+      tester.widget<EpRow>(find.byType(EpRow)).padding,
+      const EdgeInsets.symmetric(vertical: 16),
+    );
+
+    await _pump(
+      tester,
+      const EpMenuRow(
+        icon: Icons.add,
+        label: 'Menu',
+        padding: EdgeInsets.symmetric(vertical: 4),
+      ),
+    );
+    expect(
+      tester.widget<EpRow>(find.byType(EpRow)).padding,
+      const EdgeInsets.symmetric(vertical: 4),
+    );
+    final flags = tester.getSemantics(find.byType(EpRow)).flagsCollection;
+    expect(flags.isButton, isTrue);
+  });
+
+  testWidgets('stat grid dividers, no-wrap and fitted labels', (tester) async {
+    const stats = [
+      EpStat('128', 'Shows played'),
+      EpStat('36', 'New followers'),
+      EpStat('12', 'Upcoming gigs'),
+    ];
+
+    await _pump(
+      tester,
+      const SizedBox(width: 320, child: EpStatGrid(stats: stats, wrap: false)),
+    );
+    expect(find.byType(LayoutBuilder), findsNothing);
+    expect(find.byType(IntrinsicHeight), findsNothing);
+    expect(
+      tester.getTopLeft(find.text('12')).dy,
+      tester.getTopLeft(find.text('128')).dy,
+    );
+    expect(tester.takeException(), isNull);
+
+    await _pump(
+      tester,
+      const SizedBox(
+        width: 360,
+        child: EpStatGrid(stats: stats, dividers: true, fitLabels: true),
+      ),
+    );
+    final palette = tester.element(find.byType(EpStatGrid)).epColors;
+    expect(find.byType(IntrinsicHeight), findsOneWidget);
+    final dividers = find.descendant(
+      of: find.byType(EpStatGrid),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is ColoredBox && widget.color == palette.border,
+      ),
+    );
+    expect(dividers, findsNWidgets(stats.length - 1));
+    for (final divider in dividers.evaluate()) {
+      final rect = tester.getRect(find.byWidget(divider.widget));
+      expect(rect.width, 1);
+      expect(rect.height, greaterThan(0));
+    }
+    for (final stat in stats) {
+      expect(
+        find.ancestor(
+          of: find.text(stat.label.toUpperCase()),
+          matching: find.byType(FittedBox),
+        ),
+        findsOneWidget,
+      );
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('fact cell note replaces value and sub', (tester) async {
+    await _pump(
+      tester,
+      const EpFactCell(
+        label: 'Venue',
+        value: 'The hall',
+        sub: 'Downtown',
+        note: 'To be confirmed',
+      ),
+    );
+    expect(find.text('VENUE'), findsOneWidget);
+    expect(find.text('TO BE CONFIRMED'), findsOneWidget);
+    expect(find.text('THE HALL'), findsNothing);
+    expect(find.text('Downtown'), findsNothing);
+    final palette = tester.element(find.byType(EpFactCell)).epColors;
+    expect(
+      tester.widget<Text>(find.text('TO BE CONFIRMED')).style!.color,
+      palette.muted,
+    );
+  });
 }

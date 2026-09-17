@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../date_names.dart';
 import '../theme.dart';
 import 'ep_text.dart';
 
@@ -16,39 +17,23 @@ class EpDateBlock extends StatelessWidget {
   final double daySize;
 
   @override
-  Widget build(BuildContext context) {
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return SizedBox(
-      width: width,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          EpDisplay(
-            '${date.day}',
-            size: daySize,
-            maxLines: 1,
-            overflow: TextOverflow.visible,
-          ),
-          const SizedBox(height: 4),
-          EpEyebrow(months[date.month - 1]),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => SizedBox(
+    width: width,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        EpDisplay(
+          '${date.day}',
+          size: daySize,
+          maxLines: 1,
+          overflow: TextOverflow.visible,
+        ),
+        const SizedBox(height: 4),
+        EpEyebrow(monthNames[date.month - 1]),
+      ],
+    ),
+  );
 }
 
 class EpGigRow extends StatelessWidget {
@@ -79,7 +64,7 @@ class EpGigRow extends StatelessWidget {
         (onTap == null
             ? null
             : Icon(Icons.chevron_right, size: 16, color: palette.muted));
-    return _EpRow(
+    return EpRow(
       onTap: onTap,
       minHeight: 48,
       child: IntrinsicHeight(
@@ -140,7 +125,7 @@ class EpEntityRow extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => _EpRow(
+  Widget build(BuildContext context) => EpRow(
     onTap: onTap,
     padding: const EdgeInsets.symmetric(vertical: 12),
     child: Row(
@@ -218,20 +203,33 @@ class EpStat {
 }
 
 class _EpStatCell extends StatelessWidget {
-  const _EpStatCell({required this.stat, required this.valueSize});
+  const _EpStatCell({
+    required this.stat,
+    required this.valueSize,
+    required this.fitLabel,
+  });
 
   final EpStat stat;
   final double valueSize;
+  final bool fitLabel;
 
   @override
   Widget build(BuildContext context) {
+    final label = EpEyebrow(stat.label);
     final column = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         EpDisplay(stat.value, size: valueSize),
         const SizedBox(height: 4),
-        EpEyebrow(stat.label),
+        if (fitLabel)
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: label,
+          )
+        else
+          label,
       ],
     );
     final child = stat.onTap == null
@@ -252,6 +250,9 @@ class EpStatGrid extends StatelessWidget {
     this.topLine = true,
     this.bottomLine = true,
     this.valueSize = 32,
+    this.dividers = false,
+    this.wrap = true,
+    this.fitLabels = false,
   });
 
   final List<EpStat> stats;
@@ -259,46 +260,103 @@ class EpStatGrid extends StatelessWidget {
   final bool bottomLine;
   final double valueSize;
 
+  /// A hairline between adjacent cells, stretched to the tallest cell.
+  final bool dividers;
+
+  /// Fall back to two columns when the grid is narrow or text is enlarged.
+  final bool wrap;
+
+  /// Scale a label down to its cell instead of wrapping it.
+  final bool fitLabels;
+
   @override
-  Widget build(BuildContext context) => Column(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      if (topLine) const EpHairline(),
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final cells = [
-              for (final stat in stats)
-                _EpStatCell(stat: stat, valueSize: valueSize),
-            ];
-            final useTwoColumns =
-                constraints.maxWidth < 340 ||
-                MediaQuery.textScalerOf(context).scale(1) > 1.3;
-            if (useTwoColumns) {
-              final cellWidth =
-                  (constraints.maxWidth - 16).clamp(0.0, double.infinity) / 2;
-              return SizedBox(
-                width: double.infinity,
-                child: Wrap(
-                  spacing: 16,
-                  runSpacing: 16,
-                  children: [
-                    for (final cell in cells)
-                      SizedBox(width: cellWidth, child: cell),
-                  ],
-                ),
-              );
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [for (final cell in cells) Expanded(child: cell)],
-            );
-          },
+  Widget build(BuildContext context) {
+    final cells = [
+      for (final stat in stats)
+        _EpStatCell(stat: stat, valueSize: valueSize, fitLabel: fitLabels),
+    ];
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (topLine) const EpHairline(),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: wrap
+              ? LayoutBuilder(
+                  builder: (context, constraints) {
+                    final useTwoColumns =
+                        constraints.maxWidth < 340 ||
+                        MediaQuery.textScalerOf(context).scale(1) > 1.3;
+                    if (useTwoColumns) {
+                      return _EpCellWrap(cells: cells, columns: 2);
+                    }
+                    return _row(context, cells);
+                  },
+                )
+              : _row(context, cells),
         ),
+        if (bottomLine) const EpHairline(),
+      ],
+    );
+  }
+
+  Widget _row(BuildContext context, List<Widget> cells) {
+    if (!dividers) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [for (final cell in cells) Expanded(child: cell)],
+      );
+    }
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var index = 0; index < cells.length; index++) ...[
+            if (index > 0)
+              SizedBox(
+                width: 1,
+                child: ColoredBox(color: context.epColors.border),
+              ),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(left: index == 0 ? 0 : 16, right: 8),
+                child: cells[index],
+              ),
+            ),
+          ],
+        ],
       ),
-      if (bottomLine) const EpHairline(),
-    ],
+    );
+  }
+}
+
+/// Equal-width cells, 16px apart, flowing onto new rows every [columns].
+class _EpCellWrap extends StatelessWidget {
+  const _EpCellWrap({required this.cells, required this.columns});
+
+  final List<Widget> cells;
+  final int columns;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final cellWidth =
+          (constraints.maxWidth - 16 * (columns - 1)).clamp(
+            0.0,
+            double.infinity,
+          ) /
+          columns;
+      return SizedBox(
+        width: double.infinity,
+        child: Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          children: [
+            for (final cell in cells) SizedBox(width: cellWidth, child: cell),
+          ],
+        ),
+      );
+    },
   );
 }
 
@@ -309,12 +367,16 @@ class EpFactCell extends StatelessWidget {
     required this.value,
     this.sub,
     this.display = true,
+    this.note,
   });
 
   final String label;
   final String value;
   final String? sub;
   final bool display;
+
+  /// A muted mono line shown in place of the value and sub.
+  final String? note;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -323,18 +385,22 @@ class EpFactCell extends StatelessWidget {
     children: [
       EpEyebrow(label),
       const SizedBox(height: 8),
-      if (display)
-        EpDisplay(value, size: 24)
-      else
-        Text(value, style: Theme.of(context).textTheme.epBody),
-      if (sub != null) ...[
-        const SizedBox(height: 4),
-        Text(
-          sub!,
-          style: Theme.of(
-            context,
-          ).textTheme.epBody.copyWith(color: context.epColors.muted),
-        ),
+      if (note != null)
+        EpMonoText(note!, color: context.epColors.muted)
+      else ...[
+        if (display)
+          EpDisplay(value, size: 24)
+        else
+          Text(value, style: Theme.of(context).textTheme.epBody),
+        if (sub != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            sub!,
+            style: Theme.of(
+              context,
+            ).textTheme.epBody.copyWith(color: context.epColors.muted),
+          ),
+        ],
       ],
     ],
   );
@@ -358,27 +424,7 @@ class EpFactGrid extends StatelessWidget {
     children: [
       Padding(
         padding: const EdgeInsets.symmetric(vertical: 16),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final cellWidth =
-                (constraints.maxWidth - 16 * (columns - 1)).clamp(
-                  0.0,
-                  double.infinity,
-                ) /
-                columns;
-            return SizedBox(
-              width: double.infinity,
-              child: Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                children: [
-                  for (final cell in cells)
-                    SizedBox(width: cellWidth, child: cell),
-                ],
-              ),
-            );
-          },
-        ),
+        child: _EpCellWrap(cells: cells, columns: columns),
       ),
       if (bottomLine) const EpHairline(),
     ],
@@ -603,23 +649,14 @@ class EpChecklistRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.epColors;
-    return _EpRow(
+    return EpRow(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         children: [
           if (done)
             Icon(Icons.check, size: 16, color: palette.accent)
           else
-            Container(
-              width: 14,
-              height: 14,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: required ? palette.accent : palette.outline,
-                ),
-              ),
-            ),
+            EpDot(border: required ? palette.accent : palette.outline),
           const SizedBox(width: 12),
           Expanded(
             child: Text(label, style: Theme.of(context).textTheme.epBody),
@@ -652,6 +689,7 @@ class EpMenuRow extends StatelessWidget {
     this.trailingText,
     this.trailing,
     this.onTap,
+    this.padding = const EdgeInsets.symmetric(vertical: 16),
   });
 
   final IconData icon;
@@ -660,11 +698,13 @@ class EpMenuRow extends StatelessWidget {
   final String? trailingText;
   final Widget? trailing;
   final VoidCallback? onTap;
+  final EdgeInsets padding;
 
   @override
-  Widget build(BuildContext context) => _EpRow(
+  Widget build(BuildContext context) => EpRow(
     onTap: onTap,
     button: true,
+    padding: padding,
     child: Row(
       children: [
         Icon(icon, size: 16, color: context.epColors.ink),
@@ -705,13 +745,32 @@ class EpSectionHeader extends StatelessWidget {
   const EpSectionHeader({
     super.key,
     required this.label,
+    this.count,
+    this.trailing,
     this.action,
     this.actionKey,
     this.onAction,
     this.padding = const EdgeInsets.only(top: 24, bottom: 4),
   });
 
+  /// A header spaced for the gap between form sections.
+  const EpSectionHeader.form({
+    super.key,
+    required this.label,
+    this.count,
+    this.trailing,
+    this.action,
+    this.actionKey,
+    this.onAction,
+  }) : padding = const EdgeInsets.only(top: EpLayout.formSectionGap, bottom: 4);
+
   final String label;
+
+  /// Appended to the label as "LABEL · 3".
+  final int? count;
+
+  /// Sits right of the eyebrow, before any [action].
+  final Widget? trailing;
   final String? action;
   final Key? actionKey;
   final VoidCallback? onAction;
@@ -723,7 +782,11 @@ class EpSectionHeader extends StatelessWidget {
     child: Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Expanded(child: EpEyebrow(label)),
+        Expanded(child: EpEyebrow(count == null ? label : '$label · $count')),
+        if (trailing != null) ...[
+          const SizedBox(width: 8),
+          Flexible(child: trailing!),
+        ],
         if (action != null) ...[
           const SizedBox(width: 12),
           Flexible(
@@ -848,37 +911,50 @@ class EpUnderlineField extends StatelessWidget {
 }
 
 /// Shared row spacing, hit target and divider; each row owns its content layout.
-class _EpRow extends StatelessWidget {
-  const _EpRow({
+class EpRow extends StatelessWidget {
+  const EpRow({
+    super.key,
     required this.child,
     this.onTap,
     this.padding = const EdgeInsets.symmetric(vertical: 16),
     this.minHeight = 44,
     this.button = false,
+    this.semanticLabel,
+    this.showHairline = true,
+    this.crossAxisAlignment = CrossAxisAlignment.center,
   });
 
   final Widget child;
   final VoidCallback? onTap;
   final EdgeInsets padding;
   final double minHeight;
+
+  /// Announce as a button even without [onTap].
   final bool button;
+
+  /// Label for the button node; only emitted when the row is a button.
+  final String? semanticLabel;
+  final bool showHairline;
+  final CrossAxisAlignment crossAxisAlignment;
 
   @override
   Widget build(BuildContext context) {
     final content = Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: crossAxisAlignment,
       children: [
         ConstrainedBox(
           constraints: BoxConstraints(minHeight: minHeight),
           child: Padding(padding: padding, child: child),
         ),
-        const EpHairline(),
+        if (showHairline) const EpHairline(),
       ],
     );
     if (onTap == null && !button) return content;
     return Semantics(
       button: true,
       enabled: onTap != null,
+      label: semanticLabel,
       child: InkWell(onTap: onTap, child: content),
     );
   }

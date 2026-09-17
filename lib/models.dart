@@ -94,8 +94,6 @@ enum AddressDisclosure {
       : AddressDisclosure.public;
 }
 
-enum LocationPrecision { exact, approximate }
-
 enum VenueType {
   bar('bar'),
   club('club'),
@@ -182,10 +180,6 @@ class Venue {
 
   ApproxLocation get approx =>
       _approx ?? ApproxLocation(centroid: point, label: area);
-
-  LocationPrecision get precision => exactAddress != null
-      ? LocationPrecision.exact
-      : LocationPrecision.approximate;
 
   LatLng? get exactPoint => exactAddress != null ? point : null;
 
@@ -2055,6 +2049,10 @@ class Opportunity {
   final VenueType? venueType;
   final VenueConsentStatus? venueConsentStatus;
   final String currency;
+
+  /// Slots in stage order, regardless of the order the wire delivered them.
+  List<OpportunitySlot> get orderedSlots =>
+      [...slots]..sort((a, b) => a.order.compareTo(b.order));
 
   factory Opportunity.fromJson(Map<String, dynamic> json) => Opportunity(
     id: asString(json['_id']),
