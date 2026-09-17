@@ -14,7 +14,8 @@ import '../models.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
-import '../widgets/ep_rows.dart' show EpAvatarTile, EpEntityRow;
+import '../widgets/ep_rows.dart'
+    show EpAvatarTile, EpEntityRow, EpRow, EpSectionHeader;
 import '../widgets/ep_scroll_header_bar.dart';
 import '../widgets/ep_sheet.dart' show showEpSheet;
 import '../widgets/ep_text.dart';
@@ -211,7 +212,7 @@ class _GigDetailPresentationState extends State<GigDetailPresentation> {
                     key: const ValueKey('gig-lineup'),
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      SectionBar(
+                      EpSectionHeader(
                         label: 'LINEUP',
                         count: performers.length,
                         padding: const EdgeInsets.only(bottom: 4),
@@ -249,7 +250,7 @@ class _GigDetailPresentationState extends State<GigDetailPresentation> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               const SizedBox(height: _sectionGap),
-                              const SectionBar(
+                              const EpSectionHeader(
                                 label: "WHO'S GOING",
                                 padding: EdgeInsets.only(bottom: 4),
                               ),
@@ -264,7 +265,7 @@ class _GigDetailPresentationState extends State<GigDetailPresentation> {
                   ),
                   if (gig.desc.trim().isNotEmpty) ...[
                     const SizedBox(height: _sectionGap),
-                    const SectionBar(
+                    const EpSectionHeader(
                       label: 'ABOUT',
                       padding: EdgeInsets.only(bottom: 4),
                     ),
@@ -690,9 +691,9 @@ class _PreviewStatusBadge extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 10),
     alignment: Alignment.center,
     decoration: BoxDecoration(
-      color: Colors.black.withValues(alpha: .72),
+      color: Ep.blackA(.72),
       border: Border.all(color: Ep.whiteA(.35)),
-      borderRadius: BorderRadius.circular(99),
+      borderRadius: BorderRadius.circular(EpLayout.pillRadius),
     ),
     child: Text(
       label,
@@ -737,7 +738,7 @@ class _FactsSection extends StatelessWidget {
       key: const Key('gig-facts'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
+        EpRow(
           key: const Key('gig-fact-date'),
           padding: const EdgeInsets.symmetric(vertical: 14),
           child: Row(
@@ -765,29 +766,30 @@ class _FactsSection extends StatelessWidget {
             ],
           ),
         ),
-        const EpHairline(),
-        Padding(
+        EpRow(
           key: const Key('gig-fact-meta'),
           padding: const EdgeInsets.symmetric(vertical: 14),
-          child: _MonoLine(
-            size: 15,
-            tokens: [
-              EpMonoText(
-                gig.free ? 'FREE' : gig.priceLabel,
-                size: 15,
-                color: gig.free
-                    ? context.epColors.accent
-                    : context.epColors.ink,
-              ),
-              EpMonoText(
-                gig.ageRequirement.label.toUpperCase(),
-                size: 15,
-                color: context.epColors.muted,
-              ),
-            ],
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: _MonoLine(
+              size: 15,
+              tokens: [
+                EpMonoText(
+                  gig.free ? 'FREE' : gig.priceLabel,
+                  size: 15,
+                  color: gig.free
+                      ? context.epColors.accent
+                      : context.epColors.ink,
+                ),
+                EpMonoText(
+                  gig.ageRequirement.label.toUpperCase(),
+                  size: 15,
+                  color: context.epColors.muted,
+                ),
+              ],
+            ),
           ),
         ),
-        const EpHairline(),
       ],
     );
   }
@@ -1007,7 +1009,7 @@ class _PeopleYouMayKnow extends StatelessWidget {
       key: const ValueKey('gig-people-you-know'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SectionBar(
+        EpSectionHeader(
           label: 'PEOPLE YOU MAY KNOW',
           count: people.length,
           padding: const EdgeInsets.only(bottom: 4),
@@ -1108,7 +1110,9 @@ class _WhosGoing extends StatelessWidget {
                       builder: (context, value, _) => LinearProgressIndicator(
                         value: value,
                         minHeight: 8,
-                        borderRadius: BorderRadius.circular(99),
+                        borderRadius: BorderRadius.circular(
+                          EpLayout.pillRadius,
+                        ),
                         backgroundColor: context.epColors.line,
                         color: context.epColors.ink,
                       ),
@@ -1140,7 +1144,13 @@ class _GigCta extends StatelessWidget {
   Widget build(BuildContext context) {
     if (previewLabel != null) return _preview();
     if (gig.lifecycle == GigLifecycle.cancelled) {
-      return const EpBottomCta(child: _CtaPill(label: 'Gig cancelled'));
+      return const EpBottomCta(
+        child: EpPill(
+          label: 'Gig cancelled',
+          size: EpPillSize.large,
+          expand: true,
+        ),
+      );
     }
     if (gig.sellsTickets) return _tickets(context);
     return _rsvp(context);
@@ -1157,7 +1167,7 @@ class _GigCta extends StatelessWidget {
           );
     return EpBottomCta(
       hint: hint,
-      child: _CtaPill(label: label),
+      child: EpPill(label: label, size: EpPillSize.large, expand: true),
     );
   }
 
@@ -1165,10 +1175,12 @@ class _GigCta extends StatelessWidget {
     hint: gig.ticketSeller?.kind == TicketSellerKind.band
         ? 'Tickets are sold by ${gig.ticketSeller!.name} · EarPlug fee added at checkout'
         : 'Tickets are sold by the organizer · EarPlug fee added at checkout',
-    child: _CtaPill(
+    child: EpPill(
       key: const Key('gig-buy-tickets'),
       label: 'Buy tickets · ${gig.priceLabel}',
       variant: EpPillVariant.primary,
+      size: EpPillSize.large,
+      expand: true,
       onPressed: app.authed
           ? () => showTicketPurchaseSheet(context, gig)
           : () => app.requestTickets(gig.id),
@@ -1185,8 +1197,10 @@ class _GigCta extends StatelessWidget {
 
     final Widget pill;
     if (external) {
-      pill = _CtaPill(
+      pill = EpPill(
         label: 'Tickets ↗',
+        size: EpPillSize.large,
+        expand: true,
         onPressed: () {
           final url = gig.externalUrl;
           if (url == null) {
@@ -1197,43 +1211,22 @@ class _GigCta extends StatelessWidget {
         },
       );
     } else if (app.rsvps.contains(gig.id)) {
-      pill = _CtaPill(
+      pill = EpPill(
         label: 'Going ✓',
         selected: true,
+        size: EpPillSize.large,
+        expand: true,
         onPressed: () => app.toggleRsvp(gig.id),
       );
     } else {
-      pill = _CtaPill(
+      pill = EpPill(
         label: gig.free ? 'RSVP' : 'RSVP — ${gig.priceLabel} AT DOOR',
         variant: EpPillVariant.primary,
+        size: EpPillSize.large,
+        expand: true,
         onPressed: () => app.requestRsvp(gig.id),
       );
     }
     return EpBottomCta(hint: hint, child: pill);
   }
-}
-
-class _CtaPill extends StatelessWidget {
-  const _CtaPill({
-    super.key,
-    required this.label,
-    this.onPressed,
-    this.variant = EpPillVariant.outline,
-    this.selected = false,
-  });
-
-  final String label;
-  final VoidCallback? onPressed;
-  final EpPillVariant variant;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) => EpPill(
-    label: label,
-    onPressed: onPressed,
-    variant: variant,
-    selected: selected,
-    size: EpPillSize.large,
-    expand: true,
-  );
 }

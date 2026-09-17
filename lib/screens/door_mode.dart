@@ -10,6 +10,7 @@ import '../data/repository.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
 import '../widgets/form_bits.dart';
 
@@ -587,7 +588,7 @@ class _Viewer extends StatelessWidget {
           child: Text('ENTER TICKET CODE'),
         ),
         const SizedBox(height: 22),
-        SectionBar(
+        EpSectionHeader(
           label: 'RECENT CHECK-INS',
           count: recentCheckIns.isEmpty ? null : recentCheckIns.length,
         ),
@@ -682,7 +683,7 @@ class _ScannerView extends StatelessWidget {
           const _RosterRefreshFailureNotice(),
         ],
         const SizedBox(height: 18),
-        const SectionBar(label: 'MANUAL FALLBACK'),
+        const EpSectionHeader(label: 'MANUAL FALLBACK'),
         const SizedBox(height: 8),
         EpLabeledField(
           fieldKey: const Key('door-manual-ticket'),

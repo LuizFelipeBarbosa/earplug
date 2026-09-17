@@ -12,6 +12,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_rows.dart';
 import '../widgets/ep_text.dart';
+import '../widgets/opportunity_labels.dart';
 import '../widgets/sheets.dart';
 import 'analytics_sheets.dart';
 
@@ -181,7 +182,7 @@ class AnalyticsScreen extends StatelessWidget {
       key: const Key('analytics-turnout'),
       title: 'Check-ins by show',
       trailing: shows.length > kRecapPreviewCount
-          ? SectionActionButton(
+          ? _SectionActionButton(
               key: const Key('analytics-turnout-see-all'),
               label: 'SEE ALL ${shows.length}',
               onPressed: () => showRecapShowsSheet(context, recap),
@@ -210,22 +211,22 @@ class AnalyticsScreen extends StatelessWidget {
     return EpFactGrid(
       bottomLine: false,
       cells: [
-        _RecapFact(
+        EpFactCell(
           label: 'Top room',
           value: room?.venueName ?? 'No room data',
           sub: room == null
               ? null
               : '${recapFormatNumber(room.avgRsvps)} avg · '
                     '${room.shows} ${room.shows == 1 ? 'show' : 'shows'}',
-          suppressed: recap.venues.suppressed,
+          note: recap.venues.suppressed ? 'Withheld · under five fans' : null,
         ),
-        _RecapFact(
+        EpFactCell(
           label: 'Commit window',
           value: lead == null ? 'No lead data' : _leadTimeLabel(lead.key),
           sub: lead == null ? null : '${lead.count} measured RSVPs',
-          suppressed: recap.leadTime.suppressed,
+          note: recap.leadTime.suppressed ? 'Withheld · under five fans' : null,
         ),
-        _RecapFact(
+        EpFactCell(
           label: 'Repeat fans',
           value: repeatTotal == 0
               ? 'No repeat data'
@@ -233,9 +234,11 @@ class AnalyticsScreen extends StatelessWidget {
           sub: repeatTotal == 0
               ? null
               : '$repeatCount of $repeatTotal returned',
-          suppressed: recap.repeatFans.suppressed,
+          note: recap.repeatFans.suppressed
+              ? 'Withheld · under five fans'
+              : null,
         ),
-        _RecapFact(
+        EpFactCell(
           label: 'Top night',
           value: night == null
               ? 'No night data'
@@ -243,7 +246,7 @@ class AnalyticsScreen extends StatelessWidget {
           sub: night == null
               ? null
               : '${recapFormatNumber(night.avgRsvps)} avg',
-          suppressed: recap.weekdays.suppressed,
+          note: recap.weekdays.suppressed ? 'Withheld · under five fans' : null,
         ),
       ],
     );
@@ -259,7 +262,7 @@ class AnalyticsScreen extends StatelessWidget {
       trailing:
           !recap.newReturningSuppressed &&
               recap.shows.length > kRecapPreviewCount
-          ? SectionActionButton(
+          ? _SectionActionButton(
               key: const Key('analytics-new-returning-see-all'),
               label: 'SEE ALL ${recap.shows.length}',
               onPressed: () => showRecapShowsSheet(context, recap),
@@ -339,7 +342,7 @@ class AnalyticsScreen extends StatelessWidget {
       key: const Key('analytics-rooms'),
       title: 'Rooms that draw',
       trailing: !recap.venues.suppressed && rows.length > kRecapPreviewCount
-          ? SectionActionButton(
+          ? _SectionActionButton(
               key: const Key('analytics-rooms-see-all'),
               label: 'SEE ALL ${rows.length}',
               onPressed: () => showRecapRowsSheet(
@@ -387,7 +390,7 @@ class AnalyticsScreen extends StatelessWidget {
       key: const Key('analytics-best-nights'),
       title: 'Best nights',
       trailing: !recap.weekdays.suppressed && rows.length > kRecapPreviewCount
-          ? SectionActionButton(
+          ? _SectionActionButton(
               key: const Key('analytics-best-nights-see-all'),
               label: 'SEE ALL ${rows.length}',
               onPressed: () => showRecapRowsSheet(
@@ -537,7 +540,7 @@ Widget _analyticsSection({
     key: key,
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      SectionBar(
+      EpSectionHeader(
         label: title,
         trailing: trailing,
         padding: const EdgeInsets.only(bottom: 16),
@@ -621,7 +624,7 @@ class _TicketsAndCheckInsSectionState
                     title:
                         'Returning attendees: ${insights.returningAttendees}',
                   ),
-                LedgerRow(title: _estimatedDrawLabel(insights.estimatedDraw)),
+                LedgerRow(title: estimatedDrawLabel(insights.estimatedDraw)),
                 const SizedBox(height: 12),
                 if (insights.byPriceBand.suppressed)
                   const _SuppressedBreakdown()
@@ -654,13 +657,6 @@ class _TicketsAndCheckInsSectionState
             ),
     );
   }
-}
-
-String _estimatedDrawLabel(EstimatedDraw? draw) {
-  if (draw == null) return 'Estimated draw: No history yet';
-  final basis = draw.basis == DrawBasis.checkIns ? 'check-ins' : 'RSVPs';
-  return 'Estimated draw: ${draw.low}–${draw.high} · '
-      '${draw.confidence.wireValue} confidence · based on $basis';
 }
 
 String _priceBandLabel(String key) => switch (key) {
@@ -806,29 +802,35 @@ class _AverageLinePainter extends CustomPainter {
       color != oldDelegate.color;
 }
 
-class _RecapFact extends StatelessWidget {
-  const _RecapFact({
+/// The small tracked-out text button at the end of a section heading —
+/// "SEE ALL 12", "SEE LESS VENUES".
+class _SectionActionButton extends StatelessWidget {
+  const _SectionActionButton({
+    super.key,
     required this.label,
-    required this.value,
-    required this.sub,
-    required this.suppressed,
+    required this.onPressed,
   });
 
   final String label;
-  final String value;
-  final String? sub;
-  final bool suppressed;
+  final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    if (!suppressed) return EpFactCell(label: label, value: value, sub: sub);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        EpEyebrow(label),
-        const SizedBox(height: 8),
-        EpMonoText('Withheld · under five fans', color: context.epColors.muted),
-      ],
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        minimumSize: const Size(44, 44),
+        foregroundColor: context.epColors.ink,
+      ),
+      child: Text(
+        label.toUpperCase(),
+        semanticsLabel: label,
+        maxLines: 2,
+        textAlign: TextAlign.end,
+        style: Theme.of(
+          context,
+        ).textTheme.epChipLabel.copyWith(color: context.epColors.ink),
+      ),
     );
   }
 }

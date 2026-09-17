@@ -4,13 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
-import '../date_names.dart';
 import '../models.dart';
 import '../services/location_service.dart';
 import '../services/media_picker.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
-import '../widgets/ep_text.dart';
+import '../widgets/ep_rows.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
 
@@ -382,7 +381,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   onEditAvatar: _saving ? null : _openAvatarOptions,
                 ),
               ),
-              const SectionBar(
+              const EpSectionHeader(
                 key: Key('fan-name-header'),
                 label: 'Display name · Required',
                 padding: EdgeInsets.only(
@@ -418,7 +417,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                 ),
               ],
-              const SectionBar(
+              const EpSectionHeader(
                 key: Key('fan-home-location-header'),
                 label: 'Home location',
                 padding: EdgeInsets.only(
@@ -426,26 +425,32 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   bottom: EpLayout.fieldGap,
                 ),
               ),
-              _FanSelectionField(
+              Column(
                 key: const Key('fan-home-location-field'),
-                caption:
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
                     'Private to your account. Personalization below decides whether this scene tunes discovery.',
-                child: _HomeLocationEditor(
-                  controller: _homeLocationController,
-                  focusNode: _homeLocationFocusNode,
-                  enabled: !_saving && !_locatingHome,
-                  locating: _locatingHome,
-                  failure: _homeLocationFailure,
-                  notice: _homeLocationNotice,
-                  validationMessage: _homeLocationValidation,
-                  onSelected: _selectHomeLocation,
-                  onUseCurrentLocation: _useCurrentLocation,
-                  onClear: () => _setHomeLocation(null),
-                  onRetry: _useCurrentLocation,
-                  onRecovery: _openLocationRecovery,
-                ),
+                    style: Theme.of(context).textTheme.epCaption,
+                  ),
+                  const SizedBox(height: 10),
+                  _HomeLocationEditor(
+                    controller: _homeLocationController,
+                    focusNode: _homeLocationFocusNode,
+                    enabled: !_saving && !_locatingHome,
+                    locating: _locatingHome,
+                    failure: _homeLocationFailure,
+                    notice: _homeLocationNotice,
+                    validationMessage: _homeLocationValidation,
+                    onSelected: _selectHomeLocation,
+                    onUseCurrentLocation: _useCurrentLocation,
+                    onClear: () => _setHomeLocation(null),
+                    onRetry: _useCurrentLocation,
+                    onRecovery: _openLocationRecovery,
+                  ),
+                ],
               ),
-              const SectionBar.form(label: 'Preferences'),
+              const EpSectionHeader.form(label: 'Preferences'),
               SwitchRow(
                 key: const Key('location-personalization'),
                 label: 'Personalize with home location',
@@ -590,7 +595,7 @@ class _HomeLocationEditor extends StatelessWidget {
       minimumSize: const Size(48, 48),
       padding: const EdgeInsets.symmetric(horizontal: 8),
       shape: const RoundedRectangleBorder(),
-      textStyle: Theme.of(context).textTheme.epChipLabel.copyWith(fontSize: 11),
+      textStyle: Theme.of(context).textTheme.epChipLabel,
     );
 
     return Column(
@@ -798,66 +803,20 @@ class _FanIdentityPreview extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    EpDisplay(
-                      displayName,
-                      key: const Key('fan-preview-name'),
-                      size: 20,
-                      keepCase: true,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      homeLocation == null
-                          ? 'Scene unknown'
-                          : '${homeLocation!.label} scene',
-                      key: const Key('fan-preview-scene'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.epCaption.copyWith(
-                        color: homeLocation == null
-                            ? context.epColors.muted
-                            : context.epColors.ink,
-                      ),
-                    ),
-                    if (createdAt case final date?)
-                      Text(
-                        'Since ${monthNames[date.month - 1]} ${date.year}',
-                        key: const Key('fan-preview-since'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.epCaption.copyWith(
-                          color: context.epColors.muted,
-                        ),
-                      ),
-                  ],
+                child: FanIdentityLines(
+                  name: displayName,
+                  homeLocation: homeLocation,
+                  createdAt: createdAt,
+                  nameKey: const Key('fan-preview-name'),
+                  sceneKey: const Key('fan-preview-scene'),
+                  sinceKey: const Key('fan-preview-since'),
+                  showUnknownScene: true,
                 ),
               ),
             ],
           ),
         ],
       ),
-    );
-  }
-}
-
-class _FanSelectionField extends StatelessWidget {
-  const _FanSelectionField({super.key, required this.child, this.caption});
-
-  final String? caption;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (caption case final caption?)
-          Text(caption, style: Theme.of(context).textTheme.epCaption),
-        const SizedBox(height: 10),
-        child,
-      ],
     );
   }
 }
