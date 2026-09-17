@@ -7,22 +7,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/pump.dart';
+
 Future<void> _pump(
   WidgetTester tester,
   Widget child, {
   Brightness brightness = Brightness.dark,
   double scale = 1,
-}) => tester.pumpWidget(
-  MaterialApp(
-    theme: buildEpTheme(brightness),
-    themeAnimationDuration: Duration.zero,
-    home: Scaffold(
-      body: MediaQuery(
-        data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-        child: Align(alignment: Alignment.topLeft, child: child),
-      ),
-    ),
-  ),
+}) => pumpEp(
+  tester,
+  child,
+  brightness: brightness,
+  media: MediaQueryData(textScaler: TextScaler.linear(scale)),
+  alignment: Alignment.topLeft,
 );
 
 RenderParagraph _paragraph(WidgetTester tester, Finder text) => tester

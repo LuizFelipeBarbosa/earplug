@@ -5,18 +5,14 @@ import 'package:earplug/widgets/ep_carousel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/pump.dart';
+
 Future<void> _pump(WidgetTester tester, Widget child, {double scale = 1}) =>
-    tester.pumpWidget(
-      MaterialApp(
-        theme: buildEpTheme(Brightness.dark),
-        themeAnimationDuration: Duration.zero,
-        home: Scaffold(
-          body: MediaQuery(
-            data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-            child: Align(alignment: Alignment.topLeft, child: child),
-          ),
-        ),
-      ),
+    pumpEp(
+      tester,
+      child,
+      media: MediaQueryData(textScaler: TextScaler.linear(scale)),
+      alignment: Alignment.topLeft,
     );
 
 Widget _item(int index) =>

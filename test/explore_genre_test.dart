@@ -3,7 +3,6 @@ import 'dart:ui' show PointerDeviceKind;
 import 'package:earplug/app_state.dart';
 import 'package:earplug/explore_ranking.dart';
 import 'package:earplug/models.dart';
-import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_carousel.dart';
 import 'package:earplug/widgets/ep_rows.dart';
 import 'package:earplug/widgets/ep_text.dart';
@@ -16,6 +15,7 @@ import 'package:provider/provider.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
+import 'support/pump.dart';
 
 Widget _rail({
   String? selected,
@@ -33,19 +33,12 @@ Widget _rail({
   );
 }
 
-Future<void> _pumpRail(WidgetTester tester, Widget rail, {double scale = 1}) {
-  return tester.pumpWidget(
-    MaterialApp(
-      theme: buildEpTheme(),
-      home: Scaffold(
-        body: MediaQuery(
-          data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-          child: rail,
-        ),
-      ),
-    ),
-  );
-}
+Future<void> _pumpRail(WidgetTester tester, Widget rail, {double scale = 1}) =>
+    pumpEp(
+      tester,
+      rail,
+      media: MediaQueryData(textScaler: TextScaler.linear(scale)),
+    );
 
 ExploreGenrePage _page({
   List<Gig> tonight = const [],
