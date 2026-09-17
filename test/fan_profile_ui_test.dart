@@ -167,7 +167,7 @@ void main() {
     final nameFieldBottom = tester
         .getBottomLeft(find.byKey(const Key('fan-name-field')))
         .dy;
-    // Measure the heading text inside SectionBar's top padding.
+    // Measure the heading text inside EpSectionHeader's top padding.
     final homeLocationHeaderTop = tester
         .getTopLeft(
           find.descendant(

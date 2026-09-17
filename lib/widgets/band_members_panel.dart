@@ -412,11 +412,11 @@ class _MemberRow extends StatelessWidget {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    StatusPill(
+                    EpBadge(
                       label: member.role.label.toUpperCase(),
                       tone: member.role == BandMemberRole.admin
-                          ? EpStatusPillTone.selected
-                          : EpStatusPillTone.neutral,
+                          ? EpBadgeTone.selected
+                          : EpBadgeTone.neutral,
                     ),
                     if (member.isSelf) ...[
                       const SizedBox(width: 6),

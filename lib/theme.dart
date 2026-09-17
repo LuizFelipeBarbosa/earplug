@@ -194,9 +194,6 @@ class EpPalette extends ThemeExtension<EpPalette> {
   final Color destructiveTint;
 
   Color get ink => contentPrimary;
-  Color get mute => contentDisabled;
-  Color get raised => surfaceRaised;
-  Color get dark => background;
   Color get panel => surface;
   Color get line => border;
   Color get muted => contentSecondary;

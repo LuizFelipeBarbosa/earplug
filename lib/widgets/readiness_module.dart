@@ -62,9 +62,9 @@ class _ReadinessModuleState extends State<ReadinessModule> {
             const SizedBox(height: 8),
             const Align(
               alignment: Alignment.centerLeft,
-              child: StatusPill(
+              child: EpBadge(
                 label: 'Back because something changed',
-                tone: EpStatusPillTone.attention,
+                tone: EpBadgeTone.attention,
               ),
             ),
           ],

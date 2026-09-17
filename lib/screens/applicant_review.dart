@@ -265,7 +265,7 @@ class _ApplicantReviewScreenState extends State<ApplicantReviewScreen> {
           Positioned(
             top: topPad + 8,
             right: EpLayout.gutter,
-            child: StatusPill(
+            child: EpBadge(
               key: const Key('applicant-review-status'),
               label: applicationStatusLabel(row.application.status),
               tone: applicationStatusTone(row.application.status),
@@ -362,7 +362,7 @@ class _DecisionBar extends StatelessWidget {
           ],
           if (!canManage || decided)
             Center(
-              child: StatusPill(
+              child: EpBadge(
                 label: applicationStatusLabel(status),
                 tone: applicationStatusTone(status),
               ),
@@ -389,10 +389,10 @@ class _DecisionBar extends StatelessWidget {
                     status == ArtistApplicationStatus.offered)
                   const Expanded(
                     child: Center(
-                      child: StatusPill(
+                      child: EpBadge(
                         key: Key('applicant-review-shortlisted'),
                         label: 'Shortlisted',
-                        tone: EpStatusPillTone.success,
+                        tone: EpBadgeTone.success,
                       ),
                     ),
                   )

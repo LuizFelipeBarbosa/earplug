@@ -187,60 +187,6 @@ class EpNetworkImage extends StatelessWidget {
   }
 }
 
-class SectionLabel extends StatelessWidget {
-  final String text;
-  final bool blue;
-
-  const SectionLabel(this.text, {super.key, this.blue = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text.toUpperCase(),
-      semanticsLabel: text,
-      style: Theme.of(context).textTheme.epSection.copyWith(
-        color: blue ? context.epColors.accent : context.epColors.muted,
-      ),
-    );
-  }
-}
-
-/// Calendar/list section heading used by both fan and band surfaces.
-typedef SectionBar = EpSectionHeader;
-
-/// The small tracked-out text button at the end of a section heading —
-/// "SEE ALL 12", "SEE LESS VENUES".
-class SectionActionButton extends StatelessWidget {
-  const SectionActionButton({
-    super.key,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final String label;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextButton(
-      onPressed: onPressed,
-      style: TextButton.styleFrom(
-        minimumSize: const Size(44, 44),
-        foregroundColor: context.epColors.ink,
-      ),
-      child: Text(
-        label.toUpperCase(),
-        semanticsLabel: label,
-        maxLines: 2,
-        textAlign: TextAlign.end,
-        style: Theme.of(
-          context,
-        ).textTheme.epChipLabel.copyWith(color: context.epColors.ink),
-      ),
-    );
-  }
-}
-
 /// A date-first visual anchor for event and history rows.
 class DateBlock extends StatelessWidget {
   /// Zero-padded day over the three-letter month, e.g. "07" / "SEP".
@@ -418,11 +364,6 @@ class EpChip extends StatelessWidget {
     return chip;
   }
 }
-
-typedef EpStatusPillTone = EpBadgeTone;
-
-/// Small, textual state marker. Color is never the only status signal.
-typedef StatusPill = EpBadge;
 
 /// The accent callout a page may promote above its quiet panels.
 class VoltStrip extends StatelessWidget {

@@ -252,11 +252,11 @@ class _MemberRow extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          StatusPill(
+          EpBadge(
             label: organizationRoleLabel(member.role),
             tone: member.role == OrganizationRole.owner
-                ? EpStatusPillTone.selected
-                : EpStatusPillTone.neutral,
+                ? EpBadgeTone.selected
+                : EpBadgeTone.neutral,
           ),
           if (onActions != null) ...[
             const SizedBox(width: 8),
