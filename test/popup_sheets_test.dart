@@ -1,8 +1,9 @@
-import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_sheet.dart';
 import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/pump.dart';
 
 void main() {
   testWidgets(
@@ -17,29 +18,26 @@ void main() {
       addTearDown(input.dispose);
       var completed = false;
       await tester.pumpWidget(
-        MaterialApp(
-          theme: buildEpTheme(),
-          home: Scaffold(
-            body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () => showEpSheet(
-                  context,
-                  (context) => EpFormSheet(
-                    title: 'EDIT NOTES',
-                    child: Column(
-                      children: [
-                        TextField(controller: input),
-                        const SizedBox(height: 700),
-                        FilledButton(
-                          onPressed: () => completed = true,
-                          child: const Text('Save notes'),
-                        ),
-                      ],
-                    ),
+        epApp(
+          Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showEpSheet(
+                context,
+                (context) => EpFormSheet(
+                  title: 'EDIT NOTES',
+                  child: Column(
+                    children: [
+                      TextField(controller: input),
+                      const SizedBox(height: 700),
+                      FilledButton(
+                        onPressed: () => completed = true,
+                        child: const Text('Save notes'),
+                      ),
+                    ],
                   ),
                 ),
-                child: const Text('Open notes'),
               ),
+              child: const Text('Open notes'),
             ),
           ),
         ),
@@ -73,23 +71,20 @@ void main() {
     tester.view.padding = const FakeViewPadding(bottom: 34);
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
-      MaterialApp(
-        theme: buildEpTheme(),
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => showEpSheet(
-                context,
-                (context) => EpFormSheet(
-                  title: 'Confirm',
-                  child: FilledButton(
-                    onPressed: () {},
-                    child: const Text('Confirm'),
-                  ),
+      epApp(
+        Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showEpSheet(
+              context,
+              (context) => EpFormSheet(
+                title: 'Confirm',
+                child: FilledButton(
+                  onPressed: () {},
+                  child: const Text('Confirm'),
                 ),
               ),
-              child: const Text('Open'),
             ),
+            child: const Text('Open'),
           ),
         ),
       ),

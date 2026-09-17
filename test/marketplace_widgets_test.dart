@@ -1,6 +1,5 @@
 import 'package:earplug/models.dart';
 import 'package:earplug/money.dart';
-import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/approx_area_map.dart';
 import 'package:earplug/widgets/ep_map.dart';
 import 'package:earplug/widgets/map_view.dart';
@@ -13,6 +12,7 @@ import 'package:latlong2/latlong.dart';
 
 import 'support/fakes.dart';
 import 'support/harness.dart';
+import 'support/pump.dart';
 
 void main() {
   testWidgets('status timeline renders and identifies every step state', (
@@ -141,7 +141,4 @@ void main() {
   });
 }
 
-Widget _host(Widget child) => MaterialApp(
-  theme: buildEpTheme(),
-  home: Scaffold(body: Center(child: child)),
-);
+Widget _host(Widget child) => epApp(child, center: true);

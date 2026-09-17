@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/pump.dart';
+
 void main() {
   testWidgets('labels the field and updates the counter when adding a chip', (
     tester,
@@ -423,12 +425,7 @@ void main() {
       expect(find.byKey(const Key('create-genres-input')), findsOneWidget);
 
       await tester.pumpWidget(
-        MaterialApp(
-          theme: buildEpTheme(),
-          home: Scaffold(
-            body: GenreAutocompleteField(selected: const [], onChanged: (_) {}),
-          ),
-        ),
+        epApp(GenreAutocompleteField(selected: const [], onChanged: (_) {})),
       );
       expect(
         tester
@@ -552,27 +549,25 @@ Future<ValueNotifier<List<String>>> _pumpField(
   final selection = ValueNotifier<List<String>>(selected);
   addTearDown(selection.dispose);
   await tester.pumpWidget(
-    MaterialApp(
-      theme: buildEpTheme(brightness),
-      home: Scaffold(
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(EpLayout.gutter),
-          child: ValueListenableBuilder<List<String>>(
-            valueListenable: selection,
-            builder: (context, genres, child) => GenreAutocompleteField(
-              selected: genres,
-              onChanged: (value) {
-                onChanged?.call(value);
-                selection.value = value;
-              },
-              max: max,
-              suggestions: suggestions,
-              keyPrefix: keyPrefix,
-              required: required,
-            ),
+    epApp(
+      SingleChildScrollView(
+        padding: const EdgeInsets.all(EpLayout.gutter),
+        child: ValueListenableBuilder<List<String>>(
+          valueListenable: selection,
+          builder: (context, genres, child) => GenreAutocompleteField(
+            selected: genres,
+            onChanged: (value) {
+              onChanged?.call(value);
+              selection.value = value;
+            },
+            max: max,
+            suggestions: suggestions,
+            keyPrefix: keyPrefix,
+            required: required,
           ),
         ),
       ),
+      brightness: brightness,
     ),
   );
   return selection;

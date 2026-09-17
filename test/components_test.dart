@@ -20,6 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
+import 'support/pump.dart';
 
 void main() {
   group('EarPlug theme', () {
@@ -595,28 +596,25 @@ void main() {
     ) async {
       var duplicated = false;
       await tester.pumpWidget(
-        MaterialApp(
-          theme: buildEpTheme(),
-          home: Scaffold(
-            body: Builder(
-              builder: (context) => FilledButton(
-                onPressed: () => showEpActionSheet(
-                  context,
-                  header: 'Riptide release show',
-                  items: [
-                    EpActionSheetItem(
-                      label: 'Duplicate',
-                      onPressed: () => duplicated = true,
-                    ),
-                    const EpActionSheetItem(
-                      label: 'Delete',
-                      onPressed: null,
-                      destructive: true,
-                    ),
-                  ],
-                ),
-                child: const Text('OPEN'),
+        epApp(
+          Builder(
+            builder: (context) => FilledButton(
+              onPressed: () => showEpActionSheet(
+                context,
+                header: 'Riptide release show',
+                items: [
+                  EpActionSheetItem(
+                    label: 'Duplicate',
+                    onPressed: () => duplicated = true,
+                  ),
+                  const EpActionSheetItem(
+                    label: 'Delete',
+                    onPressed: null,
+                    destructive: true,
+                  ),
+                ],
               ),
+              child: const Text('OPEN'),
             ),
           ),
         ),
@@ -861,22 +859,15 @@ Gig _gig({
   flyerUrl: flyerUrl,
 );
 
-Widget _host(Widget child, {Brightness brightness = Brightness.dark}) =>
-    MaterialApp(
-      theme: buildEpTheme(brightness),
-      darkTheme: buildEpTheme(Brightness.dark),
-      themeMode: brightness == Brightness.dark
-          ? ThemeMode.dark
-          : ThemeMode.light,
-      home: Scaffold(
-        body: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: child,
-          ),
-        ),
-      ),
-    );
+Widget _host(Widget child, {Brightness brightness = Brightness.dark}) => epApp(
+  Center(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: child,
+    ),
+  ),
+  brightness: brightness,
+);
 
 Color _cardColor(WidgetTester tester, String key) {
   final material = tester.widget<Material>(
