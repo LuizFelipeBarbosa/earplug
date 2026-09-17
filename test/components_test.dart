@@ -7,6 +7,8 @@ import 'package:earplug/screens/venue_detail.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/branding.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/ep_rows.dart';
+import 'package:earplug/widgets/ep_text.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:earplug/widgets/sheets.dart';
@@ -391,12 +393,12 @@ void main() {
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const SectionBar(label: 'Upcoming', count: 2),
+                const EpSectionHeader(label: 'Upcoming', count: 2),
                 DateBlock.forDate(
                   DateTime(2025, 9, 10),
                   semanticLabel: 'Wednesday September 10',
                 ),
-                const StatusPill(label: 'Going ✓'),
+                const EpBadge(label: 'Going ✓'),
                 LedgerRow(
                   title: 'Riptide',
                   details: const ['Foghorn Club', 'SEP 10', '56 going'],

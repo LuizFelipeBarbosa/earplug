@@ -568,14 +568,14 @@ void main() {
   testWidgets('About has one 24px gap on either side', (tester) async {
     final gig = _textOnlyGig();
     await _pumpPresentation(tester, gig);
-    final about = find.widgetWithText(SectionBar, 'ABOUT');
+    final about = find.widgetWithText(EpSectionHeader, 'ABOUT');
     final lineup = find.byKey(const ValueKey('gig-lineup'));
     final card = find.byKey(const Key('gig-venue-card'));
     expect(
       tester.getTopLeft(about).dy - tester.getBottomLeft(lineup).dy,
       closeTo(24, 1),
     );
-    expect(tester.widget<SectionBar>(about).padding.top, 0);
+    expect(tester.widget<EpSectionHeader>(about).padding.top, 0);
     expect(
       tester.getTopLeft(card).dy - tester.getBottomLeft(find.text(gig.desc)).dy,
       closeTo(24, 1),
@@ -1071,7 +1071,7 @@ void main() {
           .descendant(of: attendance, matching: find.byType(EpHairline))
           .last;
       expect(
-        tester.getTopLeft(find.widgetWithText(SectionBar, 'ABOUT')).dy -
+        tester.getTopLeft(find.widgetWithText(EpSectionHeader, 'ABOUT')).dy -
             tester.getBottomLeft(attendanceDivider).dy,
         closeTo(24, 1),
       );
