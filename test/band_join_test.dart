@@ -84,13 +84,13 @@ void main() {
       ),
     );
 
-    expect(find.text('SWITCH'), findsOne);
+    expect(find.text('ACCOUNTS'), findsOne);
     await tester.tap(find.text('JOIN BAND'));
     await tester.pumpAndSettle();
 
     expect(harness.app.myBands, ['b2']);
-    expect(find.text('SWITCH'), findsOne);
-    await tester.tap(find.text('SWITCH'));
+    expect(find.text('ACCOUNTS'), findsOne);
+    await tester.tap(find.text('ACCOUNTS'));
     await tester.pumpAndSettle();
     expect(find.text('Pigeon Court'), findsOne);
   });

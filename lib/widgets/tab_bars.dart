@@ -157,7 +157,7 @@ class FanTabBar extends StatelessWidget {
     final bandCount = app.authed ? app.myBands.length : 0;
     final hasSwitchableIdentity =
         bandCount > 0 || app.myOrganizations.isNotEmpty;
-    final switcherLabel = hasSwitchableIdentity ? 'SWITCH' : 'CREATE';
+    final switcherLabel = hasSwitchableIdentity ? 'ACCOUNTS' : 'CREATE';
     return _TabBarShell(
       vertical: vertical,
       borderColor: context.epColors.line,
@@ -191,7 +191,9 @@ class FanTabBar extends StatelessWidget {
         ),
         EpNavigationItem(
           vertical: vertical,
-          icon: switcherLabel == 'SWITCH' ? Icons.mic_none : Icons.add,
+          icon: hasSwitchableIdentity
+              ? Icons.switch_account_outlined
+              : Icons.add,
           label: switcherLabel,
           compactLabel: switcherLabel,
           selected: false,
@@ -263,8 +265,8 @@ class BandTabBar extends StatelessWidget {
         EpNavigationItem(
           vertical: vertical,
           key: const Key('band-tab-switch'),
-          icon: Icons.swap_horiz,
-          label: 'SWITCH',
+          icon: Icons.switch_account_outlined,
+          label: 'ACCOUNTS',
           selected: false,
           onPressed: () => showSwitcherSheet(context),
         ),
@@ -322,7 +324,7 @@ class OrganizerTabBar extends StatelessWidget {
   }
 
   /// Other organizers: GIGS is home, PROFILE gathers settings, team and
-  /// finance, and SWITCH opens the identity switcher.
+  /// finance, and ACCOUNTS opens the identity switcher.
   List<Widget> _organizerItems(BuildContext context, AppState app) {
     final scr = app.current.screen;
     return [
@@ -353,8 +355,8 @@ class OrganizerTabBar extends StatelessWidget {
       EpNavigationItem(
         vertical: vertical,
         key: const Key('organizer-tab-switch'),
-        icon: Icons.swap_horiz,
-        label: 'SWITCH',
+        icon: Icons.switch_account_outlined,
+        label: 'ACCOUNTS',
         selected: false,
         onPressed: () => showSwitcherSheet(context),
       ),

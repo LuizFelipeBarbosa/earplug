@@ -85,9 +85,9 @@ void main() {
     await harness.app.commitAuth();
     await tester.pump();
 
-    expect(find.text('SWITCH'), findsOne);
+    expect(find.text('ACCOUNTS'), findsOne);
     expect(repository.hasMembershipListener, isTrue);
-    await tester.tap(find.text('SWITCH'));
+    await tester.tap(find.text('ACCOUNTS'));
     await tester.pump();
     expect(harness.app.current.screen, Screen.home);
 
@@ -98,10 +98,10 @@ void main() {
 
     expect(harness.app.membershipsLoaded, isTrue);
     expect(harness.app.myBands, ['b1']);
-    expect(find.text('SWITCH'), findsOne);
-    await tester.tap(find.text('SWITCH'));
+    expect(find.text('ACCOUNTS'), findsOne);
+    await tester.tap(find.text('ACCOUNTS'));
     await tester.pumpAndSettle();
-    expect(find.text('SWITCH IDENTITY'), findsOne);
+    expect(find.text('YOUR ACCOUNTS'), findsOne);
     await tester.tap(find.text('Foghorn Diet'));
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.gigMgr);
@@ -130,10 +130,10 @@ void main() {
       ),
     );
 
-    expect(find.text('SWITCH'), findsOne);
-    await tester.tap(find.text('SWITCH'));
+    expect(find.text('ACCOUNTS'), findsOne);
+    await tester.tap(find.text('ACCOUNTS'));
     await tester.pumpAndSettle();
-    expect(find.text('SWITCH IDENTITY'), findsOne);
+    expect(find.text('YOUR ACCOUNTS'), findsOne);
     expect(find.text('Personal account'), findsOne);
     await tester.tap(find.text('Foghorn Diet'));
     await tester.pumpAndSettle();
@@ -154,10 +154,10 @@ void main() {
       ),
     );
 
-    expect(find.text('SWITCH'), findsOne);
-    await tester.tap(find.text('SWITCH'));
+    expect(find.text('ACCOUNTS'), findsOne);
+    await tester.tap(find.text('ACCOUNTS'));
     await tester.pumpAndSettle();
-    expect(find.text('SWITCH IDENTITY'), findsOne);
+    expect(find.text('YOUR ACCOUNTS'), findsOne);
     expect(find.text('Pigeon Court'), findsWidgets);
   });
 }

@@ -130,7 +130,7 @@ void main() {
       isTrue,
     );
 
-    await tester.tap(find.text('SWITCH'));
+    await tester.tap(find.text('ACCOUNTS'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('switcher-org-org1')), findsOne);
     // Existing org1 membership with no application in progress hides the entry.
@@ -154,7 +154,7 @@ void main() {
     expect(harness.app.identity, isA<PersonalIdentity>());
   });
 
-  testWidgets('organizers get GIGS, VENUES, PROFILE and SWITCH tabs', (
+  testWidgets('organizers get GIGS, VENUES, PROFILE and ACCOUNTS tabs', (
     tester,
   ) async {
     final auth = FakeAuthService();
@@ -173,7 +173,7 @@ void main() {
         .widgetList<EpNavigationItem>(find.byType(EpNavigationItem))
         .map((item) => item.label)
         .toList();
-    expect(labels, ['GIGS', 'VENUES', 'PROFILE', 'SWITCH']);
+    expect(labels, ['GIGS', 'VENUES', 'PROFILE', 'ACCOUNTS']);
     expect(find.byKey(const Key('organizer-tab-dash')), findsNothing);
     expect(find.byKey(const Key('organizer-tab-team')), findsNothing);
     expect(find.byKey(const Key('organizer-tab-settings')), findsNothing);
@@ -500,7 +500,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(harness.app.isPlatformAdmin, isTrue);
 
-    await tester.tap(find.text('SWITCH'));
+    await tester.tap(find.text('ACCOUNTS'));
     await tester.pumpAndSettle();
     final adminButton = find.byKey(const Key('switcher-admin'));
     await tester.ensureVisible(adminButton);

@@ -469,7 +469,7 @@ void main() {
     harness.app.toFanView();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('SWITCH'));
+    await tester.tap(find.text('ACCOUNTS'));
     await tester.pumpAndSettle();
     expect(find.text('CONTINUE ORGANIZER APPLICATION'), findsOneWidget);
 

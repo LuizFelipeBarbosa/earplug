@@ -1,7 +1,10 @@
 import 'package:earplug/app_state.dart';
+import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/data/repository.dart';
 import 'package:earplug/main.dart';
 import 'package:earplug/navigation.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,13 +26,13 @@ Future<AppHarness> _pumpBandTabs(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('band nav shows GIGS, INSIGHTS, PROFILE, SWITCH in order', (
+  testWidgets('band nav shows GIGS, INSIGHTS, PROFILE, ACCOUNTS in order', (
     tester,
   ) async {
     final harness = await _pumpBandTabs(tester);
     expect(harness.app.current.screen, Screen.gigMgr);
 
-    final labels = ['GIGS', 'INSIGHTS', 'PROFILE', 'SWITCH'];
+    final labels = ['GIGS', 'INSIGHTS', 'PROFILE', 'ACCOUNTS'];
     final lefts = [
       for (final label in labels) tester.getTopLeft(find.text(label)).dx,
     ];
@@ -59,12 +62,39 @@ void main() {
     expect(harness.app.canGoBack, isFalse);
   });
 
-  testWidgets('SWITCH opens the identity switcher', (tester) async {
+  testWidgets('ACCOUNTS opens the identity switcher', (tester) async {
     await _pumpBandTabs(tester);
     await tester.tap(find.byKey(const Key('band-tab-switch')));
     await tester.pumpAndSettle();
-    expect(find.text('SWITCH IDENTITY'), findsOne);
+    expect(find.text('YOUR ACCOUNTS'), findsOne);
     expect(find.text('Personal account'), findsOne);
+  });
+
+  testWidgets('the switcher shows each band\'s profile picture', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _AvatarRepository(auth: auth),
+      home: const Scaffold(
+        body: SizedBox.expand(),
+        bottomNavigationBar: BandTabBar(),
+      ),
+      beforePump: (app) => app.switchToBand('b1'),
+    );
+    await tester.tap(find.byKey(const Key('band-tab-switch')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is EpNetworkImage &&
+            widget.url == _AvatarRepository.bandAvatarUrl,
+      ),
+      findsOne,
+    );
   });
 
   testWidgets('band tabs keep the bar; edit menus and pushed details drop it', (
@@ -136,4 +166,27 @@ void main() {
     expect(harness.app.takeMembersSheetRequest(), isTrue);
     expect(harness.app.takeMembersSheetRequest(), isFalse);
   });
+}
+
+/// Demo bands ship without avatars, so this feed gives band b1 one.
+class _AvatarRepository extends DemoRepository {
+  _AvatarRepository({required super.auth});
+
+  static const bandAvatarUrl = 'https://example.com/b1-avatar.jpg';
+
+  @override
+  Stream<List<BandMembership>> myBands() => super.myBands().map(
+    (memberships) => [
+      for (final membership in memberships)
+        BandMembership(
+          band: membership.band.id == 'b1'
+              ? membership.band.copyWith(
+                  avatarUrl: bandAvatarUrl,
+                  avatarUrlResolved: true,
+                )
+              : membership.band,
+          role: membership.role,
+        ),
+    ],
+  );
 }
