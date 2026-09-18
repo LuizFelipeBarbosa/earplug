@@ -23,13 +23,13 @@ Future<AppHarness> _pumpBandTabs(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('band nav shows GIGS, INSIGHTS, PROFILE, SWITCH in order', (
+  testWidgets('band nav shows GIGS, INSIGHTS, PROFILE, ACCOUNTS in order', (
     tester,
   ) async {
     final harness = await _pumpBandTabs(tester);
     expect(harness.app.current.screen, Screen.gigMgr);
 
-    final labels = ['GIGS', 'INSIGHTS', 'PROFILE', 'SWITCH'];
+    final labels = ['GIGS', 'INSIGHTS', 'PROFILE', 'ACCOUNTS'];
     final lefts = [
       for (final label in labels) tester.getTopLeft(find.text(label)).dx,
     ];
@@ -59,11 +59,11 @@ void main() {
     expect(harness.app.canGoBack, isFalse);
   });
 
-  testWidgets('SWITCH opens the identity switcher', (tester) async {
+  testWidgets('ACCOUNTS opens the identity switcher', (tester) async {
     await _pumpBandTabs(tester);
     await tester.tap(find.byKey(const Key('band-tab-switch')));
     await tester.pumpAndSettle();
-    expect(find.text('SWITCH IDENTITY'), findsOne);
+    expect(find.text('YOUR ACCOUNTS'), findsOne);
     expect(find.text('Personal account'), findsOne);
   });
 

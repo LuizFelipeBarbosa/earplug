@@ -347,7 +347,7 @@ void main() {
       repository: repository,
     );
     addTearDown(() => _disposeApp(harness.app));
-    await tester.tap(find.text('SWITCH'));
+    await tester.tap(find.text('ACCOUNTS'));
     await tester.pumpAndSettle();
 
     final hostEntry = find.byKey(const Key('switcher-become-host'));
@@ -376,7 +376,7 @@ void main() {
       );
       addTearDown(() => _disposeApp(harness.app));
       expect(harness.app.myOrganizationApplication, isNull);
-      await tester.tap(find.text('SWITCH'));
+      await tester.tap(find.text('ACCOUNTS'));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('switcher-org-org1')), findsOneWidget);
@@ -414,7 +414,7 @@ void main() {
       ),
       isTrue,
     );
-    await tester.tap(find.text('SWITCH'));
+    await tester.tap(find.text('ACCOUNTS'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('switcher-org-org2')), findsOneWidget);
@@ -447,7 +447,7 @@ void main() {
       repository: repository,
     );
     addTearDown(() => _disposeApp(harness.app));
-    await tester.tap(find.text('SWITCH'));
+    await tester.tap(find.text('ACCOUNTS'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('switcher-org-org1')), findsNothing);
@@ -501,7 +501,7 @@ void main() {
           ),
           hasHostMembership,
         );
-        await tester.tap(find.text('SWITCH'));
+        await tester.tap(find.text('ACCOUNTS'));
         await tester.pumpAndSettle();
 
         expect(
@@ -542,7 +542,7 @@ void main() {
       );
       addTearDown(() => _disposeApp(harness.app));
       expect(harness.app.myOrganizations, isEmpty);
-      await tester.tap(find.text('SWITCH'));
+      await tester.tap(find.text('ACCOUNTS'));
       await tester.pumpAndSettle();
       expect(find.text('CONTINUE HOST APPLICATION'), findsOneWidget);
       expect(find.text('BECOME AN ORGANIZER'), findsOneWidget);
@@ -559,7 +559,7 @@ void main() {
       await harness.app.refreshOrganizationApplication();
       harness.app.toFanView();
       await tester.pumpAndSettle();
-      await tester.tap(find.text('SWITCH'));
+      await tester.tap(find.text('ACCOUNTS'));
       await tester.pumpAndSettle();
       expect(find.text('HOST APPLICATION · SUBMITTED'), findsOneWidget);
       expect(find.text('BECOME AN ORGANIZER'), findsOneWidget);
@@ -618,7 +618,7 @@ void main() {
         expect(find.text('GIGS'), findsOneWidget);
         expect(find.text('VENUES'), findsOneWidget);
         expect(find.text('PROFILE'), findsOneWidget);
-        expect(find.text('SWITCH'), findsOneWidget);
+        expect(find.text('ACCOUNTS'), findsOneWidget);
         expect(find.text('REQUESTS'), findsNothing);
       },
     );

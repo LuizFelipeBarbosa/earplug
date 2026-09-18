@@ -5,6 +5,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
+import 'common.dart';
 import 'ep_rows.dart';
 import 'ep_sheet.dart';
 import 'ep_text.dart';
@@ -502,12 +503,13 @@ void showSwitcherSheet(BuildContext context) {
       maxHeightFactor: .88,
       scrollable: true,
       mainAxisSize: MainAxisSize.min,
-      header: const EpEyebrow('Switch identity'),
+      header: const EpEyebrow('Your accounts'),
       children: [
         if (app.authed)
           _IdentityOption(
             name: displayName,
             avatarName: profileName,
+            imageUrl: app.profile?.avatarUrl,
             caption: 'Personal account',
             active: identity is PersonalIdentity,
             onTap: () {
@@ -520,6 +522,7 @@ void showSwitcherSheet(BuildContext context) {
             _IdentityOption(
               name: band.name,
               avatarName: band.name,
+              imageUrl: band.profileImageUrl,
               caption: 'Manage band · ${app.roleFor(id)}',
               active: identity is BandIdentity && identity.bandId == id,
               onTap: () {
@@ -533,6 +536,7 @@ void showSwitcherSheet(BuildContext context) {
               key: Key('switcher-org-${membership.organization.id}'),
               name: membership.organization.name,
               avatarName: membership.organization.name,
+              imageUrl: membership.organization.photoUrls.firstOrNull,
               caption:
                   membership.organization.orgType ==
                       OrganizationType.privateHost
@@ -643,6 +647,7 @@ class _IdentityOption extends StatelessWidget {
     super.key,
     required this.name,
     required this.avatarName,
+    this.imageUrl,
     required this.caption,
     required this.active,
     required this.onTap,
@@ -650,6 +655,7 @@ class _IdentityOption extends StatelessWidget {
 
   final String name;
   final String? avatarName;
+  final String? imageUrl;
   final String caption;
   final bool active;
   final VoidCallback onTap;
@@ -660,7 +666,7 @@ class _IdentityOption extends StatelessWidget {
       onTap: onTap,
       leading: Row(
         children: [
-          _IdentityTile(name: avatarName, active: active),
+          _IdentityTile(name: avatarName, imageUrl: imageUrl, active: active),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -684,46 +690,25 @@ class _IdentityOption extends StatelessWidget {
 }
 
 class _IdentityTile extends StatelessWidget {
-  const _IdentityTile({required this.name, required this.active});
+  const _IdentityTile({
+    required this.name,
+    required this.imageUrl,
+    required this.active,
+  });
 
   final String? name;
+  final String? imageUrl;
   final bool active;
 
   @override
   Widget build(BuildContext context) {
-    final words = (name ?? '')
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((word) => word.isNotEmpty)
-        .take(2);
-    final initials = words.isEmpty
-        ? '??'
-        : words.map((word) => word.characters.first).join();
-    final colors = context.epColors;
-    return Semantics(
-      image: true,
-      label: name == null || name!.trim().isEmpty
-          ? 'Profile avatar'
-          : '${name!.trim()} avatar',
-      child: ExcludeSemantics(
-        child: Container(
-          width: 40,
-          height: 40,
-          padding: const EdgeInsets.all(2),
-          color: active ? colors.accent : colors.panel,
-          alignment: Alignment.center,
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              initials.toUpperCase(),
-              semanticsLabel: initials,
-              style: Theme.of(context).textTheme.epSectionHeading.copyWith(
-                color: active ? colors.onAccent : colors.ink,
-              ),
-            ),
-          ),
-        ),
-      ),
+    // The active identity wears a 2px accent frame around its avatar.
+    return Container(
+      width: 40,
+      height: 40,
+      padding: const EdgeInsets.all(2),
+      color: active ? context.epColors.accent : null,
+      child: EpFanAvatar(name: name, imageUrl: imageUrl, size: 36),
     );
   }
 }
